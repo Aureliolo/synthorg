@@ -16,7 +16,8 @@ from synthorg.engine.coordination.section_config import (
 )
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.decomposition.service import DecompositionService
-from synthorg.engine.errors import DecompositionError
+from synthorg.engine.decomposition.strategy_deps import DecompositionStrategyDeps
+from synthorg.engine.errors import DecompositionError, DecompositionUnwiredError
 from synthorg.engine.parallel import ParallelExecutor
 from synthorg.engine.routing.service import TaskRoutingService
 from synthorg.engine.shutdown import ShutdownManager
@@ -52,7 +53,9 @@ class TestBuildCoordinator:
             task_assignment_config=TaskAssignmentConfig(),
             provider=provider,
             decomposition_model="test-model-001",
-            provider_selector=lambda _identity: provider,
+            decomposition=DecompositionStrategyDeps(
+                provider_selector=lambda _identity: provider,
+            ),
         )
         assert isinstance(coordinator, MultiAgentCoordinator)
         # Verify LLM strategy is used (not the placeholder)
@@ -149,12 +152,17 @@ class TestBuildCoordinator:
             )
 
     def test_provider_and_model_without_selector_raises(self) -> None:
-        """Provider + model but no provider_selector raises ValueError.
+        """Provider + model but no selector raises the typed wiring error.
 
         The owner-run session dispatches each owner on its own bound provider,
         so a selector is mandatory when a provider is configured.
+
+        Typed rather than ``ValueError``: a wiring fault and a malformed
+        argument want opposite responses (fix the deployment, versus retry
+        with different input), and a bare ``ValueError`` from an accessor
+        reads to every caller as the second.
         """
-        with pytest.raises(ValueError, match="provider_selector"):
+        with pytest.raises(DecompositionUnwiredError, match="provider_selector"):
             build_coordinator(
                 config=CoordinationSectionConfig(),
                 engine=_mock_engine(),
@@ -203,7 +211,9 @@ class TestDecompositionStrategySelection:
             task_assignment_config=TaskAssignmentConfig(),
             provider=mock_of[CompletionProvider](),
             decomposition_model="test-model-001",
-            provider_selector=lambda _identity: mock_of[CompletionProvider](),
+            decomposition=DecompositionStrategyDeps(
+                provider_selector=lambda _identity: mock_of[CompletionProvider](),
+            ),
         )
         strategy = coordinator._decomposition_service._strategy
         assert isinstance(strategy, AgentSessionDecompositionStrategy)
@@ -218,7 +228,9 @@ class TestDecompositionStrategySelection:
             provider=mock_of[CompletionProvider](),
             decomposition_model="test-model-001",
             decomposition_strategy="llm",
-            provider_selector=lambda _identity: mock_of[CompletionProvider](),
+            decomposition=DecompositionStrategyDeps(
+                provider_selector=lambda _identity: mock_of[CompletionProvider](),
+            ),
         )
         strategy = coordinator._decomposition_service._strategy
         assert isinstance(strategy, LlmDecompositionStrategy)
@@ -234,7 +246,9 @@ class TestDecompositionStrategySelection:
                 provider=mock_of[CompletionProvider](),
                 decomposition_model="test-model-001",
                 decomposition_strategy="nonexistent",
-                provider_selector=lambda _identity: mock_of[CompletionProvider](),
+                decomposition=DecompositionStrategyDeps(
+                    provider_selector=lambda _identity: mock_of[CompletionProvider](),
+                ),
             )
 
 

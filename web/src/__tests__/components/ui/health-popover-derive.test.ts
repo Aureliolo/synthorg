@@ -21,6 +21,7 @@ function okLoadState(
     data: {
       status,
       persistence: true,
+      persistence_backend: 'sqlite',
       message_bus: true,
       providers,
       telemetry: 'disabled',
@@ -65,6 +66,7 @@ describe('deriveHealthSubsystemStates api mapping', () => {
         data: {
           status: 'unavailable',
           persistence: null,
+          persistence_backend: null,
           message_bus: null,
           providers: null,
           telemetry: 'disabled',

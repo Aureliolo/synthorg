@@ -7,6 +7,7 @@ const STATUS_LABELS: Record<ProjectStatus, string> = {
   integrating: 'Integrating',
   evaluating: 'Evaluating',
   on_hold: 'On Hold',
+  failed: 'Failed',
   completed: 'Completed',
   cancelled: 'Cancelled',
 }
@@ -17,6 +18,7 @@ const DOT_COLOR_CLASSES: Record<ProjectStatus, string> = {
   integrating: 'bg-accent',
   evaluating: 'bg-accent',
   on_hold: 'bg-warning',
+  failed: 'bg-danger',
   completed: 'bg-success',
   cancelled: 'bg-danger',
 }

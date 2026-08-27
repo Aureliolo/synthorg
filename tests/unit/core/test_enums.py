@@ -48,8 +48,8 @@ class TestEnumMemberCounts:
     def test_artifact_type_has_3_members(self) -> None:
         assert len(ArtifactType) == 3
 
-    def test_project_status_has_7_members(self) -> None:
-        assert len(ProjectStatus) == 7
+    def test_project_status_has_8_members(self) -> None:
+        assert len(ProjectStatus) == 8
 
     def test_memory_category_has_8_members(self) -> None:
         # 5 agent categories + PROJECT_DOC + KNOWLEDGE + PROJECT_BRAIN.
@@ -173,11 +173,12 @@ class TestEnumStringValues:
         assert ProjectStatus.INTEGRATING.value == "integrating"
         assert ProjectStatus.EVALUATING.value == "evaluating"
         assert ProjectStatus.ON_HOLD.value == "on_hold"
+        assert ProjectStatus.FAILED.value == "failed"
         assert ProjectStatus.COMPLETED.value == "completed"
         assert ProjectStatus.CANCELLED.value == "cancelled"
 
-    def test_project_status_has_7_members(self) -> None:
-        assert len(ProjectStatus) == 7
+    def test_project_status_has_8_members(self) -> None:
+        assert len(ProjectStatus) == 8
 
     @pytest.mark.parametrize(
         ("member", "value"),

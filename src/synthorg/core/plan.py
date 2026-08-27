@@ -15,6 +15,7 @@ from uuid import UUID, uuid4
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.decomposition_progress import DecompositionProgress
 from synthorg.core.plan_enums import ITEMLESS_STATUSES, PlanItemKind, PlanStatus
 from synthorg.core.plan_review import PlanReview
 from synthorg.core.plan_tree_validation import describe_malformed_tree
@@ -248,34 +249,6 @@ class PlanItem(BaseModel):
         return match
 
 
-class PlanPremises(BaseModel):
-    """What a plan revision rests on, carried beside the items that rest on it.
-
-    Assumptions and open questions belong to the pass that derived them, and a
-    live run showed what happens when they do not travel with it: a re-plan
-    replaced every item with "build the engine from scratch" while the plan
-    went on asserting the engine already existed, because the rework path
-    carried the superseded plan's premises forward. The plan contradicted
-    itself, and the false assumption the operator had just refuted was the one
-    left standing.
-
-    Attributes:
-        assumptions: What the revision takes as given.
-        open_questions: What it could not settle and needs a human for.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    assumptions: tuple[NotBlankStr, ...] = Field(
-        default=(),
-        description="What this revision takes as given",
-    )
-    open_questions: tuple[NotBlankStr, ...] = Field(
-        default=(),
-        description="What this revision could not settle",
-    )
-
-
 class PlanVersionSnapshot(BaseModel):
     """A frozen snapshot of a plan's items at a prior version, for diffing.
 
@@ -323,6 +296,9 @@ class Plan(BaseModel):
         assumptions: Assumptions the plan rests on.
         planning_strategy: Which planner produced the items, when a fallback
             produced them instead of the strategy the operator configured.
+        decomposition_progress: How far the decomposition writing this plan
+            has got, so a PLANNING plan with no items can say whether it is
+            working. ``None`` before the first node lands.
         review_absent_reason: Why the plan carries no panel review, when a
             panel was seated and returned no verdict.
         version_history: Snapshots of prior submitted versions, for diffing.
@@ -390,6 +366,12 @@ class Plan(BaseModel):
         default=None,
         description="Why a seated review panel produced no verdict, so an "
         "unreviewed plan is visibly unreviewed rather than silently blank",
+    )
+    decomposition_progress: DecompositionProgress | None = Field(
+        default=None,
+        description="How far the decomposition writing this plan has got, so "
+        "a PLANNING plan with no items can say whether it is working; None "
+        "before the first node and on a plan nothing is decomposing",
     )
     objective_criteria: tuple[NotBlankStr, ...] = Field(
         default=(),

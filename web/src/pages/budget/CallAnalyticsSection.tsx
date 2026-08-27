@@ -26,11 +26,23 @@ function optionalMs(value: number | null): string {
 }
 
 function AnalyticsMetrics({ data }: { data: AnalyticsAggregation }) {
-  const successRate = data.total_calls > 0 ? data.success_count / data.total_calls : 0
+  // The rate is derived server-side over the calls that REPORTED an outcome.
+  // Dividing successes by every call, as this did, reported the ones that
+  // said nothing as failures: "40% success rate" beside "0 failures" over 293
+  // calls, none of which had failed.
+  const judged = data.success_count + data.failure_count
   return (
     <div className="grid grid-cols-4 gap-grid-gap max-[1023px]:grid-cols-2 max-[639px]:grid-cols-1">
       <MetricCard label="Total calls" value={formatNumber(data.total_calls)} />
-      <MetricCard label="Success rate" value={pct(successRate)} />
+      <MetricCard
+        label="Success rate"
+        value={optionalPct(data.success_rate)}
+        subText={
+          judged === data.total_calls
+            ? undefined
+            : `of ${formatNumber(judged)} calls that reported one`
+        }
+      />
       <MetricCard label="Retry rate" value={pct(data.retry_rate)} />
       <MetricCard label="Cache hit rate" value={optionalPct(data.cache_hit_rate)} />
       <MetricCard label="Avg latency" value={optionalMs(data.avg_latency_ms)} />

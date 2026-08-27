@@ -358,9 +358,21 @@ the agent during execution.
 
     - Injects a brief system instruction about available memory tools
     - Exposes `search_memory` and `recall_memory` (by ID) tools
-    - Delegates `search_memory` requests to `MemoryBackend.retrieve()` (dense-only)
-    - Hybrid dense+sparse retrieval with RRF fusion applies at the
-      `ContextInjectionStrategy` level, not within `ToolBasedInjectionStrategy`
+    - Answers `search_memory` from the agent's own `MemoryBackend.retrieve()`
+      (dense) MERGED with the org knowledge the agent may read
+      (`SharedKnowledgeStore.search_shared`, a lexical term match). The two
+      halves take different error postures: the personal read propagates, so a
+      failure reads as "search unavailable" rather than "no memories found",
+      because an agent told the store is empty stops asking; the shared read is
+      additive and degrades to personal-only.
+    - Reading the personal store alone was the shipped behaviour and it made
+      the tool useless to exactly the agents that need it: a new hire owns no
+      memories, so across a live run the tool answered "No memories found." to
+      44 of 44 queries while the injection path returned 4 to 8 rows from the
+      same store, for the same agent, seconds apart.
+    - Hybrid dense+sparse retrieval with RRF fusion still applies only at the
+      `ContextInjectionStrategy` level; the tool path merges two stores rather
+      than two rankings of one.
     - When `query_reformulation_enabled: true` is set on the config and both a
       `QueryReformulator` and a `SufficiencyChecker` are provided at construction,
       `search_memory` runs an iterative **Search-and-Ask** loop: retrieve -> check

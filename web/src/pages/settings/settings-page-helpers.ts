@@ -5,7 +5,7 @@ import {
   NAMESPACE_ORDER,
   SENSITIVE_VALUE_PLACEHOLDER,
 } from '@/pages/settings/settings-constants'
-import { matchesSetting } from './utils'
+import { matchesSetting, scoreSetting } from './utils'
 
 function compositeKey(entry: SettingEntry): string {
   return `${entry.definition.namespace}/${entry.definition.key}`
@@ -40,6 +40,24 @@ function settingVisible(
   return true
 }
 
+/**
+ * Order matched entries by how well they answer the query.
+ *
+ * Only while searching. With no query the fixed order is the layout an
+ * operator learns and navigates by muscle memory, and re-ordering it on every
+ * keystroke of an empty box would take that away for nothing.
+ *
+ * The sort is stable within a score, so entries that answer equally well keep
+ * the order they were declared in rather than an arbitrary one.
+ */
+function rankBySearch(entries: SettingEntry[], searchQuery: string): SettingEntry[] {
+  if (!searchQuery) return entries
+  return entries
+    .map((entry, index) => ({ entry, index, score: scoreSetting(entry, searchQuery) }))
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .map(({ entry }) => entry)
+}
+
 /** Visible entries for a single namespace, honouring the filters. */
 export function filterNamespaceEntries(
   entries: SettingEntry[],
@@ -47,25 +65,42 @@ export function filterNamespaceEntries(
   advancedMode: boolean,
   searchQuery: string,
 ): SettingEntry[] {
-  return entries.filter(
-    (e) => e.definition.namespace === ns && settingVisible(e, advancedMode, searchQuery),
+  return rankBySearch(
+    entries.filter(
+      (e) => e.definition.namespace === ns && settingVisible(e, advancedMode, searchQuery),
+    ),
+    searchQuery,
   )
 }
 
-/** Group visible entries by namespace, honouring advanced/search filters. */
+/**
+ * Group visible entries by namespace, honouring advanced/search filters.
+ *
+ * While searching, the NAMESPACES are ordered by their best match too, not
+ * only the entries within one. Ranking inside a namespace alone would leave
+ * the setting an operator named sitting under whichever namespaces happen to
+ * come first in the fixed order, which is the defect: "decomposition model"
+ * put Api and Client above Coordination, where Decomposition Model lives.
+ */
 export function filterByNamespace(
   entries: SettingEntry[],
   advancedMode: boolean,
   searchQuery: string,
 ): Map<SettingNamespace, SettingEntry[]> {
-  const result = new Map<SettingNamespace, SettingEntry[]>()
+  const groups: { ns: SettingNamespace; nsEntries: SettingEntry[]; best: number }[] = []
   for (const ns of NAMESPACE_ORDER) {
-    const nsEntries = entries.filter(
-      (e) => e.definition.namespace === ns && settingVisible(e, advancedMode, searchQuery),
-    )
-    if (nsEntries.length > 0) result.set(ns, nsEntries)
+    const nsEntries = filterNamespaceEntries(entries, ns, advancedMode, searchQuery)
+    if (nsEntries.length === 0) continue
+    // The head, because filterNamespaceEntries already ranked them.
+    const head = nsEntries[0]
+    groups.push({
+      ns,
+      nsEntries,
+      best: head === undefined ? 0 : scoreSetting(head, searchQuery),
+    })
   }
-  return result
+  if (searchQuery) groups.sort((a, b) => b.best - a.best)
+  return new Map(groups.map(({ ns, nsEntries }) => [ns, nsEntries]))
 }
 
 /**

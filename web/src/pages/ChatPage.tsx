@@ -169,6 +169,7 @@ export default function ChatPage() {
   const activeIntent = useOrgConversationStore((s) => s.activeIntent)
   const draftCharter = useCharterStore((s) => s.draftCharter)
   const hydrateOpenCharter = useCharterStore((s) => s.hydrateOpenCharter)
+  const refreshDraftStatus = useCharterStore((s) => s.refreshDraftStatus)
   const [historyOpen, setHistoryOpen] = useState(false)
   // Shown because a charter is open, not because a turn in THIS tab happened
   // to classify as one. Both halves lived in memory, so a reload, a second
@@ -179,6 +180,27 @@ export default function ChatPage() {
   useEffect(() => {
     void hydrateOpenCharter()
   }, [hydrateOpenCharter])
+
+  // Re-ask on the way back, because the card's state comes from one in-flight
+  // promise and a promise that never settles leaves it showing a decision as
+  // untaken for ever. A live run met that: the approval landed on the first
+  // click and was in the database, while the page went on offering to approve
+  // it. A reload recovered it, which is the whole tell -- nothing was wrong
+  // with the data, only with the one edge the card was waiting on.
+  useEffect(() => {
+    const reread = () => {
+      if (document.visibilityState === 'visible') void refreshDraftStatus()
+    }
+    document.addEventListener('visibilitychange', reread)
+    // Focus as well as visibility: an operator who alt-tabs back to a window
+    // that was never hidden (a second monitor) gets no visibilitychange, and
+    // that is the same person asking the same question.
+    window.addEventListener('focus', reread)
+    return () => {
+      document.removeEventListener('visibilitychange', reread)
+      window.removeEventListener('focus', reread)
+    }
+  }, [refreshDraftStatus])
   // Question cards are derived here, never pushed into the conversation store:
   // startNew / hydrate reset that store, which would silently delete a
   // still-open question. They render after the transcript, which is how a chat

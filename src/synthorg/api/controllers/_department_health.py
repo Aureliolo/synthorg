@@ -15,6 +15,7 @@ from typing import Final, NamedTuple, Self
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg._core.features import require_service
+from synthorg.api._running_agents import running_agent_ids
 from synthorg.api.api_core_state import analytics_read_service_of
 from synthorg.api.controllers._department_health_outcomes import (
     health_from_outcomes,
@@ -70,10 +71,12 @@ class DepartmentHealth(BaseModel):
             0-100 score; None when task_success_rate is None (no-data).
         utilization_percent: Derived (computed_field) from
             active_agent_count / agent_count.
-        utilization_degraded: True when the in-flight-task query failed, so
-            active_agent_count (and thus utilization_percent) is a floor, not
-            a measured value; the dashboard renders utilisation as "unknown"
-            rather than a confident number.
+        utilization_degraded: True when EITHER input to the busy count could
+            not be read: the in-flight-task query, or the live agent-state
+            query that covers a run the board cannot see. Either way
+            active_agent_count (and thus utilization_percent) is a floor
+            rather than a measured value, and the dashboard renders
+            utilisation as "unknown" instead of a confident number.
         currency: ISO 4217 currency code.
     """
 
@@ -107,8 +110,9 @@ class DepartmentHealth(BaseModel):
     utilization_degraded: bool = Field(
         default=False,
         description=(
-            "True when the in-flight-task query failed; utilization_percent is"
-            " then a floor, not a measured value."
+            "True when either the in-flight-task query or the live"
+            " agent-state query failed; utilization_percent is then a floor,"
+            " not a measured value."
         ),
     )
     task_success_rate: float | None = Field(
@@ -563,7 +567,18 @@ async def assemble_department_health(
     )
 
     inprogress_tasks, utilization_degraded = t_tasks.result()
-    active_count = len(busy_agent_ids(inprogress_tasks, t_ids.result()))
+    # The same two inputs the org overview counts from. Read from the board
+    # alone, this card reports an agent mid-decomposition as idle and the
+    # department as under-utilised, while the overview reports it working: one
+    # question, two answers, and the quieter surface is the one that says
+    # nothing is happening. A read that could not be answered degrades the
+    # utilisation claim rather than silently lowering the count.
+    running = await running_agent_ids(app_state)
+    if running is None:
+        utilization_degraded = True
+    active_count = len(
+        busy_agent_ids(inprogress_tasks, t_ids.result(), running=running)
+    )
 
     return _build_health_from_data(
         dept_name=dept_name,

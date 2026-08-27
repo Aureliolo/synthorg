@@ -981,8 +981,10 @@ grants:
   with company-wide org knowledge so a plan builds on past retros and org
   playbooks rather than reasoning purely from priors.
 
-It is constructed in `_build_runtime_coordinator` and threaded into
-`build_coordinator` as `decomposition_tool_provider`; when neither a web-search
+It is constructed in `_build_runtime_coordinator` and carried on
+`DecompositionStrategyDeps.tool_provider`, the single bundle every
+decomposition collaborator travels in (`build_coordinator(..., decomposition=)`);
+when neither a web-search
 provider nor a memory backend is present the grant is simply absent (the
 strategy falls back to its prior-only planning). Only read-only action types
 (`EXTERNAL_DATA_REQUEST` / `memory:read`) survive the planning session's tool
@@ -991,7 +993,8 @@ filter, so the grant cannot introduce a write capability.
 **Memory digest.** Because a tool grant only helps if the model calls it, the
 session *also* pre-seeds a compact org / retro digest directly into the planning
 brief: `_build_runtime_coordinator` builds a `ContextInjectionStrategy` over the
-same memory + org backends and threads it into the strategy as `planning_memory`
+same memory + org backends and carries it on the same bundle as
+`DecompositionStrategyDeps.planning_memory`
 (with `memory.planning_memory_digest_budget` as its token cap). The digest is
 spliced between the owner's persona prompt and the fenced brief, so prior
 learnings reach the plan even when the owner never calls `search_memory`. A zero

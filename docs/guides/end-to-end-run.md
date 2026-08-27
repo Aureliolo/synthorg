@@ -11,6 +11,11 @@ and real wall-clock, and it is the only way to see failures that no unit test
 reaches: nothing here is mocked, and every stage runs against the same
 configuration an operator would have.
 
+Every run so far, how far it got and why it stopped, is recorded in
+[the loop round log](../reference/loop-round-log.md). Read it before starting:
+it carries the brief verbatim, and a round that changes the brief cannot be
+compared with any other.
+
 ## Which arm proves which half
 
 Two arms, and each proves exactly one of the two claims. Running only one and
@@ -111,9 +116,11 @@ SELECT
 ## File the objective as a person would
 
 Through the dashboard chat, in ordinary language, with the vagueness a real
-brief has. This is the wording, verbatim, and it is the same for both arms:
-
-> I want a tetris game I can play in the browser, with a shared leaderboard.
+brief has. The wording is the same for both arms and has not changed since
+round 1, so it is stated once, in
+[the round log](../reference/loop-round-log.md#the-brief), and read from there
+rather than repeated here: the log is one table across rounds, and a brief that
+drifts between two copies silently changes what every number in it means.
 
 Everything else is left for the org to ask: single or multiplayer, how many
 modes, the timeline, where it runs and how it is hosted, how the leaderboard

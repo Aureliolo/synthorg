@@ -28,6 +28,7 @@ function makeProgress(overrides: Partial<ProjectProgress> = {}): ProjectProgress
     project_status: 'active',
     plan_id: 'plan-1',
     plan_status: 'executing',
+    plan_failure_reason: null,
     objective_title: 'Ship the initiative',
     items: [makeItem()],
     counts: { total: 1, done: 1, failed: 0, blocked: 0 },
@@ -143,6 +144,51 @@ describe('ProjectPlanProgress', () => {
     // Claiming "no plan yet" for a request that simply failed would tell the
     // operator something untrue about their initiative.
     expect(screen.queryByText('No plan yet')).not.toBeInTheDocument()
+  })
+
+  it('reads back why a plan that died before dispatch failed', () => {
+    // Every panel below renders empty for an itemless plan, so the page would
+    // otherwise say nothing at all about why the initiative stopped.
+    renderProgress(
+      makeProgress({
+        plan_status: 'failed',
+        plan_failure_reason: 'decomposition exhausted its turns',
+        items: [],
+        counts: { total: 0, done: 0, failed: 0, blocked: 0 },
+      }),
+    )
+
+    expect(screen.getByText('Planning failed')).toBeInTheDocument()
+    expect(
+      screen.getByText('decomposition exhausted its turns'),
+    ).toBeInTheDocument()
+  })
+
+  it('still names the failure when the plan recorded no reason', () => {
+    renderProgress(
+      makeProgress({
+        plan_status: 'failed',
+        plan_failure_reason: null,
+        items: [],
+        counts: { total: 0, done: 0, failed: 0, blocked: 0 },
+      }),
+    )
+
+    expect(screen.getByText('Planning failed')).toBeInTheDocument()
+  })
+
+  it('renders a failed plan normally once it has items', () => {
+    // The failure panel is for a plan that never dispatched. One that ran and
+    // then failed has per-item state worth reading.
+    renderProgress(
+      makeProgress({
+        plan_status: 'failed',
+        plan_failure_reason: 'every item failed',
+      }),
+    )
+
+    expect(screen.queryByText('Planning failed')).not.toBeInTheDocument()
+    expect(screen.getByText('Scaffold')).toBeInTheDocument()
   })
 
   it('labels each task link with its item so they are distinguishable', () => {

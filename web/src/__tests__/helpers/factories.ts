@@ -10,7 +10,51 @@ import type { Channel, Message } from '@/api/types/messages'
 import type { CompanyConfig, DashboardDepartment } from '@/api/types/org'
 import type { Plan, PlanItem } from '@/api/types/plans'
 import type { Project } from '@/api/types/projects'
+import type { SettingEntry } from '@/api/types/settings'
 import type { DashboardTask } from '@/api/types/tasks'
+
+/**
+ * One settings row, defaulted so a case states only what it is about.
+ *
+ * Six settings suites had grown their own copy of this, four of them with
+ * different signatures over the same fifteen fields, so a new field on the DTO
+ * meant six edits and a case reading `makeEntry('api', 'retries', 'int')`
+ * could not be compared with one reading `makeEntry({ key: 'retries' })`.
+ *
+ * `value` and `source` sit alongside the definition's own fields rather than
+ * in a nested object: they are the two a case most often varies, and every
+ * copy this replaces had already flattened them.
+ */
+export function makeSettingEntry(
+  overrides: Partial<SettingEntry['definition']> & {
+    value?: string
+    source?: SettingEntry['source']
+  } = {},
+): SettingEntry {
+  const { value = 'v', source = 'default', ...definition } = overrides
+  return {
+    definition: {
+      namespace: 'api',
+      key: 'server_host',
+      type: 'str',
+      default: '127.0.0.1',
+      description: 'Server bind address',
+      group: 'Server',
+      level: 'basic',
+      sensitive: false,
+      compose_set: false,
+      env_var_override: null,
+      enum_values: [],
+      validator_pattern: null,
+      min_value: null,
+      max_value: null,
+      ...definition,
+    },
+    value,
+    source,
+    updated_at: null,
+  }
+}
 
 export function makeTask(id: string, overrides?: Partial<DashboardTask>): DashboardTask
 export function makeTask(id: string, title: string, overrides?: Partial<DashboardTask>): DashboardTask
@@ -321,6 +365,7 @@ export function makePlan(id: string, overrides?: Partial<Plan>): Plan {
     // items, and a real panel reviewed them, so neither has anything to say.
     planning_strategy: null,
     review_absent_reason: null,
+    decomposition_progress: null,
     pending_decision: null,
     open_questions: [],
     assumptions: [],

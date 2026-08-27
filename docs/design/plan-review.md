@@ -29,7 +29,11 @@ carries only the plan's `plan_id`.
   consolidated stakeholder-panel review, or `None`), `open_questions` and
   `assumptions` (what the planner surfaced for the human), `objective_criteria` (the
   objective's acceptance criteria, denormalised for the coverage map),
-  `version_history` (snapshots of prior submitted versions), `version`,
+  `version_history` (snapshots of prior submitted versions),
+  `decomposition_progress` (how far a RUNNING decomposition has got, or `None`
+  when none has reported; see
+  [telling a working tree from a hung one](recursive-decomposition.md#telling-a-working-tree-from-a-hung-one)),
+  `planning_strategy`, `version`,
   `created_at`, `updated_at`. A model validator rejects an empty item list for
   every status except the `PLANNING` / `FAILED` shells (which may carry no
   items), duplicate item ids, an unresolvable dependency, or a dependency
@@ -419,10 +423,19 @@ PlanFilterSpec]`; the SQLite and Postgres implementations are kept in parity. Th
 the `PLANNING` / `FAILED` shells, which may carry no items, CHECK-enforced), the
 nullable `failure_reason` (non-blank when present, CHECK-enforced), and
 `review` / `open_questions` / `assumptions` / `objective_criteria` /
-`version_history` as JSON columns; Postgres uses `TIMESTAMPTZ` for the timestamps
-and a composite `(project, status, id)` index for the combined-filter list query.
-`update()` takes an `expected_version` guard and raises
+`version_history` / `decomposition_progress` as JSON columns, the last of them
+nullable and CHECK-constrained to an object; Postgres uses `TIMESTAMPTZ` for the
+timestamps and a composite `(project, status, id)` index for the combined-filter
+list query. `update()` takes an `expected_version` guard and raises
 `PersistenceVersionConflictError` when the stored version has moved.
+
+One bespoke write sits beside it, under ADR-0001 D7:
+`record_decomposition_progress` stamps the progress column on the objective's
+`PLANNING` shell in a single conditional statement. It is bespoke because both
+of its properties are unreachable through the generic read-then-update: the
+status has to hold when the row is WRITTEN rather than when it was read, and
+the write must leave the version alone so the decomposition's own closing claim
+still matches.
 
 `plans.parent_task_id` is a real `REFERENCES tasks (id) ON DELETE RESTRICT`,
 indexed `(parent_task_id, id)` for the equality-then-ordering shape the delete

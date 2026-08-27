@@ -61,6 +61,26 @@ class HiringAlreadyInFlightError(HiringError):
     status_code: ClassVar[int] = 409
 
 
+class HiringUnbindableError(HiringError):
+    """The approved hire names no pair this organisation can run it on.
+
+    Typed apart from :class:`HiringError` because the two conditions the
+    staffing reconciler meets are opposites, and it could not tell them apart:
+    a catalogue that is not wired yet resolves itself on the next pass, while a
+    request carrying no binding, or one naming a connection that is gone, is
+    unchanged by every pass that will ever run. Retried as though it were the
+    first, one such request re-failed on every sweep for seven days with
+    nothing marking it, nothing surfacing it, and no pass able to clear it.
+    """
+
+    default_message: ClassVar[str] = (
+        "Hiring request names no model this organisation can run it on"
+    )
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.HIRING_UNBINDABLE
+    status_code: ClassVar[int] = 409
+
+
 class HiringRejectedError(HiringError):
     """Hiring request was rejected."""
 

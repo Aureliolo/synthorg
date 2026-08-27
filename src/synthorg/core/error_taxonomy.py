@@ -173,6 +173,7 @@ class ErrorCode(IntEnum):
     PLAN_NOT_DELETABLE = 4040
     HIRING_ALREADY_IN_FLIGHT = 4041
     SPRINT_ALREADY_OPEN = 4042
+    HIRING_UNBINDABLE = 4043
 
     # 5xxx -- rate_limit
     RATE_LIMITED = 5000

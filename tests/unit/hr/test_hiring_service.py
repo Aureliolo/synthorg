@@ -692,7 +692,7 @@ class TestHiringServiceDecisions:
         )
         assert rejected.status is HiringRequestStatus.REJECTED
 
-    async def test_deciding_an_already_decided_request_is_refused(
+    async def test_re_approving_an_approved_request_is_refused(
         self,
         registry: AgentRegistryService,
     ) -> None:
@@ -703,6 +703,48 @@ class TestHiringServiceDecisions:
         )
         request_id, _ = await self._submitted(service)
         await service.approve_request(request_id, decided_by="operator")
+        with pytest.raises(HiringError, match="not awaiting a decision"):
+            await service.approve_request(request_id, decided_by="operator")
+
+    async def test_rejecting_an_approved_request_withdraws_it(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """The one hop out of APPROVED, and the only decision it admits.
+
+        The hire was authorised and no agent was built from it, so the
+        operator is still the one who decides whether it happens and nothing
+        has been done that the rejection would have to undo. Without it, a
+        request approved on a pair that then went missing had no exit at all.
+        """
+        service = HiringService(
+            registry=registry,
+            approval_store=ApprovalStore(),
+            provider_catalogue=provider_catalogue(),
+        )
+        request_id, _ = await self._submitted(service)
+        await service.approve_request(request_id, decided_by="operator")
+
+        withdrawn = await service.reject_request(
+            request_id, decided_by="operator", reason="Budget frozen"
+        )
+
+        assert withdrawn.status is HiringRequestStatus.REJECTED
+
+    async def test_deciding_a_rejected_request_is_refused_either_way(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        # A refusal re-approved silently is the same override the withdrawal
+        # hop avoids, in the other direction; a changed mind opens a fresh
+        # request rather than reviving a decided one.
+        service = HiringService(
+            registry=registry,
+            approval_store=ApprovalStore(),
+            provider_catalogue=provider_catalogue(),
+        )
+        request_id, _ = await self._submitted(service)
+        await service.reject_request(request_id, decided_by="operator")
         with pytest.raises(HiringError, match="not awaiting a decision"):
             await service.approve_request(request_id, decided_by="operator")
         with pytest.raises(HiringError, match="not awaiting a decision"):

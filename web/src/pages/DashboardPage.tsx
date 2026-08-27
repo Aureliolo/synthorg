@@ -13,6 +13,10 @@ import { OrgPulseSection } from './dashboard/OrgPulseSection'
 import { ActivityFeed } from './dashboard/ActivityFeed'
 import { PendingApprovalsCard } from './dashboard/PendingApprovalsCard'
 import { useApprovalsStore } from '@/stores/approvals'
+import {
+  selectPendingInboxCount,
+  selectPendingPlanReviewCount,
+} from '@/stores/approvals/selectors'
 
 const BudgetBurnChart = lazy(() =>
   import('./dashboard/BudgetBurnChart').then((m) => ({ default: m.BudgetBurnChart })),
@@ -71,8 +75,12 @@ export default function DashboardPage() {
   // The always-mounted sidebar badge owns the approvals fetch/poll/WS; read the
   // derived count + load state off the shared store via selectors only, so the
   // panel neither issues a second request nor flashes an empty state early.
-  const pendingCount = useApprovalsStore(
-    (s) => s.approvals.filter((a) => a.status === 'pending').length,
+  // Both counts through the shared selectors: counting every pending row here
+  // included the plan reviews the inbox excludes, so the card promised the
+  // operator a decision on a page that showed none.
+  const pendingCount = useApprovalsStore((s) => selectPendingInboxCount(s.approvals))
+  const planReviewCount = useApprovalsStore((s) =>
+    selectPendingPlanReviewCount(s.approvals),
   )
   const approvalsLoading = useApprovalsStore((s) => s.loading)
 
@@ -120,7 +128,11 @@ export default function DashboardPage() {
             <ActivityFeed activities={activities} />
           </ErrorBoundary>
           <ErrorBoundary level="section">
-            <PendingApprovalsCard count={pendingCount} loading={approvalsLoading} />
+            <PendingApprovalsCard
+              count={pendingCount}
+              planReviewCount={planReviewCount}
+              loading={approvalsLoading}
+            />
           </ErrorBoundary>
         </div>
       </div>

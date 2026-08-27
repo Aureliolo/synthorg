@@ -9,6 +9,8 @@
 import { create } from 'zustand'
 import * as authApi from '@/api/endpoints/auth'
 import { setUnauthorizedHandler } from '@/api/unauthorized-handler'
+import { RETURN_TO_PARAM } from '@/router/return-to'
+import { ROUTES } from '@/router/routes'
 import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage, isAxiosError } from '@/utils/errors'
 import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
@@ -166,9 +168,24 @@ function handleUnauthorizedImpl(
 
 function _redirectToLogin(): void {
   const currentPath = window.location.pathname
-  if (currentPath !== '/login' && currentPath !== '/setup') {
-    window.location.href = '/login'
-  }
+  if (currentPath === '/login' || currentPath === '/setup') return
+  // Where the operator was, so signing back in returns them there rather than
+  // to the dashboard. A session can expire mid-run with no backend auth
+  // failure to explain it, and one did, ~50 minutes into a live run with a
+  // decomposition still in flight: the page they were watching was replaced
+  // by a login screen that looked like a fresh visit and forgot where they
+  // had been. Carried in the URL rather than stored, because it is transient
+  // navigation state and the dashboard persists no state client-side.
+  const url = new URL(ROUTES.LOGIN, window.location.origin)
+  // The hash too: it is where the operator WAS on the page, and several
+  // surfaces address a row by it (a plan item's anchor is exactly this). The
+  // reader already carries a fragment through, so dropping it here returned
+  // them to the right page and the wrong place on it.
+  url.searchParams.set(
+    RETURN_TO_PARAM,
+    currentPath + window.location.search + window.location.hash,
+  )
+  window.location.href = url.pathname + url.search
 }
 
 /**

@@ -116,6 +116,42 @@ class DecompositionTimeoutError(DecompositionError):
     """
 
 
+class DecompositionTurnBudgetError(DecompositionError):
+    """Raised when a planning session used every turn without submitting.
+
+    A bound on the session, not a fault in it, and that is the whole reason it
+    is typed apart: the level that asked for this one holds a valid plan, so
+    the unit dispatches carrying the reason rather than discarding the tree
+    above it. The turn cap is unchanged on the next attempt, so a retry buys
+    the same outcome at full price. The operator's remedy is the turn cap or a
+    narrower unit; nothing about the levels already planned is wrong.
+    """
+
+
+class DecompositionSessionBudgetError(DecompositionError):
+    """Raised when a planning session spent its token budget without a plan.
+
+    The token sibling of :class:`DecompositionTurnBudgetError`, and separate
+    from :class:`DecompositionBudgetExhaustedError`, which is about ONE call
+    truncating before it wrote content. This is the whole session's allowance,
+    so the remedy is the session budget rather than a per-call ceiling, and
+    reporting one as the other sends the reader to a setting that would not
+    have helped.
+    """
+
+
+class DecompositionStagnationError(DecompositionError):
+    """Raised when a planning session stopped making progress.
+
+    The loop judged the session to be repeating itself rather than converging,
+    which is a statement about this node and not about the tree above it. It
+    is separated from the two budget errors because there is no number to
+    raise: a session that has stopped progressing has more turns and more
+    tokens and is using neither, so an operator told "budget" would tune a
+    bound that was never the constraint.
+    """
+
+
 class PlanReviewUnavailableError(EngineError):
     """Raised when a seated review panel could not review at all.
 
@@ -135,6 +171,16 @@ class DecompositionCycleError(DecompositionError):
 
 class DecompositionDepthError(DecompositionError):
     """Raised when decomposition exceeds the maximum nesting depth."""
+
+
+class DecompositionUnwiredError(DecompositionError):
+    """Raised when a strategy is asked to run without a dependency it needs.
+
+    A wiring fault, not a planning one, and typed so it is distinguishable
+    from one: a bare ``ValueError`` from an accessor reads to every caller
+    like a malformed argument, and the two want opposite responses (a
+    deployment fix versus a retry with different input).
+    """
 
 
 class DecompositionSubtaskLimitError(DecompositionError):

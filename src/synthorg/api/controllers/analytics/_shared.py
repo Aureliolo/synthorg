@@ -15,6 +15,7 @@ from typing import Final, NamedTuple
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg._core.features import require_service
+from synthorg.api._running_agents import running_agent_ids
 from synthorg.api.state import AppState
 from synthorg.budget.billing import billing_period_start
 from synthorg.budget.currency import DEFAULT_CURRENCY
@@ -81,8 +82,8 @@ class OverviewMetrics(BaseModel):
         tasks_7d_trend: Daily task completions for the last 7 days.
         agents_7d_trend: Daily roster size for the last 7 days.
         review_7d_trend: Daily approval requests raised for the last 7 days.
-        active_agents_count: Agents currently executing an in-progress task.
-        idle_agents_count: Employed agents not currently executing a task.
+        active_agents_count: Agents working right now.
+        idle_agents_count: Employed agents not working right now.
         currency: ISO 4217 currency code.
     """
 
@@ -145,11 +146,14 @@ class OverviewMetrics(BaseModel):
     )
     active_agents_count: int = Field(
         ge=0,
-        description="Agents currently executing an in-progress task",
+        description=(
+            "Agents working right now: holding an in-progress task, or running"
+            " a live session that drives no task (a planning session does)"
+        ),
     )
     idle_agents_count: int = Field(
         ge=0,
-        description="Employed agents not currently executing a task",
+        description="Employed agents not working right now",
     )
 
 
@@ -301,51 +305,46 @@ async def _resolve_agent_counts(
 ) -> tuple[int, int]:
     """Resolve active and idle agent counts.
 
-    "Active" means **currently busy executing a task** -- an agent is
-    counted as active if they are assigned to at least one task whose
-    status is ``IN_PROGRESS``.  "Idle" is everyone else on the payroll
-    (employed agents from :meth:`AgentRegistryService.list_active`
-    minus the busy ones).
+    "Active" means **working right now**, which the org knows two ways and
+    this counts both: assigned at least one ``IN_PROGRESS`` task, or holding a
+    live agent-state row. "Idle" is everyone else on the payroll (employed
+    agents from :meth:`AgentRegistryService.list_active` minus the busy ones).
 
-    The older semantics treated every agent with employment status
-    ``ACTIVE`` as "active", which conflated HR lifecycle with runtime
-    state and produced the surprising "4 active / 0 idle / 0 tasks"
-    display.  The runtime-state definition matches operator intuition:
-    if no tasks are in progress, no agents are active.
+    Reading the task board alone was the defect: a planning session runs as a
+    staffed agent without moving any task to ``IN_PROGRESS``, so an org
+    decomposing an initiative reported every agent idle. Neither definition is
+    the HR ``AgentStatus.ACTIVE`` lifecycle flag, which is what the display
+    read before that and which produced the surprising "4 active / 0 idle /
+    0 tasks".
 
-    Uses :class:`AgentRegistryService` when available to resolve
-    employed agents.  When the registry is unavailable, returns
-    ``(0, config_agent_count)`` because without the HR registry
-    there is no way to tell which agents are employed vs. merely
-    assigned to tasks, and treating every agent as idle is the
-    safest conservative display.
+    Uses :class:`AgentRegistryService` when available to resolve employed
+    agents. When the registry is unavailable the payroll is unknowable, so
+    "idle" falls back to the configured total minus the busy ones; "active"
+    does NOT fall back, because who is working is answerable without the
+    registry, from the task board and the live agent-state rows. Reporting
+    zero active there was the conservative display and it was also wrong: an
+    org mid-decomposition reported nobody working while the runtime knew
+    otherwise.
 
     Args:
         app_state: Application state.
         config_agent_count: Fallback total from config (caller
             typically passes ``len(agents)``).
         all_tasks: The full task list already fetched by the caller.
-            Required for the runtime-state computation; when omitted
-            or empty, every employed agent is reported as idle.
 
     Returns:
         Tuple of (active_count, idle_count).
     """
+    running = await running_agent_ids(app_state)
+    tasks = all_tasks or ()
     if app_state.slice(HrStateSlice).agent_registry is None:
-        if not all_tasks:
-            logger.debug(
-                ANALYTICS_OVERVIEW_QUERIED,
-                note="no agent registry -- all agents reported as idle",
-                config_agent_count=config_agent_count,
-            )
-            return 0, config_agent_count
-        # Without the registry we cannot distinguish employed agents,
-        # but we can still count busy assignees from the task list.
-        active = len(busy_agent_ids(all_tasks))
+        # Without the registry we cannot distinguish employed agents, but we
+        # can still count who is working.
+        active = len(busy_agent_ids(tasks, running=running))
         idle = max(config_agent_count - active, 0)
         logger.debug(
             ANALYTICS_OVERVIEW_QUERIED,
-            note="no agent registry -- derived active from tasks",
+            note="no agent registry -- derived active from runtime state",
             active=active,
             idle=idle,
             config_agent_count=config_agent_count,
@@ -364,18 +363,15 @@ async def _resolve_agent_counts(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return 0, config_agent_count
+        # The same fallback as the no-registry branch, for the same reason:
+        # a failed registry read costs the PAYROLL, not the answer to who is
+        # working, which the task board and the live rows already carry.
+        # Reporting zero active here made a transient HR fault look like an
+        # idle org while tasks were in progress and sessions were running.
+        active = len(busy_agent_ids(tasks, running=running))
+        return active, max(config_agent_count - active, 0)
 
     employed_ids = {str(agent.id) for agent in employed}
-    # Both None (not provided) and [] (no tasks) yield 0 active.
-    if not all_tasks:
-        logger.debug(
-            ANALYTICS_OVERVIEW_QUERIED,
-            note="no tasks provided -- all employed agents reported as idle",
-            employed_count=len(employed_ids),
-        )
-        return 0, len(employed_ids)
-
-    active = len(busy_agent_ids(all_tasks, employed_ids))
+    active = len(busy_agent_ids(tasks, employed_ids, running=running))
     idle = max(len(employed_ids) - active, 0)
     return active, idle

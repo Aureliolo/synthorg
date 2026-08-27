@@ -34,7 +34,7 @@ from evals.recursion_depth.models import (
 )
 from evals.recursion_depth.spend_repair import SPEND_REPAIRED_CAVEAT
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.decomposition.agent_session import (
+from synthorg.engine.decomposition.strategy_deps import (
     AgentSessionDecompositionConfig,
 )
 

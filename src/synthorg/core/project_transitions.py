@@ -3,11 +3,12 @@
 
 Defines the valid state transitions for an initiative::
 
-    PLANNING -> ACTIVE | CANCELLED
-    ACTIVE -> INTEGRATING | ON_HOLD | CANCELLED
-    INTEGRATING -> EVALUATING | ACTIVE | ON_HOLD | CANCELLED
-    EVALUATING -> COMPLETED | ACTIVE | ON_HOLD | CANCELLED
+    PLANNING -> ACTIVE | FAILED | CANCELLED
+    ACTIVE -> INTEGRATING | ON_HOLD | FAILED | CANCELLED
+    INTEGRATING -> EVALUATING | ACTIVE | ON_HOLD | FAILED | CANCELLED
+    EVALUATING -> COMPLETED | ACTIVE | ON_HOLD | FAILED | CANCELLED
     ON_HOLD -> ACTIVE | CANCELLED
+    FAILED -> PLANNING | ACTIVE | CANCELLED
 
 COMPLETED and CANCELLED are terminal.
 
@@ -17,13 +18,31 @@ whole, so the integrate and evaluate stages sit between building and delivery
 rather than being skippable. The back-edges to ACTIVE carry a regression,
 where a tail stage sends items back for rework.
 
-There is deliberately no failure status. Nothing downstream can honestly derive
-that an initiative is dead: a completion-oracle REJECT routes a task back to
-IN_PROGRESS for rework, and a task that does reach FAILED stays reassignable
-(``FAILED -> ASSIGNED`` in :mod:`synthorg.core.task_transitions`), so a derived
-failure would flap the moment the work was retried. Ending an initiative is a
-human act (CANCELLED); failed and blocked work surfaces as derived counts on
-the project's progress view rather than as a lifecycle state.
+FAILED mirrors a plan that ended FAILED, and NOTHING ELSE. The boundary is
+which source can flap, and it is the whole of the rule:
+
+* **Task state never derives it.** A completion-oracle REJECT routes a task
+  back to IN_PROGRESS for rework, and a task that does reach FAILED stays
+  reassignable (``FAILED -> ASSIGNED`` in
+  :mod:`synthorg.core.task_transitions`), so a project derived from task
+  failure would flap the moment the work was retried. Failed and blocked work
+  still surfaces as derived counts on the progress view, which is where an
+  operator reads whether work needs attention.
+* **A terminally-failed plan does derive it.** ``PlanStatus.FAILED`` is in
+  ``TERMINAL_STATUSES`` and has no remaining hops, so it cannot flap: a retry
+  is a fresh plan, not a revived one. A live run left a project reading
+  PLANNING for ever behind a plan that had failed, so the board went on
+  offering an initiative that was being planned by nobody, and the operator had
+  to open it to find that out.
+
+FAILED is therefore not terminal. A fresh plan against the same project walks
+it back out through PLANNING or ACTIVE, which is what keeps this a statement
+about the current plan rather than a verdict on the initiative. Cancelling
+stays available from it, because an operator may simply be done.
+
+ON_HOLD has no hop to FAILED: a paused initiative has no plan running to fail,
+and deriving one would finish an operator's deliberate hold out from under
+them, the same reason it has no hop to COMPLETED.
 
 ON_HOLD has no direct hop to COMPLETED: an operator who paused an initiative
 must resume it before the rollup can finish it, so work cannot complete out
@@ -42,11 +61,18 @@ from synthorg.observability.events.project import (
 )
 
 VALID_TRANSITIONS: dict[ProjectStatus, frozenset[ProjectStatus]] = {
-    ProjectStatus.PLANNING: frozenset({ProjectStatus.ACTIVE, ProjectStatus.CANCELLED}),
+    ProjectStatus.PLANNING: frozenset(
+        {
+            ProjectStatus.ACTIVE,
+            ProjectStatus.FAILED,
+            ProjectStatus.CANCELLED,
+        }
+    ),
     ProjectStatus.ACTIVE: frozenset(
         {
             ProjectStatus.INTEGRATING,
             ProjectStatus.ON_HOLD,
+            ProjectStatus.FAILED,
             ProjectStatus.CANCELLED,
         }
     ),
@@ -55,6 +81,7 @@ VALID_TRANSITIONS: dict[ProjectStatus, frozenset[ProjectStatus]] = {
             ProjectStatus.EVALUATING,
             ProjectStatus.ACTIVE,
             ProjectStatus.ON_HOLD,
+            ProjectStatus.FAILED,
             ProjectStatus.CANCELLED,
         }
     ),
@@ -63,10 +90,20 @@ VALID_TRANSITIONS: dict[ProjectStatus, frozenset[ProjectStatus]] = {
             ProjectStatus.COMPLETED,
             ProjectStatus.ACTIVE,
             ProjectStatus.ON_HOLD,
+            ProjectStatus.FAILED,
             ProjectStatus.CANCELLED,
         }
     ),
     ProjectStatus.ON_HOLD: frozenset({ProjectStatus.ACTIVE, ProjectStatus.CANCELLED}),
+    # Not terminal: a fresh plan walks the project back out, which is what
+    # keeps this a statement about the plan rather than a verdict on the work.
+    ProjectStatus.FAILED: frozenset(
+        {
+            ProjectStatus.PLANNING,
+            ProjectStatus.ACTIVE,
+            ProjectStatus.CANCELLED,
+        }
+    ),
     ProjectStatus.COMPLETED: frozenset(),  # terminal
     ProjectStatus.CANCELLED: frozenset(),  # terminal
 }

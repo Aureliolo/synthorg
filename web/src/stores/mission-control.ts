@@ -161,15 +161,32 @@ async function fetchMoreFramesImpl(
   }
 }
 
-async function steeringAction<T>(
+/**
+ * Name what a steering action acted on, never its id.
+ *
+ * The call returns the task it just moved, so the title is in hand by the
+ * time the toast is written. A task with no title falls back to the generic
+ * wording rather than to the key: an id identifies the row to the database
+ * and nothing at all to the operator reading a confirmation.
+ */
+function steeringSuccessTitle(verb: string, task: { title?: string | null }): string {
+  const title = task.title
+  return title === undefined || title === null || title === ''
+    ? `${verb} the task`
+    : `${verb} ${title}`
+}
+
+async function steeringAction<T extends { title?: string | null }>(
   call: () => Promise<T>,
-  successTitle: string,
+  verb: string,
   errorTitle: string,
   logKey: string,
 ): Promise<T | null> {
   try {
     const outcome = await call()
-    useToastStore.getState().add({ variant: 'success', title: successTitle })
+    useToastStore
+      .getState()
+      .add({ variant: 'success', title: steeringSuccessTitle(verb, outcome) })
     return outcome
   } catch (err) {
     log.error(logKey, { error: sanitizeForLog(err) })
@@ -215,7 +232,7 @@ export const useMissionControlStore = create<MissionControlState>()((set, get) =
         const task = await pauseTask(taskId, reason)
         return task
       },
-      `Paused task ${taskId}`,
+      'Paused',
       'Failed to pause task',
       'pause_failed',
     ),
@@ -225,7 +242,7 @@ export const useMissionControlStore = create<MissionControlState>()((set, get) =
         const task = await killTask(taskId, reason)
         return task
       },
-      `Killed task ${taskId}`,
+      'Killed',
       'Failed to kill task',
       'kill_failed',
     ),

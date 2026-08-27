@@ -6,12 +6,15 @@
  * truthy CodeMirror Extension for those inputs.
  */
 
+import { makeSettingEntry } from '@/__tests__/helpers/factories'
 import { settingsAutocompleteExtension } from '@/pages/settings/editor-autocomplete'
 import type { SettingEntry } from '@/api/types/settings'
 import type { Extension } from '@codemirror/state'
 
+// Autocomplete is keyed on the namespace/key pair, so those two stay
+// positional here and the description defaults to naming the pair back.
 function makeEntry(
-  namespace: string,
+  namespace: SettingEntry['definition']['namespace'],
   key: string,
   overrides: Partial<{
     type: SettingEntry['definition']['type']
@@ -19,27 +22,17 @@ function makeEntry(
     enumValues: readonly string[]
   }> = {},
 ): SettingEntry {
-  return {
-    definition: {
-      namespace: namespace as SettingEntry['definition']['namespace'],
-      key,
-      type: overrides.type ?? 'str',
-      default: '',
-      description: overrides.description ?? `${namespace}/${key}`,
-      group: 'Test',
-      level: 'basic',
-      sensitive: false,
-      compose_set: false,
-      env_var_override: null,
-      enum_values: overrides.enumValues ?? [],
-      validator_pattern: null,
-      min_value: null,
-      max_value: null,
-    },
+  return makeSettingEntry({
+    namespace,
+    key,
+    type: overrides.type ?? 'str',
+    default: '',
+    description: overrides.description ?? `${namespace}/${key}`,
+    group: 'Test',
+    enum_values: overrides.enumValues ?? [],
     value: '',
     source: 'db',
-    updated_at: null,
-  }
+  })
 }
 
 describe('settingsAutocompleteExtension', () => {

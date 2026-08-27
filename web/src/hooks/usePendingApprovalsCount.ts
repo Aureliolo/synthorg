@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { useApprovalsStore } from '@/stores/approvals'
+import { selectPendingInboxCount } from '@/stores/approvals/selectors'
 import { useWebSocket, type ChannelBinding } from '@/hooks/useWebSocket'
 import { usePolling } from '@/hooks/usePolling'
 import { useFreshnessGate } from '@/hooks/useFreshnessGate'
@@ -25,12 +26,7 @@ export interface UsePendingApprovalsCountReturn {
 export function usePendingApprovalsCount(): UsePendingApprovalsCountReturn {
   // Plan reviews have their own surface (the Plan Review page + its own badge),
   // so they are excluded from the generic approvals inbox count.
-  const pendingCount = useApprovalsStore(
-    (s) =>
-      s.approvals.filter(
-        (a) => a.status === 'pending' && a.source !== 'plan_review',
-      ).length,
-  )
+  const pendingCount = useApprovalsStore((s) => selectPendingInboxCount(s.approvals))
   const loading = useApprovalsStore((s) => s.loading)
 
   useEffect(() => {

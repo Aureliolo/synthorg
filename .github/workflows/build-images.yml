@@ -802,16 +802,37 @@ jobs:
 
       # `apko build` pulls every package from the Wolfi mirror. Retry so a
       # mirror 5xx doesn't tank the whole web build.
+      #
+      # The revision is stamped on the command line rather than in the
+      # manifest: apko enforces the lock's checksum over the manifest's raw
+      # bytes, so a per-build edit there would be a build that refuses itself.
+      # Without it the web image carried no revision at all, and an operator
+      # confirming which commit their dashboard came from had nothing to read.
+      # `created` is no substitute: apko stamps it from a reproducible source
+      # date, so it can predate code the image demonstrably contains.
+      #
+      # COLON, not `=`. apko's own parser is `strings.SplitN(s, ":", 2)` and
+      # its flag help reads "Separate with colon (key:value)", so the
+      # equals form every other tool takes is refused outright rather than
+      # silently ignored: the build fails with "unable to parse annotation".
       - name: Build web image
         uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
         env:
           TAG: ${{ steps.web-image-ref.outputs.tag }}
+          # The same expression every checkout in this workflow takes. On a
+          # pull_request event `github.sha` is the ephemeral MERGE commit,
+          # which is not what was checked out and not a commit that outlives
+          # the run, so the label would name something an operator cannot
+          # resolve back to the code in the image.
+          REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
         with:
           timeout_minutes: 20
           max_attempts: 3
           retry_wait_seconds: 30
           command: |
-            apko build docker/web/apko.yaml \
+            apko build \
+              --annotations "org.opencontainers.image.revision:${REVISION}" \
+              docker/web/apko.yaml \
               "ghcr.io/aureliolo/synthorg-web:${TAG}" \
               web.tar
 

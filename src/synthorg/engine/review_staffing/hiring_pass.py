@@ -7,9 +7,28 @@ pass, turn an approved request into a registered agent. Both halves live here
 because both are about the hiring pipeline rather than about parked tasks, and
 because "exactly one open request per role" is an invariant with two readers
 otherwise.
+
+Boot survives a hydration failure so the pipeline comes up degraded rather than
+not at all, which leaves a request approved before the restart invisible.
+Nothing else re-reads the durable set, so this sweep is what makes that
+degradation temporary: a still-failing read is reported and the pass carries on
+against the in-memory set, because a hydration fault must not also cost the
+release half of the pass its cadence.
+
+One request's failure never stops the others. A condition that may clear (the
+provider catalogue still coming up, a registry outage) is logged and left for
+the next pass, and so is a status that moved out of APPROVED under the lock,
+which needs nothing at all because the next sweep's query no longer returns it.
+That catch is EVERY ``DomainError`` rather than the two the hiring layer raises
+directly: instantiation reaches the registry and the repositories under it, so
+a query error or a persistence refusal arrives typed and from somewhere no list
+here could name in advance. Caught as two, one such request took the whole pass
+down with it and every request after it in the batch waited for the next sweep
+to be abandoned the same way.
 """
 
 import asyncio
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import DomainError, ServiceUnavailableError
@@ -19,8 +38,13 @@ from synthorg.engine.review_staffing.notices import (
     DispatcherSource,
     hire_request_reason,
     notify_hire_waiting,
+    notify_hire_withdrawn,
 )
-from synthorg.hr.errors import HRError
+from synthorg.hr.errors import (
+    HiringUnbindableError,
+    HRError,
+    InvalidCandidateError,
+)
 from synthorg.hr.hiring_service import HiringService
 from synthorg.hr.models import HiringRequest
 from synthorg.observability import get_logger, safe_error_description
@@ -30,16 +54,92 @@ from synthorg.observability.events.review_staffing import (
     REVIEW_STAFFING_HIRE_COMPLETION_FAILED,
     REVIEW_STAFFING_HIRE_REQUEST_FAILED,
     REVIEW_STAFFING_HIRE_REQUESTED,
+    REVIEW_STAFFING_HIRE_WITHDRAWN,
 )
 
 logger = get_logger(__name__)
 
+#: Recorded as the decider on a withdrawal, so the audit trail separates a
+#: hire the operator ended from one the sweep ended on their behalf.
+WITHDRAWN_BY: Final[str] = "review-staffing-reconciler"
 
-async def finish_approved_hires(hiring: HiringService | None) -> int:
+
+#: The failures that are facts about the request's OWN frozen data, so no
+#: later pass changes the answer: it names a pair this organisation cannot
+#: run, or its selected candidate card is absent from the request carrying
+#: it. Deliberately NOT keyed on ``HRError.is_retryable``, which is the API
+#: layer's flag (it defaults False across the whole HR family so a caller is
+#: not silently retried into a double-apply) and says nothing about whether
+#: a SWEEP can change the outcome. Read as terminal it would withdraw an
+#: approved hire over a provider catalogue that has merely not finished
+#: wiring, and over a persistence blip: both surface as a bare
+#: ``HiringError`` carrying ``is_retryable = False``, and both clear on
+#: their own. Those are the exact conditions ``HiringUnbindableError`` was
+#: typed apart FROM, so keying on the flag would undo the distinction.
+_UNCOMPLETABLE: Final[tuple[type[DomainError], ...]] = (
+    HiringUnbindableError,
+    InvalidCandidateError,
+)
+
+
+async def _withdraw(
+    hiring: HiringService,
+    request: HiringRequest,
+    exc: DomainError,
+    *,
+    notifications: DispatcherSource,
+) -> None:
+    """End an approved hire no pass can ever complete, and say so.
+
+    The withdrawal itself is the exit the request did not have. Failing to
+    persist it is reported and left for the next pass rather than raised: the
+    other approved requests in this sweep are unaffected by it, and the state
+    it leaves behind is the one the pass started in.
+
+    Args:
+        hiring: The live hiring pipeline.
+        request: The approved request that cannot be instantiated.
+        exc: Why it cannot, carried into the reason and the notice.
+        notifications: Where the operator is told.
+    """
+    reason = safe_error_description(exc)
+    try:
+        await hiring.reject_request(
+            str(request.id),
+            decided_by=WITHDRAWN_BY,
+            reason=reason,
+        )
+    except (HRError, ServiceUnavailableError) as withdrawal_exc:
+        logger.warning(
+            REVIEW_STAFFING_HIRE_COMPLETION_FAILED,
+            request_id=str(request.id),
+            role=str(request.role),
+            error_type=type(withdrawal_exc).__name__,
+            error=safe_error_description(withdrawal_exc),
+            note="uncompletable hire could not be withdrawn; retrying next pass",
+        )
+        return
+    logger.warning(
+        REVIEW_STAFFING_HIRE_WITHDRAWN,
+        request_id=str(request.id),
+        role=str(request.role),
+        error_type=type(exc).__name__,
+        error=reason,
+    )
+    await notify_hire_withdrawn(notifications, str(request.role), reason=reason)
+
+
+async def finish_approved_hires(
+    hiring: HiringService | None,
+    *,
+    notifications: DispatcherSource = None,
+) -> int:
     """Instantiate every request a human approved but nobody hired.
 
     Args:
         hiring: The live hiring pipeline, or ``None`` on a boot without one.
+        notifications: Where the operator is told about a hire this pass
+            withdrew because no pass could ever complete it.
 
     Returns:
         How many approved requests became registered agents.
@@ -50,20 +150,13 @@ async def finish_approved_hires(hiring: HiringService | None) -> int:
     """
     if hiring is None:
         return 0
-    # Boot survives a hydration failure so the pipeline comes up degraded
-    # rather than not at all, which leaves a request approved before the
-    # restart invisible. Nothing else re-reads the durable set, so the sweep
-    # is what makes that degradation temporary. A still-failing read is
-    # reported and the pass continues on the in-memory set: a hydration fault
-    # must not also cost the release half its cadence.
     try:
         await hiring.ensure_hydrated()
     except asyncio.CancelledError:
         raise
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # lint-allow: swallow-ok -- a durable read that is still failing must
-        # not also cost the release half of the pass its cadence; the gap is
-        # reported and the next pass retries it.
+        # lint-allow: swallow-ok -- see the module docstring: the pass carries
+        # on against the in-memory set rather than losing its cadence.
         reraise_critical(exc)
         logger.warning(
             REVIEW_STAFFING_HIRE_COMPLETION_FAILED,
@@ -75,10 +168,14 @@ async def finish_approved_hires(hiring: HiringService | None) -> int:
     for request in hiring.find_approved_requests():
         try:
             identity = await hiring.instantiate_agent(request)
-        except (HRError, ServiceUnavailableError) as exc:
-            # Deliberately not fatal to the pass: one request blocked on its
-            # own condition (an unbound new-hire pair) must not stop the
-            # others, and the next pass retries this one anyway.
+        except _UNCOMPLETABLE as exc:
+            # Withdrawn on the FIRST sweep that proves it uncompletable, which
+            # is the exit it otherwise never gets. See ``_UNCOMPLETABLE``.
+            await _withdraw(hiring, request, exc, notifications=notifications)
+            continue
+        except DomainError as exc:
+            # Left for the next pass, deliberately: see the module docstring
+            # for why this catches every DomainError rather than a named few.
             logger.warning(
                 REVIEW_STAFFING_HIRE_COMPLETION_FAILED,
                 request_id=str(request.id),

@@ -1,19 +1,52 @@
-import { useState } from 'react'
-import { Plus } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { Package, Plus } from 'lucide-react'
 import { useArtifactsData } from '@/hooks/useArtifactsData'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { ErrorBoundary } from '@/components/ui/error-boundary'
 import { ListHeader } from '@/components/ui/list-header'
 import { Pagination } from '@/components/ui/pagination'
 import { SearchFilterSort } from '@/components/ui/search-filter-sort'
 import { useArtifactsStore } from '@/stores/artifacts'
+import { useEmptyStateProps } from '@/hooks/use-empty-state-props'
 import { useListPagination } from '@/hooks/use-list-pagination'
 import { formatNumber } from '@/utils/format'
 import { ArtifactsSkeleton } from './artifacts/ArtifactsSkeleton'
 import { ArtifactCreateDialog } from './artifacts/ArtifactCreateDialog'
 import { ArtifactFilters } from './artifacts/ArtifactFilters'
 import { ArtifactGridView } from './artifacts/ArtifactGridView'
+
+/**
+ * Case-appropriate empty state for the artifact grid.
+ *
+ * With no artifacts in the deployment, no filter selected and no search
+ * entered, the grid rendered "Try adjusting your filters or search query."
+ * There was nothing to adjust. ``filterActive`` is derived from the total
+ * rather than from the filter values because the branch is only reached with
+ * zero rows showing: if anything exists at all, a filter is what removed it.
+ */
+function useArtifactsEmptyNode(
+  filteredCount: number,
+  totalCount: number,
+): ReactNode {
+  const props = useEmptyStateProps({
+    filteredCount,
+    totalCount,
+    filterActive: totalCount > 0,
+    icon: Package,
+    empty: {
+      title: 'No artifacts yet',
+      description:
+        'Artifacts appear here as agents produce them: files, documents and deliverables the org has built.',
+    },
+    filtered: {
+      title: 'No artifacts match your filters',
+      description: 'Adjust or clear the filters to see more artifacts.',
+    },
+  })
+  return props !== null ? <EmptyState {...props} /> : undefined
+}
 
 export default function ArtifactsPage() {
   const {
@@ -39,6 +72,7 @@ export default function ArtifactsPage() {
     setPage,
     setPageSize,
   } = useListPagination({ items: filteredArtifacts, namespace: 'artifacts' })
+  const emptyNode = useArtifactsEmptyNode(filteredArtifacts.length, totalArtifacts)
 
   if (loading && totalArtifacts === 0) {
     return <ArtifactsSkeleton />
@@ -78,7 +112,7 @@ export default function ArtifactsPage() {
           layout matches the rest of the dashboard's list pages. */}
       <SearchFilterSort filters={<ArtifactFilters />} />
       <ErrorBoundary level="section">
-        <ArtifactGridView artifacts={pagedArtifacts} />
+        <ArtifactGridView artifacts={pagedArtifacts} emptyNode={emptyNode} />
       </ErrorBoundary>
       {/* Pagination sits outside the grid's boundary (a pagination render error
           must not blank the loaded artifacts) and carries its own boundary so a

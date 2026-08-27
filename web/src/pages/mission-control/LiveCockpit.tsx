@@ -12,10 +12,17 @@ import { useMissionControlStore } from '@/stores/mission-control'
 import { UNKNOWN_AGENT_NAME } from '@/utils/agents'
 import { cn } from '@/lib/utils'
 import { DEFAULT_CURRENCY } from '@/utils/currencies'
+import { activityRowKey } from '@/utils/activity-rows'
 import { formatCurrency } from '@/utils/format'
 
 const _PAUSE_REASON = 'Paused from mission control'
 const _KILL_REASON = 'Killed from mission control'
+
+/** What the status column says for a run that drives no task. */
+const RUNNING_WITHOUT_TASK_STATUS = 'running'
+
+/** What the title slot says for a run that drives no task. */
+const WORK_WITHOUT_TASK_LABEL = 'no task assigned'
 
 function statusTone(activity: AgentActivity): string {
   if (activity.is_runaway) return 'text-danger'
@@ -32,7 +39,11 @@ function statusLabel(activity: AgentActivity): string {
 function statusText(activity: AgentActivity): string {
   if (activity.is_runaway) return 'runaway'
   if (activity.is_stuck) return 'stuck'
-  return activity.status
+  // A run can be real work and drive no task: a planning session runs as a
+  // staffed agent while the objective it is planning is still at `created`.
+  // The status column describes the task, so with none it says what is true
+  // of the run itself rather than borrowing a status from nothing.
+  return activity.status ?? RUNNING_WITHOUT_TASK_STATUS
 }
 
 function statusDotClass(activity: AgentActivity): string {
@@ -53,7 +64,9 @@ function AgentRowHeader({ activity, headerId }: { activity: AgentActivity; heade
         <span id={headerId} className="font-medium text-foreground">
           {activity.agent_name ?? UNKNOWN_AGENT_NAME}
         </span>
-        <span className="text-xs text-text-secondary">{activity.task_title}</span>
+        <span className="text-xs text-text-secondary">
+          {activity.task_title ?? WORK_WITHOUT_TASK_LABEL}
+        </span>
       </div>
       <div className="flex items-center gap-3 text-xs">
         <span className="text-text-secondary">turn {activity.turn_count}</span>
@@ -76,26 +89,43 @@ const AgentRow = memo(function AgentRow({
   const pause = useMissionControlStore((s) => s.pauseTaskAction)
   const kill = useMissionControlStore((s) => s.killTaskAction)
   const executionId = activity.execution_id
+  const taskId = activity.task_id
+
+  const headerId = `agent-row-${activityRowKey(activity)}`
 
   return (
-    <div className="rounded-lg border border-border bg-card p-card">
-      <AgentRowHeader activity={activity} headerId={`agent-row-${activity.task_id}`} />
+    // Grouped and labelled by the row's own heading. The id was already set on
+    // that heading and referenced by nothing, so a screen reader entering the
+    // row announced its controls with no idea whose work they steer.
+    <div
+      role="group"
+      aria-labelledby={headerId}
+      className="rounded-lg border border-border bg-card p-card"
+    >
+      <AgentRowHeader activity={activity} headerId={headerId} />
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void pause(activity.task_id, _PAUSE_REASON)}
-        >
-          Pause
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void kill(activity.task_id, _KILL_REASON)}
-        >
-          Kill
-        </Button>
+        {/* Both controls address a TASK, so a run driving none cannot offer
+            them: the row is still shown, because the work is real and the
+            spend is real, but the buttons would have no id to send. */}
+        {taskId != null && (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void pause(taskId, _PAUSE_REASON)}
+            >
+              Pause
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void kill(taskId, _KILL_REASON)}
+            >
+              Kill
+            </Button>
+          </>
+        )}
         {executionId != null && (
           <Button variant="ghost" size="sm" onClick={() => onReplay(executionId)}>
             Replay
@@ -179,7 +209,7 @@ function CockpitAgentList({
   return (
     <div className="space-y-grid-gap">
       {agents.map((activity) => (
-        <AgentRow key={activity.task_id} activity={activity} onReplay={onReplay} />
+        <AgentRow key={activityRowKey(activity)} activity={activity} onReplay={onReplay} />
       ))}
     </div>
   )

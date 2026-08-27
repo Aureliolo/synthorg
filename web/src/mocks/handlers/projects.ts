@@ -45,6 +45,7 @@ function buildProgress(overrides: Partial<ProjectProgress> = {}): ProjectProgres
     project_status: 'planning',
     plan_id: null,
     plan_status: null,
+    plan_failure_reason: null,
     objective_title: null,
     items: [],
     counts: { total: 0, done: 0, failed: 0, blocked: 0 },

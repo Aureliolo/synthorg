@@ -37,12 +37,13 @@ from synthorg.core.task import Task
 from synthorg.engine.coordination.decomposition_strategy_factory import (
     build_decomposition_strategy,
 )
-from synthorg.engine.decomposition.agent_session import (
-    AgentSessionDecompositionConfig,
-)
 from synthorg.engine.decomposition.classifier import TaskStructureClassifier
 from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.decomposition.service import DecompositionService
+from synthorg.engine.decomposition.strategy_deps import (
+    AgentSessionDecompositionConfig,
+    DecompositionStrategyDeps,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
     EVALS_RECURSION_PLAN_BOOKING_FAILED,
@@ -307,25 +308,28 @@ class AgentSessionPlanner:
             provider,
             self.executor.model_id,
             strategy_name=_STRATEGY_NAME,
-            tool_provider=None,
-            # Every owner here is bound to the executor pair, so the selector
-            # answers with the one driver whichever owner the plan names. The
-            # binding stays explicit: it was minted for that pair.
-            provider_selector=lambda _identity: provider,
-            cost_tracker=tracker,
-            agent_session_config=AgentSessionDecompositionConfig(
-                max_turns=self.limits.max_turns,
-                ceilings=SessionCeilings.of(
-                    cost_ceiling=self.limits.cost_ceiling,
-                    token_ceiling=self.limits.token_ceiling,
+            deps=DecompositionStrategyDeps(
+                # Every owner here is bound to the executor pair, so the
+                # selector answers with the one driver whichever owner the plan
+                # names. The binding stays explicit: it was minted for that
+                # pair.
+                provider_selector=lambda _identity: provider,
+                cost_tracker=tracker,
+                agent_session_config=AgentSessionDecompositionConfig(
+                    max_turns=self.limits.max_turns,
+                    ceilings=SessionCeilings.of(
+                        cost_ceiling=self.limits.cost_ceiling,
+                        token_ceiling=self.limits.token_ceiling,
+                    ),
                 ),
+                # The same resolver the service reads its recursion settings
+                # from. Without it the strategy falls back to its own
+                # construction default for the output-token ceiling, which is
+                # sized for a model that writes its answer directly: a
+                # reasoning model spends that budget before writing anything
+                # and the plan comes back empty.
+                config_resolver=self.config_resolver,
             ),
-            # The same resolver the service reads its recursion settings from.
-            # Without it the strategy falls back to its own construction
-            # default for the output-token ceiling, which is sized for a model
-            # that writes its answer directly: a reasoning model spends that
-            # budget before writing anything and the plan comes back empty.
-            config_resolver=self.config_resolver,
         )
         return DecompositionService(
             strategy,

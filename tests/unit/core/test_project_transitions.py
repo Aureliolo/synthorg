@@ -32,12 +32,22 @@ class TestValidTransitions:
             (ProjectStatus.INTEGRATING, ProjectStatus.ON_HOLD),
             (ProjectStatus.EVALUATING, ProjectStatus.ON_HOLD),
             (ProjectStatus.ON_HOLD, ProjectStatus.ACTIVE),
+            # A terminally-failed plan is derivable from every status that can
+            # be executing one.
+            (ProjectStatus.PLANNING, ProjectStatus.FAILED),
+            (ProjectStatus.ACTIVE, ProjectStatus.FAILED),
+            (ProjectStatus.INTEGRATING, ProjectStatus.FAILED),
+            (ProjectStatus.EVALUATING, ProjectStatus.FAILED),
+            # A fresh plan walks the project back out of failure.
+            (ProjectStatus.FAILED, ProjectStatus.PLANNING),
+            (ProjectStatus.FAILED, ProjectStatus.ACTIVE),
             # Termination is a human act, available from every live status.
             (ProjectStatus.PLANNING, ProjectStatus.CANCELLED),
             (ProjectStatus.ACTIVE, ProjectStatus.CANCELLED),
             (ProjectStatus.INTEGRATING, ProjectStatus.CANCELLED),
             (ProjectStatus.EVALUATING, ProjectStatus.CANCELLED),
             (ProjectStatus.ON_HOLD, ProjectStatus.CANCELLED),
+            (ProjectStatus.FAILED, ProjectStatus.CANCELLED),
         ],
         ids=lambda p: p.value if isinstance(p, ProjectStatus) else str(p),
     )
@@ -68,6 +78,12 @@ class TestInvalidTransitions:
             (ProjectStatus.PLANNING, ProjectStatus.ON_HOLD),
             # Backwards moves are not part of the lifecycle.
             (ProjectStatus.ACTIVE, ProjectStatus.PLANNING),
+            # A paused initiative has no plan running to fail, so deriving one
+            # would finish an operator's deliberate hold out from under them.
+            (ProjectStatus.ON_HOLD, ProjectStatus.FAILED),
+            # A failed initiative is replanned before it can deliver.
+            (ProjectStatus.FAILED, ProjectStatus.COMPLETED),
+            (ProjectStatus.FAILED, ProjectStatus.ON_HOLD),
         ],
         ids=lambda p: p.value if isinstance(p, ProjectStatus) else str(p),
     )
@@ -104,15 +120,38 @@ class TestLifecycleCoverage:
         }
         assert sources == {ProjectStatus.EVALUATING}
 
-    def test_no_failed_status_exists(self) -> None:
-        """A project never auto-fails.
+    def test_failed_is_reachable_only_from_a_status_that_can_hold_a_plan(self) -> None:
+        """The boundary: a terminally-failed plan derives it, nothing else.
 
-        Nothing downstream can honestly derive that an initiative is dead: a
-        completion-oracle REJECT reworks a task, and a FAILED task stays
-        reassignable. Termination is a human act (CANCELLED); failed work
-        surfaces as derived counts, not as a lifecycle state.
+        Task state cannot, because it flaps (an oracle REJECT reworks a task
+        and a FAILED task stays reassignable). ON_HOLD cannot, because a paused
+        initiative has no plan running to fail.
         """
-        assert not hasattr(ProjectStatus, "FAILED")
+        sources = {
+            source
+            for source, targets in VALID_TRANSITIONS.items()
+            if ProjectStatus.FAILED in targets
+        }
+        assert sources == {
+            ProjectStatus.PLANNING,
+            ProjectStatus.ACTIVE,
+            ProjectStatus.INTEGRATING,
+            ProjectStatus.EVALUATING,
+        }
+
+    def test_failed_is_not_terminal(self) -> None:
+        """A fresh plan walks the project back out.
+
+        That is what keeps FAILED a statement about the current plan rather
+        than a verdict on the initiative.
+        """
+        assert VALID_TRANSITIONS[ProjectStatus.FAILED] == frozenset(
+            {
+                ProjectStatus.PLANNING,
+                ProjectStatus.ACTIVE,
+                ProjectStatus.CANCELLED,
+            }
+        )
 
 
 @pytest.mark.unit

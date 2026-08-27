@@ -280,6 +280,7 @@ nav:
           - License Policy: reference/license-policy.md
           - Import Layering: reference/import-layering.md
           - Lifecycle Sync: reference/lifecycle-sync.md
+          - Loop Round Log: reference/loop-round-log.md
           - Persistence Boundary: reference/persistence-boundary.md
           - Pluggable Subsystems: reference/pluggable-subsystems.md
           - Single-Owner Decisions: reference/single-owner-decisions.md

@@ -6,6 +6,7 @@ import { apiError, buildCharter, paginatedFor, successFor } from '@/mocks/handle
 import type {
   approveCharter as approveCharterApi,
   editCharter as editCharterApi,
+  getCharter as getCharterApi,
   listCharters as listChartersApi,
 } from '@/api/endpoints/charter'
 import type { CharterApprovalResult } from '@/api/types/charter'
@@ -195,5 +196,99 @@ describe('useCharterStore', () => {
     const state = useCharterStore.getState()
     expect(state.draftCharter).toBeNull()
     expect(state.mutating).toBe(false)
+  })
+
+  describe('refreshDraftStatus', () => {
+    // The card's state came from one in-flight promise, so a promise that
+    // never settled left it showing the decision as untaken for ever. A live
+    // run met that: the approval landed on the first click and was in the
+    // database, while the page went on offering an enabled "Approve & start
+    // run" button and every poll on it had stopped. The obvious operator
+    // response is to click again. A reload recovered it, which is the tell.
+    function serveCharter(charter: ReturnType<typeof buildCharter>): void {
+      server.use(
+        http.get('/api/v1/meta/charters/:id', () =>
+          HttpResponse.json(successFor<typeof getCharterApi>(charter)),
+        ),
+      )
+    }
+
+    it('adopts a decision that landed while the card was stuck', async () => {
+      serveCharter(buildCharter({ id: 'c-1', status: 'approved' }))
+      useCharterStore.setState({
+        draftCharter: buildCharter({ id: 'c-1', status: 'drafted' }),
+        mutating: true,
+      })
+
+      await useCharterStore.getState().refreshDraftStatus()
+
+      expect(useCharterStore.getState().draftCharter?.status).toBe('approved')
+    })
+
+    it('releases the controls the unsettled mutation disabled', async () => {
+      // Without this the recovered card renders the right state with every
+      // button disabled by a mutation nothing is going to finish.
+      serveCharter(buildCharter({ id: 'c-1', status: 'approved' }))
+      useCharterStore.setState({
+        draftCharter: buildCharter({ id: 'c-1', status: 'drafted' }),
+        mutating: true,
+      })
+
+      await useCharterStore.getState().refreshDraftStatus()
+
+      expect(useCharterStore.getState().mutating).toBe(false)
+    })
+
+    it('leaves an unchanged status alone, so unsaved edits survive', async () => {
+      // The card's local brief and budget re-initialise when the charter
+      // identity changes, so adopting on every read would delete whatever the
+      // operator was typing each time they alt-tabbed back.
+      serveCharter(buildCharter({ id: 'c-1', status: 'drafted', version: 9 }))
+      const onScreen = buildCharter({ id: 'c-1', status: 'drafted', version: 1 })
+      useCharterStore.setState({ draftCharter: onScreen })
+
+      await useCharterStore.getState().refreshDraftStatus()
+
+      expect(useCharterStore.getState().draftCharter?.version).toBe(1)
+    })
+
+    it('does nothing when there is no draft to refresh', async () => {
+      useCharterStore.setState({ draftCharter: null })
+
+      await useCharterStore.getState().refreshDraftStatus()
+
+      expect(useCharterStore.getState().draftCharter).toBeNull()
+    })
+
+    it('leaves the card exactly as it was when the read fails', async () => {
+      // Read-only recovery: nothing the operator did failed, so a failed read
+      // must not blank a card they are still using.
+      server.use(
+        http.get('/api/v1/meta/charters/:id', () =>
+          HttpResponse.json(apiError('boom'), { status: 500 }),
+        ),
+      )
+      useCharterStore.setState({
+        draftCharter: buildCharter({ id: 'c-1', status: 'drafted' }),
+      })
+
+      await useCharterStore.getState().refreshDraftStatus()
+
+      expect(useCharterStore.getState().draftCharter?.status).toBe('drafted')
+    })
+
+    it('drops its answer when the draft was replaced under it', async () => {
+      // The same staleness guard every other mutation here carries: a read
+      // resolving after a reset must not repopulate the panel.
+      serveCharter(buildCharter({ id: 'c-1', status: 'approved' }))
+      useCharterStore.setState({
+        draftCharter: buildCharter({ id: 'c-1', status: 'drafted' }),
+      })
+      const refreshing = useCharterStore.getState().refreshDraftStatus()
+      useCharterStore.getState().resetInterview()
+      await refreshing
+
+      expect(useCharterStore.getState().draftCharter).toBeNull()
+    })
   })
 })

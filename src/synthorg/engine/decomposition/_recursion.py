@@ -12,9 +12,11 @@ explains.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Final
 
 from synthorg.core.criterion_match import matched_criteria, unique_criteria
+from synthorg.core.decomposition_progress import DecompositionProgress
 from synthorg.core.plan_tree import SubtreeStep
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
@@ -59,14 +61,39 @@ class TreeSessionLedger:
     immutable count back up through every level would put the same answer in
     two places.
 
+    It carries the tree's other running totals for the same reason it carries
+    this one: they are all answers to "how far has this got", they all
+    accumulate across the same recursive walk, and a second place keeping any
+    of them is a second answer. Nothing outside a decomposition reads them
+    except through :meth:`progress`.
+
     Attributes:
         remaining: Sessions still available to the whole tree.
+        limit: What the tree started with, kept so ``remaining`` is readable
+            as progress rather than as a bare countdown.
+        objective_task_id: The task the whole tree is being planned for. Held
+            here because it is the tree's identity and the recursion has no
+            other route to it: every level below the root is handed its own
+            child task, so a progress report raised at depth three would
+            otherwise name the subtask rather than the objective whose plan
+            row carries the answer. ``None`` in a harness that reports
+            nothing, rather than a blank string: absence is a state, and
+            spelling it as an empty value makes the guard a truthiness test
+            that any other falsy id would also satisfy.
         exhausted: Whether the ceiling has been reached, so the reason a unit
             went unsplit can name which backstop bound.
+        deepest_level: Deepest level reached so far, zero-based, so a tree
+            still widening its first level is distinguishable from one
+            recursing.
+        units_planned: Subtasks written across every level so far.
     """
 
     remaining: int
+    limit: int = 0
+    objective_task_id: str | None = None
     exhausted: bool = False
+    deepest_level: int = 0
+    units_planned: int = 0
 
     def take(self) -> bool:
         """Claim one planning session.
@@ -86,6 +113,39 @@ class TreeSessionLedger:
             return False
         self.remaining -= 1
         return True
+
+    def record_level(self, *, depth: int, units: int) -> None:
+        """Record that a level of *units* subtasks landed at *depth*.
+
+        Args:
+            depth: The zero-based level the units were written at.
+            units: How many subtasks that level produced.
+        """
+        self.deepest_level = max(self.deepest_level, depth)
+        self.units_planned += units
+
+    def progress(self, *, now: datetime) -> DecompositionProgress:
+        """Snapshot how far the tree has got, for the plan row to carry.
+
+        ``sessions_spent`` is derived rather than counted separately, because
+        two counters over one budget is exactly the second answer this class
+        exists to avoid. A ledger built without a ``limit`` (a harness, or a
+        caller predating the field) reports what it has actually spent rather
+        than a negative number.
+
+        Args:
+            now: When the snapshot is taken.
+
+        Returns:
+            The snapshot.
+        """
+        return DecompositionProgress(
+            sessions_spent=max(self.limit - self.remaining, 0),
+            sessions_limit=self.limit,
+            deepest_level=self.deepest_level,
+            units_planned=self.units_planned,
+            updated_at=now,
+        )
 
 
 @dataclass(frozen=True)

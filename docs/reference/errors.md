@@ -168,6 +168,7 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 4040 | `PLAN_NOT_DELETABLE` | Plan delete refused: the plan is dispatched or already decided |
 | 4041 | `HIRING_ALREADY_IN_FLIGHT` | A hire for this role is already open; settle it before opening another |
 | 4042 | `SPRINT_ALREADY_OPEN` | The scope already runs a sprint that has not completed |
+| 4043 | `HIRING_UNBINDABLE` | Approved hire names no provider/model pair this organisation can still run it on |
 
 ## Rate Limit (5xxx)
 

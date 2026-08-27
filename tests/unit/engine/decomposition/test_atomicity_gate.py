@@ -25,6 +25,10 @@ pytestmark = pytest.mark.unit
 
 _POLICY = SubtaskAtomicityPolicy(max_expected_artifacts=1, max_acceptance_criteria=2)
 
+#: Comfortably above every level these cases submit, so the width cap is not
+#: what any of them is measuring. The two that ARE about it say so.
+_ROOM_TO_WIDEN = 20
+
 
 def _subtask(
     label: str, *, artifacts: int = 1, criteria: int = 1, satisfies: int = 1
@@ -72,36 +76,122 @@ class TestDescribeUnsplittable:
     def test_says_nothing_while_depth_remains(self) -> None:
         # The policy is absent exactly when a child level is still available,
         # and an oversized unit is split there rather than corrected.
-        assert describe_unsplittable((_subtask("a", artifacts=9),), policy=None) is None
+        assert (
+            describe_unsplittable(
+                (_subtask("a", artifacts=9),),
+                policy=None,
+                width_limit=_ROOM_TO_WIDEN,
+            )
+            is None
+        )
 
     def test_says_nothing_when_every_unit_is_atomic(self) -> None:
-        assert describe_unsplittable((_subtask("a"),), policy=_POLICY) is None
+        assert (
+            describe_unsplittable(
+                (_subtask("a"),), policy=_POLICY, width_limit=_ROOM_TO_WIDEN
+            )
+            is None
+        )
 
     def test_names_the_offending_unit_and_its_condition(self) -> None:
-        detail = describe_unsplittable((_subtask("a", artifacts=4),), policy=_POLICY)
+        detail = describe_unsplittable(
+            (_subtask("a", artifacts=4),), policy=_POLICY, width_limit=_ROOM_TO_WIDEN
+        )
         assert detail is not None
         assert "Unit a" in detail
         assert "expected_artifacts is 4" in detail
         assert "limit 1" in detail
 
     def test_asks_for_breadth_rather_than_depth(self) -> None:
-        detail = describe_unsplittable((_subtask("a", artifacts=4),), policy=_POLICY)
+        detail = describe_unsplittable(
+            (_subtask("a", artifacts=4),), policy=_POLICY, width_limit=_ROOM_TO_WIDEN
+        )
         assert detail is not None
         assert "AT THIS LEVEL" in detail
 
     def test_fires_on_the_objective_criteria_rule(self) -> None:
-        detail = describe_unsplittable((_subtask("a", satisfies=3),), policy=_POLICY)
+        detail = describe_unsplittable(
+            (_subtask("a", satisfies=3),), policy=_POLICY, width_limit=_ROOM_TO_WIDEN
+        )
         assert detail is not None
         assert "satisfies is 3" in detail
 
     def test_ignores_a_decision_item(self) -> None:
         # A decision is a choice among its options, not work to divide, and it
         # reads as oversized on criterion count alone.
-        assert describe_unsplittable((_decision("stack"),), policy=_POLICY) is None
+        assert (
+            describe_unsplittable(
+                (_decision("stack"),), policy=_POLICY, width_limit=_ROOM_TO_WIDEN
+            )
+            is None
+        )
+
+    def test_states_the_ceiling_the_whole_level_must_stay_under(self) -> None:
+        # The correction is the ONLY place the planner is told this number.
+        # Without it a live run was ordered to widen, widened to eleven
+        # against a limit of ten, and the run was failed on the result.
+        detail = describe_unsplittable(
+            (_subtask("a", artifacts=4),), policy=_POLICY, width_limit=6
+        )
+        assert detail is not None
+        assert "at most 6 units" in detail
+
+    def test_says_nothing_when_the_level_is_already_at_its_width_cap(self) -> None:
+        # No depth below and no width beside: there is nowhere for the planner
+        # to put anything, so asking produces a plan the width cap then
+        # refuses. The units dispatch carrying their backstop reason instead.
+        assert (
+            describe_unsplittable(
+                tuple(_subtask(f"n{index}", artifacts=4) for index in range(6)),
+                policy=_POLICY,
+                width_limit=6,
+            )
+            is None
+        )
+
+    def test_a_level_already_over_the_cap_is_still_corrected(self) -> None:
+        # Distinct from the level AT the cap above, and the distinction is the
+        # whole point: this plan is refused outright by the post-session width
+        # guard, so staying silent spends the session and then fails the level
+        # with the planner never told what was wrong. The correction names the
+        # cap and says to merge or drop, which is the one thing that can still
+        # save it.
+        detail = describe_unsplittable(
+            tuple(_subtask(f"n{index}", artifacts=4) for index in range(8)),
+            policy=_POLICY,
+            width_limit=6,
+        )
+
+        assert detail is not None
+        assert "at most 6 units" in detail
+        assert "merge or drop" in detail
+
+    def test_an_over_cap_level_of_atomic_units_is_still_corrected(self) -> None:
+        # The case a size-only gate cannot see at all, and the likeliest one:
+        # splitting to atomicity is precisely what pushes a level past its
+        # width, so the level that finally complies on size is the one most
+        # likely to breach the cap. Every unit here is one agent's work, so
+        # there are no offenders to name, and the post-session width guard
+        # still refuses the plan. Silent, the session is spent and the level
+        # fails for a reason the planner was never given.
+        detail = describe_unsplittable(
+            tuple(_subtask(f"n{index}") for index in range(9)),
+            policy=_POLICY,
+            width_limit=6,
+        )
+
+        assert detail is not None
+        assert "submits 9 units" in detail
+        assert "at most 6 units" in detail
+        assert "merge or drop" in detail
+        # Nothing is oversized, so it must not claim otherwise.
+        assert "more than one agent's work" not in detail
 
     def test_summarises_past_the_naming_cap(self) -> None:
         detail = describe_unsplittable(
-            tuple(_subtask(f"n{i}", artifacts=4) for i in range(9)), policy=_POLICY
+            tuple(_subtask(f"n{i}", artifacts=4) for i in range(9)),
+            policy=_POLICY,
+            width_limit=_ROOM_TO_WIDEN,
         )
         assert detail is not None
         assert "and 4 more" in detail

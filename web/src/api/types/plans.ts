@@ -17,6 +17,7 @@ export type {
 } from './dtos.gen'
 export type {
   CriterionVerdict,
+  DecompositionProgress,
   EditPlanRequest,
   PlanCommentPayload,
   PlanEvaluationAttempt,

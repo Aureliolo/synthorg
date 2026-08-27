@@ -12,6 +12,12 @@ class ProjectStatus(StrEnum):
     pieces are being assembled, and from one being scored against its
     objective: showing all three as ACTIVE would hide the difference between
     work in flight and work awaiting a verdict.
+
+    ``FAILED`` mirrors a plan that could not be delivered at all, and is
+    distinct from ``CANCELLED`` because nobody chose it: a live run left a
+    project reading ``PLANNING`` for ever behind a plan that had failed, so the
+    board went on showing an initiative being planned with nothing behind it.
+    Telling that operator their project was cancelled would be a different lie.
     """
 
     PLANNING = "planning"
@@ -21,6 +27,7 @@ class ProjectStatus(StrEnum):
     ON_HOLD = "on_hold"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
+    FAILED = "failed"
 
 
 class GitBackendType(StrEnum):

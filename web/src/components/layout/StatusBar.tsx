@@ -145,11 +145,15 @@ function HealthStatusButton() {
   const loadState = useHealthStore((s) => s.loadState)
   const fetchHealth = useHealthStore((s) => s.fetchHealth)
   const cancelProbe = useHealthStore((s) => s.cancelProbe)
-  // Read, never fetched here: this pill renders on every page and a poll of
-  // its own would be a second cadence over the same endpoint. Whatever the
-  // dashboard or the health dialog last read is folded in, so the pill can
-  // fall short of the whole truth but never contradict the panel beside it.
+  // Fetched HERE, on the pill's own cadence, because the pill renders on
+  // every page and the verdict must not depend on which page last populated
+  // the store. Reading without fetching, it saw the subsystem reports only on
+  // the dashboard: the same deployment read "system degraded" there with five
+  // subsystems blocked and "all systems normal" on every other route seconds
+  // later. Falling short of the whole truth is what this pill is for; saying
+  // the strongest possible thing on no data is not falling short.
   const subsystems = useOrgPulseStore((s) => s.subsystems)
+  const fetchSubsystems = useOrgPulseStore((s) => s.fetchSubsystems)
 
   // Polls the same ``/health`` snapshot the dialog this pill opens renders, and
   // rolls it up with the same derivation, so the two cannot report different
@@ -166,6 +170,15 @@ function HealthStatusButton() {
       cancelProbe()
     }
   }, [startHealthPolling, stopHealthPolling, cancelProbe])
+
+  // The subsystem half of the same verdict, on the same cadence, so the two
+  // inputs to the roll-up are never a page apart in age.
+  const subsystemPolling = usePolling(fetchSubsystems, HEALTH_POLL_INTERVAL)
+  const { start: startSubsystemPolling, stop: stopSubsystemPolling } = subsystemPolling
+  useEffect(() => {
+    startSubsystemPolling()
+    return () => stopSubsystemPolling()
+  }, [startSubsystemPolling, stopSubsystemPolling])
 
   // ``backendOnlyState``, not ``withWebSocketState``: the WebSocket priority in
   // ``resolveCombinedStatus`` is this pill's own, so folding the roll-up's

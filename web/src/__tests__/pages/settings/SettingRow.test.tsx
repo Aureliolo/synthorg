@@ -2,37 +2,18 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import type { SettingEntry } from '@/api/types/settings'
+import { makeSettingEntry } from '@/__tests__/helpers/factories'
 import { SettingRow } from '@/pages/settings/SettingRow'
 
+// The row renders the effective value, so it starts at the default rather
+// than the placeholder every other suite is happy with.
 function makeEntry(
   overrides: Partial<SettingEntry['definition']> & {
     value?: string
     source?: SettingEntry['source']
   } = {},
 ): SettingEntry {
-  const { value = '127.0.0.1', source = 'default', ...defOverrides } = overrides
-  return {
-    definition: {
-      namespace: 'api',
-      key: 'server_host',
-      type: 'str',
-      default: '127.0.0.1',
-      description: 'Server bind address',
-      group: 'Server',
-      level: 'basic',
-      sensitive: false,
-      compose_set: false,
-      env_var_override: null,
-      enum_values: [],
-      validator_pattern: null,
-      min_value: null,
-      max_value: null,
-      ...defOverrides,
-    },
-    value,
-    source,
-    updated_at: null,
-  }
+  return makeSettingEntry({ value: '127.0.0.1', ...overrides })
 }
 
 describe('SettingRow: compose_set', () => {

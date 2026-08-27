@@ -50,8 +50,8 @@ from synthorg.engine.agent_state_recording import (
     AgentStateRepositoryProvider,
     compose_turn_observers,
     make_runtime_state_observer,
-    mark_agent_idle,
     mark_agent_running,
+    release_agent_row,
 )
 from synthorg.engine.artifacts.baseline_scope import (
     artifact_baseline_scope,
@@ -758,6 +758,10 @@ class AgentEngine(
             The :class:`AgentRunResult` carrying the loop outcome,
             recovery decision (when one fired), and post-execution
             telemetry for the orchestrator.
+
+        Raises:
+            asyncio.CancelledError: Re-raised after the live-state release has
+                landed, so a stopping process still frees the agent's row.
         """
         agent_id = request.agent_id
         try:
@@ -779,7 +783,10 @@ class AgentEngine(
             # for the life of the process. Naming the execution keeps the
             # clear from blanking a sibling dispatch's live row: the row is
             # keyed by agent, and one agent can hold two.
-            await mark_agent_idle(
+            #
+            # Through the shared release, which owns the shield AND the
+            # second await that stops a cancellation abandoning the write.
+            await release_agent_row(
                 repository_provider=self._agent_state_repository_provider,
                 agent_id=agent_id,
                 execution_id=request.ctx.execution_id,

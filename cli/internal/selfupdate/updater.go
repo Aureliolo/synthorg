@@ -166,7 +166,7 @@ func CheckDevFromURL(ctx context.Context, url string) (CheckResult, error) {
 	}
 
 	result.LatestVersion = target.TagName
-	avail, err := isUpdateAvailable(version.Version, target.TagName)
+	avail, err := IsNewer(version.Version, target.TagName)
 	if err != nil {
 		return result, fmt.Errorf("comparing versions: %w", err)
 	}
@@ -427,7 +427,7 @@ func CheckFromURL(ctx context.Context, url string) (CheckResult, error) {
 	}
 
 	result.LatestVersion = release.TagName
-	avail, err := isUpdateAvailable(version.Version, release.TagName)
+	avail, err := IsNewer(version.Version, release.TagName)
 	if err != nil {
 		return result, fmt.Errorf("comparing versions: %w", err)
 	}
@@ -448,7 +448,16 @@ func fetchRelease(ctx context.Context, url string) (Release, error) {
 	return fetchJSON[Release](ctx, url)
 }
 
-func isUpdateAvailable(current, latest string) (bool, error) {
+// IsNewer reports whether latest supersedes current, on the same ordering
+// the update check itself uses (stable beats a dev pre-release at the same
+// base version, and a bare "dev" build is always superseded).
+//
+// Also serves the image half of the update preview. The CLI half already has
+// its answer in CheckResult.UpdateAvail, but the installed image tag is
+// tracked separately in the CLI's own config and has to be compared against
+// the same release, or the preview reports "yes" for images that are current.
+// A tag that is not a version returns an error rather than an ordering.
+func IsNewer(current, latest string) (bool, error) {
 	cur := strings.TrimPrefix(current, "v")
 	if cur == "dev" {
 		return true, nil

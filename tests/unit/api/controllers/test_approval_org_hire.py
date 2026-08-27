@@ -205,6 +205,56 @@ class TestOrgHireResume:
         # No second agent for one approved hire, either.
         assert await registry.list_active() == roster_before
 
+    async def test_rejecting_an_approved_hire_withdraws_it(self) -> None:
+        """The OPPOSITE decision on a settled request is not a re-dispatch.
+
+        Reading "a decision landed" as "this decision landed" answered the
+        operator's rejection with "already settled" and applied nothing, so a
+        deployment was left holding a request reading approved behind an
+        approval its operator had rejected, retried by a pass that could never
+        complete it.
+        """
+        catalogue = MutableProviderCatalogue()
+        state, hiring, registry, submitted, approval_id = await _seed(
+            catalogue=catalogue
+        )
+        catalogue.delete_connection()
+        with pytest.raises(HiringError):
+            await try_org_hire_resume(
+                state, approval_id, approved=True, decided_by=_DECIDER
+            )
+        assert _status(hiring, submitted) is HiringRequestStatus.APPROVED
+
+        handled = await try_org_hire_resume(
+            state, approval_id, approved=False, decided_by=_DECIDER
+        )
+
+        assert handled is True
+        assert _status(hiring, submitted) is HiringRequestStatus.REJECTED
+        # Withdrawing a hire that never happened hires nobody.
+        assert await registry.list_active() == ()
+
+    async def test_rejecting_an_instantiated_hire_is_refused_not_swallowed(
+        self,
+    ) -> None:
+        # The agent is on the roster, so removing one is firing: its own
+        # decision with its own approval. Answering "already settled" would
+        # report a rejection that removed nobody.
+        state, hiring, registry, submitted, approval_id = await _seed()
+        await try_org_hire_resume(
+            state, approval_id, approved=True, decided_by=_DECIDER
+        )
+        assert _status(hiring, submitted) is HiringRequestStatus.INSTANTIATED
+        roster = await registry.list_active()
+
+        with pytest.raises(HiringError, match="instantiated"):
+            await try_org_hire_resume(
+                state, approval_id, approved=False, decided_by=_DECIDER
+            )
+
+        assert _status(hiring, submitted) is HiringRequestStatus.INSTANTIATED
+        assert await registry.list_active() == roster
+
     async def test_an_orphaned_hiring_approval_fails_loud(self) -> None:
         state, hiring, registry, _, _ = await _seed()
         store = ApprovalStore()

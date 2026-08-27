@@ -14,21 +14,28 @@ or if the session ends without submitting a usable plan, it falls back to the
 single-shot :class:`LlmDecompositionStrategy` so a greenlight is never blocked.
 """
 
-from typing import Final, assert_never, override
-
-from pydantic import BaseModel, ConfigDict, Field
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from typing import Final, override
 
 from synthorg.budget.call_category import LLMCallCategory
-from synthorg.budget.session_budget import (
-    SessionCeilings,
-    build_session_budget_checker,
-)
-from synthorg.budget.tracker_protocol import CostTrackerProtocol
+from synthorg.budget.session_budget import build_session_budget_checker
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
+from synthorg.engine.agent_state_recording import (
+    make_runtime_state_observer,
+    mark_agent_running,
+    release_agent_row,
+)
 from synthorg.engine.context import AgentContext
+from synthorg.engine.cost_recording import resolve_tracker_currency
+from synthorg.engine.decomposition._session_exhaustion import (
+    raise_session_exhaustion,
+    ran_without_submitting,
+    stopped_short,
+)
 from synthorg.engine.decomposition.agent_session_brief import (
     PLANNING_SESSION_FENCES,
     planning_brief,
@@ -44,21 +51,22 @@ from synthorg.engine.decomposition.context import (
 )
 from synthorg.engine.decomposition.models import DecompositionPlan
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
-from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
+from synthorg.engine.decomposition.strategy_deps import (
+    AgentSessionDecompositionConfig,
+    DecompositionStrategyDeps,
+)
 from synthorg.engine.errors import (
     DecompositionDepthError,
-    DecompositionError,
     DecompositionSubtaskLimitError,
     DecompositionUnsplittableError,
 )
 from synthorg.engine.loop_protocol import (
     BudgetChecker,
     ExecutionResult,
-    ShutdownChecker,
-    TerminationReason,
+    TurnObserver,
 )
 from synthorg.engine.react_loop import ReactLoop
-from synthorg.memory.injection import MemoryInjectionStrategy
+from synthorg.engine.stagnation.factory import create_stagnation_detector
 from synthorg.memory.recall_request import MemoryRecallRequest
 from synthorg.observability import (
     get_logger,
@@ -89,93 +97,6 @@ logger = get_logger(__name__)
 _STRATEGY_NAME = "agent-session"
 
 
-def _ran_without_submitting(reason: TerminationReason) -> bool:
-    """Report whether a verdict-less session had a researched plan to lose.
-
-    Substituting a single-shot plan for a session that ran on its own terms
-    hands the operator a different plan than the one they asked for,
-    indistinguishable from the real thing at the approval gate. Where the
-    session could not run at all, nothing was lost and the fallback stands.
-
-    A ``match`` with :func:`assert_never` rather than a membership set: the
-    fallback is a safety decision per termination, so a newly-added
-    :class:`TerminationReason` must be classified deliberately, and this
-    makes omitting it a type error rather than a silent grant of the
-    fallback.
-
-    Returns:
-        ``True`` when the session ran and produced nothing.
-    """
-    match reason:
-        case (
-            TerminationReason.COMPLETED
-            | TerminationReason.NO_OP
-            | TerminationReason.MAX_TURNS
-            | TerminationReason.BUDGET_EXHAUSTED
-            | TerminationReason.STAGNATION
-        ):
-            return True
-        # ERROR never reached the model, SHUTDOWN lost the process under it,
-        # and PARKED / CANCELLED stopped the session by a decision taken
-        # outside it (an approval wait, an operator abort): in all four the
-        # session was prevented from producing rather than producing nothing.
-        case (
-            TerminationReason.ERROR
-            | TerminationReason.SHUTDOWN
-            | TerminationReason.PARKED
-            | TerminationReason.CANCELLED
-        ):
-            return False
-        case _ as unreachable:
-            assert_never(unreachable)
-
-
-def _stopped_short(reason: TerminationReason) -> bool:
-    """Report whether the session ended its own turn with its work undone.
-
-    A planning session has exactly one deliverable, and the tools it delivers
-    through hand a rejection straight back, so an agent that ends its turn
-    holding a rejected plan is in the ordinary state of any coding loop: told
-    what is wrong, with turns left to fix it. Ending the session there is what
-    turned a punctuation rejection into a dead run; the answer is the same one
-    a coding agent gets, which is to be told it has not delivered and to carry
-    on.
-
-    Separate from :func:`_ran_without_submitting`, which answers a different
-    question (was there a researched plan to lose), and the same ``match`` with
-    :func:`assert_never` for the same reason: continuing to spend an agent's
-    turns is a decision per termination, so a new :class:`TerminationReason`
-    must be classified deliberately.
-
-    Returns:
-        ``True`` when the session stopped on its own while it could still
-        deliver.
-    """
-    match reason:
-        case TerminationReason.COMPLETED | TerminationReason.NO_OP:
-            return True
-        # MAX_TURNS and BUDGET_EXHAUSTED are the bounds themselves, so another
-        # turn is exactly what they refuse; STAGNATION means the loop is
-        # already repeating itself, and re-prompting is one more repetition.
-        # ERROR is the loop giving up rather than the agent doing so, whether
-        # the provider failed or the corrections for unusable turns ran out;
-        # either way the next turn fails the same way. SHUTDOWN, PARKED and
-        # CANCELLED stopped the session from outside it, and nothing here can
-        # hand it back.
-        case (
-            TerminationReason.MAX_TURNS
-            | TerminationReason.BUDGET_EXHAUSTED
-            | TerminationReason.STAGNATION
-            | TerminationReason.ERROR
-            | TerminationReason.SHUTDOWN
-            | TerminationReason.PARKED
-            | TerminationReason.CANCELLED
-        ):
-            return False
-        case _ as unreachable:
-            assert_never(unreachable)
-
-
 #: Handed to a session that stopped without submitting. It names the one
 #: deliverable and points at the tool results already in the conversation,
 #: rather than restating a rejection the agent can read for itself.
@@ -204,47 +125,6 @@ _READ_ONLY_ACTION_TYPES: Final[frozenset[ActionType]] = frozenset(
 )
 
 
-#: Fallback for a config built without resolved settings; the operator-facing
-#: default lives on ``coordination.decomposition_agent_cost_ceiling``.
-_DEFAULT_CEILINGS: Final[SessionCeilings] = SessionCeilings(
-    cost_ceiling=2.0, token_ceiling=0
-)
-
-
-class AgentSessionDecompositionConfig(BaseModel):
-    """Configuration for the agent-session decomposition strategy.
-
-    Attributes:
-        max_turns: Hard turn cap for the planning session.
-        temperature: Sampling temperature for the planning turns.
-        ceilings: Both spend bounds on the planning session. One field, not
-            two, so a wiring path that resolves the money bound cannot leave
-            the token bound at its default in silence: money measures nothing
-            against a provider that bills by flat subscription, where cost
-            never rises.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    max_turns: int = Field(default=12, ge=1, le=50, description="Planning turn cap")
-    temperature: float = Field(
-        default=0.2,
-        ge=0.0,
-        le=2.0,
-        description="Sampling temperature",
-    )
-    ceilings: SessionCeilings = Field(
-        default=_DEFAULT_CEILINGS,
-        description="Per-session money + token bounds",
-    )
-    memory_digest_budget: int = Field(
-        default=1000,
-        ge=0,
-        description="Token cap for the org/retro memory digest injected into "
-        "the planning brief; 0 injects nothing (the tool grant still applies)",
-    )
-
-
 class AgentSessionDecompositionStrategy(DecompositionStrategy):
     """Decomposition strategy that plans via a bounded owner-run agent session.
 
@@ -255,6 +135,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
     """
 
     __slots__ = (
+        "_agent_states",
         "_config",
         "_cost_tracker",
         "_fallback",
@@ -269,13 +150,14 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         *,
         provider_selector: ProviderSelector,
         fallback: DecompositionStrategy,
-        tool_provider: DecompositionToolProvider | None = None,
-        config: AgentSessionDecompositionConfig | None = None,
-        cost_tracker: CostTrackerProtocol | None = None,
-        shutdown_checker: ShutdownChecker | None = None,
-        planning_memory: MemoryInjectionStrategy | None = None,
+        deps: DecompositionStrategyDeps | None = None,
     ) -> None:
         """Initialise the agent-session decomposition strategy.
+
+        *provider_selector* stays a parameter of its own rather than being read
+        off *deps*, where it is optional: the session dispatches each owner on
+        its own bound pair and has no shared default to degrade to, so the
+        requirement belongs in the type rather than in a runtime check.
 
         Args:
             provider_selector: Resolves the completion client for the owner's
@@ -284,29 +166,21 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             fallback: Single-shot strategy used when no owner is staffed, the
                 owner's provider is unresolvable, or the session submits no
                 usable plan (a greenlight is never blocked on the session).
-            tool_provider: Optional builder of the owner's read/research
-                planning tools; ``None`` runs the session with only the
-                terminal submit tool. Any non-read-only tool it returns is
-                dropped before the session runs.
-            config: Optional session configuration (turn cap, temperature,
-                cost ceiling). Uses defaults when omitted.
-            cost_tracker: Optional cost tracker; when wired the session's
-                provider calls record against it under the owner + task.
-            shutdown_checker: Optional callback returning ``True`` when a
-                graceful shutdown is in progress; the planning loop halts at
-                the next turn boundary when it fires.
-            planning_memory: Optional injection strategy that pre-seeds a
-                compact org-playbook / past-retro digest into the planning
-                brief, so the plan carries prior learnings even if the owner
-                never calls the recall tool. ``None`` skips the digest.
+            deps: The session's config and optional collaborators: its
+                planning tools, cost tracker, shutdown checker, memory digest
+                and live agent-state repository. ``None`` runs on the defaults.
         """
+        resolved = deps or DecompositionStrategyDeps()
         self._provider_selector = provider_selector
         self._fallback = fallback
-        self._tool_provider = tool_provider
-        self._config = config or AgentSessionDecompositionConfig()
-        self._cost_tracker = cost_tracker
-        self._shutdown_checker = shutdown_checker
-        self._planning_memory = planning_memory
+        self._tool_provider = resolved.tool_provider
+        self._config = (
+            resolved.agent_session_config or AgentSessionDecompositionConfig()
+        )
+        self._cost_tracker = resolved.cost_tracker
+        self._shutdown_checker = resolved.shutdown_checker
+        self._planning_memory = resolved.planning_memory
+        self._agent_states = resolved.agent_states
 
     @override
     def get_strategy_name(self) -> str:
@@ -464,7 +338,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
 
         Reached only once the session has nothing left to try: an agent that
         stops while it can still deliver is told so and continues
-        (:func:`_stopped_short`), so this is the exhausted case, not the
+        (:func:`stopped_short`), so this is the exhausted case, not the
         discouraged one.
 
         Args:
@@ -479,10 +353,11 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         Raises:
             DecompositionUnsplittableError: When the session ran out of turns
                 still unable to widen a level with no depth below it.
-            DecompositionError: When the session terminated normally with
-                no plan submitted for any other reason.
+            DecompositionError: When the session produced no plan for any
+                other reason, typed by which bound it reached, if any
+                (see :mod:`._session_exhaustion`).
         """
-        if not _ran_without_submitting(result.termination_reason):
+        if not ran_without_submitting(result.termination_reason):
             return
         msg = (
             f"Planning session for task {task.id} terminated "
@@ -499,7 +374,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         )
         if declined_to_split:
             raise DecompositionUnsplittableError(msg)
-        raise DecompositionError(msg)
+        raise_session_exhaustion(result.termination_reason, msg)
 
     async def _fallback_plan(
         self,
@@ -534,7 +409,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         that ends without a submitted plan while turns remain is told so and
         continues, exactly as a coding loop that has just been handed a failing
         check does. The bounds keep their meaning, because the only terminations
-        that re-enter are the ones the agent chose (:func:`_stopped_short`), and
+        that re-enter are the ones the agent chose (:func:`stopped_short`), and
         reaching either of those costs a turn: the loop records the turn before
         it can decide the response completed the run.
 
@@ -563,15 +438,95 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             granted_tools=len(granted),
             max_turns=self._config.max_turns,
         )
-        result = await self._run_segment(task, owner, ctx, invoker, provider)
-        resumes = 0
-        while capture.plan is None:
-            resumed = self._resume_unsubmitted(task, owner, result, resumes)
-            if resumed is None:
-                return result
-            resumes += 1
-            result = await self._run_segment(task, owner, resumed, invoker, provider)
-        return result
+        async with self._recorded_as_running(ctx):
+            result = await self._run_segment(task, owner, ctx, invoker, provider)
+            resumes = 0
+            while capture.plan is None:
+                resumed = self._resume_unsubmitted(task, owner, result, resumes)
+                if resumed is None:
+                    return result
+                resumes += 1
+                result = await self._run_segment(
+                    task, owner, resumed, invoker, provider
+                )
+            return result
+
+    def _state_observer(self) -> TurnObserver | None:
+        """Build the per-turn live-state writer, or ``None`` with no repository.
+
+        Returns:
+            The observer, or ``None`` when nothing durable can hold the row.
+        """
+        if self._agent_states is None:
+            return None
+        return make_runtime_state_observer(
+            repository_provider=self._agent_states,
+            currency=resolve_tracker_currency(self._cost_tracker),
+        )
+
+    @asynccontextmanager
+    async def _recorded_as_running(self, ctx: AgentContext) -> AsyncIterator[None]:
+        """Hold the owner's live agent-state row for the planning session.
+
+        A planning session is the org working: it runs as a staffed roster
+        agent, for turns, against a real provider bill. Every surface that
+        answers "is the org working" reads the live rows, and this session
+        builds its loop directly rather than through
+        :class:`~synthorg.engine.agent_engine.AgentEngine`, so it was the one
+        agent run that claimed no row. A live run spent 54 minutes planning
+        while the header read ``0 active | 12 idle``, mission control read
+        ``ACTIVE AGENTS 0`` and the pulse panel read "Nothing is running",
+        beside a Live Activity feed listing the planner's API calls.
+
+        The clear is in a ``finally`` for the reason the engine's is: a session
+        that died still has to stop reading as busy, or a row left EXECUTING
+        makes the owner look occupied for the life of the process. It names the
+        execution so a sibling planning session's row is left alone, which is
+        the ordinary case here because recursion runs a session per subtree and
+        one owner can hold several.
+
+        The claim is INSIDE the ``try`` and the clear is SHIELDED, because a
+        row left behind here is not merely stale: the write is a compare-and-set
+        on execution ownership, so the agent's next session presents a
+        different execution id, is refused, and is refused for ever. Nothing
+        reaps an ``EXECUTING`` row, and the row is durable, so one lost clear
+        costs that agent every future live-state read across restarts. Both
+        ceilings this session runs under (per-session and whole-tree) can fire
+        moments apart, and an unshielded ``await`` in a ``finally`` is exactly
+        what the second one interrupts.
+
+        The shielded task is HELD and awaited again on cancellation. The
+        shield alone protects the write from being cancelled but not from
+        being abandoned: it re-raises into this frame the moment the
+        cancellation lands, leaving the inner task running with nothing
+        waiting on it, so a shutdown closing the loop next takes the write
+        with it. Awaiting the handle is what makes the clear actually land.
+
+        Yields:
+            Nothing; the row is the effect.
+
+        Raises:
+            asyncio.CancelledError: Re-raised after the clear has landed, so a
+                cancelled session still frees the owner's row.
+        """
+        if self._agent_states is None:
+            yield
+            return
+        currency = resolve_tracker_currency(self._cost_tracker)
+        try:
+            await mark_agent_running(
+                repository_provider=self._agent_states,
+                context=ctx,
+                currency=currency,
+            )
+            yield
+        finally:
+            await release_agent_row(
+                repository_provider=self._agent_states,
+                agent_id=str(ctx.identity.id),
+                execution_id=ctx.execution_id,
+                currency=currency,
+            )
 
     def _resume_unsubmitted(
         self,
@@ -593,7 +548,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             session stopped for a reason another turn cannot answer, or has no
             turn left to answer it in.
         """
-        if not _stopped_short(result.termination_reason):
+        if not stopped_short(result.termination_reason):
             return None
         if not result.context.has_turns_remaining:
             return None
@@ -632,7 +587,28 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
         Returns:
             The loop's execution result for this stretch.
         """
-        loop = ReactLoop(approval_gate=None)
+        # A planning session holds ONE terminal tool and a dozen turns, so a
+        # repeated identical read is not slow progress, it is no progress. A
+        # live run spent all twelve turns on one read tool that could not
+        # answer and never attempted a plan; nothing was watching, because the
+        # detector the operator configures reached the work loop and not this
+        # one. Wired here, the loop injects its correction first and only
+        # terminates on STAGNATION when that fails, which the child-failure
+        # backstop already absorbs.
+        # The live row is claimed once at session entry, and everything reading
+        # it treats what it carries as current: the cockpit renders the turn
+        # count and the accumulated spend from it, and derives STUCK from its
+        # last-activity stamp against a ten-minute cutoff. Written once, a
+        # 54-minute planning session therefore reports turn 0, zero spend, and
+        # reads STUCK for 44 of those minutes: a different wrong answer, not
+        # the right one. The engine advances the row per turn through this same
+        # observer, and so does this loop, which also self-heals a claim that
+        # was refused or dropped rather than leaving the session invisible.
+        loop = ReactLoop(
+            approval_gate=None,
+            stagnation_detector=create_stagnation_detector(self._config.stagnation),
+            turn_observer=self._state_observer(),
+        )
         async with cost_recording_scope(
             cost_tracker=self._cost_tracker,
             agent_id=NotBlankStr(str(owner.id)),
@@ -679,6 +655,9 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
             # rather than the objective the tree is being built for.
             objective_criteria=context.objective_criteria,
             atomicity=context.atomicity,
+            # The same budget this strategy enforces after the session, so the
+            # correction cannot ask for a level the enforcement then refuses.
+            width_limit=width_budget(context),
         )
         planning_tools = self._planning_tools(task, owner)
         tools: list[BaseTool] = [submit_tool, *planning_tools]

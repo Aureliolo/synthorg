@@ -300,6 +300,7 @@ class DecompositionController(Controller):
             # without one. Refusing the whole request over a ceiling that
             # has an answer either way would be the wrong trade.
             config_resolver=app_state.slice(SettingsStateSlice).config_resolver,
+            clock=app_state.clock,
             # No inventory: the plan arrived from the operator already written,
             # so nothing here consults a model and there is no premise to
             # ground. Passing one would list the workspace on every call and

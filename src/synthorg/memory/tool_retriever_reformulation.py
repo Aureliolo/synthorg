@@ -3,8 +3,15 @@
 Isolates the Search-and-Ask iterative reformulation loop so
 ``tool_retriever.py`` can stay focused on tool dispatch and the
 single-shot retrieval path.  The mixin relies on ``_backend``,
-``_config``, ``_reformulator``, and ``_sufficiency_checker``
-attributes declared on the concrete strategy class.
+``_config``, ``_shared_store``, ``_reformulator``, and
+``_sufficiency_checker`` attributes declared on the concrete strategy
+class.
+
+All three retrieval sites here (the unreformulated path, the first read,
+and each reformulated round) go through ``_retrieve_fused``, which
+:class:`~synthorg.memory.tool_retriever_fusion.SharedMemoryFusionMixin`
+owns: what a tool search reads is one question, and it is answered
+there rather than once per site.
 """
 
 import asyncio
@@ -12,15 +19,12 @@ import builtins
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.memory_enums import MemoryCategory
-from synthorg.core.types import NotBlankStr
-from synthorg.memory.models import MemoryEntry, MemoryQuery
-from synthorg.memory.namespace_scope import ambient_read_namespaces
-from synthorg.memory.protocol import MemoryBackend
+from synthorg.memory.models import MemoryEntry
 from synthorg.memory.reformulation import (
     QueryReformulator,
     SufficiencyChecker,
 )
-from synthorg.memory.retrieval_config import MemoryRetrievalConfig
+from synthorg.memory.tool_retriever_fusion import SharedMemoryFusionMixin
 from synthorg.memory.tool_retriever_helpers import _truncate_entries, merge_results
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.memory import (
@@ -36,13 +40,11 @@ from synthorg.observability.events.memory import (
 logger = get_logger(__name__)
 
 
-class ToolBasedReformulationMixin:
+class ToolBasedReformulationMixin(SharedMemoryFusionMixin):
     """Search-and-Ask reformulation loop for ``ToolBasedInjectionStrategy``."""
 
     __slots__ = ()
 
-    _backend: MemoryBackend
-    _config: MemoryRetrievalConfig
     _reformulator: QueryReformulator | None
     _sufficiency_checker: SufficiencyChecker | None
 
@@ -76,13 +78,12 @@ class ToolBasedReformulationMixin:
             or reformulator is None
             or sufficiency_checker is None
         ):
-            query = MemoryQuery(
-                text=query_text,
+            return await self._retrieve_fused(
+                agent_id=agent_id,
+                query_text=query_text,
                 limit=limit,
                 categories=categories,
-                namespaces=ambient_read_namespaces(),
             )
-            return await self._backend.retrieve(NotBlankStr(agent_id), query)
 
         return await self._reformulation_loop(
             reformulator=reformulator,
@@ -136,14 +137,11 @@ class ToolBasedReformulationMixin:
         max_rounds = self._config.max_reformulation_rounds
         current_query = query_text
         try:
-            entries = await self._backend.retrieve(
-                NotBlankStr(agent_id),
-                MemoryQuery(
-                    text=current_query,
-                    limit=limit,
-                    categories=categories,
-                    namespaces=ambient_read_namespaces(),
-                ),
+            entries = await self._retrieve_fused(
+                agent_id=agent_id,
+                query_text=current_query,
+                limit=limit,
+                categories=categories,
             )
         except builtins.MemoryError, RecursionError:
             logger.error(
@@ -388,14 +386,11 @@ class ToolBasedReformulationMixin:
         )
 
         try:
-            return await self._backend.retrieve(
-                NotBlankStr(agent_id),
-                MemoryQuery(
-                    text=query,
-                    limit=limit,
-                    categories=categories,
-                    namespaces=ambient_read_namespaces(),
-                ),
+            return await self._retrieve_fused(
+                agent_id=agent_id,
+                query_text=query,
+                limit=limit,
+                categories=categories,
             )
         except builtins.MemoryError, RecursionError:
             logger.error(

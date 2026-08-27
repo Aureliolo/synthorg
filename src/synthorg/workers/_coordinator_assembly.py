@@ -10,6 +10,9 @@ multi-agent coordinator, and the work-pipeline spine.
 import asyncio
 from typing import TYPE_CHECKING, NamedTuple
 
+from synthorg.api.lifecycle_helpers.decomposition_progress import (
+    PlanRowProgressReporter,
+)
 from synthorg.budget.coordination_collector import CoordinationMetricsCollector
 from synthorg.budget.session_budget import (
     SessionCeilings,
@@ -24,10 +27,11 @@ from synthorg.engine.coordination.factory import (
     CoordinatorRoutingDeps,
     build_coordinator,
 )
-from synthorg.engine.decomposition.agent_session import (
-    AgentSessionDecompositionConfig,
-)
 from synthorg.engine.decomposition.planning_tool_provider import PlanningToolProvider
+from synthorg.engine.decomposition.strategy_deps import (
+    AgentSessionDecompositionConfig,
+    DecompositionStrategyDeps,
+)
 from synthorg.engine.errors import CoordinationConfigError
 from synthorg.engine.middleware._defaults import register_coordination_defaults
 from synthorg.engine.middleware.factory import build_coordination_middleware_chain
@@ -67,6 +71,7 @@ from synthorg.settings.model_ref import parse_model_ref
 from synthorg.settings.state import config_resolver_of
 from synthorg.tools.web.providers.http_search_provider import HttpWebSearchProvider
 from synthorg.workers._capability_policy_wiring import build_capability_policy
+from synthorg.workers._engine_assembly import agent_state_repository_provider
 from synthorg.workers._planning_memory import (
     PlanningMemoryGrant,
     build_planning_memory,
@@ -439,20 +444,38 @@ async def _build_runtime_coordinator(
         task_assignment_config=app_state.config.task_assignment,
         provider=decomp_provider,
         decomposition_model=decomposition_model,
-        provider_selector=_owner_provider_selector,
         decomposition_strategy=decomposition_strategy,
-        decomposition_tool_provider=planning_tool_provider,
-        decomposition_cost_tracker=cost_tracker,
         # Composed here, where every part of it was just resolved, so the
-        # strategy receives one config instead of three scalars a later
-        # wiring path could carry partially.
-        agent_session_config=AgentSessionDecompositionConfig(
-            max_turns=agent_session_max_turns,
-            ceilings=agent_session_ceilings,
-            memory_digest_budget=planning.digest_budget,
+        # strategy receives one bundle instead of loose values a later wiring
+        # path could carry partially.
+        decomposition=DecompositionStrategyDeps(
+            provider_selector=_owner_provider_selector,
+            tool_provider=planning_tool_provider,
+            cost_tracker=cost_tracker,
+            agent_session_config=AgentSessionDecompositionConfig(
+                max_turns=agent_session_max_turns,
+                ceilings=agent_session_ceilings,
+                memory_digest_budget=planning.digest_budget,
+                # The same deployment config the work loop's detector is built
+                # from. Read twice rather than shared, because the two loops
+                # run concurrently and a detector carries per-loop state.
+                stagnation=app_state.config.stagnation,
+            ),
+            planning_memory=planning.planning_memory,
+            config_resolver=config_resolver_of(app_state),
+            # A planning session runs as a staffed agent for turns at a time,
+            # so it claims the same live row every other agent run does or the
+            # org reads idle for the whole of it.
+            agent_states=agent_state_repository_provider(app_state),
+            # And the tree it is building reports where it has got to, or the
+            # plan reads PLANNING with zero items for the whole run with
+            # nothing to say whether that is progress or a hang.
+            progress_reporter=PlanRowProgressReporter(app_state),
+            # Read only through that reporter, and it is the deployment's own
+            # clock: a snapshot stamped off a different one is the one field
+            # an operator uses to tell planning from hanging.
+            clock=app_state.clock,
         ),
-        decomposition_config_resolver=config_resolver_of(app_state),
-        planning_memory=planning.planning_memory,
         task_engine=task_engine_of(app_state),
         workspace_strategy=workspace_strategy,
         workspace_config=workspace_config,

@@ -33,7 +33,7 @@ export function NotificationBell({ collapsed }: NotificationBellProps) {
   return (
     <button
       type="button"
-      title="Notifications (Shift+N)"
+      title="Notifications (Alt+N)"
       aria-label={ariaLabel}
       className={SIDEBAR_BUTTON_CLASS}
       onClick={openNotificationDrawer}

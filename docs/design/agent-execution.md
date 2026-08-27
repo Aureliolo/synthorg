@@ -62,6 +62,31 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     never appear as running at all, and marks the agent idle in a `finally`,
     naming its own execution so a sibling dispatch's row is left alone.
 
+    The engine is not the only writer. The decomposition planning session
+    builds its own loop rather than going through `AgentEngine`, so it claims
+    and releases the row itself and wires the same observer; it was otherwise
+    the one agent run that appeared nowhere.
+
+    The clear is **shielded, and the shielded write is awaited again on
+    cancellation**. An `await` in a `finally` is not protected, and a row left
+    behind here is worse than stale: the write is a compare-and-set on
+    execution ownership, so a later run presents a different execution id, is
+    refused, and is refused permanently. Nothing reaps an `EXECUTING` row and
+    the row is durable, so one interrupted clear would cost that agent every
+    live-state read from then on. Shielding alone is not enough: the shield
+    re-raises the moment the cancellation lands, leaving the write running
+    with nothing waiting on it, so a shutdown that closes the loop next takes
+    it with it. Holding the task and awaiting it is what makes the clear land.
+
+    That covers every in-process interruption, which is the whole of what the
+    process can cover. **A hard kill (SIGKILL, container death) still strands
+    the row**, and nothing reclaims it: the agent is then refused for ever. A
+    boot-time pass is the shape that closes it, because a process that has
+    just started knows nothing it did not start is running, but only where
+    this process owns execution: with work handed to a distributed queue,
+    another worker's live rows would be exactly what such a pass cleared.
+    Untracked here rather than half-built.
+
 **Supporting models:**
 
 `TerminationReason`

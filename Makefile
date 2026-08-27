@@ -336,18 +336,40 @@ define require_base_image
 		exit 2; }
 endef
 
+# `dev-init` is a one-shot: it chowns the bytecode-cache volume and exits, and
+# compose leaves the exited container behind. Its network reference goes stale
+# the moment the stack it was created against is recreated, and the next `up`
+# then dies on `failed to set up container networking: network <id> not
+# found`, which names neither the container nor the fix. A whole `dev-up`
+# failed that way against a container seven days old, leaving the backend
+# `Created` but not running, so the arm read as a broken stack rather than one
+# spent helper.
+#
+# Removed rather than refused-with-a-message, and safe to remove because it is
+# OURS and it is SPENT: the container belongs to this overlay's own service,
+# has already run to completion, and compose recreates it on the next `up`.
+#
+# No `-f`, which is the whole scoping: plain `rm` refuses a container that is
+# still running, so a concurrent `up` mid-chown is left alone rather than
+# killed, and the refusal is as harmless as the absent-container case.
+define clear_spent_dev_init
+	@docker rm "$(SYNTHORG_STACK_PROJECT)-dev-init-1" >/dev/null 2>&1 || true
+endef
+
 dev-up:
 	$(require_stack)
 	$(require_base_image)
 	@echo "project     $(SYNTHORG_STACK_PROJECT)"
 	@echo "overlaying  $(DEV_COMPOSE_ARGS)"
 	@echo "base image  $(SYNTHORG_BACKEND_BASE_IMAGE)"
+	$(clear_spent_dev_init)
 	$(DEV_COMPOSE) up -d --build backend
 	@$(MAKE) --no-print-directory dev-status
 
 dev-restart:
 	$(require_stack)
 	$(require_base_image)
+	$(clear_spent_dev_init)
 	$(DEV_COMPOSE) up -d --force-recreate backend
 	@$(MAKE) --no-print-directory dev-status
 

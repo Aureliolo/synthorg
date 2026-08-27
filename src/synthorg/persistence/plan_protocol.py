@@ -4,6 +4,7 @@ from typing import Protocol, override, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.decomposition_progress import DecompositionProgress
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.types import NotBlankStr
@@ -226,6 +227,47 @@ class PlanRepository(
         Returns:
             The outcome, distinguishing a delete from a refusal (naming how
             many tasks are still live) and from a plan that was not there.
+
+        Raises:
+            QueryError: If the operation fails.
+        """
+        ...
+
+    async def record_decomposition_progress(
+        self,
+        parent_task_id: NotBlankStr,
+        /,
+        *,
+        progress: DecompositionProgress,
+    ) -> Plan | None:
+        """Stamp how far a decomposition has got on the shell it is filling.
+
+        Bespoke under ADR-0001 D7 for two reasons a generic read-then-update
+        cannot satisfy. The status is a WRITE condition, not a read one: the
+        shell is the only legitimate target, and a plan that leaves
+        ``PLANNING`` between a read and a write would otherwise be overwritten
+        with the snapshot that preceded it, reviving a failed plan and
+        discarding the reason somebody recorded. And the write must be
+        version-NEUTRAL: the decomposition ends by claiming the shell at the
+        version it started from, so a progress line that bumped the version
+        would fail the very write it exists to describe.
+
+        One column, one statement, no version guard, and ``updated_at`` is
+        left alone: this describes a run rather than editing a plan.
+
+        The stamped plan comes back rather than a boolean because the caller
+        announces the change to any page holding it open, and that
+        announcement names the plan. The condition is a write condition, so
+        which shell took the stamp is not knowable before the statement runs
+        and a second read to find out could answer about a different row.
+
+        Args:
+            parent_task_id: The objective whose shell is being filled.
+            progress: The snapshot to stamp.
+
+        Returns:
+            The shell as it now stands, or ``None`` when no ``PLANNING`` plan
+            was there to take the stamp.
 
         Raises:
             QueryError: If the operation fails.

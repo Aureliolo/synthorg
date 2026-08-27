@@ -303,10 +303,26 @@ async def started_dispatcher(
     await dispatcher.stop()
 
 
+#: Failure bound for the two waits below, NOT an asserted latency.
+#:
+#: Both helpers return the instant the thing they wait for happens, so this
+#: number only decides how long a genuinely stuck dispatcher is given before
+#: the test says so. At 2.0s it was also, accidentally, an assertion that a
+#: CI runner schedules the dispatcher task within two seconds, and a shard
+#: running four xdist workers on a shared runner does not always manage that:
+#: the coalescing test timed out there while passing locally in 0.74s, with
+#: nothing about the batching it exists to check having gone wrong.
+#:
+#: Kept below the 30s global pytest timeout so a real hang still surfaces as
+#: the helper's own TimeoutError, which names what was being waited for,
+#: rather than as the blunt global one.
+_WAIT_TIMEOUT_SECONDS: Final = 15.0
+
+
 async def _wait_for_subscriber(
     subscriber: _FakeSubscriber,
     *,
-    timeout: float = 2.0,  # noqa: ASYNC109
+    timeout: float = _WAIT_TIMEOUT_SECONDS,  # noqa: ASYNC109
 ) -> None:
     """Wait until the subscriber's ``on_settings_changed`` has been called.
 
@@ -322,7 +338,7 @@ async def _wait_for_subscriber(
 async def _wait_for_queue_drain(
     bus: _FakeBus,
     *,
-    timeout: float = 2.0,  # noqa: ASYNC109
+    timeout: float = _WAIT_TIMEOUT_SECONDS,  # noqa: ASYNC109
 ) -> None:
     """Wait for the bus queue to empty (for negative/skip assertions).
 

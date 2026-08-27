@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { ROUTES } from '@/router/routes'
 import { titleForPath } from '@/router/route-titles'
+import { normalisedKey } from '@/utils/keyboard'
 import { RouteBoundary } from '@/router/RouteBoundary'
 import type { CommandItem } from '@/hooks/useCommandPalette'
 import { useRegisterCommands } from '@/hooks/useCommandPalette'
@@ -71,9 +72,15 @@ function _isShortcutOriginEditable(target: EventTarget | null): boolean {
   return target.closest('[role="combobox"]') !== null
 }
 
-function _isShiftNShortcut(e: KeyboardEvent): boolean {
-  if (e.ctrlKey || e.metaKey || e.altKey) return false
-  return e.shiftKey && e.key === 'N'
+// Alt rather than Shift, matching its three siblings: a capital N is what any
+// sentence beginning "No..." produces, so with focus anywhere but a field the
+// operator's prose reached the shortcut handlers instead of the page. Three of
+// the four global shortcuts already take a modifier prose cannot produce; this
+// one was the exception. Alt, not Ctrl+Shift, because the browser owns that
+// combination for a new private window.
+function _isNotificationShortcut(e: KeyboardEvent): boolean {
+  if (e.ctrlKey || e.metaKey) return false
+  return e.altKey && normalisedKey(e) === 'n'
 }
 
 function useNotificationDrawerShortcuts(): {
@@ -102,7 +109,7 @@ function useNotificationDrawerShortcuts(): {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.defaultPrevented || e.repeat) return
       if (_isShortcutOriginEditable(e.target)) return
-      if (!_isShiftNShortcut(e)) return
+      if (!_isNotificationShortcut(e)) return
       e.preventDefault()
       window.dispatchEvent(new CustomEvent('toggle-notification-drawer'))
     }
@@ -209,14 +216,17 @@ function _buildGlobalNavCommands(
     { id: 'nav-meta', label: 'Meta Loop', icon: Sparkles, action: () => navigate(ROUTES.META), group: 'Navigation', keywords: ['meta', 'governance', 'self-improvement', 'loop'] },
     { id: 'nav-docs', label: 'Documentation', icon: BookOpen, action: navigateToDocs, group: 'Navigation', keywords: ['docs', 'help', 'guide', 'reference'] },
     { id: 'nav-settings', label: 'Settings', icon: Settings, action: () => navigate(ROUTES.SETTINGS), group: 'Navigation', shortcut: ['ctrl', ','] },
-    { id: 'notifications-open', label: 'Notifications', icon: Bell, action: openNotificationDrawer, group: 'Navigation', shortcut: ['shift', 'N'] },
+    // Alt, matching `_isNotificationShortcut` and the GLOBAL_SHORTCUTS row.
+    // The palette is where an operator LEARNS the shortcut, so a stale one
+    // here teaches a key combination that does nothing.
+    { id: 'notifications-open', label: 'Notifications', icon: Bell, action: openNotificationDrawer, group: 'Navigation', shortcut: ['alt', 'N'] },
   ]
 }
 
 const GLOBAL_SHORTCUTS = [
   { keys: ['Ctrl', 'K'], label: 'Open command palette', group: 'Global' },
   { keys: ['?'], label: 'Show keyboard shortcuts', group: 'Global' },
-  { keys: ['Shift', 'N'], label: 'Toggle notifications', group: 'Global' },
+  { keys: ['Alt', 'N'], label: 'Toggle notifications', group: 'Global' },
   { keys: ['Ctrl', ','], label: 'Open settings', group: 'Global' },
 ] as const
 

@@ -279,8 +279,9 @@ function HealthSubsystemGrid({
       <HealthStatusRow
         icon={Database}
         label="Persistence"
-        description="SQLite / configured persistence backend. Writes and queries roundtrip successfully."
+        description="The store the org's data lives in. Writes and queries roundtrip successfully."
         state={states.persistenceState}
+        detail={states.persistenceDetail}
       />
       <HealthStatusRow
         icon={Waves}

@@ -178,8 +178,7 @@ func runUpdateReadOnlyModes(cmd *cobra.Command, state config.State) (bool, error
 		return true, runUpdateCheck(cmd, state)
 	}
 	if updateDryRun {
-		runUpdateDryRun(cmd, state)
-		return true, nil
+		return true, runUpdateDryRun(cmd, state)
 	}
 	return false, nil
 }
@@ -273,19 +272,113 @@ func runUpdateCheck(cmd *cobra.Command, state config.State) error {
 }
 
 // runUpdateDryRun shows what an update would do without executing.
-func runUpdateDryRun(cmd *cobra.Command, state config.State) {
+//
+// It runs the same check --check runs, because "would this update anything"
+// is one question and the two preview surfaces have to answer it the same
+// way. They did not: the scope flags decide which HALVES an invocation may
+// touch, and printing them under "CLI update" / "Image update" answered a
+// different question under those labels. On an installation already at the
+// channel head, --check printed "Up to date" and exited 0 while --dry-run
+// seconds later reported both updates as "yes", so the more detailed surface
+// was the wrong one.
+//
+// Both halves are still gated on scope, so --images-only still reports no CLI
+// update. What changed is that being in scope is no longer sufficient.
+func runUpdateDryRun(cmd *cobra.Command, state config.State) error {
 	ctx := cmd.Context()
 	opts := GetGlobalOpts(ctx)
 	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
 
+	channel := state.Channel
+	if channel == "" {
+		channel = "stable"
+	}
+	result, err := checkForChannel(ctx, channel)
+	if err != nil {
+		return fmt.Errorf("checking for updates: %w", err)
+	}
+	// The tag is tracked in the CLI's own config and moves separately from the
+	// binary, so it is compared to the release rather than assumed to share
+	// the binary's answer: an operator who ran --cli-only has one current and
+	// the other behind.
+	imagesBehind := imagesAreBehind(state.ImageTag, result.LatestVersion)
+
 	out.Section("Dry run: update preview")
 	out.KeyValue("Current CLI", version.Version)
 	out.KeyValue("Current images", state.ImageTag)
-	out.KeyValue("Channel", state.Channel)
-	out.KeyValue("CLI update", boolToYesNo(!updateImagesOnly))
-	out.KeyValue("Image update", boolToYesNo(!updateCLIOnly))
-	out.KeyValue("Restart after pull", boolToYesNo(!updateNoRestart))
+	out.KeyValue("Channel", channel)
+	// A remote tag name, so it takes the same scrub every other remote label
+	// on this path takes.
+	out.KeyValue("Latest release", versionLabel(result.LatestVersion))
+	cliDue := !updateImagesOnly && result.UpdateAvail
+	imagesDue := !updateCLIOnly && imagesBehind
+	out.KeyValue("CLI update", updateVerdict(!updateImagesOnly, result.UpdateAvail))
+	out.KeyValue("Image update", updateVerdict(!updateCLIOnly, imagesBehind))
+	// A restart is what pulling images costs, so it follows the pull rather
+	// than the flag alone: promising one on an installation that will pull
+	// nothing tells the operator to expect downtime they will not get.
+	out.KeyValue("Restart after pull", restartVerdict(imagesDue, updateNoRestart))
+	// Judged on the SCOPED verdicts, not the raw ones. Read raw, an operator
+	// who passed --cli-only on a current CLI was told to remove --dry-run and
+	// run an update that would do nothing, because the out-of-scope half was
+	// behind. That is the same two-surfaces-disagreeing defect this function
+	// exists to fix, one level down.
+	if !cliDue && !imagesDue {
+		out.Success("Nothing to update; this installation is current.")
+		return nil
+	}
 	out.HintNextStep("Remove --dry-run to execute the update")
+	return nil
+}
+
+// imagesAreBehind reports whether the installed image tag trails the release.
+//
+// An unorderable tag is "not known to be behind" rather than an error. The tag
+// is an operator-settable config value documented for private registries, and
+// `latest` is what ImageTagForVersion falls back to, so neither is exotic;
+// the update path itself only ever compares it for equality. Refusing the
+// PREVIEW over a value the real command handles would make the read-only
+// surface the stricter of the two.
+func imagesAreBehind(installed, latest string) bool {
+	behind, err := selfupdate.IsNewer(installed, latest)
+	if err != nil {
+		return installed != targetImageTag(latest)
+	}
+	return behind
+}
+
+// updateVerdict renders one half of the preview.
+//
+// Two conditions have to hold for a half to change, and they fail for
+// different reasons an operator acts on differently: out of scope is their own
+// flag, and already current is the installation. Collapsing both to "no" left
+// somebody who passed --images-only unable to tell which one they were seeing.
+func updateVerdict(inScope, available bool) string {
+	if !inScope {
+		return "no (excluded by flags)"
+	}
+	if !available {
+		return "no (already current)"
+	}
+	return "yes"
+}
+
+// restartVerdict renders the restart line, naming which of its two reasons
+// applies. --no-restart is the operator's own choice; having nothing to pull
+// is the installation's state, and only one of them changes if they run the
+// update again tomorrow.
+//
+// Both inputs are parameters, like updateVerdict's: read off the package flag
+// instead, this could only be exercised through the flag-mutating harness its
+// sibling does not need.
+func restartVerdict(pullsImages, noRestart bool) string {
+	if !pullsImages {
+		return "no (nothing to pull)"
+	}
+	if noRestart {
+		return "no (excluded by flags)"
+	}
+	return "yes"
 }
 
 // handleDeclinedCompose warns the user that new images may not work with

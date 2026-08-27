@@ -4,7 +4,9 @@ import copy
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, override
 
+from synthorg.core.decomposition_progress import DecompositionProgress
 from synthorg.core.plan import Plan
+from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.task import Task
 from synthorg.engine.task_engine_models import CreateTaskData
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
@@ -165,6 +167,43 @@ class FakePlanRepository:
         """
         _ = terminal_statuses
         return PlanDeleteOutcome(deleted=await self.delete(entity_id))
+
+    async def record_decomposition_progress(
+        self,
+        parent_task_id: str,
+        /,
+        *,
+        progress: DecompositionProgress,
+    ) -> Plan | None:
+        """Stamp progress on the objective's ``PLANNING`` shell.
+
+        Conditional on the status the same way the real backends are, so a
+        test that moves a plan out of ``PLANNING`` sees the stamp refused.
+        Present because typeguard checks every method on a fake passed at a
+        typed boundary, not only the ones a caller reaches.
+
+        ONE row, the lowest id, as both backends address it. A fake that
+        stamps every match and returns the last one agrees with production
+        only while exactly one shell matches, which is the case that would
+        never have needed the ``ORDER BY id LIMIT 1`` in the first place.
+
+        Returns:
+            The stamped shell, or ``None`` when none took it.
+        """
+        matches = sorted(
+            plan_id
+            for plan_id, plan in self._plans.items()
+            if plan.parent_task_id == parent_task_id
+            and plan.status is PlanStatus.PLANNING
+        )
+        if not matches:
+            return None
+        plan_id = matches[0]
+        stamped = self._plans[plan_id].model_copy(
+            update={"decomposition_progress": progress}
+        )
+        self._plans[plan_id] = stamped
+        return stamped
 
 
 class FakePersistence:

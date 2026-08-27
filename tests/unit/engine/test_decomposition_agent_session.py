@@ -12,11 +12,12 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition import agent_session_submit as submit_module
+from synthorg.engine.decomposition._session_exhaustion import (
+    ran_without_submitting,
+    stopped_short,
+)
 from synthorg.engine.decomposition.agent_session import (
-    AgentSessionDecompositionConfig,
     AgentSessionDecompositionStrategy,
-    _ran_without_submitting,
-    _stopped_short,
 )
 from synthorg.engine.decomposition.agent_session_submit import (
     _REMEMBERED_REFUSALS,
@@ -26,6 +27,10 @@ from synthorg.engine.decomposition.agent_session_submit import (
 from synthorg.engine.decomposition.context import DecompositionContext
 from synthorg.engine.decomposition.models import DecompositionPlan, SubtaskDefinition
 from synthorg.engine.decomposition.protocol import DecompositionStrategy
+from synthorg.engine.decomposition.strategy_deps import (
+    AgentSessionDecompositionConfig,
+    DecompositionStrategyDeps,
+)
 from synthorg.engine.decomposition.tool_provider import DecompositionToolProvider
 from synthorg.engine.errors import (
     DecompositionDepthError,
@@ -56,6 +61,10 @@ from tests._shared.scripted_provider import (
 )
 
 pytestmark = pytest.mark.unit
+
+#: Wider than any level these cases submit, so the width cap is never what
+#: they are measuring.
+_WIDE = 20
 
 #: The shape a live run produced twice: repeated fields collapsed into nested
 #: text nodes, which is valid JSON carrying no ``subtasks`` at all.
@@ -233,7 +242,9 @@ def _strategy(
     return AgentSessionDecompositionStrategy(
         provider_selector=lambda _identity: provider,
         fallback=fallback,
-        config=AgentSessionDecompositionConfig(max_turns=_MAX_TURNS),
+        deps=DecompositionStrategyDeps(
+            agent_session_config=AgentSessionDecompositionConfig(max_turns=_MAX_TURNS),
+        ),
     )
 
 
@@ -326,7 +337,9 @@ class TestAgentSessionDecompose:
         strategy = AgentSessionDecompositionStrategy(
             provider_selector=_raise,
             fallback=fallback,
-            config=AgentSessionDecompositionConfig(max_turns=4),
+            deps=DecompositionStrategyDeps(
+                agent_session_config=AgentSessionDecompositionConfig(max_turns=4),
+            ),
         )
         context = DecompositionContext(owner_identity=make_e2e_identity())
 
@@ -362,7 +375,9 @@ class TestAgentSessionDecompose:
 class TestSubmitDecompositionPlanTool:
     async def test_captures_valid_plan(self) -> None:
         capture = PlanCapture(sid("obj-1"))
-        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        tool = SubmitDecompositionPlanTool(
+            parent_task_id=sid("obj-1"), capture=capture, width_limit=_WIDE
+        )
         result = await tool.execute(arguments=dict(_plan_args()))
         assert isinstance(result, ToolExecutionResult)
         assert not result.is_error
@@ -371,14 +386,18 @@ class TestSubmitDecompositionPlanTool:
 
     async def test_rejects_malformed_plan(self) -> None:
         capture = PlanCapture(sid("obj-1"))
-        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        tool = SubmitDecompositionPlanTool(
+            parent_task_id=sid("obj-1"), capture=capture, width_limit=_WIDE
+        )
         result = await tool.execute(arguments={"subtasks": "not-a-list"})
         assert result.is_error
         assert capture.plan is None
 
     async def test_double_submit_overwrites_with_latest(self) -> None:
         capture = PlanCapture(sid("obj-1"))
-        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        tool = SubmitDecompositionPlanTool(
+            parent_task_id=sid("obj-1"), capture=capture, width_limit=_WIDE
+        )
         await tool.execute(arguments=dict(_plan_args()))
         assert capture.plan is not None
         assert len(capture.plan.subtasks) == 2
@@ -408,7 +427,9 @@ class TestSubmitDecompositionPlanTool:
         specific change instead of "fix the issue".
         """
         capture = PlanCapture(sid("obj-1"))
-        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        tool = SubmitDecompositionPlanTool(
+            parent_task_id=sid("obj-1"), capture=capture, width_limit=_WIDE
+        )
         rejected: dict[str, object] = dict(_self_dependent_plan_args())
 
         first = await tool.execute(arguments=dict(rejected))
@@ -471,7 +492,9 @@ class TestSubmitDecompositionPlanTool:
     async def test_key_order_alone_is_not_a_correction(self) -> None:
         """A serialiser that reordered keys resubmitted the same plan."""
         capture = PlanCapture(sid("obj-1"))
-        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        tool = SubmitDecompositionPlanTool(
+            parent_task_id=sid("obj-1"), capture=capture, width_limit=_WIDE
+        )
         rejected: dict[str, object] = dict(_self_dependent_plan_args())
         reordered: dict[str, object] = dict(reversed(list(rejected.items())))
 
@@ -483,7 +506,9 @@ class TestSubmitDecompositionPlanTool:
     async def test_a_genuinely_changed_resubmission_is_refused_plainly(self) -> None:
         """A model correcting itself must not be told it repeated itself."""
         capture = PlanCapture(sid("obj-1"))
-        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        tool = SubmitDecompositionPlanTool(
+            parent_task_id=sid("obj-1"), capture=capture, width_limit=_WIDE
+        )
 
         first = await tool.execute(arguments=dict(_self_dependent_plan_args()))
         second = await tool.execute(arguments={"subtasks": "not-a-list"})
@@ -500,7 +525,9 @@ class TestSubmitDecompositionPlanTool:
         submissions in a live run arrived in this shape.
         """
         capture = PlanCapture(sid("obj-1"))
-        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        tool = SubmitDecompositionPlanTool(
+            parent_task_id=sid("obj-1"), capture=capture, width_limit=_WIDE
+        )
 
         detail = await tool.transport_fault(_MANGLED_ARGS)
 
@@ -540,7 +567,9 @@ class TestSubmitDecompositionPlanTool:
         field it filled in correctly.
         """
         capture = PlanCapture(sid("obj-1"))
-        tool = SubmitDecompositionPlanTool(parent_task_id=sid("obj-1"), capture=capture)
+        tool = SubmitDecompositionPlanTool(
+            parent_task_id=sid("obj-1"), capture=capture, width_limit=_WIDE
+        )
         invoker = ToolInvoker(ToolRegistry([tool]))
 
         result = await invoker.invoke(
@@ -598,7 +627,7 @@ class TestReadOnlyToolBoundary:
         strategy = AgentSessionDecompositionStrategy(
             provider_selector=lambda _identity: ScriptedProvider([]),
             fallback=_SentinelFallback(),
-            tool_provider=provider,
+            deps=DecompositionStrategyDeps(tool_provider=provider),
         )
         kept = strategy._planning_tools(_task(), make_e2e_identity())
         assert [tool.name for tool in kept] == ["recall"]
@@ -639,8 +668,10 @@ class TestPlanningBriefMatchesTheGrant:
         strategy = AgentSessionDecompositionStrategy(
             provider_selector=lambda _identity: provider,
             fallback=_SentinelFallback(),
-            tool_provider=_ListToolProvider(tools),
-            config=AgentSessionDecompositionConfig(max_turns=1),
+            deps=DecompositionStrategyDeps(
+                tool_provider=_ListToolProvider(tools),
+                agent_session_config=AgentSessionDecompositionConfig(max_turns=1),
+            ),
         )
         resolved = context or DecompositionContext(
             max_subtasks=5, owner_identity=make_e2e_identity()
@@ -835,9 +866,11 @@ class TestAgentSessionGuards:
         strategy = AgentSessionDecompositionStrategy(
             provider_selector=lambda _identity: provider,
             fallback=fallback,
-            config=AgentSessionDecompositionConfig(
-                max_turns=8,
-                ceilings=SessionCeilings(cost_ceiling=0.0, token_ceiling=500),
+            deps=DecompositionStrategyDeps(
+                agent_session_config=AgentSessionDecompositionConfig(
+                    max_turns=8,
+                    ceilings=SessionCeilings(cost_ceiling=0.0, token_ceiling=500),
+                ),
             ),
         )
         context = DecompositionContext(owner_identity=make_e2e_identity())
@@ -853,9 +886,11 @@ class TestAgentSessionGuards:
         strategy = AgentSessionDecompositionStrategy(
             provider_selector=lambda _identity: provider,
             fallback=_SentinelFallback(),
-            config=AgentSessionDecompositionConfig(
-                max_turns=8,
-                ceilings=SessionCeilings(cost_ceiling=0.0, token_ceiling=0),
+            deps=DecompositionStrategyDeps(
+                agent_session_config=AgentSessionDecompositionConfig(
+                    max_turns=8,
+                    ceilings=SessionCeilings(cost_ceiling=0.0, token_ceiling=0),
+                ),
             ),
         )
         context = DecompositionContext(owner_identity=make_e2e_identity())
@@ -1015,9 +1050,11 @@ class TestUnsubmittedSessionsContinue:
         strategy = AgentSessionDecompositionStrategy(
             provider_selector=lambda _identity: provider,
             fallback=fallback,
-            config=AgentSessionDecompositionConfig(
-                max_turns=_MAX_TURNS,
-                ceilings=SessionCeilings(cost_ceiling=0.0, token_ceiling=1000),
+            deps=DecompositionStrategyDeps(
+                agent_session_config=AgentSessionDecompositionConfig(
+                    max_turns=_MAX_TURNS,
+                    ceilings=SessionCeilings(cost_ceiling=0.0, token_ceiling=1000),
+                ),
             ),
         )
         context = DecompositionContext(owner_identity=make_e2e_identity())
@@ -1037,7 +1074,9 @@ class TestUnsubmittedSessionsContinue:
         strategy = AgentSessionDecompositionStrategy(
             provider_selector=lambda _identity: provider,
             fallback=_SentinelFallback(),
-            config=AgentSessionDecompositionConfig(max_turns=1),
+            deps=DecompositionStrategyDeps(
+                agent_session_config=AgentSessionDecompositionConfig(max_turns=1),
+            ),
         )
         context = DecompositionContext(owner_identity=make_e2e_identity())
 
@@ -1072,7 +1111,7 @@ class TestTerminationClassification:
     def test_every_termination_reason_is_classified(
         self, reason: TerminationReason
     ) -> None:
-        assert isinstance(_ran_without_submitting(reason), bool)
+        assert isinstance(ran_without_submitting(reason), bool)
 
     @pytest.mark.parametrize(
         "reason",
@@ -1086,7 +1125,7 @@ class TestTerminationClassification:
     def test_a_session_prevented_from_producing_keeps_the_fallback(
         self, reason: TerminationReason
     ) -> None:
-        assert _ran_without_submitting(reason) is False
+        assert ran_without_submitting(reason) is False
 
     @pytest.mark.parametrize(
         "reason",
@@ -1101,13 +1140,13 @@ class TestTerminationClassification:
     def test_a_session_that_ran_and_produced_nothing_is_refused(
         self, reason: TerminationReason
     ) -> None:
-        assert _ran_without_submitting(reason) is True
+        assert ran_without_submitting(reason) is True
 
     @pytest.mark.parametrize("reason", list(TerminationReason))
     def test_every_termination_reason_decides_whether_to_carry_on(
         self, reason: TerminationReason
     ) -> None:
-        assert isinstance(_stopped_short(reason), bool)
+        assert isinstance(stopped_short(reason), bool)
 
     @pytest.mark.parametrize(
         "reason",
@@ -1116,7 +1155,7 @@ class TestTerminationClassification:
     def test_a_session_that_ended_its_own_turn_carries_on(
         self, reason: TerminationReason
     ) -> None:
-        assert _stopped_short(reason) is True
+        assert stopped_short(reason) is True
 
     @pytest.mark.parametrize(
         "reason",
@@ -1136,7 +1175,7 @@ class TestTerminationClassification:
         # The bounds are what refuse another turn, so spending one against
         # them would be the loop the bound exists to close; the outside stops
         # would fail again identically.
-        assert _stopped_short(reason) is False
+        assert stopped_short(reason) is False
 
 
 class TestAgentSessionConfig:

@@ -1,33 +1,26 @@
+import { makeSettingEntry } from '@/__tests__/helpers/factories'
 import { buildSchemaInfo, validateSchema } from '@/pages/settings/editor-linter'
 import type { SettingEntry } from '@/api/types/settings'
 
+// The linter validates a value against its declared type, so the pair and the
+// type are what a case here varies and they stay positional.
 function makeEntry(
-  namespace: string,
+  namespace: SettingEntry['definition']['namespace'],
   key: string,
   type: SettingEntry['definition']['type'] = 'str',
   extra: { value?: string; composeSet?: boolean } = {},
 ): SettingEntry {
-  return {
-    definition: {
-      namespace: namespace as SettingEntry['definition']['namespace'],
-      key,
-      type,
-      default: '',
-      description: `${namespace}/${key}`,
-      group: 'Test',
-      level: 'basic',
-      sensitive: false,
-      compose_set: extra.composeSet ?? false,
-      env_var_override: null,
-      enum_values: [],
-      validator_pattern: null,
-      min_value: null,
-      max_value: null,
-    },
+  return makeSettingEntry({
+    namespace,
+    key,
+    type,
+    default: '',
+    description: `${namespace}/${key}`,
+    group: 'Test',
+    compose_set: extra.composeSet ?? false,
     value: extra.value ?? '',
     source: 'db',
-    updated_at: null,
-  }
+  })
 }
 
 describe('buildSchemaInfo', () => {

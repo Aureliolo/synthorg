@@ -27,6 +27,8 @@ The canonical helper for transient-I/O backoff is `synthorg.core.resilience.Gene
 
 Also fail-open: `providers/ollama_usage_tier.py::_scrape_tier` makes a single failure-tolerant `GET` against the Ollama cloud model page and, on any exception or non-200, immediately falls back to the parameter-count tier approximation. The page structure is brittle and the fallback is always available, so a transient blip is absorbed as "use the approximation" rather than retried; the next enrichment re-scrapes.
 
+Also fail-open: `engine/decomposition/_progress_publish.py::publish_progress` writes how far a running decomposition has got. It is called per node, so the next node re-reports and a dropped line self-heals within seconds; retrying instead would put latency on the decomposition hot path to buy durability the next call already provides. The asymmetry is what settles it: losing the progress line costs an operator a refresh, and losing the tree costs an hour of paid provider spend.
+
 ## Pattern B -- Semantic self-correction
 
 **When**: an LLM produced an unparseable response (malformed JSON, missing required field, validation failure). The fault is not transient: sleeping and re-asking the same question would yield the same broken response. Each attempt sends a *richer* prompt that includes the prior failed output and a corrective instruction.

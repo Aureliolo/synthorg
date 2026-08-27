@@ -65,14 +65,14 @@ const VALID_SETTING_NAMESPACES: ReadonlySet<string> = new Set(
   Object.keys(SETTING_NAMESPACE_TABLE),
 )
 
-/**
- * Fuzzy subsequence match: returns true if every character of `needle`
- * appears in `haystack` in order. E.g. "prt" matches "server_port".
- */
 function normalize(s: string): string {
   return s.toLowerCase().replace(/[_-]/g, ' ')
 }
 
+/**
+ * Fuzzy subsequence match: returns true if every character of `needle`
+ * appears in `haystack` in order. E.g. "prt" matches "server_port".
+ */
 function fuzzyMatch(haystack: string, needle: string): boolean {
   const h = normalize(haystack)
   let j = 0
@@ -82,17 +82,134 @@ function fuzzyMatch(haystack: string, needle: string): boolean {
   return j === needle.length
 }
 
-/** Fuzzy match across setting key, description, namespace, and group. */
+/**
+ * How well a setting answers a query. Zero means it does not.
+ *
+ * Matching alone was never the problem: a subsequence match over a sentence
+ * accepts nearly every query, so "decomposition model" reported 88 results and
+ * rendered them in fixed namespace order. The first screen was Auth Revalidate
+ * Window Seconds, Ws Frame Timeout Seconds, Bulk Delete Budget Seconds; the
+ * setting actually NAMED Decomposition Model was far below. An operator who
+ * knows a setting's name had no way to search for it, which is the one search
+ * that should always work.
+ *
+ * The tiers are ordered by how much the match tells you the operator meant
+ * THIS setting. A name is a deliberate identifier and a description is prose
+ * that happens to contain words, so a name match outranks any description
+ * match rather than tying with it. Subsequence matching is kept as the last
+ * tier, because "prt" finding `server_port` is what makes the box usable
+ * before you have typed a whole word.
+ *
+ * Every tier is separated by more than the maximum bonus below it, so a
+ * weaker tier can never overtake a stronger one however many terms it hits.
+ */
+const SCORE_KEY_EXACT = 1000
+const SCORE_KEY_ALL_TERMS = 800
+const SCORE_KEY_SOME_TERMS = 600
+const SCORE_GROUPING_ALL_TERMS = 400
+const SCORE_DESCRIPTION_ALL_TERMS = 200
+const SCORE_FUZZY = 50
+
+/** The distance between adjacent tiers, which no bonus may close. */
+const SCORE_TIER_GAP = SCORE_KEY_ALL_TERMS - SCORE_KEY_SOME_TERMS
+
+/** Per-term credit within a tier. */
+const SCORE_PER_TERM = 10
+
+/**
+ * Terms that earn per-term credit, derived so the tier order actually holds.
+ *
+ * "Small enough never to cross a tier" is a claim about the query, not just
+ * about the constant: at ten a term and two hundred between tiers, a query of
+ * twenty terms carries the some-terms tier onto the all-terms tier above it,
+ * and a setting matching most of a long query outranks one matching all of it.
+ * Derived rather than written down, because a later edit to either constant
+ * would otherwise leave the comment true and the code not.
+ */
+const MAX_SCORED_TERMS = Math.ceil(SCORE_TIER_GAP / SCORE_PER_TERM) - 1
+
+function terms(query: string): readonly string[] {
+  // All whitespace, not the space alone: a query pasted from a doc or a log
+  // carries tabs and newlines, and splitting on ' ' turns the whole thing
+  // into one term that matches nothing.
+  return normalize(query.trim()).split(/\s+/).filter(Boolean)
+}
+
+function countContaining(haystack: string, queryTerms: readonly string[]): number {
+  const h = normalize(haystack)
+  return queryTerms.filter((term) => h.includes(term)).length
+}
+
+/** One field of the query, resolved once so each tier reads rather than parses. */
+interface ScoredQuery {
+  readonly terms: readonly string[]
+  readonly joined: string
+}
+
+/**
+ * A scoring tier: the score it awards, or `null` when it does not apply.
+ *
+ * Ordered strongest first and consulted in order, so the first tier that
+ * applies decides. Written as a list rather than a chain of conditions because
+ * the ORDER is the whole design: what outranks what is the thing to read.
+ */
+type ScoreTier = (def: SettingEntry['definition'], q: ScoredQuery) => number | null
+
+const SCORE_TIERS: readonly ScoreTier[] = [
+  (def, q) => (normalize(def.key) === q.joined ? SCORE_KEY_EXACT : null),
+  (def, q) => {
+    if (countContaining(def.key, q.terms) !== q.terms.length) return null
+    // A name that also STARTS with the query is the likelier intent than one
+    // that merely contains it somewhere.
+    return (
+      SCORE_KEY_ALL_TERMS +
+      (normalize(def.key).startsWith(q.joined) ? SCORE_PER_TERM : 0)
+    )
+  },
+  (def, q) => {
+    const hits = countContaining(def.key, q.terms)
+    if (hits === 0) return null
+    return SCORE_KEY_SOME_TERMS + Math.min(hits, MAX_SCORED_TERMS) * SCORE_PER_TERM
+  },
+  // Namespace and group are what an operator browsing rather than naming
+  // types, so they rank above prose and below a name.
+  (def, q) => (groupingHits(def, q) === q.terms.length ? SCORE_GROUPING_ALL_TERMS : null),
+  (def, q) =>
+    countContaining(def.description, q.terms) === q.terms.length
+      ? SCORE_DESCRIPTION_ALL_TERMS
+      : null,
+  (def, q) =>
+    countContaining(def.description, q.terms) > 0 || groupingHits(def, q) > 0
+      ? SCORE_DESCRIPTION_ALL_TERMS - SCORE_FUZZY
+      : null,
+  (def, q) =>
+    fuzzyMatch(def.key, q.joined) ||
+    fuzzyMatch(def.description, q.joined) ||
+    fuzzyMatch(def.namespace, q.joined) ||
+    fuzzyMatch(def.group, q.joined)
+      ? SCORE_FUZZY
+      : null,
+]
+
+function groupingHits(def: SettingEntry['definition'], q: ScoredQuery): number {
+  return Math.max(countContaining(def.namespace, q.terms), countContaining(def.group, q.terms))
+}
+
+export function scoreSetting(entry: SettingEntry, query: string): number {
+  const queryTerms = terms(query)
+  // An empty box asks nothing, so everything answers it equally.
+  if (queryTerms.length === 0) return SCORE_KEY_EXACT
+  const q: ScoredQuery = { terms: queryTerms, joined: queryTerms.join(' ') }
+  for (const tier of SCORE_TIERS) {
+    const score = tier(entry.definition, q)
+    if (score !== null) return score
+  }
+  return 0
+}
+
+/** Whether a setting answers a query at all. */
 export function matchesSetting(entry: SettingEntry, query: string): boolean {
-  const q = normalize(query.trim())
-  if (!q) return true
-  const def = entry.definition
-  return (
-    fuzzyMatch(def.key, q) ||
-    fuzzyMatch(def.description, q) ||
-    fuzzyMatch(def.namespace, q) ||
-    fuzzyMatch(def.group, q)
-  )
+  return scoreSetting(entry, query) > 0
 }
 
 /**

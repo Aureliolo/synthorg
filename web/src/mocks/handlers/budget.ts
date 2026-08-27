@@ -56,6 +56,10 @@ function buildCallAnalytics(): AnalyticsAggregation {
     total_calls: 0,
     success_count: 0,
     failure_count: 0,
+    unreported_count: 0,
+    // Null rather than 0: nothing reported an outcome, which is a different
+    // fact from every call having failed.
+    success_rate: null,
     retry_count: 0,
     retry_rate: 0,
     cache_hit_count: 0,

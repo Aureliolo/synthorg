@@ -139,6 +139,28 @@ own plan is valid, so the unit dispatches carrying the reason. Distinct from the
 two backstop events because no bound bound here: the depth and the budget were
 both available and the planner could not comply."""
 
+DECOMPOSITION_CHILD_CEILING_ABSORBED: Final[str] = (
+    "decomposition.child_ceiling_absorbed"
+)
+"""A child's planning session outran its ceiling and the level above kept its plan.
+
+Its own event rather than a variant of ``DECOMPOSITION_PLANNER_DECLINED``
+because the remedy differs: a planner that could not comply wants a narrower
+objective, while a session that ran out of clock wants a higher ceiling. Also
+distinct from ``DECOMPOSITION_FAILED``, which is what the same breach still
+does at the root, where there is no plan above it to carry the unit."""
+
+DECOMPOSITION_CHILD_BUDGET_ABSORBED: Final[str] = "decomposition.child_budget_absorbed"
+"""A child's planning session exhausted itself and the level above kept its plan.
+
+Covers the three ways a session can run out on its own terms without ever
+submitting: turns, tokens, and a loop that stopped progressing. One event for
+all three because the level above does the same thing in each case, while the
+reason recorded on the unit names the specific bound, which is what an operator
+needs in order to know which knob would have helped. Separate from
+``DECOMPOSITION_CHILD_CEILING_ABSORBED`` because a wall-clock ceiling is a bound
+on elapsed time rather than on what the session spent."""
+
 DECOMPOSITION_RECURSED: Final[str] = "decomposition.recursed"
 """One level of a recursive decomposition finished."""
 
@@ -148,6 +170,13 @@ DECOMPOSITION_SESSIONS_EXHAUSTED: Final[str] = "decomposition.sessions_exhausted
 Emitted once, where the ledger flips, so the node that ran the tree out is
 named. Every unit below it goes unsplit carrying that backstop as its reason,
 which says WHAT bound but not WHERE the budget went."""
+
+DECOMPOSITION_PROGRESS_UNRECORDED: Final[str] = "decomposition.progress_unrecorded"
+"""A progress snapshot could not be published to the plan it describes.
+
+Warning rather than a failure: a decomposition is minutes to hours of real
+provider spend, so losing the line an operator watches costs a refresh while
+failing the run over it costs the tree."""
 
 DECOMPOSITION_MODEL_UNSET: Final[str] = "decomposition.model_unset"
 """No explicit provider + model pair is bound for decomposition.

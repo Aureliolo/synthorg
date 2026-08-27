@@ -15,6 +15,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import (
     AgentAlreadyRegisteredError,
     HiringError,
+    HiringUnbindableError,
 )
 from synthorg.hr.hire_model_proposal import ProviderCatalogue
 from synthorg.hr.models import HiringRequest
@@ -74,9 +75,13 @@ async def resolve_hire_model(
             when the pipeline was built without one.
 
     Raises:
-        HiringError: When the request carries no pair, which means nothing
-            was proposable when the approval was raised, or when the pair it
-            carries is not one the operator's live catalogue offers.
+        HiringUnbindableError: When the request carries no pair, which means
+            nothing was proposable when the approval was raised, or when the
+            pair it carries is not one the operator's live catalogue offers.
+            Typed apart from the transient block below, so a sweep can tell a
+            request no pass will ever complete from one the next pass might.
+        HiringError: When no catalogue is wired yet, so nothing can confirm
+            the pair. That resolves itself once wiring finishes.
 
     Returns:
         The pair the new agent runs on.
@@ -94,7 +99,7 @@ async def resolve_hire_model(
             role=str(request.role),
             error=msg,
         )
-        raise HiringError(msg)
+        raise HiringUnbindableError(msg)
     if catalogue is None:
         msg = (
             f"Hiring request {request.id!s} names {ref.provider}/{ref.model_id}, "
@@ -131,8 +136,10 @@ async def _require_still_offerable(
         catalogue: The operator's configured providers, read live.
 
     Raises:
-        HiringError: When the connection is gone, the model is gone from it,
-            or the model can no longer call a tool.
+        HiringUnbindableError: When the connection is gone, the model is gone
+            from it, or the model can no longer call a tool. None of the three
+            is undone by retrying: the operator has to decide again, on a pair
+            they still have.
     """
     providers = await catalogue.list_providers()
     config = providers.get(provider)
@@ -160,7 +167,7 @@ async def _require_still_offerable(
         role=str(request.role),
         error=msg,
     )
-    raise HiringError(msg)
+    raise HiringUnbindableError(msg)
 
 
 async def register_agent(

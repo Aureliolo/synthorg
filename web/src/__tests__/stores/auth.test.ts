@@ -99,11 +99,14 @@ describe('auth store', () => {
       })
     })
 
-    it('redirects to /login when not already there', () => {
+    it('redirects to /login carrying where the operator was', () => {
+      // A session can expire mid-run, and one did, ~50 minutes into a live
+      // run: the page being watched was replaced by a login screen that had
+      // forgotten where the operator had been.
       window.location.pathname = '/dashboard'
       useAuthStore.setState({ authStatus: 'authenticated' })
       useAuthStore.getState().handleUnauthorized()
-      expect(window.location.href).toBe('/login')
+      expect(window.location.href).toBe('/login?next=%2Fdashboard')
     })
 
     it('does not redirect when already on /login', () => {

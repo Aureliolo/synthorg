@@ -1,36 +1,8 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import type { SettingEntry } from '@/api/types/settings'
+import { makeSettingEntry as makeEntry } from '@/__tests__/helpers/factories'
 import { NamespaceSection } from '@/pages/settings/NamespaceSection'
-
-function makeEntry(
-  overrides: Partial<SettingEntry['definition']> & { value?: string } = {},
-): SettingEntry {
-  const { value = 'v', ...defOverrides } = overrides
-  return {
-    definition: {
-      namespace: 'api',
-      key: 'server_host',
-      type: 'str',
-      default: '127.0.0.1',
-      description: 'Server bind address',
-      group: 'Server',
-      level: 'basic',
-      sensitive: false,
-      compose_set: false,
-      env_var_override: null,
-      enum_values: [],
-      validator_pattern: null,
-      min_value: null,
-      max_value: null,
-      ...defOverrides,
-    },
-    value,
-    source: 'default',
-    updated_at: null,
-  }
-}
 
 const rowProps = {
   dirtyValues: new Map<string, string>(),

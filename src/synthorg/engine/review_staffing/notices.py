@@ -1,11 +1,19 @@
 # module-kind: code
 """What the operator is told when a gate role has nobody holding it.
 
-Two alerts, and they answer different questions on purpose. The standing
+Three alerts, and they answer different questions on purpose. The standing
 gap fires from the cadence and says the org cannot finish anything; the
 hire-waiting one fires once per opened request and says there is something
 to approve. Sending only the second would mean the operator hears nothing
 until a task has already run, been paid for, and stopped.
+
+The third says a hire the operator already approved has been withdrawn
+because it can never be completed. It is the one alert about something the
+org did rather than something it needs, and it exists because the alternative
+was silence: such a request re-fails on every sweep, appears on no dashboard
+page and reaches no notification. It is withdrawn on the FIRST sweep that
+proves it unbindable, since nothing a later one does can change the verdict,
+and this alert is what the operator hears instead of nothing.
 
 Kept beside the reconciler rather than inside it: the reconciler's job is
 deciding what to sweep and what to open, and the copy an operator reads is
@@ -110,6 +118,46 @@ async def notify_hire_waiting(notifications: DispatcherSource, role: str) -> Non
     )
 
 
+async def notify_hire_withdrawn(
+    notifications: DispatcherSource,
+    role: str,
+    *,
+    reason: str,
+) -> None:
+    """Say that an approved hire for *role* was withdrawn as uncompletable.
+
+    Carries the reason verbatim, because the operator's next action depends
+    on which one it is: a request that named no pair needs a model configured
+    for the role, one whose pair is gone needs the connection back or a
+    different pair, and one whose selected candidate is not on it needs the
+    hire opened again rather than anything configured.
+
+    Args:
+        notifications: Late-bound dispatcher source, or ``None`` when
+            notifications are not wired.
+        role: The role the withdrawn hire was for.
+        reason: Why it can never be completed.
+    """
+    await _dispatch(
+        notifications,
+        Notification(
+            category=NotificationCategory.SYSTEM,
+            severity=NotificationSeverity.WARNING,
+            title=NotBlankStr(f"Withdrew the approved hire for {role}"),
+            body=(
+                f"You approved a hire for {role}, and it cannot be completed: "
+                f"{reason} Retrying would have failed the same way on every "
+                "pass, so it has been withdrawn. Nobody holds the role, so "
+                "work needing it still parks. Fix the cause, and a later "
+                "sweep opens a fresh hire IF work is still parked on the "
+                "role; with nothing waiting on it, nothing is opened."
+            ),
+            source=NotBlankStr(ACTOR),
+            metadata={"role": role},
+        ),
+    )
+
+
 async def _dispatch(
     notifications: DispatcherSource, notification: Notification
 ) -> None:
@@ -144,5 +192,6 @@ __all__ = [
     "DispatcherSource",
     "hire_request_reason",
     "notify_hire_waiting",
+    "notify_hire_withdrawn",
     "notify_standing_gap",
 ]

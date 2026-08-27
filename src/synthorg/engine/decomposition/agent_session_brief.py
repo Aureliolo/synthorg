@@ -19,7 +19,11 @@ from synthorg.engine.decomposition.llm_prompt import (
     foundation_lines,
     safe_roles,
 )
-from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
+from synthorg.engine.prompt_safety import (
+    TAG_TASK_DATA,
+    TAG_TOOL_RESULT,
+    wrap_untrusted,
+)
 
 
 def toolkit_lines(granted_tools: tuple[str, ...]) -> tuple[str, ...]:
@@ -74,9 +78,18 @@ def roster_lines(available_roles: tuple[NotBlankStr, ...]) -> tuple[str, ...]:
     )
 
 
-#: Every fence tag :func:`planning_brief` can emit, which is the same set the
-#: single-shot decomposer emits because both share :func:`foundation_lines`.
-PLANNING_SESSION_FENCES: Final[tuple[str, ...]] = DECOMPOSITION_FENCES
+#: Every fence tag a planning SESSION can emit. The brief's own tags are the
+#: single-shot decomposer's, because both share :func:`foundation_lines`, plus
+#: the one the session earns by holding tools: every tool result is fenced
+#: under ``TAG_TOOL_RESULT``, and ``search_memory`` returns knowledge OTHER
+#: agents wrote, so a peer that has been prompt-injected reaches this planner
+#: through it. A tag emitted but not declared is content the model was never
+#: told to distrust, which is the whole point of the tuple. The single-shot
+#: decomposer holds no tools and emits none, so its own set stays as it is.
+PLANNING_SESSION_FENCES: Final[tuple[str, ...]] = (
+    *DECOMPOSITION_FENCES,
+    TAG_TOOL_RESULT,
+)
 
 
 def planning_brief(

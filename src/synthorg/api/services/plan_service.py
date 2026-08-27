@@ -5,9 +5,14 @@ Thin wrapper over :class:`PlanRepository` so callers do not reach into
 ``app_state.persistence.plans`` directly. Owns the plan's lifecycle
 transitions (edit -> new revision, request-changes -> back to draft, and the
 approval-decision sync -> approved/rejected) with uniform ``API_PLAN_*`` audit
-logging, mirroring :class:`ProjectService`. A terminal plan cannot be reworked,
-and every write is version-guarded so a concurrent edit cannot silently clobber
-another.
+logging, mirroring :class:`ProjectService`. A terminal plan cannot be reworked.
+
+Every write that REVISES a plan is version-guarded, so a concurrent edit
+cannot silently clobber another. :meth:`PlanService.record_progress` is
+deliberately not: it stamps how far a running decomposition has got, and the
+decomposition ends by claiming its shell at the version it started from, so a
+guarded stamp would fail the very write it exists to describe. Its condition is
+the plan's STATUS instead, applied at write time.
 """
 
 from pydantic import ValidationError as PydanticValidationError
@@ -23,15 +28,20 @@ from synthorg.api.services.plan_service_deletion import PlanDeletionMixin
 from synthorg.api.services.plan_service_writes import PlanWriteRecorderMixin
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.decomposition_progress import DecompositionProgress
 from synthorg.core.domain_errors import (
     ConflictError,
     ValidationError,
 )
 from synthorg.core.pagination import DEFAULT_PAGE_SIZE
-from synthorg.core.plan import Plan, PlanItem, PlanPremises
+from synthorg.core.plan import (
+    Plan,
+    PlanItem,
+)
 from synthorg.core.plan_enums import (
     PlanStatus,
 )
+from synthorg.core.plan_premises import PlanPremises
 from synthorg.core.plan_transitions import validate_transition
 from synthorg.core.task_enums import CoordinationTopology, TaskStructure
 from synthorg.core.types import NotBlankStr
@@ -431,6 +441,58 @@ class PlanService(PlanWriteRecorderMixin, PlanDeletionMixin):
         """
         await self._repo.create(plan)
         await self._log_transition(None, plan)
+
+    async def record_progress(
+        self, *, parent_task_id: NotBlankStr, progress: DecompositionProgress
+    ) -> Plan | None:
+        """Stamp how far the decomposition writing a plan has got.
+
+        Addressed by the objective task rather than the plan id, because the
+        decomposition never learns which shell was opened for it: it is handed
+        a task and a context, and the shell belongs to the wiring layer that
+        opened it.
+
+        One conditional statement, not a read then a write. The ``PLANNING``
+        condition has to hold when the row is WRITTEN, not when it was read:
+        a plan can be failed under a live decomposition (the recovery sweep
+        does exactly that to a shell it reads as unfillable), and a whole-row
+        write from a snapshot taken before that would revive the plan, clear
+        the reason somebody recorded, and roll the version back over a writer
+        that was relying on it.
+
+        No status moves and no version is asserted. The status is unchanged by
+        construction, so there is no transition for the ledger to carry, and
+        the version must NOT move: the decomposition ends by claiming this
+        shell at the version it started from, so a progress line that bumped
+        it would fail the very write it exists to describe. ``updated_at`` is
+        left alone for the same reason: a progress line is not a revision of
+        the plan, and the snapshot carries its own timestamp.
+
+        A plan that is no longer ``PLANNING`` takes no stamp: the
+        decomposition has already been recorded over the shell by then, and a
+        late report would put a stale in-flight snapshot on a finished plan.
+
+        Args:
+            parent_task_id: The objective the tree is being planned for.
+            progress: How far it has got.
+
+        Returns:
+            The stamped shell, so the caller can announce it to a page holding
+            it open, or ``None`` when nothing took the stamp.
+
+        Raises:
+            QueryError: Repository write failure.
+        """
+        stamped = await self._repo.record_decomposition_progress(
+            parent_task_id, progress=progress
+        )
+        if stamped is None:
+            logger.debug(
+                API_PLAN_UPDATED,
+                parent_task_id=parent_task_id,
+                note="no planning shell took the progress stamp",
+            )
+        return stamped
 
     async def record_decomposed(self, decomposed: Plan, *, shell: Plan | None) -> None:
         """Persist a decomposed plan over its planning shell.

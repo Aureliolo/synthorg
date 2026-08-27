@@ -195,6 +195,18 @@ Breadth spent where depth ran out, without an operator being asked.
 `strategy.plans_any_task()`, and an operator-supplied plan has no session to
 correct.
 
+**The correction is withheld at the width cap**, because asking for breadth
+there is asking for the one thing the level will then be refused for. The gate
+names only per-unit limits and has no access to `max_subtasks`, so a level
+already at the cap that complies produces one unit too many and
+`DecompositionSubtaskLimitError` fails the whole tree: a live run did exactly
+that, complying with an instruction into a refusal, where compliance was fatal
+and non-compliance was rejected and no amount of retrying could resolve it.
+`describe_unsplittable` therefore returns no correction once the plan is at the
+width cap, and the units dispatch under the depth backstop instead. Two owners
+sized the level and the quieter one won fatally; the fix is that only one of
+them now speaks.
+
 Only when the retries are spent does the condition reach the plan, as
 `PlanItem.unsplit_reason`, and it gets there through a typed error rather than
 through the generic one. A child planning session that exhausts its retries on
@@ -236,8 +248,29 @@ number.
 The session budget is the one that stops GRACEFULLY, which is why it exists
 beside the wall-clock ceilings rather than instead of one. Past it no further
 child session is opened, the tree returns what it has, and the units it could
-not split say so. The wall-clock ceiling raises and discards every level
-already paid for.
+not split say so.
+
+**A per-session ceiling bounds one node, so it ends one node.** The ceiling
+exists so a level waiting on a provider that never answers cannot hold the
+tree. Letting its breach propagate does the opposite: it hands every node in a
+deep tree an independent chance to destroy every other node's work. A live run
+spent 39 planning sessions and 1h 48m, reached `sessions_remaining=2` of 40,
+and discarded every level because session 39 ran 599.7s against the 600s
+ceiling while it was in the last-level correction loop.
+
+So a child whose session outruns the ceiling is absorbed by the level that
+asked for it, exactly as a child the planner could not split is: that level
+already holds a valid plan, the unit dispatches carrying
+`SESSION_CEILING_BACKSTOP` as its reason, and the tree survives. The two
+remaining bounds are what stop this buying unbounded time, and neither is
+weakened: the session budget still caps how many ceilings a tree can pay, and
+the whole-tree ceiling still fires as a bare `TimeoutError` that no handler
+absorbs. At the ROOT there is no plan above to carry the unit, so the same
+breach still fails the decomposition and says so.
+
+The whole-tree ceiling remains the one that raises and discards every level
+already paid for, which is why it is set well above a real tree rather than
+at it.
 
 The tree ceiling is not a multiple of the per-session one and cannot be derived
 from the depth cap: sessions scale with the NODE COUNT, which is the branching
@@ -249,8 +282,16 @@ bounds a tree's cost. Two of the four callers are request handlers.
 ### The reported condition
 
 A unit that reached the plan still oversized carries `PlanItem.unsplit_reason`,
-naming the rule that fired, both numbers, and which of the three bounds stopped
-the split. It is written by the projection from what the service recorded, and
+naming the rule that fired, both numbers, and which bound stopped the split.
+The phrasings are kept apart because the remedies differ, and each is a line in
+`atomicity.py` rather than a count stated here: the depth backstop and the tree
+session budget each want their own bound raised; a child session that ran out
+on its own terms names WHICH of its three bounds it hit
+(`SESSION_CEILING_BACKSTOP` wall clock, `TURN_BUDGET_BACKSTOP` turns,
+`SESSION_BUDGET_BACKSTOP` tokens); `STAGNATION_BACKSTOP` says the session
+stopped making progress, which is a defect to fix rather than a bound to
+raise; and `PLANNER_DECLINED` wants a narrower objective because no bound was
+reached at all. It is written by the projection from what the service recorded, and
 it is deliberately ABSENT from `PlanItemPayload`: an operator editing the item
 has just revised it, and a note about the version they replaced describes
 nothing.
@@ -363,6 +404,42 @@ item has children" the way a declared flag would.
 answer: a parent resolves, the parent graph reaches a workstream, and a
 `DECISION` is never a parent (it is chosen rather than decomposed, and dispatch
 strips it, so its children would be orphaned).
+
+### Telling a working tree from a hung one
+
+The tree is persisted ONCE, at the end, which is correct and leaves the plan
+reading `PLANNING` with zero items for the whole run. A live run sat at zero
+for 54 minutes under a page that promised "items appear as they are written",
+and the only way to tell a working decomposition from a hung one was the
+backend log. Everything needed to answer it was in the session ledger already,
+and the ledger knew it only in memory.
+
+`plans.decomposition_progress` carries the answer to the page. It is a
+**snapshot, not a log**: overwritten each time the tree reaches a new node,
+because the question is "where is this now" and the run's own history is the
+event stream's job. It names the sessions spent against the sessions allowed
+(so the number reads as progress rather than a bare count), the deepest level
+reached, the units written so far, and when the snapshot was taken. That last
+field is what distinguishes working from stalled, which is the whole question
+an operator has while the item count reads zero. `NULL` means nothing has been
+reported yet, which is a different claim from a zero snapshot.
+
+The write is deliberately unlike every other plan write. It is ONE conditional
+statement, `UPDATE ... WHERE parent_task_id = ? AND status = 'planning'`,
+because the status is a WRITE condition rather than a read one: a plan can be
+failed under a live decomposition, and a whole-row write from a snapshot taken
+before that would revive it and discard the reason. It asserts no version and
+bumps none, because the decomposition ends by claiming its shell at the version
+it started from; a progress line that moved the version would fail the very
+write it exists to describe. It leaves `updated_at` alone for the same reason:
+this describes a run, it does not revise a plan.
+
+The engine reaches it through `DecompositionProgressReporter`, a one-method
+seam wired at the worker assembly. The service holds no repository, so a
+harness plans without persistence at zero cost, and publishing is allowed to
+fail by contract (`_progress_publish.py`): a reporter that raises is logged and
+dropped, because losing the progress line costs an operator a refresh while
+losing the tree costs the run.
 
 ### Both directions of the projection
 

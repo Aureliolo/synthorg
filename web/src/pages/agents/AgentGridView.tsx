@@ -74,8 +74,11 @@ export function AgentGridView({ agents, className, selectedIds, onToggleSelect }
     return (
       <EmptyState
         icon={Users}
-        title="No agents found"
-        description="Try adjusting your filters or search query."
+        title="No agents yet"
+        // Reached only with an EMPTY roster: the page renders its own
+        // filtered-to-nothing state before this one, so naming filters here
+        // pointed an operator with none set at something they cannot adjust.
+        description="Hire your first agent, or apply an org template, to start staffing the company."
       />
     )
   }

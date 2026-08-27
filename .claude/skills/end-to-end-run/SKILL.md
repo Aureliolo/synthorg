@@ -26,6 +26,9 @@ CLAUDE.md's MANDATORY rules.
 
 Design contract: [initiative-tail.md](../../../docs/design/initiative-tail.md#what-proves-the-tail-ran).
 Operator runbook: [end-to-end-run.md](../../../docs/guides/end-to-end-run.md).
+Prior rounds: [loop-round-log.md](../../../docs/reference/loop-round-log.md),
+which carries the brief verbatim and every round's stop reason. Read it first
+and add this round's row when it stops.
 
 ## What a run must prove
 
@@ -65,9 +68,20 @@ the product.
   a surface this run happens to cross is still a defect this run found. Log it.
   Rounds have surfaced migration, CLI, settings-UI and provider-health defects
   that had nothing to do with the loop.
-- **Record before fixing.** Nothing is fixed while the run is still producing
-  findings. The exception is a **blocker**: a defect that makes the run
-  impossible to continue. Those are fixed first, then the run restarts.
+- **Record before fixing, then FIX.** Nothing is fixed while the run is still
+  producing findings, because a fix mid-stream changes what the rest of the run
+  measures. "Before" is the operative word and it is not a synonym for
+  "instead of": every finding this round produced gets fixed in this round's
+  work. The exception is a **blocker**, a defect that makes the run impossible
+  to continue: those are fixed first, then the run restarts.
+- **Never file an issue without asking.** The findings log is the record and it
+  is enough. An issue is for something that genuinely cannot be fixed in this
+  round's work: a MAJOR piece needing its own design, or a fix that would carry
+  the change past the 300-file ceiling where a PR has to split. Even then, the
+  operator decides **which** findings become issues, **how** they are grouped
+  and **where** they are filed, before a single one is opened. Filing to their
+  repository is an outward-facing act, and a general instruction to record
+  findings is never consent to publish them.
 - **Spend.** No stop rule beyond `budget.run_hard_token_ceiling` and
   `budget.session_token_ceiling`. Confirm with the operator before starting each
   arm.
@@ -78,9 +92,11 @@ the product.
 
 ## The objective
 
-Both arms file the **same** sentence, verbatim:
-
-> I want a tetris game I can play in the browser, with a shared leaderboard.
+Both arms file the **same** sentence, verbatim, and it is stated in exactly one
+place: **[the round log](../../../docs/reference/loop-round-log.md#the-brief)**.
+Read it from there. The log is one table across every round, so a brief that
+drifts between copies silently changes what every number in it means, and a
+second copy here is how that drift starts.
 
 That is the whole brief. Everything else is left for the org to ask:
 
@@ -189,19 +205,29 @@ The interview and the charter panel both live on **`/chat`**; there is no
 
 ### 4. Record, group, then fix
 
-One findings log, appended live. Each entry carries an id, verbatim evidence (log
-line, screenshot path, or row), the module it lives in, and its class: **forcing**
-/ **planning** / **execution** / **observability** / **UX**.
+One findings log, appended live, **held locally and nowhere else** until the
+operator says otherwise. Each entry carries an id, verbatim evidence (log line,
+screenshot path, or row), the module it lives in, and its class: **forcing** /
+**planning** / **execution** / **observability** / **UX**. Every finding lands
+there, including the ones that will obviously be fixed in minutes: the log is
+the round's output, and a fix with no entry behind it is a change nobody can
+trace to a run.
 
 Group by shape before touching code. Rounds have shown twenty symptoms are
 usually a handful of ownership defects, and the two that recur are **a decision
 with two owners where the quieter wins silently** and **a state with no reachable
 exit and nothing watching it**.
 
-Then fix TDD: a failing test per collapse, written against **the invariant that
-broke**, not the run that broke it. A test replaying the round passes for ever
-once that sequence stops happening; a test asserting the invariant fails whenever
-the invariant does.
+Then fix them, in this round, TDD: a failing test per collapse, written against
+**the invariant that broke**, not the run that broke it. A test replaying the
+round passes for ever once that sequence stops happening; a test asserting the
+invariant fails whenever the invariant does.
+
+**The round's job is a working loop, not a backlog.** A finding parked as an
+issue is a finding the next round will hit again, which is how a rule that
+existed to protect the measurement turned into a way of not fixing things. If
+the set of fixes genuinely will not fit one change, that is a scope decision
+for the operator, taken with the whole list in front of them.
 
 ## Driving the dashboard with Chrome
 
@@ -248,9 +274,14 @@ Check these before diagnosing something new.
 
 ## Finishing
 
-The run ends when both claims are evidenced, every collapse is recorded and
-fixed, and the honest arm's deliverable has been handed over in a form the
-operator can open. Then commit, push, and `/pre-pr-review`.
+The run ends when both claims are evidenced, **every finding in the log is
+fixed or explicitly carried by the operator**, and the honest arm's deliverable
+has been handed over in a form the operator can open. Then commit, push, and
+`/pre-pr-review`.
+
+Carried means the operator was shown the finding and chose to ship without it,
+in the form they chose. There is no third state where a defect is "recorded"
+and left.
 
 Close the tracking issue only when a **single** run produced both halves of the
 evidence contract with nothing outstanding. Otherwise the PR references it

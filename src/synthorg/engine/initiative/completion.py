@@ -96,6 +96,11 @@ _PLAN_TO_PROJECT_STATUS: Final[dict[PlanStatus, ProjectStatus]] = {
     PlanStatus.INTEGRATING: ProjectStatus.INTEGRATING,
     PlanStatus.EVALUATING: ProjectStatus.EVALUATING,
     PlanStatus.COMPLETED: ProjectStatus.COMPLETED,
+    # The failure direction, which had the same hole the comment below guards
+    # against: a plan that failed left its project reading PLANNING for ever,
+    # so a dead initiative was indistinguishable from one still being planned
+    # and nothing derived it an exit.
+    PlanStatus.FAILED: ProjectStatus.FAILED,
 }
 
 # The mirror is hand-maintained across three files, so it is checked at import
@@ -109,7 +114,9 @@ if not _PLAN_TO_PROJECT_STATUS.keys() >= TAIL_STATUSES:
 
 #: Project statuses the rollup will not move away from. COMPLETED and
 #: CANCELLED are terminal; ON_HOLD is a deliberate operator pause that the
-#: rollup must not finish work out from under.
+#: rollup must not finish work out from under. FAILED is deliberately ABSENT:
+#: a retry is a fresh plan against the same project, so the project has to be
+#: able to come back, and pinning it would trade one dead end for another.
 _ROLLUP_IMMUTABLE_PROJECT_STATUSES: Final[frozenset[ProjectStatus]] = frozenset(
     {
         ProjectStatus.COMPLETED,

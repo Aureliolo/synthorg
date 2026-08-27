@@ -3,7 +3,7 @@
 
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.budget.category_analytics import OrchestrationRatio
 from synthorg.budget.currency import DEFAULT_CURRENCY
@@ -17,6 +17,11 @@ class AnalyticsAggregation(BaseModel):
         total_calls: Total number of LLM calls recorded.
         success_count: Calls with ``success=True``.
         failure_count: Calls with ``success=False``.
+        unreported_count: Calls carrying no outcome either way
+            (``success=None``), derived so the two counts above and the
+            total can never imply a third number nobody computed.
+        success_rate: Successes over the calls that REPORTED an outcome,
+            or ``None`` when none did.
         retry_count: Calls that had at least one retry
             (``retry_count >= 1``).
         retry_rate: ``retry_count / total_calls``, or ``0.0`` when
@@ -72,6 +77,37 @@ class AnalyticsAggregation(BaseModel):
             "Per finish-reason call counts, sorted alphabetically by reason string."
         ),
     )
+
+    @computed_field
+    @property
+    def unreported_count(self) -> int:
+        """Calls that recorded no outcome either way.
+
+        Returns:
+            ``total_calls`` less the calls that reported one.
+        """
+        return self.total_calls - self.success_count - self.failure_count
+
+    @computed_field
+    @property
+    def success_rate(self) -> float | None:
+        """Successes over the calls that REPORTED an outcome.
+
+        Not over every call. A provider that returns no outcome flag leaves
+        ``success`` unset, and dividing by the total then reports those as
+        failures: a live run showed "40% success rate" beside "0 failures"
+        over 293 calls, none of which had failed, because 177 of them had
+        simply not said. The same page's own per-purpose table, computed over
+        the judged calls, read 100% on every row.
+
+        Returns:
+            The rate in ``[0, 1]``, or ``None`` when nothing reported an
+            outcome, which is a different fact from a rate of zero.
+        """
+        reported = self.success_count + self.failure_count
+        if reported == 0:
+            return None
+        return round(self.success_count / reported, 4)
 
     @model_validator(mode="after")
     def _validate_count_consistency(self) -> Self:

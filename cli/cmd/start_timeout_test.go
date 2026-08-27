@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -184,10 +185,14 @@ func TestWarnIfDependenciesDegraded(t *testing.T) {
 }
 
 // freePortWithStatus starts a readiness stub answering with status and
-// returns its port. With noServer the stub is closed first, so the port is
-// bound by nothing and the probe fails to connect.
+// returns its port. With noServer the port is held by a listener that
+// speaks no HTTP, so the probe's request fails the way a vanished backend
+// makes it fail.
 func freePortWithStatus(t *testing.T, status int, noServer bool) int {
 	t.Helper()
+	if noServer {
+		return mutePort(t)
+	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(status)
 	}))
@@ -201,10 +206,45 @@ func freePortWithStatus(t *testing.T, status int, noServer bool) int {
 		srv.Close()
 		t.Fatalf("could not parse test server port %q: %v", parsed.Port(), err)
 	}
-	if noServer {
-		srv.Close()
-		return port
-	}
 	t.Cleanup(srv.Close)
 	return port
+}
+
+// mutePort holds a port open with a listener that hangs up on every
+// connection, and returns it.
+//
+// Binding a port and closing it to make the probe fail to connect is the
+// obvious shape and it is racy: the port goes back to the OS the moment it
+// closes, and these subtests run in parallel, so a sibling's httptest server
+// can be handed the very port this one just released. The probe then reaches
+// that server, is answered 200, and the case asserting a vanished backend
+// sees a ready one. Windows rebinds a just-closed listening port readily, so
+// that is where it surfaced.
+//
+// Holding the port instead makes the outcome the listener's to decide rather
+// than the scheduler's. Accepting and immediately hanging up gives the client
+// a transport error, which is the branch a vanished backend takes, and no
+// second binder can appear because the port is never free.
+func mutePort(t *testing.T) int {
+	t.Helper()
+	var listenConfig net.ListenConfig
+	listener, err := listenConfig.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("could not bind a port to hold: %v", err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	go func() {
+		for {
+			conn, acceptErr := listener.Accept()
+			if acceptErr != nil {
+				return
+			}
+			_ = conn.Close()
+		}
+	}()
+	addr, ok := listener.Addr().(*net.TCPAddr)
+	if !ok {
+		t.Fatalf("listener address %v is not TCP", listener.Addr())
+	}
+	return addr.Port
 }

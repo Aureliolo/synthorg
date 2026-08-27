@@ -32,10 +32,19 @@ const COLUMNS: readonly string[] = [
   'Success',
 ]
 
-// A call with no system prompt (an embedding) still costs money, so it gets a
-// row rather than being dropped: the table has to sum to the headline total.
+// A call with no system prompt still costs money, so it gets a row rather
+// than being dropped: the table has to sum to the headline total.
+//
+// It is named for what it IS rather than for the field it lacks. A prompt
+// class pins a model to a purpose, and the two kinds of call in this bucket
+// have no such pin by design: an embedding has no system prompt at all, and
+// an agent session runs on the model its AGENT is bound to. In a live run
+// they were the single largest consumer, and "No prompt class" read as
+// missing data on the row that spent the most.
 const PROMPTLESS_KEY = 'no-prompt-class'
-const PROMPTLESS_LABEL = 'No prompt class'
+const PROMPTLESS_LABEL = 'Agent sessions and embeddings'
+const PROMPTLESS_HINT =
+  'Calls with no pinned system prompt: an agent session runs on the model its agent is bound to, and an embedding has no system prompt. Attributed by agent and task rather than by purpose.'
 
 function PromptClassTable({ rows }: { rows: readonly PromptClassBreakdownRow[] }) {
   const ordered = [...rows].sort((a, b) => b.total_cost - a.total_cost)
@@ -60,7 +69,9 @@ function PromptClassTable({ rows }: { rows: readonly PromptClassBreakdownRow[] }
             <tr key={row.prompt_class_id ?? PROMPTLESS_KEY} className="border-t border-border">
               <td className="py-2 pr-4 font-mono text-xs text-foreground">
                 {row.prompt_class_id ?? (
-                  <span className="italic text-muted-foreground">{PROMPTLESS_LABEL}</span>
+                  <span className="italic text-muted-foreground" title={PROMPTLESS_HINT}>
+                    {PROMPTLESS_LABEL}
+                  </span>
                 )}
               </td>
               <td className="py-2 pr-4 text-right text-muted-foreground">

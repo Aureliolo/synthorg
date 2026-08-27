@@ -123,6 +123,23 @@ export function ProjectPlanProgress({ progress, failed = false }: ProjectPlanPro
     return <EmptyProgress failed={failed} />
   }
 
+  // A plan that died before dispatch has no items, so every panel below it
+  // renders empty and the page says nothing about why the initiative stopped.
+  // The failure is the only thing worth reading here.
+  if (progress.plan_status === 'failed' && progress.items.length === 0) {
+    return (
+      <SectionCard title="Plan progress">
+        <EmptyState
+          title="Planning failed"
+          description={
+            progress.plan_failure_reason ??
+            'This initiative had a plan and it failed before any work was dispatched.'
+          }
+        />
+      </SectionCard>
+    )
+  }
+
   const { counts, items } = progress
   const percent = percentComplete(counts.done, counts.total)
 

@@ -10,8 +10,12 @@ function renderWithRouter(ui: React.ReactNode) {
 describe('AgentGridView', () => {
   it('renders empty state when no agents', () => {
     renderWithRouter(<AgentGridView agents={[]} />)
-    expect(screen.getByText('No agents found')).toBeInTheDocument()
-    expect(screen.getByText('Try adjusting your filters or search query.')).toBeInTheDocument()
+    expect(screen.getByText('No agents yet')).toBeInTheDocument()
+    // The page renders its own filtered-to-nothing state before this one, so
+    // this branch means an empty roster and must not name filters: with none
+    // set, "adjust your filters" points at something the operator cannot act
+    // on.
+    expect(screen.queryByText(/filters/i)).not.toBeInTheDocument()
   })
 
   it('renders agent cards when agents provided', () => {

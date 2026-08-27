@@ -6083,9 +6083,13 @@ export type components = {
              * @description datetime with the constraint that the value must have timezone info
              */
             readonly last_active: string | null;
-            readonly status: components["schemas"]["TaskStatus"];
-            /** @description Task being worked */
-            readonly task_id: string;
+            /**
+             * @description Current task status; ``None`` when the run drives no task
+             * @enum {string|null}
+             */
+            readonly status: "created" | "assigned" | "in_progress" | "in_review" | "completed" | "blocked" | "failed" | "interrupted" | "suspended" | "cancelled" | "rejected" | "auth_required" | "awaiting_input" | null;
+            /** @description Task being worked, or ``None`` for a run that is not a task. A decomposition planning session runs as a staffed agent against a real bill and drives no task row: the objective it is planning stays at CREATED until dispatch */
+            readonly task_id: string | null;
             /** @description Title of the task being worked */
             readonly task_title: string | null;
             /** @description Turns recorded so far */
@@ -6412,8 +6416,30 @@ export type components = {
             readonly retry_rate: number;
             /** @description Calls with success=True. */
             readonly success_count: number;
+            /**
+             * @description Successes over the calls that REPORTED an outcome.
+             *
+             *     Not over every call. A provider that returns no outcome flag leaves
+             *     ``success`` unset, and dividing by the total then reports those as
+             *     failures: a live run showed "40% success rate" beside "0 failures"
+             *     over 293 calls, none of which had failed, because 177 of them had
+             *     simply not said. The same page's own per-purpose table, computed over
+             *     the judged calls, read 100% on every row.
+             *
+             *     Returns:
+             *         The rate in ``[0, 1]``, or ``None`` when nothing reported an
+             *         outcome, which is a different fact from a rate of zero.
+             */
+            readonly success_rate: number | null;
             /** @description Total LLM calls recorded. */
             readonly total_calls: number;
+            /**
+             * @description Calls that recorded no outcome either way.
+             *
+             *     Returns:
+             *         ``total_calls`` less the calls that reported one.
+             */
+            readonly unreported_count: number;
         };
         /** AnomalyDetectionResult */
         readonly AnomalyDetectionResult: {
@@ -10405,6 +10431,22 @@ export type components = {
             readonly subtasks: readonly components["schemas"]["SubtaskDefinition"][];
             readonly task_structure: components["schemas"]["TaskStructure"];
         };
+        /** DecompositionProgress */
+        readonly DecompositionProgress: {
+            /** @description Deepest level reached, zero-based */
+            readonly deepest_level: number;
+            /** @description Planning sessions allowed */
+            readonly sessions_limit: number;
+            /** @description Planning sessions consumed */
+            readonly sessions_spent: number;
+            /** @description Subtasks written so far */
+            readonly units_planned: number;
+            /**
+             * Format: date-time
+             * @description datetime with the constraint that the value must have timezone info
+             */
+            readonly updated_at: string;
+        };
         /** DecompositionResult */
         readonly DecompositionResult: {
             /**
@@ -10554,7 +10596,7 @@ export type components = {
              */
             readonly total_runs: number;
             /**
-             * @description True when the in-flight-task query failed; utilization_percent is then a floor, not a measured value.
+             * @description True when either the in-flight-task query or the live agent-state query failed; utilization_percent is then a floor, not a measured value.
              * @default false
              */
             readonly utilization_degraded: boolean;
@@ -10988,7 +11030,7 @@ export type components = {
          *     8xxx = internal.
          * @enum {integer}
          */
-        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 1011 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 | 2031 | 2032 | 2033 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3032 | 3033 | 3034 | 3035 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4007 | 4008 | 4009 | 4010 | 4011 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 4036 | 4037 | 4038 | 4039 | 4040 | 4041 | 4042 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 6009 | 6010 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 7013 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8050 | 8051 | 8052 | 8053 | 8054 | 8055 | 8056 | 8058 | 8059 | 8060 | 8061 | 8062 | 8063;
+        readonly ErrorCode: 1000 | 1001 | 1002 | 1003 | 1004 | 1005 | 1006 | 1007 | 1008 | 1009 | 1010 | 1011 | 2000 | 2001 | 2002 | 2003 | 2004 | 2005 | 2006 | 2007 | 2008 | 2009 | 2010 | 2011 | 2012 | 2013 | 2014 | 2015 | 2017 | 2018 | 2019 | 2020 | 2021 | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 | 2031 | 2032 | 2033 | 3000 | 3001 | 3002 | 3003 | 3004 | 3005 | 3006 | 3007 | 3008 | 3009 | 3010 | 3011 | 3013 | 3014 | 3015 | 3016 | 3017 | 3018 | 3019 | 3020 | 3021 | 3022 | 3023 | 3024 | 3025 | 3026 | 3027 | 3028 | 3029 | 3032 | 3033 | 3034 | 3035 | 4000 | 4001 | 4002 | 4003 | 4004 | 4005 | 4007 | 4008 | 4009 | 4010 | 4011 | 4013 | 4014 | 4015 | 4016 | 4017 | 4018 | 4019 | 4020 | 4021 | 4022 | 4023 | 4024 | 4027 | 4029 | 4030 | 4031 | 4032 | 4033 | 4034 | 4035 | 4036 | 4037 | 4038 | 4039 | 4040 | 4041 | 4042 | 4043 | 5000 | 5001 | 5002 | 5003 | 5004 | 6000 | 6001 | 6002 | 6003 | 6004 | 6005 | 6006 | 6007 | 6008 | 6009 | 6010 | 7000 | 7001 | 7002 | 7003 | 7004 | 7005 | 7006 | 7007 | 7008 | 7009 | 7010 | 7011 | 7012 | 7013 | 8000 | 8001 | 8002 | 8003 | 8004 | 8005 | 8006 | 8007 | 8008 | 8009 | 8010 | 8011 | 8012 | 8013 | 8014 | 8015 | 8016 | 8017 | 8018 | 8019 | 8020 | 8021 | 8022 | 8023 | 8024 | 8025 | 8026 | 8027 | 8028 | 8029 | 8030 | 8031 | 8032 | 8033 | 8034 | 8035 | 8036 | 8037 | 8038 | 8039 | 8040 | 8041 | 8042 | 8043 | 8044 | 8045 | 8046 | 8047 | 8048 | 8050 | 8051 | 8052 | 8053 | 8054 | 8055 | 8056 | 8058 | 8059 | 8060 | 8061 | 8062 | 8063;
         /** ErrorDetail */
         readonly ErrorDetail: {
             readonly detail: string;
@@ -12721,7 +12763,7 @@ export type components = {
         readonly OrgRole: "owner" | "department_admin" | "editor" | "viewer";
         /** OverviewMetrics */
         readonly OverviewMetrics: {
-            /** @description Agents currently executing an in-progress task */
+            /** @description Agents working right now: holding an in-progress task, or running a live session that drives no task (a planning session does) */
             readonly active_agents_count: number;
             /**
              * @description Daily roster size for the last 7 days
@@ -12740,7 +12782,7 @@ export type components = {
              * @default USD
              */
             readonly currency: string;
-            /** @description Employed agents not currently executing a task */
+            /** @description Employed agents not working right now */
             readonly idle_agents_count: number;
             /**
              * @description Daily approval requests raised for the last 7 days
@@ -14312,6 +14354,8 @@ export type components = {
              * @description datetime with the constraint that the value must have timezone info
              */
             readonly created_at: string;
+            /** @description How far the decomposition writing this plan has got, so a PLANNING plan with no items can say whether it is working; None before the first node and on a plan nothing is decomposing */
+            readonly decomposition_progress: components["schemas"]["DecompositionProgress"] | null;
             /** @description Why decomposition failed, set when status is FAILED so the review surface shows a visible reason instead of an empty plan */
             readonly failure_reason: string | null;
             /**
@@ -14668,6 +14712,8 @@ export type components = {
             readonly items: readonly components["schemas"]["ProjectProgressItem"][];
             /** @description What the initiative set out to do */
             readonly objective_title: string | null;
+            /** @description Why the plan failed, when it did */
+            readonly plan_failure_reason: string | null;
             /**
              * Format: uuid
              * @description Plan the project is executing (None before dispatch)
@@ -14820,10 +14866,16 @@ export type components = {
          *     pieces are being assembled, and from one being scored against its
          *     objective: showing all three as ACTIVE would hide the difference between
          *     work in flight and work awaiting a verdict.
+         *
+         *     ``FAILED`` mirrors a plan that could not be delivered at all, and is
+         *     distinct from ``CANCELLED`` because nobody chose it: a live run left a
+         *     project reading ``PLANNING`` for ever behind a plan that had failed, so the
+         *     board went on showing an initiative being planned with nothing behind it.
+         *     Telling that operator their project was cancelled would be a different lie.
          * @default planning
          * @enum {string}
          */
-        readonly ProjectStatus: "planning" | "active" | "integrating" | "evaluating" | "on_hold" | "completed" | "cancelled";
+        readonly ProjectStatus: "planning" | "active" | "integrating" | "evaluating" | "on_hold" | "completed" | "cancelled" | "failed";
         /**
          * PromptClassAlertConfig
          * @description Per-prompt-purpose cost / latency alert thresholds.
@@ -15353,6 +15405,8 @@ export type components = {
             readonly message_bus: boolean | null;
             /** @description Persistence backend healthy (None if not configured) */
             readonly persistence: boolean | null;
+            /** @description Name of the connected persistence backend */
+            readonly persistence_backend: string | null;
             /**
              * @description Worst provider verdict: ok/degraded/down (None if unwired)
              * @enum {string|null}

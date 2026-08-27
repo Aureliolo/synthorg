@@ -121,7 +121,7 @@ class TestCompletion:
         )
 
     async def test_a_stalled_plan_replans_when_a_trigger_is_wired(self) -> None:
-        """Failure is a derived count on the project, never a status."""
+        """A replanned stall leaves the project alone: the plan is still live."""
         trigger = _RecordingReplanTrigger()
         service, backend = await _seed(
             _plan(_item(_ITEM_A), _item(_ITEM_B)),
@@ -144,6 +144,10 @@ class TestCompletion:
         Every outstanding item is dead, so the initiative cannot advance and
         nothing will move it. Parked, it sat in EXECUTING with no work left to
         execute and no later event could repair it.
+
+        The project mirrors it, because a terminally-failed plan cannot flap:
+        a project left reading ACTIVE behind one goes on offering an initiative
+        that nobody is working.
         """
         service, backend = await _seed(
             _plan(_item(_ITEM_A), _item(_ITEM_B)),
@@ -155,7 +159,7 @@ class TestCompletion:
 
         assert await _statuses(backend) == (
             PlanStatus.FAILED,
-            ProjectStatus.ACTIVE,
+            ProjectStatus.FAILED,
         )
         failed = await backend.plans.get(NotBlankStr(sid(_PLAN_ID)))
         assert failed is not None
