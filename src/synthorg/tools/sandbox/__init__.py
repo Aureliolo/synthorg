@@ -7,6 +7,7 @@ from .errors import SandboxError, SandboxStartError, SandboxTimeoutError
 from .factory import (
     build_sandbox_backends,
     cleanup_sandbox_backends,
+    cleanup_tracked_sandbox_backends,
     resolve_sandbox_for_category,
 )
 from .protocol import SandboxBackend
@@ -27,5 +28,6 @@ __all__ = [
     "SubprocessSandboxConfig",
     "build_sandbox_backends",
     "cleanup_sandbox_backends",
+    "cleanup_tracked_sandbox_backends",
     "resolve_sandbox_for_category",
 ]

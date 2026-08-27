@@ -7,6 +7,7 @@ to look up the correct backend for a tool category, and
 """
 
 import asyncio
+import weakref
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
@@ -172,6 +173,25 @@ _SANDBOX_BACKEND_REGISTRY: StrategyRegistry[SandboxBackend] = StrategyRegistry(
 
 _KNOWN_BACKENDS: frozenset[str] = frozenset(_SANDBOX_BACKEND_REGISTRY.names())
 
+#: Every backend this process built, against the name it was built under.
+#:
+#: DERIVED rather than listed, because four call sites build backends
+#: independently and no one of them sees the others: the agent runtime, the
+#: tool factory when it is handed none, the toolsmith wiring and the
+#: self-improvement code applier. Nothing memoises, so a running deployment
+#: holds two or three separate container backends, each with its own warm
+#: container pool. A shutdown draining whichever mapping one owner happened to
+#: keep would reclaim a subset and report it as the whole, and a fifth call
+#: site added later would silently not be covered at all.
+#:
+#: Weakly keyed, so tracking never keeps a backend alive past the owner that
+#: built it. A backend already collected is one whose containers its own
+#: lifecycle strategy released on the way out; holding it here to tear down
+#: later would turn a teardown into a leak of its own.
+_BUILT_BACKENDS: weakref.WeakKeyDictionary[SandboxBackend, str] = (
+    weakref.WeakKeyDictionary()
+)
+
 
 def build_sandbox_backends(
     *,
@@ -227,6 +247,8 @@ def build_sandbox_backends(
         )
         for name in sorted(needed)
     }
+    for name, backend in backends.items():
+        _BUILT_BACKENDS[backend] = name
 
     logger.info(
         SANDBOX_FACTORY_BUILT,
@@ -415,3 +437,35 @@ async def cleanup_sandbox_backends(
                 backend=name,
                 reason="unhandled_exception_during_cleanup",
             )
+
+
+async def cleanup_tracked_sandbox_backends() -> None:
+    """Clean up every backend this process built, whoever built it.
+
+    The entry point a shutdown calls. Its population comes from
+    ``_BUILT_BACKENDS`` rather than from a mapping the caller holds, because no
+    caller holds them all: see that constant for which four sites build them
+    and why a listed population is the wrong shape here.
+
+    What this covers is the window the other two mechanisms leave open.
+    Containers are already released per task by the execution service, and
+    reclaimed at boot by the sandbox-reconciliation subsystem for whatever a
+    previous incarnation left behind. Containers alive when this process stops
+    fall between the two: they survive until a next boot that may never come,
+    because an operator scaling down is not an operator restarting.
+
+    Keys are suffixed with an index because the name alone does not identify a
+    backend here: three of the four sites build one called ``docker``, and a
+    log line naming the third of them ``docker`` says nothing about which.
+
+    Raises:
+        MemoryError: Propagated from a backend's cleanup.
+        RecursionError: Propagated from a backend's cleanup.
+    """
+    tracked = [
+        (f"{name}#{index}", backend)
+        for index, (backend, name) in enumerate(_BUILT_BACKENDS.items())
+    ]
+    if not tracked:
+        return
+    await cleanup_sandbox_backends(backends=dict(tracked))

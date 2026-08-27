@@ -42,6 +42,7 @@ from synthorg.observability.state import ObservabilityStateSlice
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
+from synthorg.tools.sandbox.factory import cleanup_tracked_sandbox_backends
 from synthorg.workers.execution_resume import _RESUME_DRAIN_TIMEOUT_SECONDS
 from synthorg.workers.state import RuntimeStateSlice
 
@@ -111,6 +112,13 @@ _SIMULATION_TASK_DRAIN_OUTER_SECONDS: Final[float] = (
 # block the shutdown window. No-op (returns immediately) when no parallel
 # agent tasks are registered, which is the common case.
 _COOPERATIVE_SHUTDOWN_OUTER_SECONDS: Final[float] = 18.0
+
+# Reclaiming sandbox containers goes through the Docker daemon, and each
+# backend drains its own in-flight commands before it closes the client, so
+# this is not one of the 2.0s passive-service stops. The outer shutdown window
+# clamps every step to what is left of the total, so a budget sized for the
+# work cannot push the sequence past its termination grace.
+_SANDBOX_CLEANUP_SHUTDOWN_SECONDS: Final[float] = 10.0
 
 # Per-service stop budgets for the remaining background services. Passive
 # wake-poll-sleep loops (event-stream hub,
@@ -314,6 +322,19 @@ async def _run_shutdown(  # noqa: PLR0913
     # to are disconnected below, so nothing is stranded mid-write (or leaked as
     # a pending task) at SIGTERM.
     await drain_initiative_tails(app_state)
+    # Reclaim the sandbox containers this process still holds, after every
+    # drain above so an in-flight agent command has finished and the execution
+    # service has run its own per-task release. What remains is what those two
+    # cannot see: a warm container held by a lifecycle strategy between tasks.
+    # The boot reconciliation pass would reclaim it, but only on a next boot,
+    # and an operator scaling down is not an operator restarting.
+    await _try_stop(
+        cleanup_tracked_sandbox_backends(),
+        API_APP_SHUTDOWN,
+        "Failed to reclaim sandbox containers",
+        timeout=_SANDBOX_CLEANUP_SHUTDOWN_SECONDS,
+        service="sandbox_backends",
+    )
     # Cancel any in-flight fine-tune run before the memory teardown below.
     # Nothing else in this teardown reaches it: the run is a background task
     # driving a worker thread through hours of training, so at SIGTERM it

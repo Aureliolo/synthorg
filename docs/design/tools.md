@@ -276,9 +276,23 @@ given call, that single call degrades to ephemeral per-call behaviour while
 the configured strategy stays in force for calls that can resolve an owner. `AgentEngineExecutionService` releases the owner at the
 task boundary (per-task destroys immediately; per-agent starts the grace
 timer so a subsequent task for the same agent within the window re-acquires
-the warm container); `DockerSandbox.cleanup()` destroys all strategy-owned
-containers via `cleanup_all()`. Containers carry the `synthorg.managed=true`
-label so the reconciliation pass reclaims any orphaned on an unclean exit.
+the warm container).
+
+A container is reclaimed at three points, and each covers what the others
+cannot see. The task boundary covers a task. The boot reconciliation pass
+covers a previous incarnation, finding orphans by the `synthorg.managed=true`
+label after an unclean exit. Between them sits the warm container a reuse
+strategy is holding when this process stops, which shutdown reclaims:
+`cleanup_tracked_sandbox_backends()` runs as an ordered step of `_run_shutdown`
+after every agent drain, so an in-flight command has finished and its own
+per-task release has run. Without that step the warm container waits for a next
+boot, and an operator scaling down is not an operator restarting.
+
+Its population is derived rather than listed. Four sites build backends
+independently (the agent runtime, the tool factory when handed none, the
+toolsmith wiring, the self-improvement code applier) and nothing memoises, so
+no owner holds them all; the factory records what it builds, weakly, and the
+shutdown step drains that record.
 
 ## Virtual Desktop & Vision Verification
 
