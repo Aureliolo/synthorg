@@ -95,26 +95,27 @@ unit_cost_ceiling: 5.0
 # cut off at 605,581 tokens, so its requirements left both numerator and
 # denominator over a budget rather than over the work. Read off that curve,
 # "shallow trees lose work" would have been an artefact of this number.
-# The cost is bounded and accepted: a dead unit burns more before it is
-# stopped. Truncation is the commoner failure by far, and unlike a runaway it is
-# invisible in the result: the unit reports its own tests failing, which reads
-# as work that did not land rather than work that was cut off.
+# The cost is bounded and accepted: a dead unit now burns more before it is
+# stopped, and this sits just under what the runaway above reached. Truncation
+# is the commoner failure by far, and unlike a runaway it is invisible in the
+# result: the unit reports its own tests failing, which reads as work that did
+# not land rather than work that was cut off.
 #
-# Raised from 1,500,000 on measurement rather than on taste. A cap-1 smoke cell
-# truncated THREE of its eight leaves at that value, and the clearest of them
-# had run 112 turns with only five tests still failing when it was cut, which
-# is a leaf converging and being stopped rather than a leaf running away. The
-# pilot hit the same ceiling twice in seven leaves, so this is not new; what
-# changed is that a heavier-reasoning executor reaches it more often, and at
-# that rate the ceiling is deciding the measurement instead of bounding it.
+# MEASURED at 3,000,000 and reverted, which is why this number now carries a
+# result rather than a rationale. The argument for doubling was a smoke leaf
+# that had run 112 turns with only five tests still failing when it was cut,
+# read as a leaf converging and being stopped. It was not converging. At
+# 3,000,000 a cap-1 cell ran 976 turns against 254, spent 32.5M tokens against
+# 6.7M, and delivered ZERO of eight leaves against the same tree's two: 4.3x
+# the cost per leaf for a strictly worse outcome, and the held-out oracle read
+# 0/42 either way.
 #
-# Still a real bound: the largest runaway this harness has measured reached
-# 1.58M, so a doubling leaves a wide margin for productive work while stopping
-# a genuinely unbounded unit at twice what one has ever legitimately needed.
-# The cost is accepted and it is not small: Ollama meters usage on TOKENS
-# weighted by model level rather than on requests, so the extra room a rescued
-# leaf uses is charged in full.
-unit_token_ceiling: 3000000
+# The mechanism is that this bounds TOKENS while a leaf spends TURNS: raising
+# it does not let a stuck leaf finish, it lets a stuck leaf keep going. Cap 1
+# fails structurally rather than budgetarily, because one leaf carries a whole
+# subsystem there, so extra room buys thrashing. The recording of that run is
+# kept under `results/ceiling-3m/` as the evidence for this paragraph.
+unit_token_ceiling: 1500000
 # Aborts rather than overruns. A depth sweep's session count is a product of
 # branching factors the manifest cannot predict, and the cost of being wrong
 # about it is spend rather than a wrong answer.
