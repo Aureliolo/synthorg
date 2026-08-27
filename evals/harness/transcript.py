@@ -56,47 +56,95 @@ _COMPLETIONS_PATH: Final[str] = "/chat/completions"
 #: Header naming the encoding applied on the way out, lower-cased by ASGI.
 _CONTENT_ENCODING: Final[bytes] = b"content-encoding"
 
+#: Header carrying the per-session bearer, which is how a request says which
+#: transcript it belongs to.
+_AUTHORIZATION: Final[bytes] = b"authorization"
+
 #: Encodings that carry the body unchanged.
 _IDENTITY_ENCODINGS: Final[frozenset[str]] = frozenset({"", "identity"})
 
 
 class TranscriptRecorder:
-    """Collects one JSONL transcript per bound cell.
+    """Collects one JSONL transcript per session, keyed by that session's bearer.
 
-    Bound and unbound around each repetition by the runner, so a line always
-    belongs to the run that produced it. Unbound, it records nothing: the host
-    serves the same application whether or not anybody is transcribing.
+    Sessions run concurrently, so which transcript a request belongs to is a
+    property of the REQUEST, never of whichever session bound last. A single
+    bound path was the original design, correct while units ran one at a time;
+    at ``--leaf-concurrency 4`` each bind stole the path from whoever held it
+    and each unbind blinded the rest. Measured on one recorded cell: three of
+    eight leaves produced no transcript at all, and one file named for a single
+    leaf held requests from four different units.
+
+    The bearer is the only session identity the ASGI tap can see. It is minted
+    per session and carries the execution id in its claims, but the tap runs
+    ahead of the gateway that verifies it, so the token is matched as an opaque
+    string rather than decoded.
+
+    Unbound, it records nothing: the host serves the same application whether
+    or not anybody is transcribing.
     """
 
     def __init__(self) -> None:
-        """Start unbound, recording nothing."""
-        self._path: Path | None = None
+        """Start with nothing bound, recording nothing."""
+        self._paths: dict[str, Path] = {}
+        self._bearers: dict[str, str] = {}
 
-    def bind(self, path: Path) -> None:
-        """Send subsequent exchanges to *path*.
+    def bind(self, label: str, path: Path) -> None:
+        """Send *label*'s exchanges to *path*.
 
         Args:
+            label: The session's execution id.
             path: JSONL file to append to; parents are created.
         """
         path.parent.mkdir(parents=True, exist_ok=True)
-        self._path = path
+        self._paths[label] = path
 
-    def unbind(self) -> None:
-        """Stop recording until the next bind."""
-        self._path = None
+    def attach(self, bearer: str, label: str) -> None:
+        """Record that *bearer* is how *label*'s requests identify themselves.
 
-    def current_path(self) -> Path | None:
-        """The transcript a request starting now belongs to.
+        Written where the token is minted, which is the one place both facts
+        are in hand. Kept apart from :meth:`bind` because the two are owned by
+        different callers: a session knows which file is its own, and the
+        binder knows which credential it handed that session.
+
+        Args:
+            bearer: The signed gateway token for the session.
+            label: The session's execution id.
+        """
+        self._bearers[bearer] = label
+
+    def unbind(self, label: str) -> None:
+        """Stop recording *label*, and forget the bearer that reached it.
+
+        Args:
+            label: The session's execution id.
+        """
+        self._paths.pop(label, None)
+        for bearer, bound in list(self._bearers.items()):
+            if bound == label:
+                del self._bearers[bearer]
+
+    def path_for(self, bearer: str | None) -> Path | None:
+        """The transcript a request carrying *bearer* belongs to.
 
         Read at the START of an exchange, not at its end: a completion that
-        outlives the repetition that issued it would otherwise be appended to
-        whichever cell happened to be bound when it finished, or dropped
+        outlives the session that issued it would otherwise be appended to
+        whichever session happened to be bound when it finished, or dropped
         entirely if none was. Either way the evidence is silently wrong.
 
+        Args:
+            bearer: The token the request presented, or ``None``.
+
         Returns:
-            The bound path, or ``None`` when nothing is being recorded.
+            The bound path, or ``None`` when this request belongs to no
+            recorded session.
         """
-        return self._path
+        if bearer is None:
+            return None
+        label = self._bearers.get(bearer)
+        if label is None:
+            return None
+        return self._paths.get(label)
 
     @staticmethod
     def write(entry: dict[str, object], path: Path) -> None:
@@ -146,6 +194,27 @@ def _is_completion(scope: Scope) -> bool:
     )
 
 
+def _bearer_of(scope: Scope) -> str | None:
+    """Read the presented bearer out of a raw ASGI scope.
+
+    The tap runs ahead of the gateway that verifies the token, so this matches
+    the credential as an opaque string and never parses it. A request with no
+    bearer belongs to no recorded session, which is the same answer as a
+    request whose session is not being transcribed.
+
+    Returns:
+        The token, or ``None`` when the request presents none.
+    """
+    for name, value in scope.get("headers", ()):
+        if name.lower() != _AUTHORIZATION:
+            continue
+        presented = value.decode("latin-1", errors="replace").strip()
+        scheme, _, token = presented.partition(" ")
+        if scheme.lower() == "bearer" and token:
+            return token.strip()
+    return None
+
+
 def transcribing(app: ASGIApp, recorder: TranscriptRecorder) -> ASGIApp:
     """Wrap *app* so gateway completions are teed to *recorder*.
 
@@ -154,7 +223,7 @@ def transcribing(app: ASGIApp, recorder: TranscriptRecorder) -> ASGIApp:
     """
 
     async def _wrapped(scope: Scope, receive: Receive, send: Send) -> None:
-        path = recorder.current_path() if _is_completion(scope) else None
+        path = recorder.path_for(_bearer_of(scope)) if _is_completion(scope) else None
         if path is None:
             await app(scope, receive, send)
             return

@@ -175,6 +175,12 @@ class HarnessBinder:
             cost_ceiling=binding.cost_ceiling,
             ttl_seconds=_BEARER_TTL_SECONDS,
         )
+        # Told to the transcript tap, which runs ahead of the gateway that
+        # verifies this token and so has no other way to know which session a
+        # request belongs to. Here because this is the one place holding both
+        # the credential and the identity it was minted for.
+        if self.host.transcripts is not None:
+            self.host.transcripts.attach(bearer, binding.execution_id)
         # What the run is authorised to spend, and against which pair. Never
         # the bearer: it is the credential, and this is the one place holding it.
         logger.debug(

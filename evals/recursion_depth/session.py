@@ -850,16 +850,25 @@ async def transcript_scope(deps: SweepDeps, label: str) -> AsyncIterator[None]:
     ``open_session`` would silently record the building and skip the planning,
     which is the half the experiment is about.
 
+    Binds under THIS session's label. Sessions run concurrently, so a recorder
+    holding one current path records whichever session bound last and drops the
+    rest: a live cell produced no transcript at all for three of its eight
+    leaves, and wrote four units' requests into one file.
+
+    Args:
+        deps: The sweep's injected collaborators.
+        label: This session's execution id, which names its transcript.
+
     Yields:
         Nothing; the unbind runs on the way out.
     """
     try:
         if deps.transcripts is not None and deps.transcript_root is not None:
-            deps.transcripts.bind(deps.transcript_root / f"{label}.jsonl")
+            deps.transcripts.bind(label, deps.transcript_root / f"{label}.jsonl")
         yield
     finally:
         if deps.transcripts is not None:
-            deps.transcripts.unbind()
+            deps.transcripts.unbind(label)
 
 
 @contextlib.asynccontextmanager
