@@ -224,6 +224,33 @@ class TestLifecycle:
 
         assert not scratch.exists()
 
+    async def test_a_scratch_tree_from_an_earlier_run_is_discarded(
+        self, tmp_path: Path
+    ) -> None:
+        """Booting onto an inherited scratch database is unrecoverable.
+
+        ``stop()`` removes the tree on every exit the process gets to run, and
+        a hard kill is not one of those. That is precisely the case a resume
+        exists for, and the scratch path is derived from the recording's output
+        directory, so it is the SAME path on the next attempt. The database
+        under it is encrypted with the killed run's own ephemeral bootstrap
+        secrets, so a resume that inherited it would mint a different key and
+        die reading `providers.configs` before replaying a single paid cell.
+        """
+        scratch = tmp_path / "host"
+        scratch.mkdir()
+        stale = scratch / "recursion-depth.db"
+        stale.write_bytes(b"a database no key in this run can read")
+        config = RecordingHostConfig(
+            company_config=recording_company_config(),
+            scratch_dir=scratch,
+            bind_host="127.0.0.1",
+        )
+
+        async with RecordingGatewayHost(config) as started:
+            assert started.port > 0
+            assert not stale.exists()
+
     async def test_stop_is_idempotent(self, tmp_path: Path) -> None:
         # Teardown runs from ``__aexit__`` and again from ``start()``'s own
         # unwind, so the second call has to be a no-op rather than an error
