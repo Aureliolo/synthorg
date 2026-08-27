@@ -607,6 +607,15 @@ def watching(
 ) -> AbstractAsyncContextManager[None]:
     """Report *session* for as long as it stays quiet.
 
+    The ledger it reads is the CELL's, shared with every sibling leaf in
+    flight, so the watch is pointed at this session's own task. Read whole, a
+    session that stopped answering is invisible for as long as any sibling is
+    working, and one quiet cell reports once per concurrent watch under a
+    different label each time.
+
+    A merge and the reviews that follow it run under one task id, so they share
+    a reading. That is what they are: one assembly, taken in sequence.
+
     Args:
         deps: The sweep's collaborators, for the idle threshold and channel.
         session: The open session to watch.
@@ -619,6 +628,7 @@ def watching(
         cell=NotBlankStr(session.label),
         idle_seconds=deps.stall_idle_seconds,
         notify=partial(_forward_stall, deps.on_stall, session.label),
+        task_id=NotBlankStr(session.task_id),
     )
     return watch.watching()
 

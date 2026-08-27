@@ -41,7 +41,12 @@ from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import DecompositionResult
 
-#: Bumping this is a deliberate, breaking change for downstream readers.
+#: Bumping this is a deliberate, breaking change for downstream readers, and
+#: only that: a version is a claim that an artifact written under an earlier one
+#: has NO reading under this model. :class:`DepthSpread` is therefore not a bump,
+#: because its two fields default and every version-3 field means what it did,
+#: so a version-3 report still reads correctly here and a reader written for
+#: version 3 still reads a report written now.
 #:
 #: Version 3 carries BOTH questions rather than one: :class:`DepthPoint` keeps
 #: the fraction of the SPECIFICATION a merged tree satisfies, and
@@ -613,6 +618,106 @@ class SurvivalPoint(BaseModel):
         return self.surviving_claims / self.delivered_claims
 
 
+class DepthSpread(BaseModel):
+    """How much one bucket's repetitions disagreed with each other.
+
+    A model beside the two curves rather than more fields on them, because it
+    answers a question neither can. A curve POOLS a bucket's runs into one
+    fraction, which is the right shape for a rate over work and cannot say
+    whether a low point is one bad draw or three consistent ones. A cap is
+    recorded more than once precisely to answer that, so hiding it defeats the
+    repetitions.
+
+    Both metrics are ranged over the RUNS rather than recomputed from pooled
+    operands, and the figures are stored rather than derived, so a reader
+    cannot take a median over a population the recorder did not use.
+
+    Attributes:
+        depth: The depth this bucket bins, on the same axis its curve uses.
+        arm: Which line the bucket belongs to.
+        cells: How many runs the bucket holds, which is the population behind
+            every figure here.
+        required: The specification's own requirement count, which every run
+            shares. Carried on the row rather than left to the reader so a
+            range renders as what it is without reaching for the provenance.
+        satisfied_min: The fewest specification requirements any run in the
+            bucket satisfied, out of ``required``.
+        satisfied_median: The middle run's count.
+        satisfied_max: The most any run satisfied.
+        survival_min: The lowest leaf-work survival rate among the runs that
+            HAVE one. ``None`` when no run in the bucket does, which is the
+            same absent-point rule :class:`SurvivalPoint` states, applied per
+            run: a run whose delivered leaves claimed nothing has no rate, and
+            folding it in as a zero reports a collapse nobody measured.
+        survival_median: The middle such run's rate, or ``None``.
+        survival_max: The highest, or ``None``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    depth: int = Field(ge=1)
+    arm: Arm
+    cells: int = Field(ge=1)
+    required: int = Field(ge=1)
+    satisfied_min: int = Field(ge=0)
+    satisfied_median: int = Field(ge=0)
+    satisfied_max: int = Field(ge=0)
+    survival_min: float | None = Field(default=None, ge=0.0, le=1.0)
+    survival_median: float | None = Field(default=None, ge=0.0, le=1.0)
+    survival_max: float | None = Field(default=None, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _the_range_is_ordered(self) -> Self:
+        """Reject a range whose ends are the wrong way round.
+
+        Three figures summarising one population can only disagree by being
+        computed from different ones, which is the failure a stored summary has
+        and a derived one does not. Caught here it names the bucket; left
+        alone it reads as a real result.
+
+        Returns:
+            ``self`` when both ranges are ordered.
+
+        Raises:
+            ValueError: A minimum exceeds its median or maximum, one metric
+                reports a rate for some ends of its range and not others, or a
+                run satisfied more than the specification asks for.
+        """
+        if not self.satisfied_min <= self.satisfied_median <= self.satisfied_max:
+            msg = (
+                f"depth {self.depth} {self.arm.value}: satisfied range "
+                f"{self.satisfied_min}..{self.satisfied_median}.."
+                f"{self.satisfied_max} is not ordered"
+            )
+            raise ValueError(msg)
+        if self.satisfied_max > self.required:
+            # The same reading `DepthPoint` refuses, and for the same reason:
+            # both operands derive from one requirement set, so a count past
+            # the denominator means the oracle and the provenance have come
+            # apart about WHICH specification was run.
+            msg = (
+                f"depth {self.depth} {self.arm.value}: a run satisfied "
+                f"{self.satisfied_max} against {self.required} required"
+            )
+            raise ValueError(msg)
+        survival = (self.survival_min, self.survival_median, self.survival_max)
+        present = [value for value in survival if value is not None]
+        if present and len(present) != len(survival):
+            msg = (
+                f"depth {self.depth} {self.arm.value}: survival range "
+                f"{survival} is part-absent; a bucket either holds a run with "
+                f"an attributable rate or it does not"
+            )
+            raise ValueError(msg)
+        if present != sorted(present):
+            msg = (
+                f"depth {self.depth} {self.arm.value}: survival range "
+                f"{survival} is not ordered"
+            )
+            raise ValueError(msg)
+        return self
+
+
 class SpendSource(StrEnum):
     """Where a recording's token column came from.
 
@@ -703,6 +808,12 @@ class RecursionDepthReport(BaseModel):
             adjacent one, and the pair coming apart is the finding.
         survival_by_depth_cap: The same, binned on the cap, beside
             ``by_depth_cap`` for the same reason that one exists.
+        spread_by_achieved_depth: How much each bucket's repetitions disagreed
+            with each other, on the axis ``by_achieved_depth`` uses. The curves
+            pool a bucket's runs, so without this a reader cannot tell one bad
+            draw from a real drop, which is what recording a cap more than once
+            is for.
+        spread_by_depth_cap: The same, binned on the cap.
         achieved_depth_histogram: How many runs reached each depth, per cap.
             Without it a flat right half of the primary curve is unreadable.
         caveats: What a reader must hold in mind, in the report's own words.
@@ -717,6 +828,8 @@ class RecursionDepthReport(BaseModel):
     by_depth_cap: tuple[DepthPoint, ...] = ()
     survival_by_achieved_depth: tuple[SurvivalPoint, ...] = ()
     survival_by_depth_cap: tuple[SurvivalPoint, ...] = ()
+    spread_by_achieved_depth: tuple[DepthSpread, ...] = ()
+    spread_by_depth_cap: tuple[DepthSpread, ...] = ()
     achieved_depth_histogram: dict[str, int] = Field(default_factory=dict)
     caveats: tuple[str, ...] = ()
 
@@ -786,6 +899,7 @@ __all__ = [
     "RECURSION_DEPTH_SCHEMA_VERSION",
     "CellRecord",
     "DepthPoint",
+    "DepthSpread",
     "Provenance",
     "RecursionDepthReport",
     "SpendSource",

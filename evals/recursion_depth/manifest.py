@@ -257,6 +257,17 @@ class RecursionDepthManifest(BaseModel):
             ``max_sessions`` against, because the run that uses its whole cap
             is the expensive one, and the ceiling is what makes being wrong in
             either direction survivable.
+        expected_sessions_per_cell: What ONE cell at each cap is expected to
+            cost, which is a different question from the projection above and
+            answers it for a different consumer. The projection is the
+            worst-case scenario a ceiling is sized against; this is the
+            best available estimate of what a cell will actually cost, and it
+            is what decides whether the sweep STARTS one. Declared from
+            measurement rather than modelled, because the full-tree model
+            answers a figure an order of magnitude high at the deep end and
+            would refuse the deepest cells of every sweep. A cap with a
+            recorded cell is priced from that instead; see
+            :func:`evals.recursion_depth.forecast.estimate_sessions`.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -275,11 +286,35 @@ class RecursionDepthManifest(BaseModel):
     unit_token_ceiling: int = Field(gt=0)
     max_sessions: int = Field(ge=1)
     projected_branching: int = Field(ge=2, le=50)
+    expected_sessions_per_cell: dict[int, int]
+
+    def expected_sessions(self, depth_cap: int) -> int:
+        """What one cell at *depth_cap* is expected to cost, as declared.
+
+        Args:
+            depth_cap: The cap of the cell being priced.
+
+        Returns:
+            The declared session count.
+
+        Raises:
+            KeyError: The cap is not priced. Unreachable for a swept cap,
+                which the validator requires an entry for.
+        """
+        return self.expected_sessions_per_cell[depth_cap]
 
     def projected_sessions(
         self, depth_cap: int, *, branching: int | None = None
     ) -> int:
-        """How many sessions one cell at *depth_cap* is expected to cost.
+        """What a FULL tree at *depth_cap* costs, in sessions.
+
+        The scenario the bill is printed from and ``max_sessions`` is sized
+        against, and deliberately NOT what decides whether a cell is started:
+        the trees this sweep produces branch wide at the top and narrow below
+        (7, then 4.6, then 3.5 per level in a recorded cap-3 tree), so a
+        uniform factor raised to the fourth power answers an order of magnitude
+        high. Used as a refusal threshold it refuses the deepest cell of every
+        sweep. That question is answered by ``expected_sessions_per_cell``.
 
         A cap of ``d`` admits ``d`` levels of PLANNING (a node plans at
         ``current_depth`` 0 through ``d - 1``, since ``has_room`` asks whether
@@ -324,7 +359,7 @@ class RecursionDepthManifest(BaseModel):
 
         Raises:
             ValueError: A depth is outside the sweep's range, is repeated, or
-                has no repetition count.
+                has no repetition count or no expected session cost.
             RecursionDepthJudgeNotIndependentError: The reviewer's binding does
                 not match the independence the manifest claims.
         """
@@ -338,6 +373,22 @@ class RecursionDepthManifest(BaseModel):
         uncounted = [d for d in self.depths if self.repetitions.get(d, 0) < 1]
         if uncounted:
             msg = f"depths with no repetition count: {uncounted}"
+            raise ValueError(msg)
+        # Only the SWEPT depths are required to be priced, exactly as they are
+        # the only ones required to be counted. An entry for a cap the matrix
+        # does not sweep is inert, and that is load-bearing rather than lax:
+        # `narrow` rewrites `depths` and leaves every mapping beside it alone,
+        # so refusing the leftovers would refuse every staged run, which is how
+        # a matrix this size is paid for at all.
+        unpriced = [
+            d for d in self.depths if self.expected_sessions_per_cell.get(d, 0) < 1
+        ]
+        if unpriced:
+            msg = (
+                f"depths with no expected session cost: {unpriced}. A cap the "
+                f"refusal check cannot price is one the sweep enters without "
+                f"knowing whether it can finish it."
+            )
             raise ValueError(msg)
         self._validate_independence()
         return self

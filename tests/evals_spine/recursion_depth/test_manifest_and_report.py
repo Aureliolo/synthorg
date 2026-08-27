@@ -42,7 +42,10 @@ pytestmark = pytest.mark.unit
 
 _RECURSION_DEPTH = Path(__file__).resolve().parents[3] / "evals" / "recursion_depth"
 _COMMITTED_MANIFEST = _RECURSION_DEPTH / "manifest.yaml"
-_COMMITTED_CURVE = _RECURSION_DEPTH / "results" / "depth_curve.json"
+#: Every recording committed under `results/`, current and superseded. A tuple
+#: rather than the generator `rglob` answers, which a second reader would find
+#: already exhausted.
+_COMMITTED_CURVES = tuple((_RECURSION_DEPTH / "results").rglob("depth_curve.json"))
 
 
 def _manifest_payload(**overrides: object) -> dict[str, object]:
@@ -76,6 +79,7 @@ def _manifest_payload(**overrides: object) -> dict[str, object]:
         "unit_token_ceiling": 600000,
         "max_sessions": 100,
         "projected_branching": 4,
+        "expected_sessions_per_cell": {1: 20, 2: 60},
     }
     payload.update(overrides)
     return payload
@@ -123,7 +127,7 @@ class TestTheJudgeMustBeIndependent:
     def test_the_shipped_manifest_loads(self) -> None:
         manifest = load_manifest(_COMMITTED_MANIFEST)
 
-        assert manifest.arms == (Arm.GATED, Arm.UNGATED)
+        assert manifest.arms == (Arm.GATED,)
         assert manifest.reviewer != manifest.executor
 
     def test_an_identical_pair_is_refused(self) -> None:
@@ -298,6 +302,39 @@ class TestTheMatrixIsCoherent:
 
         assert manifest.planned_cells == (1 + 2) * 2
 
+    def test_a_depth_with_no_expected_cost_is_refused(self) -> None:
+        # A cap the refusal check cannot price is one the sweep would enter
+        # without knowing whether it can finish it, which is the whole reason
+        # the check exists.
+        with pytest.raises(ValueError, match="no expected session cost"):
+            RecursionDepthManifest.model_validate(
+                _manifest_payload(expected_sessions_per_cell={1: 20})
+            )
+
+    def test_an_expected_cost_below_one_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="no expected session cost"):
+            RecursionDepthManifest.model_validate(
+                _manifest_payload(expected_sessions_per_cell={1: 20, 2: 0})
+            )
+
+    def test_a_cost_for_an_unswept_cap_is_inert(self) -> None:
+        # Load-bearing rather than lax. `narrow` rewrites `depths` and leaves
+        # the mappings alone, so a validator refusing extra keys would refuse
+        # every staged run, which is how a matrix this size is paid for.
+        manifest = RecursionDepthManifest.model_validate(
+            _manifest_payload(expected_sessions_per_cell={1: 20, 2: 60, 3: 200})
+        )
+
+        assert manifest.expected_sessions(2) == 60
+
+    def test_the_shipped_matrix_is_the_replication_design(self) -> None:
+        manifest = load_manifest(_COMMITTED_MANIFEST)
+
+        assert manifest.depths == (1, 2, 3, 4)
+        assert all(manifest.repetitions[depth] == 3 for depth in manifest.depths)
+        assert manifest.planned_cells == 12
+        assert all(manifest.expected_sessions(depth) >= 1 for depth in manifest.depths)
+
     def test_the_shipped_manifest_names_no_vendor(self) -> None:
         # The product privileges no vendor, and a committed manifest is
         # product surface.
@@ -453,15 +490,20 @@ class TestTheReportRefusesASilentGap:
         with pytest.raises(ValidationError, match="schema version mismatch"):
             RecursionDepthReport.model_validate(payload)
 
-    def test_the_committed_curve_carries_the_current_version(self) -> None:
-        """The shipped artifact is loadable by the code that ships with it.
+    def test_every_committed_curve_carries_the_current_version(self) -> None:
+        """Every shipped artifact is loadable by the code that ships with it.
 
-        The one file a version bump can leave behind is the recording already
-        committed, which nothing else re-validates.
+        The files a version bump can leave behind are the recordings already
+        committed, which nothing else re-validates. Discovered rather than
+        listed, because a superseded recording keeps its directory beside the
+        current one and a hand-written path would check whichever of them the
+        last author remembered.
         """
-        report = load_report(_COMMITTED_CURVE)
+        committed = sorted(_COMMITTED_CURVES)
 
-        assert report.schema_version == RECURSION_DEPTH_SCHEMA_VERSION
+        assert committed
+        for path in committed:
+            assert load_report(path).schema_version == RECURSION_DEPTH_SCHEMA_VERSION
 
     def test_satisfying_more_than_the_spec_asks_is_refused(self) -> None:
         # Now a check that the oracle and the provenance agree about WHICH

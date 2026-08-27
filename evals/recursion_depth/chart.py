@@ -327,14 +327,38 @@ def _absent_note(absent: int) -> str:
     )
 
 
-def _legend(top: float) -> list[str]:
-    """Draw the two-line legend.
+def _recorded_arms(
+    *series: Iterable[DepthPoint | SurvivalPoint],
+) -> tuple[Arm, ...]:
+    """Which arms this recording actually holds points for.
+
+    Read off every panel rather than the primary one alone, so an arm that
+    reached only the survival axis still gets its key.
+
+    Returns:
+        The arms, in the enum's own order so the colours stay stable across
+        recordings.
+    """
+    present = {point.arm for points in series for point in points}
+    return tuple(arm for arm in Arm if arm in present)
+
+
+def _legend(top: float, arms: tuple[Arm, ...]) -> list[str]:
+    """Draw one entry per arm that RAN, plus the faint cap-curve entry.
+
+    Derived from the recording rather than from ``Arm``'s members, because a
+    matrix may declare one arm: a legend naming a line the chart does not draw
+    reads as an arm that scored nothing rather than one that was not run.
+
+    Args:
+        top: Where the legend row sits.
+        arms: The arms with points on the chart, in a stable order.
 
     Returns:
         The SVG fragments.
     """
     parts: list[str] = []
-    for index, arm in enumerate(Arm):
+    for index, arm in enumerate(arms):
         colour, dash = _ARM_STYLE[arm]
         dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
         x = _MARGIN_LEFT + index * 200
@@ -347,7 +371,7 @@ def _legend(top: float) -> list[str]:
             f'<text class="legend" x="{x + 36}" y="{top + 4:.1f}">'
             f"{_escape(label)}</text>"
         )
-    faint_x = _MARGIN_LEFT + len(Arm) * 200
+    faint_x = _MARGIN_LEFT + len(arms) * 200
     parts.append(
         f'<line class="series secondary" x1="{faint_x}" y1="{top:.1f}" '
         f'x2="{faint_x + 28}" y2="{top:.1f}" stroke="var(--fg)"/>'
@@ -419,7 +443,7 @@ def render_chart(
             "depth reached (levels of decomposition)</text>"
         ),
         *_cost_panel(costs, xs),
-        *_legend(legend_top),
+        *_legend(legend_top, _recorded_arms(points, by_cap, survival)),
     ]
     body.extend(
         f'<text class="caption" x="{_MARGIN_LEFT}" '

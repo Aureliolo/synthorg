@@ -205,6 +205,22 @@ class TestPlanMode:
         assert "at least" not in plan
         assert str(manifest.max_sessions) in plan
 
+    def test_it_names_the_figure_that_decides_whether_a_cell_starts(self) -> None:
+        """Both halves of the cost model, because they answer different things.
+
+        The full-tree projection is what a ceiling is sized against; the
+        declared per-cell cost is what the sweep refuses a cell on. An operator
+        reading only the first cannot tell whether the deepest cell will be
+        entered at all, which is the one that carries the whole matrix.
+        """
+        manifest = load_manifest(_MANIFEST)
+
+        plan = describe_plan(manifest, _spec())
+
+        assert "expected" in plan
+        for depth in manifest.depths:
+            assert f"cap {depth}: {manifest.expected_sessions(depth):,}/cell" in plan
+
     def test_the_projection_is_derived_from_the_tree_each_cap_admits(self) -> None:
         """The whole tree is counted, not summarised as a sentence about it.
 
@@ -260,10 +276,12 @@ class TestPlanMode:
 
     def test_it_states_the_equal_attempt_budget(self) -> None:
         # Repair only in the gated arm would let it win by spending more, so
-        # the operator reading the plan is told the budget is shared.
+        # the operator reading the plan is told the budget is shared. Stated
+        # even for a single-arm matrix, because the figure is what makes the
+        # first run's arm comparison readable beside this one.
         plan = describe_plan(load_manifest(_MANIFEST), _spec())
 
-        assert "the SAME in both arms" in plan
+        assert "the SAME in every arm" in plan
 
     def test_it_states_a_token_bound_the_money_bound_cannot_give(self) -> None:
         # A flat-rate connection attributes 0.0 to every call, so the money
@@ -283,6 +301,18 @@ class TestPlanMode:
 
         assert "CAVEAT" not in plan
 
+    def test_the_shipped_ceiling_covers_the_shipped_matrix(self) -> None:
+        """The one property an operator must not have to work out themselves.
+
+        The ceiling is chosen against the full-tree projection, so the two
+        agreeing is a design decision rather than a coincidence, and it stops
+        being true silently: raising a repetition count or adding a cap moves
+        the projection and nothing moves the ceiling.
+        """
+        plan = describe_plan(load_manifest(_MANIFEST), _spec())
+
+        assert "SHORTFALL" not in plan
+
     def test_a_matrix_the_ceiling_cannot_pay_for_says_so(self) -> None:
         """The comparison is done for the reader, on the one screen it matters.
 
@@ -292,16 +322,16 @@ class TestPlanMode:
         reading, and it bought a whole planned tree, six built units and no
         measurement at all.
         """
-        manifest = load_manifest(_MANIFEST)
+        starved = narrow(load_manifest(_MANIFEST), None, 200)
 
-        plan = describe_plan(manifest, _spec())
+        plan = describe_plan(starved, _spec())
 
         assert "SHORTFALL" in plan
-        assert f"{manifest.max_sessions:,}" in plan
+        assert f"{starved.max_sessions:,}" in plan
         # And which of the caps the ceiling actually reaches, because "narrow
         # --depths" is only actionable once the operator knows how far.
-        assert "caps 1, 2, 3 fit" in plan
-        assert "stop inside cap 4" in plan
+        assert "caps 1, 2 fit" in plan
+        assert "stop inside cap 3" in plan
 
     def test_the_stopping_cap_is_one_the_sweep_actually_runs(self) -> None:
         """`--depths` may be non-contiguous, and the note names a SWEPT cap.
@@ -311,13 +341,13 @@ class TestPlanMode:
         never planned, an operator narrows against a number that means
         nothing.
         """
-        gapped = narrow(load_manifest(_MANIFEST), "1,2,3,5")
+        gapped = narrow(load_manifest(_MANIFEST), "1,2,4", 200)
 
         plan = describe_plan(gapped, _spec())
 
-        assert "caps 1, 2, 3 fit" in plan
-        assert "stop inside cap 5" in plan
-        assert "cap 4" not in plan
+        assert "caps 1, 2 fit" in plan
+        assert "stop inside cap 4" in plan
+        assert "cap 3" not in plan
 
     def test_a_ceiling_that_covers_the_matrix_stays_quiet(self) -> None:
         # The note is a warning, not a running commentary: printed always, it
@@ -418,8 +448,10 @@ class TestStaging:
 
         plan = describe_plan(narrowed, _spec())
 
+        shipped = load_manifest(_MANIFEST)
+
         assert narrowed.max_sessions == 30
-        assert "3000 sessions" not in plan
+        assert f"{shipped.max_sessions} sessions" not in plan
         assert "30 sessions" in plan
 
     def test_max_sessions_survives_a_depth_narrowing(self) -> None:
@@ -433,6 +465,19 @@ class TestStaging:
         # reads as a measured zero.
         with pytest.raises(ValueError, match="does not carry"):
             narrow(load_manifest(_MANIFEST), "1,4,9")
+
+    def test_narrowing_leaves_the_unswept_caps_priced(self) -> None:
+        """A stage keeps the costs of the caps it is not running.
+
+        `narrow` rewrites `depths` and touches no mapping beside it, so the
+        expected costs for caps 3 and 4 outlive a stage that records 1 and 2.
+        A validator refusing that would refuse every staged run, which is how
+        a matrix this size is paid for at all.
+        """
+        narrowed = narrow(load_manifest(_MANIFEST), "1,2")
+
+        assert narrowed.depths == (1, 2)
+        assert narrowed.expected_sessions(4) >= 1
 
 
 class TestTradingRepetitionsForASchedule:
@@ -452,7 +497,7 @@ class TestTradingRepetitionsForASchedule:
         narrowed = narrow(shipped, None, None, "4:1")
 
         assert narrowed.repetitions[4] == 1
-        for cap in (1, 2, 3, 5, 6):
+        for cap in (1, 2, 3):
             assert narrowed.repetitions[cap] == shipped.repetitions[cap]
 
     def test_it_reaches_the_plan_the_operator_reads(self) -> None:

@@ -1458,6 +1458,9 @@ def _manifest(**overrides: object) -> RecursionDepthManifest:
         "unit_token_ceiling": 1000,
         "max_sessions": 100,
         "projected_branching": 4,
+        # Every cap the fixture's callers sweep, since a swept cap must be
+        # priced and an unswept entry is inert.
+        "expected_sessions_per_cell": {1: 10, 2: 20, 3: 30},
     }
     payload.update(overrides)
     return RecursionDepthManifest.model_validate(payload)

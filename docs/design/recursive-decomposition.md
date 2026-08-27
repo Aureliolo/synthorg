@@ -504,11 +504,14 @@ names the plan's WORKSTREAMS rather than every leaf in the tree.
 
 ## The experiment
 
-`evals/recursion_depth/` sweeps the depth cap with the merge gate on and with
-it off, and emits one chart: the fraction of the specification a merged tree
-satisfies, against the depth that tree actually reached, one line per arm, with
-a cost panel beside it. That axis is not the one the question asks for, and
-[The metric](#the-metric) below says why it stands in.
+`evals/recursion_depth/` sweeps the depth cap and emits one chart: the fraction
+of the specification a merged tree satisfies, against the depth that tree
+actually reached, with a cost panel beside it. That axis is not the one the
+question asks for, and [The metric](#the-metric) below says why it stands in.
+
+The committed matrix records caps 1 to 4, three repetitions each, one arm. The
+harness still supports two, and the first recording used both; what changed and
+why is in [The gate](#the-gate).
 
 Run `make recursion-depth` to print the matrix and the bill without spending
 anything, and `make recursion-depth-record` to measure for real.
@@ -545,10 +548,10 @@ specification, and:
         | requirements the specification defines |
 ```
 
-The denominator is fixed at 42 for every cell, so every run produces a point
-and the two arms are comparable at every depth, including where a cell's leaves
-all failed. `DepthPoint.fraction` sums both operands per `(depth, arm)` bucket.
-What it does not say is where the work came from.
+The denominator is fixed at 42 for every cell, so every run produces a point,
+including where a cell's leaves all failed. `DepthPoint.fraction` sums both
+operands per `(depth, arm)` bucket. What it does not say is where the work came
+from.
 
 **SURVIVAL.** The question the programme was built around:
 
@@ -591,6 +594,17 @@ number on the specification curve and different numbers on the survival one.
 Every emitted artefact carries `METRIC_CAVEAT` stating both, because the chart
 and the JSON travel without this page.
 
+**What the repetitions buy.** Both curves POOL a bucket's runs into one
+fraction. That is the right shape for a rate over work and it cannot say
+whether a low point is one bad draw or a real drop, which is the entire reason
+a cap is recorded three times. So `DepthSpread` reports each bucket's range and
+its middle run per metric, and `depth_curve.md` also lists every cell on its
+own row. The middle is the LOW median, so it is always a figure some run
+actually recorded rather than one describing neither of two. The absent-point
+rule applies per RUN there: a run whose delivered leaves claimed nothing has no
+survival rate and is left out of the range rather than folded in as a zero,
+which would report a collapse nobody measured.
+
 ### What delivery is decided by, and what it is not
 
 Delivery is a question about the AGENT's work, so it is decided by what the run
@@ -626,44 +640,62 @@ means "nothing went there".
 
 So the primary curve bins each leaf on **its own level**, the cap curve is
 reported beside it, and the achieved-depth histogram is split per arm, because
-each arm plans its own tree and two arms compared at a depth only one of them
+an arm plans its own trees and two arms compared at a depth only one of them
 reached is two experiments on one axis.
 
-### The two arms
+### The gate
 
-The **gated** arm calls `CompletionOracleGateService.evaluate` unchanged. The
-harness supplies the engine the reviewer runs on and nothing else: selection,
-the exclusion of the executor, the narrowed review session, the fail-closed
-escalation and the verdict's attribution all stay the product's. A rejection
-feeds its findings into a repair attempt.
+Every merge in the committed matrix calls `CompletionOracleGateService.evaluate`
+unchanged. The harness supplies the engine the reviewer runs on and nothing
+else: selection, the exclusion of the executor, the narrowed review session, the
+fail-closed escalation and the verdict's attribution all stay the product's. A
+rejection feeds its findings into a repair attempt.
 
 What the harness does change is which tree the reviewer is pointed at: it gets
 a **detached copy**, and the graded tree is the original. The gate prompt
 requires a disconfirming command, so the reviewer holds the terminal tool
 whatever its file tools allow, and a reviewer able to touch the tree it judges
-could repair the work under review. That repair would land in the arm whose
-independence is the entire measurement, and the gated line would be crediting
-gating for work the gate itself did.
-
-The **ungated** arm spends the identical number of attempts with nobody
-independent in the loop: a self-review by the agent that just did the merge,
-whose output no verdict is taken from. That is the honest control, because the
-gated arm is being credited with **independence** rather than effort, and an
-arm that simply spent less would win or lose on spend. The gated arm stops
-early on an approval, so it can only ever spend less: a survival gap in its
-favour is not one it bought.
-
-Both arms leave leaf-level verification untouched, so the difference between
-them is attributable to gating the aggregation rather than to leaf quality.
+could repair the work under review, which would credit gating for work the gate
+itself did.
 
 An escalation is recorded, never resolved. There is no human in a sweep, so the
-merge stands and the parked count travels with the chart: a gated line resting
-on unresolved escalations is a different claim from one resting on verdicts.
+merge stands and the parked count travels with the chart: a line resting on
+unresolved escalations is a different claim from one resting on verdicts.
+
+**Why one arm.** The harness still ships the `ungated` arm, which spends the
+identical attempt budget with nobody independent in the loop: a self-review by
+the agent that just did the merge, whose output no verdict is taken from. It is
+the honest control for crediting the gate with **independence** rather than
+effort, and the first recording ran both.
+
+It is not in the committed matrix, and the reason is what the first recording
+could and could not support. The arm difference there was 36 against 35 and 36
+against 33 at one repetition each, with the arms on **different trees** (58
+leaves against 43, then 38 against 30): inside the noise, indistinguishable
+from zero and equally impossible to rule out as substantial. Fixing that needs
+either a shared tree, which leaves the two arms' spend impossible to compare
+while spend is the check on the whole result, or enough repetitions to
+average the tree draw
+out, which doubles a bill that already runs to hundreds of sessions per cell.
+
+Gating is not the binding question. Replication is, and depth 4 is where ARIES
+puts the blow-up, so halving the arms is what pays for both. It also dissolves
+the paired-tree confound rather than requiring a fix for it: with one arm there
+is no arm comparison left to confound. The gated arm survives because the
+shipped product gates every merge, so the curve describes the product's own
+behaviour rather than a configuration nobody runs, and because it is not the
+dearer arm (3.05 merge attempts against 6.00, since an ungated merge has no
+verdict to stop on and always burns its whole budget).
+
+Leaf-level verification is untouched either way, so what the recorded curve
+measures is depth under the product's own aggregation.
 
 ### The judge is checked, not assumed
 
-The gate is the treatment, so a judge sharing the executor's `(provider,
-model)` pair biases straight toward the null. The manifest declares an
+A judge sharing the executor's `(provider, model)` pair biases straight toward
+the null, which matters whether or not an ungated arm is being compared against:
+the recorded curve is what a gated merge produced, and a gate whose reviewer is
+the executor is not a gate. The manifest declares an
 independence class and the loader refuses a manifest whose pairs do not match
 what it claims; identical pairs are refused outright. Under `same_family`
 every artifact carries the caveat on its face.
@@ -681,8 +713,8 @@ Each pair also declares its capability rung, and family is declared beside it
 for the same reason. The capability registry grades a pair from a catalogue that
 knows nothing about a placeholder id, and selection refuses an ungraded pair
 outright, so a roster built from a manifest that did not say would leave every
-review unstaffed and the gated arm would record escalations rather than
-verdicts. A placeholder id has no discoverable family either.
+review unstaffed and the sweep would record escalations rather than verdicts. A
+placeholder id has no discoverable family either.
 
 Because the manifest ships placeholders, a company config decides which real
 models answer them, which makes family a fact with two owners: the manifest's
@@ -736,10 +768,12 @@ cap costs its branching to the POWER of its depth: one repetition fewer at the
 deepest cap buys back more time than any other single change, and the shallow
 end is nearly free either way. It takes `CAP:COUNT` pairs and changes only the
 caps named. Per run rather than by editing the file, because the committed
-counts are the experimental DESIGN (samples concentrated where the transition is
-expected, which is why caps 3 to 5 carry three each), and an operator trading one
-of them for a schedule should not leave the next reader inheriting a quota
-window as if it were an intended design. All three levers are folded into the
+counts are the experimental DESIGN (three at every cap, so per-depth spread is
+reportable everywhere rather than only where the transition is expected), and an
+operator trading one of them for a schedule should not leave the next reader
+inheriting a quota window as if it were an intended design: a cap dropped to one
+repetition reports a range of one draw, which is the thing the design exists to
+avoid. All three levers are folded into the
 manifest OBJECT and none touches the manifest FILE, which is what the journal's
 identity pins, so none of them turns a resumable matrix into a foreign one. A
 COMMIT does, because the identity pins that too, and that is the constraint that
@@ -792,7 +826,7 @@ stopped with **zero cells measured**, which is the whole failure mode
 `RecursionDepthManifest.projected_sessions` states the model instead: at a
 declared `projected_branching` of `b`, a cap of `d` holds `b ** d` leaves and
 `(b ** d - 1) / (b - 1)` nodes that planned, each of which also assembles, and
-an assembly is two sessions (the merge and its review, in both arms). The
+an assembly is two sessions (the merge and its review, in every arm). The
 branching is declared in the manifest and PRINTED beside the figure it produces,
 because a model whose input is hidden reads as a measurement, and it is rounded
 DOWN from what a real tree showed (85 leaves over 25 planning nodes at cap 3
@@ -807,6 +841,40 @@ ceiling against, since the run that uses its whole cap is the expensive one.
 `max_sessions` is what makes being wrong in either direction survivable: set it
 too low and the sweep stops early with a caveat, which is the outcome this
 whole section exists to keep survivable.
+
+#### Sizing a ceiling and starting a cell are different questions
+
+The ceiling books sessions AFTER they run, so on its own it can only stop a
+sweep that has already overrun. A cell entered without the budget to finish it
+spends everything left, records no `achieved_depth` and enters no curve: the
+measurement is lost either way and the spend goes with it. `_refused_on_budget`
+is what makes that recoverable, declining to START such a cell so the sweep can
+be resumed against a raised ceiling with every finished cell replayed free.
+
+It cannot use the projection to decide that, and the reason is the tree's shape.
+`b ** d` assumes UNIFORM branching, and these trees branch wide at the top and
+narrow below: the recorded cap-3 tree split 7 ways at the root, 4.6 ways at
+level 1 and 3.5 ways at level 2. So the widest factor any recorded cell shows is
+the ROOT's, and a forecast that substituted it (7, from a cap-1 cell holding 7
+leaves over one level) answered **3,601** sessions for a cap-4 cell whose real
+cost is near 300. Used as a refusal threshold that number refuses the deepest
+cell of every sweep, which is the one the whole matrix is paid for.
+
+So the manifest declares both, and each answers one question:
+
+| Field | Answers | Read by |
+|---|---|---|
+| `projected_branching` | what a FULL tree costs at each cap, the expensive scenario | the plan print, and through it whoever sizes `max_sessions` |
+| `expected_sessions_per_cell` | what ONE cell at each cap is expected to actually cost | `estimate_sessions`, which refuses a cell the remaining budget cannot finish |
+
+`estimate_sessions` prefers a MEASUREMENT of the same cap over the declaration,
+because the matrix repeats caps: once one cap-3 cell has run, what a cap-3 cell
+costs is known rather than modelled, and the costliest such run is taken. The
+declared figures still err HIGH, since refusing a cell that would have fit costs
+one measurement while entering one that does not fit costs that measurement and
+the spend; what changed is that the margin is a figure an operator sized from
+measurement rather than an artefact of the wrong tree shape. Both are printed by
+`make recursion-depth`, beside the ceiling, and beside each other.
 
 Once a journal exists the manifest is frozen, so this figure is chosen once. The
 journal header pins the manifest digest along with the commit, the spec, both
@@ -830,9 +898,14 @@ nothing but its turn cap. Tokens are counted on every provider, so the plan
 states the token bound as the one that holds without the reader first knowing
 how they are billed.
 
-Repetitions are concentrated rather than uniform. Depths 1 and 2 are expected
-flat and are cheap; the transition ARIES reports sits at 3 to 4, which is where
-samples are worth paying for.
+Repetitions are uniform at three, and that is a change from the first recording,
+which ran one per cell and concentrated its planned repetitions at the deep end.
+Spread is only reportable where there is a population, so a matrix that repeats
+only the caps it expects to be interesting cannot say whether the flat ones are
+flat or merely too thinly sampled to tell. Uniform costs little: the shallow end
+is nearly
+free (a cap-1 cell is 14 sessions against a cap-3 cell's 135) and it is what
+makes every point on the axis readable the same way.
 
 ### Preflight
 
@@ -873,12 +946,17 @@ explored, not with how badly a run went.
 
 ## What the sweep measured
 
-`evals/recursion_depth/results/` holds the recording: `chart.svg`,
+The figures below are the PILOT: six cells, caps 1 to 3, one repetition each,
+both arms. It is superseded by the depth-4 replication the committed matrix now
+describes, and this section is rewritten from that recording when it lands.
+
+`evals/recursion_depth/results/pilot/` holds it: `chart.svg`,
 `depth_curve.json` and `depth_curve.md`, beside the `cells.jsonl` and
 `progress.jsonl` the run journalled as it went, plus the `cells.raw.jsonl` the
 first of those replaced when its per-call spend repair became the recording's
-own ledger. Six cells, caps 1 to 3, one repetition each, both arms, 240 units
-across 482 agent sessions, no cell unavailable.
+own ledger. 240 units across 482 agent sessions, no cell unavailable. It is
+re-scorable in place with
+`--rescore --out-dir evals/recursion_depth/results/pilot`.
 
 | achieved depth | gated | ungated |
 |---|---|---|
@@ -968,8 +1046,12 @@ compared.
 
 Caps 4 to 6. ARIES puts the transition at 3 to 4, so the depth where the
 literature expects a blow-up is exactly the one beyond this recording: the
-chart's right end is absent rather than flat. Replication and depth 4 are
-tracked in the issues that succeeded this work.
+chart's right end is absent rather than flat.
+
+That is what the committed matrix now records: caps 1 to 4, three repetitions
+each, one arm. It answers the two things this recording could not support, and
+takes the arm comparison off the table to pay for them. What it will not answer
+is the arm question, which stands where this recording left it.
 
 ### What the run keeps
 

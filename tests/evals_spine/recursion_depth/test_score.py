@@ -15,6 +15,8 @@ from evals.recursion_depth.score import (
     achieved_depth_histogram,
     curve_by_achieved_depth,
     curve_by_depth_cap,
+    spread_by_achieved_depth,
+    spread_by_depth_cap,
     survival_by_achieved_depth,
     survival_by_depth_cap,
 )
@@ -662,3 +664,126 @@ class TestArmsAndCost:
             curve_by_achieved_depth((unavailable,), requirement_count=_REQUIRED) == ()
         )
         assert achieved_depth_histogram((unavailable,)) == {}
+
+
+class TestPerDepthSpread:
+    """Three repetitions exist to show variance, so the variance is reported.
+
+    The curves POOL a bucket's repetitions into one fraction, which is the
+    right shape for a rate over work and says nothing about whether a low point
+    is one bad draw or three consistent ones. That question is the whole reason
+    a cap is recorded more than once, so it gets its own view rather than
+    being left for a reader to reconstruct from `cells`.
+    """
+
+    def _three(self) -> tuple[CellRecord, ...]:
+        """Three runs of one cap, scoring 1, 2 and 4 of four requirements.
+
+        Returns:
+            The cells.
+        """
+        return tuple(
+            _cell(
+                cap=3,
+                achieved=3,
+                repetition=index,
+                units=(_leaf(f"a{index}", depth=2, claimed=("R01", "R02")),),
+                passing=passing,
+            )
+            for index, passing in enumerate(
+                [("R01",), ("R01", "R02"), ("R01", "R02", "R03", "R04")]
+            )
+        )
+
+    def test_a_bucket_reports_its_range_rather_than_its_sum(self) -> None:
+        spread = spread_by_achieved_depth(self._three(), requirement_count=_REQUIRED)[0]
+
+        assert spread.depth == 3
+        assert spread.cells == 3
+        assert (spread.satisfied_min, spread.satisfied_median) == (1, 2)
+        assert spread.satisfied_max == 4
+
+    def test_survival_is_ranged_per_run_rather_than_pooled(self) -> None:
+        spread = spread_by_achieved_depth(self._three(), requirement_count=_REQUIRED)[0]
+
+        # Each run claimed R01 and R02 through one delivered leaf, so the three
+        # survival rates are 1 of 2, 2 of 2 and 2 of 2.
+        assert spread.survival_min == pytest.approx(0.5)
+        assert spread.survival_median == pytest.approx(1.0)
+        assert spread.survival_max == pytest.approx(1.0)
+
+    def test_a_run_with_no_attributable_work_is_absent_from_the_range(self) -> None:
+        # The absent-point rule, applied per RUN rather than per bucket: a run
+        # whose delivered leaves claimed nothing has no rate, and folding it in
+        # as a zero would report a collapse that was never measured.
+        nothing_claimed = _cell(
+            cap=3,
+            achieved=3,
+            repetition=3,
+            units=(_leaf("b", depth=2, claimed=("R01",), delivered=False),),
+            passing=(),
+        )
+
+        spread = spread_by_achieved_depth(
+            (*self._three(), nothing_claimed), requirement_count=_REQUIRED
+        )[0]
+
+        assert spread.cells == 4
+        assert spread.survival_min == pytest.approx(0.5)
+        assert spread.satisfied_min == 0
+
+    def test_a_bucket_where_nothing_was_attributable_has_no_range(self) -> None:
+        nothing_claimed = _cell(
+            cap=3,
+            achieved=3,
+            units=(_leaf("b", depth=2, claimed=("R01",), delivered=False),),
+            passing=(),
+        )
+
+        spread = spread_by_achieved_depth(
+            (nothing_claimed,), requirement_count=_REQUIRED
+        )[0]
+
+        assert spread.survival_min is None
+        assert spread.survival_median is None
+        assert spread.survival_max is None
+
+    def test_it_bins_on_the_same_seam_as_the_curves(self) -> None:
+        cells = self._three()
+
+        point = curve_by_achieved_depth(cells, requirement_count=_REQUIRED)[0]
+        spread = spread_by_achieved_depth(cells, requirement_count=_REQUIRED)[0]
+
+        assert (spread.depth, spread.arm, spread.cells) == (
+            point.depth,
+            point.arm,
+            point.cells,
+        )
+
+    def test_the_cap_view_bins_on_the_cap(self) -> None:
+        shallow = _cell(
+            cap=4,
+            achieved=2,
+            units=(_leaf("a", depth=1, claimed=("R01",)),),
+            passing=("R01",),
+        )
+
+        by_cap = spread_by_depth_cap((shallow,), requirement_count=_REQUIRED)[0]
+        by_achieved = spread_by_achieved_depth((shallow,), requirement_count=_REQUIRED)[
+            0
+        ]
+
+        assert by_cap.depth == 4
+        assert by_achieved.depth == 2
+
+    def test_an_unavailable_cell_contributes_no_range(self) -> None:
+        unavailable = CellRecord(
+            depth_cap=3,
+            arm=Arm.GATED,
+            repetition=0,
+            unavailable_reason="the provider was gone",
+        )
+
+        spread = spread_by_achieved_depth((unavailable,), requirement_count=_REQUIRED)
+
+        assert spread == ()

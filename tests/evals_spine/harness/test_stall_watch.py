@@ -12,11 +12,16 @@ as failures, which is the latency dimension being scored as correctness.
 """
 
 import asyncio
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 import pytest
 
-from evals.harness.stall_watch import ProgressTrackingLedger, StallWatch
+from evals.harness.stall_watch import (
+    DEFAULT_STALL_IDLE_SECONDS,
+    ProgressTrackingLedger,
+    StallWatch,
+)
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.core.types import NotBlankStr
@@ -28,8 +33,11 @@ _IDLE_SECONDS = 300.0
 _CELL = "loop-ab-react-large-loop-ab-simple-0"
 
 
-def _record() -> CostRecord:
+def _record(task_id: str | None = None) -> CostRecord:
     """One dispatch the gateway charged for.
+
+    Args:
+        task_id: Whose work it was, or ``None`` for work owning no task.
 
     Returns:
         A minimal cost record.
@@ -42,11 +50,15 @@ def _record() -> CostRecord:
         cost=0.0,
         currency=DEFAULT_CURRENCY,
         timestamp=datetime(2026, 7, 22, 12, 0, tzinfo=UTC),
+        task_id=NotBlankStr(task_id) if task_id is not None else None,
     )
 
 
 def _watch(
-    ledger: ProgressTrackingLedger, clock: FakeClock, notify: object = None
+    ledger: ProgressTrackingLedger,
+    clock: FakeClock,
+    notify: Callable[[float], None] | None = None,
+    task_id: str | None = None,
 ) -> StallWatch:
     """A watch over *ledger*, notifying into *notify*.
 
@@ -57,9 +69,14 @@ def _watch(
         ledger=ledger,
         cell=NotBlankStr(_CELL),
         idle_seconds=_IDLE_SECONDS,
-        notify=notify if callable(notify) else (lambda _idle: None),
+        notify=notify if notify is not None else _ignore,
         clock=clock,
+        task_id=NotBlankStr(task_id) if task_id is not None else None,
     )
+
+
+def _ignore(_idle_seconds: float) -> None:
+    """Take a report and do nothing with it."""
 
 
 class TestProgressTrackingLedger:
@@ -90,6 +107,93 @@ class TestProgressTrackingLedger:
         await ledger.record(_record())
 
         assert len(await ledger.collect_records()) == 1
+
+
+class TestOneLedgerHoldsManySessions:
+    """A cell's sessions share one ledger, so idle has to be asked per task.
+
+    The sink is installed once per CELL, because installing it per session
+    swaps a process-wide field while sibling leaves are mid-flight. That is the
+    right shape for spend and the wrong one for progress: read cell-wide, a
+    wedged leaf is invisible for as long as any sibling is working, and one
+    quiet cell reports once per concurrent watch under a different session
+    label each time.
+    """
+
+    async def test_another_tasks_dispatch_is_not_this_tasks_progress(self) -> None:
+        clock = FakeClock()
+        ledger = ProgressTrackingLedger(clock=clock)
+        clock.advance(400.0)
+
+        await ledger.record(_record("task-a"))
+
+        assert ledger.idle_seconds(task_id="task-a") == 0.0
+        assert ledger.idle_seconds(task_id="task-b") == 400.0
+
+    async def test_a_task_that_never_dispatched_reads_from_the_start(self) -> None:
+        # The same thing the ledger-wide reading means for a fresh ledger: a
+        # session that has not answered yet has been idle since it opened.
+        clock = FakeClock()
+        ledger = ProgressTrackingLedger(clock=clock)
+
+        clock.advance(90.0)
+
+        assert ledger.idle_seconds(task_id="task-a") == 90.0
+
+    async def test_no_task_still_reads_the_whole_ledger(self) -> None:
+        clock = FakeClock()
+        ledger = ProgressTrackingLedger(clock=clock)
+        await ledger.record(_record("task-a"))
+
+        clock.advance(30.0)
+
+        assert ledger.idle_seconds() == 30.0
+
+    async def test_a_record_owning_no_task_is_still_ledger_progress(self) -> None:
+        # `task_id` is None for work no task owns, and that dispatch is still
+        # the ledger making progress even though it belongs to no session.
+        clock = FakeClock()
+        ledger = ProgressTrackingLedger(clock=clock)
+        clock.advance(60.0)
+
+        await ledger.record(_record())
+
+        assert ledger.idle_seconds() == 0.0
+        assert ledger.idle_seconds(task_id="task-a") == 60.0
+
+    async def test_the_watch_reads_its_own_tasks_idle(self) -> None:
+        clock = FakeClock()
+        ledger = ProgressTrackingLedger(clock=clock)
+        watch = _watch(ledger, clock, task_id="task-b")
+        clock.advance(_IDLE_SECONDS)
+        await ledger.record(_record("task-a"))
+
+        assert watch.observed_idle() >= _IDLE_SECONDS
+
+
+class TestTheDefaultThresholdIsSetFromEvidence:
+    """A threshold below what a healthy run does is a notification nobody reads.
+
+    An idle gap is bounded from below by what one tool call may occupy, and
+    `tools.shell_command_timeout_seconds` caps that at 600s whatever an agent
+    asks for. So a gap past 600s is structurally not a running test suite, and
+    the first recording bears that out: 39 sessions crossed the old 300s
+    threshold and resumed, the longest at 603s. The default sits at twice that,
+    which no legitimate command-then-call chain reaches.
+    """
+
+    def test_it_is_past_what_a_healthy_run_was_measured_doing(self) -> None:
+        assert DEFAULT_STALL_IDLE_SECONDS == 1200.0
+
+    def test_a_watch_built_without_one_uses_it(self) -> None:
+        watch = StallWatch(
+            ledger=ProgressTrackingLedger(clock=FakeClock()),
+            cell=NotBlankStr(_CELL),
+            notify=lambda _idle: None,
+        )
+
+        assert watch.should_report(DEFAULT_STALL_IDLE_SECONDS - 1.0) is False
+        assert watch.should_report(DEFAULT_STALL_IDLE_SECONDS) is True
 
 
 class TestWhenToReport:

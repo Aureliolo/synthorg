@@ -295,6 +295,32 @@ def _projection_lines(manifest: RecursionDepthManifest, projected: int) -> list[
             f"{manifest.projected_branching}^d leaves and plans at every node "
             f"above them. A planner that splits wider costs more than this."
         ),
+        # The other half of the cost model, and the one the operator cannot
+        # infer from the line above. The projection is the scenario a ceiling
+        # is sized against; these decide whether a cell is STARTED at all, so a
+        # figure that has drifted below what a cap really costs shows up as a
+        # sweep that stops one cell short of the depth it was paid for.
+        (
+            "  expected      : "
+            + ", ".join(
+                f"cap {d}: {manifest.expected_sessions(d):,}/cell"
+                for d in manifest.depths
+            )
+            + " (declared from measurement; a cap already recorded is priced "
+            "from that run instead)"
+        ),
+        # Deliberately NOT called the expected bill. Each declared figure
+        # carries margin, because it decides whether a cell may START and
+        # refusing one that would have fit costs a measurement; summing them
+        # therefore adds up twelve margins and reads high. What it answers is a
+        # real question about the ceiling: could every planned cell still be
+        # entered if all of them ran dear?
+        (
+            f"  declared cap  : "
+            f"{sum(manifest.repetitions[d] * manifest.expected_sessions(d) for d in manifest.depths):,}"
+            f" sessions if every cell hits its declared figure, which each"
+            f" carries margin, so the run is expected to finish well inside it"
+        ),
         (
             f"  ceiling       : {manifest.max_sessions} sessions, then the "
             "sweep stops and reports what it measured"
@@ -361,7 +387,7 @@ def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
         f"  executor      : {_pair(manifest.executor)}",
         f"  reviewer      : {_pair(manifest.reviewer)}",
         f"  independence  : {manifest.independence.value}",
-        f"  merge attempts: {manifest.merge_attempts} (the SAME in both arms)",
+        f"  merge attempts: {manifest.merge_attempts} (the SAME in every arm)",
         "",
         f"  runs          : {len(cells)}",
         *_projection_lines(manifest, projected),
