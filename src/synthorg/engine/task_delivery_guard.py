@@ -1,20 +1,19 @@
 # module-kind: code
 """Did this run deliver what it promised?
 
-One question asked in order, weakest evidence first: the loop's own NO_OP
-classification, the zero-tool-call proxy, and finally the workspace itself.
-Kept together because they are one decision, and splitting them across a
-caller made the order they must be asked in a matter of reading control flow
-rather than of reading one function.
+One question with ONE owner, and two proxies that only stand in for it. "Did
+this run change the tree at all" is the owner: it needs no plan and cannot be
+wrong about a file named differently from the guess a planner made before the
+tree existed. The loop's own NO_OP classification and the zero-tool-call count
+are the proxies, and they are consulted only where the tree could not answer
+or agreed with them. A proxy that could overrule the thing it proxies would be
+a second answer to one question, which is how a run that delivered comes to be
+failed with nobody told.
 
-The workspace is asked two things, and the wider one is asked first. "Did
-this run change the tree at all" needs no plan and cannot be wrong about a
-file named differently from the guess a planner made before the tree existed;
-"are the declared artifacts there" is the sharper question and the one whose
-answer an operator can act on, so it supplies the reason once the first says
-something happened but the declarations disagree. A run that produced
-something and satisfied no declaration reaches review, where a reviewer can
-read what it produced instead; a run that changed nothing is failed here.
+Once that is settled, the declarations are the sharper question, and the one
+whose answer an operator can act on. A run that produced something and
+satisfied no declaration reaches review, where a reviewer can read what it
+produced instead; a run that changed nothing is failed here.
 
 This module only decides, and returns the operator-facing reason when the
 answer is no. Moving the task is the caller's job (``task_sync``), which is
@@ -26,6 +25,7 @@ from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.artifacts.baseline_scope import (
+    RunBaseline,
     RunBaselineProbe,
     current_run_baseline,
     produced_nothing_since,
@@ -118,11 +118,26 @@ async def no_delivery_reason(
     # still completes to review rather than FAILED.
     empty_run_fails = not is_resumed_run()
 
+    baseline = current_run_baseline()
+    produced_nothing = await produced_nothing_since(baseline)
+    if produced_nothing is False:
+        # The workspace is the ONE owner of "did this run produce anything",
+        # and it says work happened. The two proxies below only stand in for
+        # it, so neither is consulted: letting a tool-call count overrule the
+        # tree it proxies is a second answer to one question, and the quieter
+        # authority wins with nobody told.
+        #
+        # The declarations are not consulted either, and deliberately. A
+        # planner names paths before the tree exists, so an agent that solved
+        # the task under other names satisfies none of them; that is a
+        # judgement about substituted work, which is the reviewer's, not an
+        # empty run, which is this guard's.
+        return None
+
     # A silent no-op success is a failure: a WORK task (one that declared
     # expected artifacts) that produced none (proxied by zero tool calls) is
-    # failed unless an explicit no-op justification was recorded. Enforced in
-    # two layers: the react loop classifies the empty run as NO_OP, and this
-    # also guards a COMPLETED that slipped through from another loop.
+    # failed unless an explicit no-op justification was recorded. Reached only
+    # where the workspace could not answer or agreed nothing was produced.
     if empty_run_fails and (
         run.termination_reason == TerminationReason.NO_OP
         or (expects_artifacts and run.total_tool_calls == 0)
@@ -130,36 +145,46 @@ async def no_delivery_reason(
         return EMPTY_RUN_REASON
     if not expects_artifacts:
         return None
-    return await _workspace_verdict(ctx, run_probe, empty_run_fails=empty_run_fails)
+    return await _declared_verdict(
+        ctx,
+        run_probe,
+        baseline,
+        produced_nothing=produced_nothing,
+        empty_run_fails=empty_run_fails,
+    )
 
 
-async def _workspace_verdict(
+async def _declared_verdict(
     ctx: AgentContext,
     run_probe: RunBaselineProbe | None,
+    baseline: RunBaseline | None,
     *,
+    produced_nothing: bool | None,
     empty_run_fails: bool,
 ) -> str | None:
-    """Ask the workspace the question the tool-call count only proxies.
+    """Judge the run against what it DECLARED, the tree question settled.
 
-    An agent that read files, wrote nothing and stopped passes the proxy, so
-    the workspace is asked directly. Deliberately not exempted for a resumed
-    run on the presence arm: the resume exemption exists because this
-    segment's turn count says nothing about earlier segments, and the
-    filesystem has no such blind spot.
+    The caller has already asked whether anything was produced anywhere. This
+    asks the sharper question the answer to that one cannot cover: a run may
+    have written a great deal and satisfied none of its declarations, or have
+    left every declaration exactly as it found it.
+
+    Deliberately not exempted for a resumed run on the presence arm: the
+    resume exemption exists because this segment's turn count says nothing
+    about earlier segments, and the filesystem has no such blind spot.
+
+    Args:
+        ctx: The finished run's context.
+        run_probe: The wired workspace probe, or ``None``.
+        baseline: What the workspace held when the run began.
+        produced_nothing: What the tree already answered, so the prose-only
+            arm below does not re-ask it. ``None`` when it could not be asked.
+        empty_run_fails: Whether an empty segment is this run's to answer for.
 
     Returns:
         The failure reason, or ``None`` when the run may proceed to review.
     """
-    baseline = current_run_baseline()
     declared_baseline = baseline.declared if baseline is not None else None
-    produced_nothing = await produced_nothing_since(baseline)
-    if produced_nothing is False:
-        # Something appeared, changed or went. The declarations may still all
-        # be absent, because a planner names paths before the tree exists and
-        # an agent that solved the task under other names satisfies none of
-        # them; that is a judgement about substituted work, which is the
-        # reviewer's, not an empty run, which is this guard's.
-        return None
     presence = await _absent_artifacts(run_probe, ctx)
     if presence is None:
         return None

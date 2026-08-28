@@ -38,6 +38,7 @@ from evals.recursion_depth.session import (
 )
 from evals.recursion_depth.unit import (
     UnitDelivery,
+    UnitFingerprint,
     probe_artifacts,
     produced_tree,
 )
@@ -46,7 +47,6 @@ from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.artifacts.workspace_fingerprint import WorkspaceFingerprint
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
@@ -489,7 +489,7 @@ async def _delivery(
     plan: MergePlan,
     *,
     turns: int,
-    baseline: WorkspaceFingerprint,
+    baseline: UnitFingerprint,
 ) -> UnitDelivery:
     """Say what the merge assembled, and separately whether it stands up.
 

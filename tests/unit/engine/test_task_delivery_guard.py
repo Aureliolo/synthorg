@@ -221,6 +221,51 @@ class TestRefusals:
 
         assert verdict is None
 
+    async def test_a_changed_tree_outranks_the_zero_tool_call_proxy(
+        self, tmp_path: Path
+    ) -> None:
+        """The tree owns the question; the tool count only stands in for it.
+
+        A proxy that can overrule the thing it proxies is a second answer to
+        one question, and the quieter one wins with nobody told. Here the
+        workspace holds work the turn count cannot see, and the run passes.
+        """
+        ctx = _context(_task())
+        run = _run(ctx, tool_calls=0)
+        declared = tmp_path / _DECLARED
+        declared.parent.mkdir(parents=True)
+        before = ArtifactPresence(probed=(_DECLARED,), missing=(_DECLARED,))
+        after = ArtifactPresence(probed=(_DECLARED,), digests={_DECLARED: "def"})
+        baseline = _baseline(before, workspace=tmp_path)
+        declared.write_text("// produced\n", encoding="utf-8")
+
+        with run_baseline_scope(baseline):
+            verdict = await no_delivery_reason(
+                run, ctx, run_probe=_probe(after, workspace=tmp_path)
+            )
+
+        assert verdict is None
+
+    async def test_an_unchanged_tree_still_fails_a_zero_tool_call_run(
+        self, tmp_path: Path
+    ) -> None:
+        """The proxy is not disabled, only outranked.
+
+        Where the tree agrees nothing was produced, the turn count is the
+        reason an operator reads, because it says what the run actually did.
+        """
+        ctx = _context(_task())
+        run = _run(ctx, tool_calls=0)
+        absent = ArtifactPresence(probed=(_DECLARED,), missing=(_DECLARED,))
+        baseline = _baseline(absent, workspace=tmp_path)
+
+        with run_baseline_scope(baseline):
+            verdict = await no_delivery_reason(
+                run, ctx, run_probe=_probe(absent, workspace=tmp_path)
+            )
+
+        assert verdict == EMPTY_RUN_REASON
+
     async def test_a_same_length_edit_to_a_declaration_passes(
         self, tmp_path: Path
     ) -> None:

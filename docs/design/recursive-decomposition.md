@@ -509,9 +509,9 @@ of the specification a merged tree satisfies, against the depth that tree
 actually reached, with a cost panel beside it. That axis is not the one the
 question asks for, and [The metric](#the-metric) below says why it stands in.
 
-The committed matrix records caps 1 to 4, three repetitions each, one arm. The
-harness still supports two, and the first recording used both; what changed and
-why is in [The gate](#the-gate).
+The committed matrix records caps 1 to 4 at three, three, two and two
+repetitions, one arm. The harness still supports two arms, and the first
+recording used both; what changed and why is in [The gate](#the-gate).
 
 Run `make recursion-depth` to print the matrix and the bill without spending
 anything, and `make recursion-depth-record` to measure for real.
@@ -898,14 +898,18 @@ nothing but its turn cap. Tokens are counted on every provider, so the plan
 states the token bound as the one that holds without the reader first knowing
 how they are billed.
 
-Repetitions are uniform at three, and that is a change from the first recording,
-which ran one per cell and concentrated its planned repetitions at the deep end.
-Spread is only reportable where there is a population, so a matrix that repeats
-only the caps it expects to be interesting cannot say whether the flat ones are
-flat or merely too thinly sampled to tell. Uniform costs little: the shallow end
-is nearly
-free (a cap-1 cell is 14 sessions against a cap-3 cell's 135) and it is what
-makes every point on the axis readable the same way.
+Every cap is repeated, which the first recording did not do: it ran one cell
+per point and so could report no spread anywhere. Spread is only reportable
+where there is a population, and a matrix that repeats only the caps it expects
+to be interesting cannot say whether the flat ones are flat or merely too
+thinly sampled to tell.
+
+Repetitions are three at caps 1 and 2 and two at caps 3 and 4, because the deep
+cells are where the sessions are: a cap-1 cell is 14 sessions against a cap-3
+cell's 135, and a cap-4 cell is projected near 300. Three at every cap would
+not fit the ceiling. The cost of the taper is stated rather than hidden: two
+draws bound a range but do not give a median distinct from it, so caps 3 and 4
+report a spread that says how far apart two trees fell and not much more.
 
 ### Preflight
 
@@ -1048,8 +1052,9 @@ Caps 4 to 6. ARIES puts the transition at 3 to 4, so the depth where the
 literature expects a blow-up is exactly the one beyond this recording: the
 chart's right end is absent rather than flat.
 
-That is what the committed matrix now records: caps 1 to 4, three repetitions
-each, one arm. It answers the two things this recording could not support, and
+That is what the committed matrix now records: caps 1 to 4 at three, three, two
+and two repetitions, one arm. It answers the two things this recording could
+not support, and
 takes the arm comparison off the table to pay for them. What it will not answer
 is the arm question, which stands where this recording left it.
 

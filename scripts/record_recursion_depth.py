@@ -271,6 +271,27 @@ def _ceiling_note(manifest: RecursionDepthManifest, projected: int) -> list[str]
     ]
 
 
+def _declared_cap(manifest: RecursionDepthManifest) -> int:
+    """Sessions every planned cell would take at its declared figure.
+
+    ``expected_sessions`` is per CELL, and a cell is one ``(cap, arm,
+    repetition)``, so the arm count belongs in the product as much as the
+    repetition count does. Omitting it reports half the cost of a two-arm
+    matrix, which is exactly the reading that would let one be started
+    against a ceiling that cannot hold it.
+
+    Args:
+        manifest: The recording matrix.
+
+    Returns:
+        The summed declared cost.
+    """
+    return len(manifest.arms) * sum(
+        manifest.repetitions[depth] * manifest.expected_sessions(depth)
+        for depth in manifest.depths
+    )
+
+
 def _projection_lines(manifest: RecursionDepthManifest, projected: int) -> list[str]:
     """Render what the matrix is projected to cost, and on what assumption.
 
@@ -317,7 +338,7 @@ def _projection_lines(manifest: RecursionDepthManifest, projected: int) -> list[
         # entered if all of them ran dear?
         (
             f"  declared cap  : "
-            f"{sum(manifest.repetitions[d] * manifest.expected_sessions(d) for d in manifest.depths):,}"
+            f"{_declared_cap(manifest):,}"
             f" sessions if every cell hits its declared figure, which each"
             f" carries margin, so the run is expected to finish well inside it"
         ),

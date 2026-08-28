@@ -161,6 +161,33 @@ class TestOneLedgerHoldsManySessions:
         assert ledger.idle_seconds() == 0.0
         assert ledger.idle_seconds(task_id="task-a") == 60.0
 
+    async def test_opening_a_watch_starts_its_tasks_clock(self) -> None:
+        """A session joining an hours-old cell ledger is not already stalled.
+
+        The ledger is built once per CELL, so a merge or a later-wave leaf
+        opens against a clock that has been running for hours. Measured from
+        the ledger's construction its first poll crosses the threshold at
+        once and reports a stall for a session that is working normally.
+        """
+        clock = FakeClock()
+        ledger = ProgressTrackingLedger(clock=clock)
+        clock.advance(7200.0)
+
+        watch = _watch(ledger, clock, task_id="task-late")
+
+        assert watch.observed_idle() == 0.0
+
+    async def test_opening_a_watch_never_hides_an_existing_stall(self) -> None:
+        """Idempotent, so re-watching cannot reset a clock that is running."""
+        clock = FakeClock()
+        ledger = ProgressTrackingLedger(clock=clock)
+        await ledger.record(_record("task-c"))
+        clock.advance(900.0)
+
+        watch = _watch(ledger, clock, task_id="task-c")
+
+        assert watch.observed_idle() == 900.0
+
     async def test_the_watch_reads_its_own_tasks_idle(self) -> None:
         clock = FakeClock()
         ledger = ProgressTrackingLedger(clock=clock)

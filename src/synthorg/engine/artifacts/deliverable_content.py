@@ -100,8 +100,21 @@ type DeliverableReader = Callable[
 ]
 
 
-def _read_one(declared: str, *, root: Path, limit: int) -> dict[str, JsonValue]:
-    """Read one declared artifact, bounded at *limit* characters.
+def _read_one(
+    declared: str, *, root: Path, limit: int, is_declaration: bool = True
+) -> dict[str, JsonValue]:
+    """Read one artifact, bounded at *limit* characters.
+
+    Args:
+        declared: The path to read.
+        root: The resolved workspace directory.
+        limit: Per-file content bound, in characters.
+        is_declaration: Whether *declared* is a PLANNER's free text, which may
+            be prose rather than a path. A name walked off the filesystem is
+            already known to be a file, and putting it through the prose test
+            would report a real produced file called ``design notes.md`` as
+            "not a path". Containment is checked either way, because that is
+            about where the file sits rather than how its name was obtained.
 
     Returns:
         Its entry in the document: always a ``path`` and a ``status``, plus
@@ -111,7 +124,7 @@ def _read_one(declared: str, *, root: Path, limit: int) -> dict[str, JsonValue]:
         not know is missing.
     """
     label = declared[:_MAX_PATH_LABEL]
-    if not is_probeable_path(declared):
+    if is_declaration and not is_probeable_path(declared):
         return {"path": label, "status": _STATUS_NOT_A_PATH}
     resolved = (root / Path(declared)).resolve()
     if resolved == root:
@@ -263,7 +276,12 @@ def _read_produced_instead(
     )
     entries: list[JsonValue] = []
     for index, path in enumerate(produced):
-        entry = _read_one(path, root=root, limit=max(0, min(limit, budget)))
+        entry = _read_one(
+            path,
+            root=root,
+            limit=max(0, min(limit, budget)),
+            is_declaration=False,
+        )
         separator = _SEPARATOR_BYTES if entries else 0
         cost = len(json.dumps(entry)) + separator
         if cost > budget:

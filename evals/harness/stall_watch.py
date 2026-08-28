@@ -89,12 +89,29 @@ class ProgressTrackingLedger(CostTracker):
             self._last_by_task[str(cost_record.task_id)] = now
         await super().record(cost_record)
 
+    def open_task(self, task_id: str) -> None:
+        """Start *task_id*'s idle clock now, before it has dispatched.
+
+        The ledger is built once per CELL and a cell runs for hours, so a
+        session opening late (a merge, or a leaf in a later concurrency wave)
+        would otherwise read its idle time from the cell's own start and be
+        reported stalled on its first poll while working normally. Its clock
+        starts when somebody begins watching it instead.
+
+        Idempotent: a task that has already recorded keeps the reading it
+        earned, so re-opening a watch cannot hide a genuine stall.
+
+        Args:
+            task_id: The task a watch is about to follow.
+        """
+        self._last_by_task.setdefault(task_id, self._progress_clock.monotonic())
+
     def idle_seconds(self, *, task_id: str | None = None) -> float:
         """Seconds since the last dispatch this ledger saw for *task_id*.
 
         Args:
             task_id: Whose progress is wanted, or ``None`` for the ledger as a
-                whole. A task that has not dispatched yet is idle from the
+                whole. A task neither watched nor dispatched falls back to the
                 ledger's construction, which is what the whole-ledger reading
                 already means for a ledger nothing has written to.
 
@@ -154,6 +171,11 @@ class StallWatch:
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._reported_at: float = 0.0
         self._task: asyncio.Task[None] | None = None
+        if task_id is not None:
+            # Opening the watch is what starts this task's clock. Without it a
+            # session joining a hours-old cell ledger reads the cell's whole
+            # elapsed time as its own idle and reports a stall immediately.
+            ledger.open_task(str(task_id))
 
     def observed_idle(self) -> float:
         """The idle time this watch reads, which is its own task's.

@@ -333,6 +333,25 @@ class TestWhatWasProducedInstead:
         assert section is not None
         assert "produced_instead" not in section
 
+    def test_a_produced_name_carrying_a_space_is_still_read(
+        self, tmp_path: Path
+    ) -> None:
+        """Whitespace separates prose from a path only in a DECLARATION.
+
+        A name walked off the filesystem is already known to be a file, so
+        putting it through the prose test reports real work as "not a path"
+        and hands the reviewer a status where the content should be.
+        """
+        _write(tmp_path, "design notes.md", "what I built and why")
+
+        section = _read(_expected("declared.py"), tmp_path)
+
+        assert section is not None
+        instead = cast("list[dict[str, JsonValue]]", section["produced_instead"])
+        assert instead[0]["path"] == "design notes.md"
+        assert instead[0]["status"] == "read"
+        assert instead[0]["content"] == "what I built and why"
+
     def test_a_declared_path_is_not_reported_twice(self, tmp_path: Path) -> None:
         """A directory declaration reads as `directory`, never as `read`.
 

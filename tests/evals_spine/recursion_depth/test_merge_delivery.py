@@ -19,6 +19,7 @@ named their modules differently. That feeds the survival denominator, so it
 removed them from the metric rather than merely mislabelling them.
 """
 
+import hashlib
 from datetime import date
 from pathlib import Path
 
@@ -41,6 +42,15 @@ from synthorg.core.types import NotBlankStr
 from tests._shared import as_uuid, sid
 
 pytestmark = pytest.mark.unit
+
+
+def _digest(path: Path) -> str:
+    """Digest *path* the way the fingerprint does.
+
+    Returns:
+        The hex digest of the file's bytes as written.
+    """
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _workspace(tmp_path: Path) -> CellWorkspace:
@@ -93,11 +103,29 @@ class TestWhatCountsAsAssembly:
         written = package / "lexer.py"
         written.write_text("# assembled\n", encoding="utf-8")
 
-        # Size read back rather than assumed: the platform may translate line
-        # endings on the way out, and this pins the path, not the encoding.
+        # Digest read back rather than assumed: the platform may translate
+        # line endings on the way out, and this pins the path, not the bytes.
         assert produced_tree(workspace) == frozenset(
-            {("sqlcsv/lexer.py", written.stat().st_size)}
+            {("sqlcsv/lexer.py", _digest(written))}
         )
+
+    def test_an_edit_that_keeps_a_files_length_is_produced_work(
+        self, tmp_path: Path
+    ) -> None:
+        """A size is blind to the edit that flips a constant.
+
+        This harness has ONE delivery check where the product has two, so
+        nothing else here would see it: the product compares the tree by size
+        AND each declared path by digest, and the second is what catches this.
+        """
+        workspace = _workspace(tmp_path)
+        target = workspace.project_dir / "sqlcsv" / "config.py"
+        target.parent.mkdir(parents=True)
+        target.write_text("RETRIES = 1\n", encoding="utf-8")
+        before = produced_tree(workspace)
+        target.write_text("RETRIES = 5\n", encoding="utf-8")
+
+        assert produced_tree(workspace) != before
 
     def test_assembling_without_the_report_still_counts(self, tmp_path: Path) -> None:
         """The defect this exists for, stated as a test.

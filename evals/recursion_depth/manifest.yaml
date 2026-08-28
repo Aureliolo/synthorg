@@ -129,7 +129,7 @@ unit_token_ceiling: 1500000
 # branching factors the manifest cannot predict, and the cost of being wrong
 # about it is spend rather than a wrong answer.
 #
-# Sized above the full-tree projection below (2,028 for this matrix), which is
+# Sized above the full-tree projection below (1,390 for this matrix), which is
 # the expensive scenario rather than the expected one. The expected bill from
 # the first recording's measured rates is about 1,660, so this survives every
 # cap-4 cell costing twice what the shape of a cap-3 tree implies, and it still

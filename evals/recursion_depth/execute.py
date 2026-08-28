@@ -37,6 +37,7 @@ from evals.recursion_depth.session import (
 from evals.recursion_depth.tree import SpecBrief
 from evals.recursion_depth.unit import (
     UnitDelivery,
+    UnitFingerprint,
     probe_artifacts,
     produced_tree,
 )
@@ -45,7 +46,6 @@ from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.artifacts.workspace_fingerprint import WorkspaceFingerprint
 from synthorg.engine.decomposition.models import SubtaskDefinition
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
@@ -363,7 +363,7 @@ async def _delivery(
     task: Task,
     workspace: CellWorkspace,
     outcome: SessionOutcome,
-    baseline: WorkspaceFingerprint,
+    baseline: UnitFingerprint,
     *,
     turns: int,
 ) -> UnitDelivery:

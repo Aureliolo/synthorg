@@ -322,19 +322,6 @@ async def _run_shutdown(  # noqa: PLR0913
     # to are disconnected below, so nothing is stranded mid-write (or leaked as
     # a pending task) at SIGTERM.
     await drain_initiative_tails(app_state)
-    # Reclaim the sandbox containers this process still holds, after every
-    # drain above so an in-flight agent command has finished and the execution
-    # service has run its own per-task release. What remains is what those two
-    # cannot see: a warm container held by a lifecycle strategy between tasks.
-    # The boot reconciliation pass would reclaim it, but only on a next boot,
-    # and an operator scaling down is not an operator restarting.
-    await _try_stop(
-        cleanup_tracked_sandbox_backends(),
-        API_APP_SHUTDOWN,
-        "Failed to reclaim sandbox containers",
-        timeout=_SANDBOX_CLEANUP_SHUTDOWN_SECONDS,
-        service="sandbox_backends",
-    )
     # Cancel any in-flight fine-tune run before the memory teardown below.
     # Nothing else in this teardown reaches it: the run is a background task
     # driving a worker thread through hours of training, so at SIGTERM it
@@ -625,6 +612,23 @@ async def _run_shutdown(  # noqa: PLR0913
             service="self_improvement_service",
         )
         app_state.wire(MetaStateSlice, self_improvement_service=None)
+
+    # Reclaim the sandbox containers this process still holds. It sits AFTER
+    # every service that can start a sandbox execution, not merely after the
+    # agent drains: the reclaim marks each backend shutting down permanently,
+    # so a toolsmith cycle or a self-improvement apply firing between the two
+    # would be refused by a sandbox that had already closed rather than by a
+    # shutdown that had reached it. What is left to reclaim by here is what no
+    # per-task release can see: a warm container a lifecycle strategy holds
+    # between tasks. The boot reconciliation pass would take it, but only on a
+    # next boot, and an operator scaling down is not an operator restarting.
+    await _try_stop(
+        cleanup_tracked_sandbox_backends(),
+        API_APP_SHUTDOWN,
+        "Failed to reclaim sandbox containers",
+        timeout=_SANDBOX_CLEANUP_SHUTDOWN_SECONDS,
+        service="sandbox_backends",
+    )
 
     # Stop every cached rate-limit coordinator and clear the module-level
     # factory so background poll tasks and bus subscriptions cannot outlive the

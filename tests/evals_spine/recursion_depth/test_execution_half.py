@@ -438,7 +438,10 @@ class _ScriptedReviewer:
 
 
 def _deps(*, own_tests: tuple[bool, str] = (True, "")) -> SweepDeps:
-    """Build deps whose factories are never reached.
+    """Build deps whose provider and sandbox factories are never reached.
+
+    The grader IS reached, on every unit that produced something: it is the
+    gate deciding whether what was built stands up.
 
     Args:
         own_tests: What the grader reports for the unit's own suite. Injected
