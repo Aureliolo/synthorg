@@ -75,7 +75,7 @@ The `synthorg_research_run` tool accepts these arguments (at least one `include_
 | `include_academic` | bool | `false` | Query academic search. |
 | `include_code` | bool | `false` | Query code search. |
 | `min_credibility` | float | `0.5` | Credibility floor for source retention. |
-| `max_subqueries` | int | `8` | Ceiling on planner-emitted sub-queries (minimum 1, no upper bound). |
+| `max_subqueries` | int | `8` | Ceiling on planner-emitted sub-queries. Bounded to 1-32 (`RESEARCH_MAX_SUBQUERIES_CEILING`); a request above the ceiling is rejected. |
 
 ## Observability
 

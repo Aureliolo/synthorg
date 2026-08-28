@@ -447,7 +447,7 @@ Used by the Chat surface and the other places the organisation speaks.
 | `ProjectStatus` | `api/types/enums` | `"planning"`, `"active"`, `"integrating"`, `"evaluating"`, `"on_hold"`, `"completed"`, `"cancelled"`, `"failed"` |
 | `ArtifactType` | `api/types/enums` | `"code"`, `"tests"`, `"documentation"` |
 
-Every enum above is re-exported from `web/src/api/types/enum-values.gen.ts`, generated from the backend's own API surface by `scripts/generate_dto_types_ts.py` and held in step by a pre-push drift check. A value is added by changing the backend and regenerating, never by editing the generated file.
+Every enum above sourced from `api/types/enums` is re-exported from `web/src/api/types/enum-values.gen.ts`, generated from the backend's own API surface by `scripts/generate_dto_types_ts.py` and held in step by a pre-push drift check. A value is added by changing the backend and regenerating, never by editing the generated file. The types sourced from `utils/` are UI-local and have no backend counterpart, so they are hand-written and generated from nothing.
 
 ### When to Create a New Shared Component
 

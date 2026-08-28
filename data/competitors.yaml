@@ -104,7 +104,7 @@ competitors:
     url: "https://synthorg.io"
     repo: "https://github.com/Aureliolo/synthorg"
     source_verified_at: "2026-08-02"
-    description: "Describe a piece of software and it is split into a tree of parts that can be built independently, built concurrently in isolated containers, then assembled bottom-up, with each part checked by an agent that did not write it and is bound to a different model family. Self-hosted and provider-agnostic against any models including local ones, so your code does not leave your machine. Pre-alpha: the platform, infrastructure and agent runtime are exercised by deterministic e2e harnesses with a scripted provider, and no live run has yet produced an assembled deliverable."
+    description: "Describe a piece of software and it is split into a tree of parts that can be built independently, built concurrently in isolated containers, then assembled bottom-up, with each part checked by an agent barred from having authored it. Self-hosted and provider-agnostic against any models including local ones: there is no SynthOrg service in the path, and what reaches a third party is whatever the provider you configured needs, or nothing at all against local models. Pre-alpha: the platform, infrastructure and agent runtime are exercised by deterministic e2e harnesses with a scripted provider, and no live run has yet produced an assembled deliverable."
     license: "BUSL-1.1"
     language: "Python"
     category: build_platform

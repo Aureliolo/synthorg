@@ -1,6 +1,6 @@
 # SynthOrg - High-Level Design Specification
 
-> Describe a piece of software and it gets built in one pass: split into parts, built in parallel, each part checked by something that did not write it. On your hardware, against any models you choose.
+> **The goal.** Describe a piece of software and it gets built in one pass: split into parts, built in parallel, each part checked by something that did not write it. On your hardware, against any models you choose.
 
 A single agent in a loop cannot hold a whole application, which is why the binding constraint is decomposition quality rather than agent supply. The design below is organised around that: a recursive split into independently buildable units, isolated concurrent execution of the leaves, bottom-up assembly, and a review party structurally prevented from being the author. Roles, staffing and the approval gate are the plumbing that carries it, not the product.
 

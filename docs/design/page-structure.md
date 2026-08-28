@@ -554,7 +554,7 @@ Single WebSocket connection per session, established after login. Each page subs
 - `system`: Connection status, shutdown notices
 - `approvals`: Badge count for sidebar
 - `budget`: Threshold alert for sidebar indicator
-- `messages`: Unread count for sidebar badge
+- `messages`: inter-agent message traffic. The sidebar unread count it was intended to feed is not wired; the Messages badge reads a constant zero
 
 ---
 

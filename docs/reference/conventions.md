@@ -27,6 +27,13 @@ class ApprovalRepository(Protocol):
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[ApprovalItem, ...]: ...
+    async def query(
+        self,
+        filter_spec: ApprovalFilterSpec,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[ApprovalItem, ...]: ...
     async def delete(self, approval_id: NotBlankStr) -> bool: ...
 ```
 

@@ -19,7 +19,7 @@ A single agent in a loop cannot hold a whole application. It does one thing at a
 
 SynthOrg is built around that constraint. Describe a piece of software, and the work is decomposed recursively into a tree of independently buildable units; the leaves are built concurrently in isolated containers and assembled from the bottom up, and each part is checked by something that did not write it. Splitting the work so the parts are genuinely independent is the hard problem, and it is the one the system is organised around.
 
-It is self-hosted. It runs on your hardware, against whichever providers you configure, local models included, so your code does not leave your machine.
+It is self-hosted. It runs on your hardware, against whichever providers you configure, and there is no SynthOrg service in the path: no account, no relay, no telemetry you did not switch on. What reaches a third party is what you point it at. Configure a hosted model provider and the prompts, source, tool output and merged files that provider needs are sent to it under your own key, exactly as they would be from any other client; configure local models and nothing leaves the machine at all.
 
 It is provider-agnostic (<!--RS:providers_via_litellm-->95+<!--/RS--> LLM providers via [LiteLLM](https://github.com/BerriAI/litellm)), configuration-driven ([Pydantic v2](https://docs.pydantic.dev/) models), and licensed BUSL-1.1 (converts to Apache 2.0 at the Change Date).
 
@@ -31,7 +31,7 @@ It is provider-agnostic (<!--RS:providers_via_litellm-->95+<!--/RS--> LLM provid
 
 - **The work is split before any of it is built.** An objective is decomposed recursively into a tree of units that can be built independently. The leaves are built concurrently, each agent in its own isolated container and its own git worktree, and the tree is assembled from the bottom up. The parallelism is not there for speed: it exists because a tree does not have the failure mode a single loop has, provided the merges hold. Whether the decomposition ceiling sits per level or globally is being measured, so no size is claimed here.
 - **Each part is checked by something that did not write it.** The author cannot be the reviewer, and that is structural rather than a setting somebody can forget: reviewer selection excludes the agent that executed the work, and a database constraint rejects a verdict row whose reviewer is its executor. Every agent carries its own exclusive provider-and-model pair, so you can bind the check to a different model family from the work it judges, though nothing in the system requires it: reviewer selection weighs capability, not lineage, so two agents can share a family and therefore a blind spot. That is the whole claim: an independent judge is a triage filter, not an authority. It does not make the work correct and it does not replace your review.
-- **It runs where you put it.** Self-hosted, provider-agnostic, and indifferent to which models you point it at, local ones included. Nothing about the design assumes a hosted control plane, and your code does not leave your machine.
+- **It runs where you put it.** Self-hosted, provider-agnostic, and indifferent to which models you point it at, local ones included. Nothing about the design assumes a hosted control plane, and there is no SynthOrg service in the path; what reaches a third party is what the provider you configured needs.
 
 ## How supervision works
 

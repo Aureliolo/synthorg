@@ -337,8 +337,10 @@ def _frontmatter_and_intro(last_updated: str) -> list[str]:
         "",
         (
             "**It runs on your hardware.** Self-hosted, provider-agnostic, any"
-            " models including local ones. Your code does not leave your"
-            " machine. Hosted competitors monetise metered compute, so a"
+            " models including local ones. There is no SynthOrg service in the"
+            " path, so what reaches a third party is whatever the provider you"
+            " configured needs, and against local models nothing leaves at"
+            " all. Hosted competitors monetise metered compute, so a"
             " genuinely self-hostable equivalent cannibalises their margin and"
             " is unattractive for them to build. The Self-Hosted column is the"
             " one axis where this shows."

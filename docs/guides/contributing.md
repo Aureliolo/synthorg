@@ -169,10 +169,15 @@ A push has a 300-second budget; the hook runner prints each run's elapsed time
 and an OVER BUDGET banner past the ceiling. Going over is treated as a defect in
 a gate's scope rather than a cost to absorb.
 
-To run all hooks manually:
+To run the hooks manually, one stage at a time. `pre-commit run` defaults to the
+`pre-commit` stage, so the plain form below runs neither `commitizen` (which is a
+`commit-msg` hook) nor the pre-push tier (`gitleaks`, `mypy`, `pytest-unit`, and
+the convention gates):
 
 ```bash
-uv run pre-commit run --all-files
+uv run pre-commit run --all-files                        # pre-commit stage
+uv run pre-commit run --hook-stage pre-push --all-files  # pre-push stage
+uv run pre-commit run --hook-stage commit-msg --commit-msg-filename .git/COMMIT_EDITMSG
 ```
 
 See [Developer Setup](../getting_started.md#pre-commit-hooks) for the full hook table.

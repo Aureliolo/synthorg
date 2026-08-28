@@ -2,9 +2,12 @@
 
 !!! warning "Everything on this page is intent, not capability"
 
-    Nothing below is built. Each row names a direction the project would like to
-    take, either **planned** (scheduled or under active design) or **backlog**
-    (a research candidate with no schedule). For what exists in the product,
+    No end-to-end capability below is available. Each row names a direction the
+    project would like to take, either **planned** (scheduled or under active
+    design) or **backlog** (a research candidate with no schedule). A row may
+    still rest on components that are built and tested, and says so where it
+    does; what is missing in that case is the capability, not the plumbing. For
+    what exists in the product,
     read [the roadmap](index.md), which also states plainly that the loop has
     not yet completed a live run.
 

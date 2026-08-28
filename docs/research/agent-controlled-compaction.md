@@ -354,7 +354,9 @@ This is consistent with the existing architecture where the loop, not tools, man
 3. System prompt guidance: Add to context budget indicator: "Consider using `compress_context`
    before large tool results or at task boundaries."
 4. Expose in `ReactLoop`, the one loop that manages its own context in-process;
-   OpenHands compacts inside its own harness.
+   OpenHands compacts inside its own harness. *(Historical: the OpenHands loop
+   has since been removed, so `ReactLoop` is the only loop and the contrast no
+   longer names anything.)*
 
 ### Dual-Threshold Safety Net
 
@@ -431,9 +433,10 @@ Target files: New `src/synthorg/engine/compaction/tool.py`, `src/synthorg/engine
    by 1. This implements the beta-parameter concept from arXiv:2603.08462 using existing
    degradation infrastructure.
 
-3. **Per-agent personality-aware marker preservation**: Agents with `verbosity=VERBOSE` or
+3. ~~**Per-agent personality-aware marker preservation**: Agents with `verbosity=VERBOSE` or
    `decision_making=DELIBERATIVE` in `PersonalityConfig` use COMPLEX-level marker preservation
-   thresholds regardless of task complexity.
+   thresholds regardless of task complexity.~~ *(Historical: `PersonalityConfig` has since
+   been removed, so this phase has no surface to key on.)*
 
 ---
 

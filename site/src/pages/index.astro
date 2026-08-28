@@ -63,8 +63,9 @@ try {
         the work is split before any of it is built: a tree of parts that stand on
         their own, each leaf built in its own isolated container, each part checked
         by something that did not write it. All of it on your hardware, against
-        whichever models you choose, local ones included, so your code never leaves
-        your machine.
+        whichever models you choose. There is no SynthOrg service in the path, so
+        what leaves is only what the provider you picked needs, and against local
+        models nothing leaves at all.
       </p>
 
       <!-- CTAs -->
@@ -203,7 +204,7 @@ try {
         <a href="/docs/security/#container-hardening" class="block bg-[#0F1219] rounded-xl p-8 border border-teal-500/20 hover:border-teal-500/40 transition-colors no-underline text-white">
           <div class="w-12 h-12 rounded-lg bg-teal-600/20 flex items-center justify-center text-teal-400 mb-4 text-xl">&#128230;</div>
           <h3 class="text-xl font-semibold mb-3">Hardened Infrastructure</h3>
-          <p class="text-gray-400 mb-4">Distroless containers, digest-pinned images, and CIS Docker Benchmark compliance. Every image is scanned by two tools and signed before push.</p>
+          <p class="text-gray-400 mb-4">Distroless containers, digest-pinned images, and CIS Docker Benchmark compliance. Every image is vulnerability-scanned and signed before push.</p>
           <ul class="text-sm text-gray-400 space-y-1">
             <li>Wolfi apko-composed distroless runtime (no shell)</li>
             <li>Trivy vulnerability scanning</li>

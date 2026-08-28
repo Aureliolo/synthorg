@@ -222,7 +222,7 @@ question, and every plan status gets an answer.
 | `COMPLETED` / `REJECTED` / `SUPERSEDED` / `FAILED` | nothing; the plan is finished |
 | `DRAFT` / `PENDING_REVIEW` | nothing; it is parked on a person, correctly |
 | `PLANNING` | fails it with a reason: its items were being written by the intake pipeline, and the brief they were written from is not recoverable |
-| `APPROVED` / `EXECUTING` | requeues the orphaned rows, re-judges any task left `IN_REVIEW` that no open human decision is waiting on, then hands the remaining waves back to the coordinator. A plan with nothing left awaiting dispatch is recomputed instead: its rows are finished, dead, or parked on somebody, so driving it would gate every wave out and change nothing, every cadence |
+| `APPROVED` / `EXECUTING` | requeues the orphaned rows, re-judges any task left `IN_REVIEW` that no open human decision is waiting on, then hands the remaining waves back to the coordinator. A plan with nothing left awaiting dispatch is recomputed instead: its rows are finished, dead, or parked on somebody, so driving it would gate every wave out and change nothing, on every cadence |
 | `INTEGRATING` / `EVALUATING` | one rollup pass; the tail stages key on an id derived from the plan and read their own state, so they re-drive themselves |
 
 Every pass also retires **orphaned approvals**, which the table above cannot
@@ -919,7 +919,8 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
    with what was actually built. Without it those rows sit at `created` while
    the recovery reconciler re-drives the plan every cadence and changes
    nothing, for ever: the plan cannot conclude, and its project cannot be
-   deleted. A live run left two.
+   deleted. A live run left two such subtasks sitting at `created`, in no
+   execution group and so invisible to every other park.
 
    Parking is level-triggered, not edge-triggered, and that matters because
    routing re-runs over every subtask on every pass. A row that already

@@ -8,8 +8,9 @@ description: A standing prompt directive instructs every agent to ask rather tha
 > An agent that guesses on a material, hard-to-reverse choice builds something
 > nobody asked for, and the guess is invisible until the work lands. So an agent
 > facing one is instructed to ask instead: the run parks while the question is
-> open, the question reaches the operator in the conversation they are already
-> in, and answering it there resumes the run.
+> open, the question reaches the operator as an inline card in the chat surface
+> (in the conversation they are already in, or on its own when none is open),
+> and answering it there resumes the run.
 
 **Modules**: `src/synthorg/engine/ask_policy/` (the directive),
 `src/synthorg/tools/clarification_tool.py` and

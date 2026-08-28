@@ -2,8 +2,8 @@
  *
  * Lives outside `@/stores/notifications` so that benchmark + unit
  * test imports can pull in the helper without dragging the store
- * module's side effects (the toast queue, and the backend hydration
- * its preferences perform) into the import graph. The store
+ * module's side effects (the toast queue, and the backend preference
+ * hydration the store performs) into the import graph. The store
  * re-exports `sanitizeWsString` from this module so existing
  * call sites keep working unchanged.
  */

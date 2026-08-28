@@ -54,14 +54,14 @@ Cross-deployment analytics is **disabled by default**. To enable:
 self_improvement:
   cross_deployment_analytics:
     enabled: true
-    collector_url: "https://your-collector.example.com/api/meta/analytics"
+    collector_url: "https://your-collector.example.com/api/v1/meta/analytics"
     deployment_id_salt: "your-secret-salt-string"
     industry_tag: "technology"  # optional
 ```
 
 Required fields when `enabled: true`:
 
-- `collector_url`: HTTPS endpoint to POST anonymised events to
+- `collector_url`: HTTPS base for the collector's analytics routes. The emitter appends `/events`, so a collector running this product wants `https://<host>/api/v1/meta/analytics` and receives `POST /api/v1/meta/analytics/events`
 - `deployment_id_salt`: Secret salt for deployment identification
 
 ## How to Inspect Events
@@ -96,7 +96,7 @@ A deployment can optionally act as a collector that receives events from other d
 self_improvement:
   cross_deployment_analytics:
     enabled: true
-    collector_url: "https://this-deployment/api/meta/analytics"
+    collector_url: "https://this-deployment/api/v1/meta/analytics"
     deployment_id_salt: "salt"
     collector_enabled: true  # enable collector role
 ```

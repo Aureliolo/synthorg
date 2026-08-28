@@ -498,7 +498,7 @@ All animation values are defined in `web/src/lib/motion.ts` and imported as cons
 
 ### 4.2 Page Transitions
 
-A pure opacity cross-fade with no horizontal translation, run by `AnimatedPresence` and identical under every animation preset.
+A pure opacity cross-fade with no horizontal translation, run by `AnimatedPresence`. The shape is the same under every animation preset; the timings below are the standard ones. Reduced motion is the one exception: `AnimatedPresence` swaps to `reducedPageVariants` (opacity only, 150ms in, 100ms out), and the instant profile plays no transition at all.
 
 | Property | Value |
 |----------|-------|

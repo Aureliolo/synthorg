@@ -117,7 +117,7 @@ covers the full mechanism; the cards below link straight to it.
     An operator sets the oversight mode; destructive or high-risk actions are gated for
     human approval. See [Security](security.md).
 
--   **Cost aware**
+-   **Cost-aware**
 
     ---
 
@@ -127,8 +127,8 @@ covers the full mechanism; the cards below link straight to it.
 
     ---
 
-    Runs on your hardware, provider-agnostic including local models. Your code does not
-    leave your machine.
+    Runs on your hardware, provider-agnostic including local models, with no SynthOrg
+    service in the path.
 
 </div>
 

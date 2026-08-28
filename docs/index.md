@@ -59,7 +59,8 @@ from the bottom up.
 
 Self-hosted, on your hardware. The platform is provider-agnostic: every LLM dispatch names
 its own explicit `(provider, model)` pair, including local models, and no default provider
-exists to fall back on. Your code does not leave your machine.
+exists to fall back on. There is no SynthOrg service in the path, so what leaves the machine
+is what the provider you configured needs; against local models, nothing does.
 
 ---
 

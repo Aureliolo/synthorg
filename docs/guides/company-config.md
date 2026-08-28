@@ -351,7 +351,7 @@ persistence:
     database: "synthorg"
     username: "synthorg_app"
     password: "${POSTGRES_PASSWORD}"  # SecretStr; redacted from logs
-    ssl_mode: "verify-full"        # default "require"; prefer "verify-full" in prod
+    ssl_mode: "verify-full"        # default "verify-full"; needs a CA and matching hostname
     pool_min_size: 1               # default 1
     pool_max_size: 10              # default 10; must be >= pool_min_size
     pool_timeout_seconds: 30.0     # default 30.0

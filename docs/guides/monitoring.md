@@ -45,7 +45,7 @@ Bounded-label values are enforced at record time in `src/synthorg/observability/
 | Metric | Type | Labels | Description | Dashboard |
 |--------|------|--------|-------------|-----------|
 | `synthorg_cost_total` | Gauge | - | Total accumulated cost. | `Cost & Budget` |
-| `synthorg_budget_used_percent` | Gauge | - | Monthly budget utilisation. Published only when the period's spend is fully metered; a period mixing metered and flat-rate (subscription) connections, or one where nothing is metered, reads `0.0` here, with the verdict carried on `synthorg_budget_spend_measurability` instead of folded into this number. | `Health & SLO` |
+| `synthorg_budget_used_percent` | Gauge | - | Monthly budget utilisation. Meaningful only when the period's spend is fully metered; a period mixing metered and flat-rate (subscription) connections, or one where nothing is metered, reads `0.0` here, with the verdict carried on `synthorg_budget_spend_measurability` instead of folded into this number. | `Health & SLO` |
 | `synthorg_budget_monthly_cost` | Gauge | - | Monthly budget in configured currency. | `Cost & Budget` |
 | `synthorg_budget_spend_measurability` | Gauge | `state` | What the monthly percentage above actually measures: exactly one of `measured` / `mixed` / `unmeasurable` reads `1`, the other two `0` (`state` bounded to `SpendMeasurability`). | n/a (scrape-only) |
 | `synthorg_budget_daily_used_percent` | Gauge | - | Daily utilisation (prorated). The same caveat as `synthorg_budget_used_percent` applies, against the day's spend rather than the period's. | `Cost & Budget` |
@@ -183,13 +183,13 @@ histogram_quantile(0.95, sum by (le) (rate(synthorg_workflow_execution_seconds_b
 
 ```promql
 # Burned 80% of the monthly budget (gate on full measurability -- see below)
-synthorg_budget_used_percent > 80 and synthorg_budget_spend_measurability{state="measured"} == 1
+synthorg_budget_used_percent > 80 and on() synthorg_budget_spend_measurability{state="measured"} == 1
 
 # Total accumulated cost (per-agent breakdown lives in the REST cost API / logs)
 synthorg_cost_total
 ```
 
-`synthorg_budget_used_percent` reads `0` whenever the period's spend is not fully metered (any flat-rate connection in the mix, or nothing metered at all), so an unqualified `> N` alert can silently never fire on such a deployment. Gate it on `synthorg_budget_spend_measurability{state="measured"} == 1` as above, or watch that gauge directly to catch a deployment where the percentage has gone structurally unmeasurable.
+`synthorg_budget_used_percent` reads `0` whenever the period's spend is not fully metered (any flat-rate connection in the mix, or nothing metered at all), so an unqualified `> N` alert can silently never fire on such a deployment. Gate it on `synthorg_budget_spend_measurability{state="measured"} == 1` as above, or watch that gauge directly to catch a deployment where the percentage has gone structurally unmeasurable. The `on()` is load-bearing: `synthorg_budget_used_percent` carries no labels while `synthorg_budget_spend_measurability` carries `state`, so under default matching the two sides share no label set, `and` yields nothing, and the alert never fires however far over budget the deployment runs.
 
 ### Coordination health
 

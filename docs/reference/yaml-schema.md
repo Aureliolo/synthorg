@@ -102,7 +102,6 @@ integrations:
   connections:
     max_connections_per_type: 100
   webhooks:
-    enabled: true
     replay_window_seconds: 300
 ```
 
@@ -116,7 +115,7 @@ integrations:
 | `integrations.webhooks.receipt_retention_days` | int | `0` | Days to keep webhook receipts; `0` never sweeps them. |
 | `integrations.secret_backend` / `oauth` / `health` / `tunnel` / `mcp_catalog` | sub-block | (defaults) | Secret-storage, OAuth 2.1, health-monitoring, dev-tunnel, and bundled MCP catalog settings. |
 
-There is no `integrations.webhooks.enabled` toggle: signature verification runs unconditionally on every delivery, so no switch exists to turn it off.
+There is no `integrations.webhooks.enabled` toggle: signature verification runs unconditionally on every delivery, so no switch exists to turn it off. Because the block is `extra="forbid"`, writing one is not merely ignored: it fails config validation.
 
 Individual connections (GitHub, Slack, SMTP, database, generic HTTP, OAuth apps) are **not** declared in YAML: they are created at runtime through the integrations API and their secrets live in the configured secret backend.
 

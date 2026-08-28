@@ -401,4 +401,4 @@ one carried, so a later adapter can be argued against the same reasoning.
 - [Notifications](notifications.md): notification dispatcher and sinks
 - [Architecture: Tech Stack](../architecture/tech-stack.md): Message Bus row in the stack table
 - [Roadmap: Scaling Path](../roadmap/future-vision.md#scaling-path): Phase 2 Local Multi-Process constraints
-- [Roadmap](../roadmap/index.md): the distributed message bus and task queue remain planned work
+- [Roadmap](../roadmap/index.md): the NATS JetStream queue, worker pool, dead-letter consumer and heartbeat subscriber, under what is built and exercised

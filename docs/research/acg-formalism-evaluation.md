@@ -63,9 +63,10 @@ assessment and source file references.
 
 - **Progressive trust**: agent trust levels (RESTRICTED/STANDARD/ELEVATED) with human
   approval for promotion. No ACG equivalent.
-- **Personality and behavioural configuration**: `PersonalityConfig` with Big Five + behavioural
-  enums affecting decision style. No ACG equivalent. *(Since removed: the personality
-  surface was deleted whole.)*
+- ~~**Personality and behavioural configuration**: `PersonalityConfig` with Big Five +
+  behavioural enums affecting decision style. No ACG equivalent.~~ *(No longer a capability:
+  the personality surface was deleted whole. The row is kept struck through because the
+  comparison below was drawn against it.)*
 - **Memory injection**: episodic and procedural memory retrieval shaping context before
   execution. No ACG equivalent.
 - **Prompt profiles**: verbosity adaptation by capability rung. No ACG equivalent.

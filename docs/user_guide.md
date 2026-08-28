@@ -2,10 +2,12 @@
 
 How to run SynthOrg.
 
-SynthOrg takes a description of a piece of software and builds it in one pass: the work is
-split into a tree of parts, the parts are built in parallel in isolated containers, and each
-one is checked by something that did not write it. It runs on your hardware, against the
-providers and models you configure, and your code does not leave your machine.
+SynthOrg is built to take a description of a piece of software and build it in one pass: the
+work is split into a tree of parts, the parts are built in parallel in isolated containers,
+and each one is checked by something that did not write it. That is the execution flow, not
+a completed capability; see the warning below. It runs on your hardware, against the
+providers and models you configure, so nothing leaves your machine except what you send to
+a provider you chose. Point it at local models and nothing leaves at all.
 
 !!! warning "Pre-alpha"
 
@@ -72,10 +74,14 @@ running an unreleased tree. It needs three things the CLI would otherwise do for
 
 3. Build and start, naming the runtime base image the backend Dockerfile layers on. There
    is deliberately no default: a build without `BASE_IMAGE` fails fast rather than pulling a
-   mutable tag.
+   mutable tag. Pin it by digest, so two builds of the same commit layer on the same base.
+   Resolve the digest once and reuse it:
 
     ```bash
-    BASE_IMAGE=ghcr.io/aureliolo/synthorg-backend-base:main \
+    docker buildx imagetools inspect \
+      ghcr.io/aureliolo/synthorg-backend-base:main --format '{{.Manifest.Digest}}'
+
+    BASE_IMAGE=ghcr.io/aureliolo/synthorg-backend-base@sha256:<digest-from-above> \
       docker compose -f docker/compose.yml up -d --build
     ```
 
