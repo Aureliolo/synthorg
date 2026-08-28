@@ -4,7 +4,7 @@ import Base from "../../layouts/Base.astro";
 
 <Base
   title="Get SynthOrg | Install the CLI"
-  description="Install the SynthOrg CLI on Linux, macOS, or Windows with a single command, or inspect the install scripts before running them. Requires Docker; everything runs on your own machine."
+  description="Install the SynthOrg CLI on Linux, macOS, or Windows with a single command, or inspect the install scripts before running them. Needs Docker; runs on your own machine."
 >
   <!-- ============================================================ -->
   <!-- HERO (compact) -->
@@ -19,7 +19,7 @@ import Base from "../../layouts/Base.astro";
         </span>
       </h1>
       <p class="text-lg text-gray-400 max-w-xl mx-auto">
-        The CLI orchestrates Docker: it writes a Compose file, verifies and pulls the images, and brings the stack up on your own machine. SynthOrg is pre-alpha; see the <a href="/docs/roadmap/" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">roadmap</a> for what is built and what is not.
+        The CLI orchestrates Docker: it writes a Compose file, verifies and pulls the images, and brings the stack up. Pre-alpha; see the <a href="/docs/roadmap/" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">roadmap</a>.
       </p>
     </div>
   </section>
@@ -32,7 +32,7 @@ import Base from "../../layouts/Base.astro";
       <h2 class="text-2xl md:text-3xl font-bold mb-3 text-center">Quick Install</h2>
 
       <p class="text-sm text-gray-400 text-center max-w-xl mx-auto mb-6">
-        Prerequisite: <a href="https://docs.docker.com/get-docker/" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">Docker</a> Engine 20.10 or later with Compose, running and reachable. The CLI pulls its images from a registry, so the first start needs network access.
+        Needs <a href="https://docs.docker.com/get-docker/" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">Docker</a> Engine 20.10+ with Compose, running, and network access for the first pull.
       </p>
 
       <!-- Side-by-side terminals: stacked on mobile, side-by-side on md+ -->
@@ -110,7 +110,7 @@ import Base from "../../layouts/Base.astro";
 <span class="text-gray-400">$</span> synthorg start     <span class="text-gray-600"># verify signatures, pull images, start the stack</span></code></pre>
         </div>
         <p class="text-xs text-gray-400 mt-3">
-          The dashboard is served at <a href="http://localhost:3000" class="text-gray-400 hover:text-white transition-colors"><code>http://localhost:3000</code></a> and the API at <code>http://localhost:3001</code>, by default. <code>synthorg status</code> reports container health; <code>synthorg stop</code> brings the stack down.
+          Dashboard at <a href="http://localhost:3000" class="text-gray-400 hover:text-white transition-colors"><code>http://localhost:3000</code></a>, API at <code>http://localhost:3001</code>, by default. <code>synthorg status</code> and <code>synthorg stop</code> manage the stack.
         </p>
       </div>
     </div>
@@ -195,7 +195,7 @@ import Base from "../../layouts/Base.astro";
             </li>
             <li class="flex gap-2">
               <span class="w-5 h-5 rounded-full bg-violet-600/20 flex items-center justify-center text-violet-400 text-xs font-bold shrink-0 mt-0.5">2</span>
-              <span>Verify with <code class="text-gray-300">sha256sum --ignore-missing -c checksums.txt</code> on Linux and macOS, or <code class="text-gray-300">Get-FileHash &lt;archive&gt; -Algorithm SHA256</code> on Windows and compare against <code class="text-gray-300">checksums.txt</code></span>
+              <span>Verify with <code class="text-gray-300">sha256sum --ignore-missing -c checksums.txt</code>, or on Windows <code class="text-gray-300">Get-FileHash &lt;archive&gt; -Algorithm SHA256</code></span>
             </li>
             <li class="flex gap-2">
               <span class="w-5 h-5 rounded-full bg-violet-600/20 flex items-center justify-center text-violet-400 text-xs font-bold shrink-0 mt-0.5">3</span>
@@ -213,11 +213,11 @@ import Base from "../../layouts/Base.astro";
         <div class="bg-[#0F1219] rounded-xl p-6 border border-white/10 flex flex-col">
           <h3 class="text-lg font-semibold mb-3">Skip the CLI entirely</h3>
           <p class="text-sm text-gray-400 mb-4 flex-1">
-            The CLI automates Compose file generation, secret generation, signature-verified
-            image pulls, health checks, and updates. To do it by hand, clone the repository,
-            copy <code class="text-gray-300">docker/.env.example</code> to
-            <code class="text-gray-300">docker/.env</code> and fill in the required secrets it
-            leaves blank, then bring up <code class="text-gray-300">docker/compose.yml</code>.
+            The CLI automates Compose generation, secrets, signature-verified image pulls,
+            health checks, and updates. To do it by hand, copy
+            <code class="text-gray-300">docker/.env.example</code> to
+            <code class="text-gray-300">docker/.env</code>, fill in the blank secrets, and bring
+            up <code class="text-gray-300">docker/compose.yml</code>.
           </p>
           <a
             href="/docs/user_guide/"

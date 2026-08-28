@@ -4,63 +4,51 @@
 parallel, each part checked by something that did not write it. On your hardware, against
 the models you choose.**
 
-!!! warning "Pre-alpha. Read this first."
+!!! warning "Pre-alpha, and not yet fully working"
 
-    SynthOrg is pre-alpha. The loop has been driven live against a real deployment twelve
-    times and has never reached the assembly stage: no run has produced an assembled
-    deliverable, and no completion has been recorded. Rounds ended on authentication, an
-    event-loop split, a provider outage, a review that read its input from a store written
-    after it had ruled, a replan cap with no exit, and decomposition bounds that each
-    discarded a converged tree.
-
-    Nothing on these pages promises you working software. What they describe is how the
-    system is built and how it behaves, which you can check against the code. Expect bugs,
-    missing polish, and breaking changes between releases. See the
-    [Roadmap](roadmap/index.md) for what is wired versus what is intent.
+    The loop has been driven live twelve times and has never reached the assembly stage: no
+    run has produced an assembled deliverable. These pages describe how the system is built
+    and how it behaves, which you can check against the code. Expect bugs, missing polish,
+    and breaking changes. See the [Roadmap](roadmap/index.md) for what is wired versus what
+    is intent.
 
 ---
 
 ## The problem
 
-An agent working alone cannot hold a whole application. It does one thing at a time, and
-the twentieth thing damages the first. Adding agents does not fix that on its own, because
-the binding constraint is not agent supply: it is **decomposition quality**. Splitting work
-so that the parts are genuinely independent is the hard problem, and it is the one this
-system is built around.
+An agent working alone cannot hold a whole application: it does one thing at a time, and the
+twentieth damages the first. Adding agents does not fix that, because the binding constraint
+is not agent supply but **decomposition quality**. Splitting work so the parts are genuinely
+independent is the hard problem, and the one this system is built around.
 
 ## The mechanism
 
-A tree does not have the single-agent failure mode, provided the merges hold. So the
-objective is decomposed recursively into a tree of units that can each be built on their
-own, the leaves are built concurrently in isolated containers, and the tree is assembled
-from the bottom up.
+A tree does not have the single-agent failure mode, provided the merges hold. So an objective
+is decomposed into units that can each be built alone, the leaves build concurrently in
+isolated containers, and the tree is assembled from the bottom up.
 
-- **Decomposition** turns an objective into a plan: a tree of units, each with declared
-  dependencies and expected artefacts. A unit that is not atomic is split again. See
+- **Decomposition** turns an objective into a tree of units, each with declared dependencies
+  and expected artefacts. A unit that is not atomic is split again. See
   [Recursive Decomposition](design/recursive-decomposition.md).
-- **Dispatch** builds waves from the whole tree's dependency graph, so independent
-  subtrees run at the same time and a container lands strictly after the subtree it
-  assembles. A unit whose declared inputs died is parked with the reason, never dispatched
+- **Dispatch** builds waves from the whole tree's dependency graph, so independent subtrees
+  run together. A unit whose declared inputs died is parked with the reason, never dispatched
   onto dead work. See [Coordination](design/coordination.md).
-- **Execution** runs each unit in its own sandboxed container with a scoped workspace and
-  a governed tool surface. See [Agent Execution](design/agent-execution.md).
-- **Review** is done by something that did not write the work. The reviewer is selected
-  from the roster and the executor is excluded, a narrowed identity is dispatched for the
-  session, and the archive refuses a verdict row whose reviewer and executor are the same
-  agent. An independent check is a triage filter, not an authority: it does not establish
-  that the work is correct, and it does not replace your judgement. See
+- **Execution** runs each unit in its own sandboxed container with a scoped workspace and a
+  governed tool surface. See [Agent Execution](design/agent-execution.md).
+- **Review** is done by something that did not write the work: the executor is excluded from
+  selection, and the archive refuses a verdict whose reviewer and executor match. An
+  independent check is a triage filter, not an authority. See
   [Verification Quality](design/verification-quality.md).
-- **Assembly** is a gated stage of its own, not an implicit side effect of the last unit
-  finishing. Every plan item passing its gate opens an accountable assembly task, and then
-  an evaluation pass scored against the plan's own objective criteria. No verdict parks the
-  plan; it never completes it. See [Initiative Tail](design/initiative-tail.md).
+- **Assembly** is a gated stage of its own, not a side effect of the last unit finishing: an
+  accountable assembly task, then an evaluation pass scored against the plan's own criteria.
+  See [Initiative Tail](design/initiative-tail.md).
 
 ## Where it runs
 
-Self-hosted, on your hardware. The platform is provider-agnostic: every LLM dispatch names
-its own explicit `(provider, model)` pair, including local models, and no default provider
-exists to fall back on. There is no SynthOrg service in the path, so what leaves the machine
-is what the provider you configured needs; against local models, nothing does.
+Self-hosted, on your hardware. Every LLM dispatch names its own explicit `(provider, model)`
+pair, including local models, with no default to fall back on. No SynthOrg service sits in
+the path, so what leaves the machine is what your chosen provider needs; against local
+models, nothing does.
 
 ---
 
@@ -181,30 +169,29 @@ wiring status; treat any gap between a page and the code as the work, not the sp
 
 ## What is wired
 
-Every item below is implemented and exercised by deterministic end-to-end harnesses driven
-by a scripted provider, so no real spend is involved in the suite. That is a statement
-about the code paths, not a claim that a run delivers.
+Every item below is implemented and exercised by deterministic end-to-end harnesses driven by
+a scripted provider, so the suite involves no real spend. That is a statement about the code
+paths, not a claim that a run delivers.
 
-- **Decomposition and dispatch**: recursive planning, a dependency graph over the whole
-  tree, parallel waves, and level-triggered recovery after a restart.
-- **Independent review**: roster-staffed gate roles, executor exclusion, and archived
-  verdicts that record the model each judgement was made under.
-- **Sandboxed execution**: per-unit containers, a scoped shared workspace, and a governed
-  tool surface including an MCP bridge for external tools.
-- **Explicit provider binding**: every dispatch names its own provider and model; an
-  unconfigured feature is off and says so rather than borrowing a default.
-- **Budgets and cost attribution**: per-agent limits, run and token ceilings, and spend
-  attributed by prompt purpose.
+- **Decomposition and dispatch**: recursive planning, a dependency graph over the whole tree,
+  parallel waves, and level-triggered recovery after a restart.
+- **Independent review**: roster-staffed gate roles, executor exclusion, and archived verdicts
+  recording the model each judgement was made under.
+- **Sandboxed execution**: per-unit containers, a scoped shared workspace, and a governed tool
+  surface including an MCP bridge.
+- **Explicit provider binding**: an unconfigured feature is off and says so rather than
+  borrowing a default.
+- **Budgets and cost attribution**: per-agent limits, run and token ceilings, spend attributed
+  by prompt purpose.
 - **Approval gate and audit**: actions parked for a human by autonomy level, with a signed
   audit chain.
 - **Memory and knowledge**: per-agent and shared memory with a retrieval pipeline, plus an
-  ingested external corpus agents can cite.
+  ingested corpus agents can cite.
 - **Operator surfaces**: a React dashboard, a REST and WebSocket API, and runtime-editable
   settings.
 
-Roles, departments and staffing are shipped machinery and the pages that document them are
-accurate. They are plumbing: how a reviewer is found and how permissions are scoped, not
-the reason the system works.
+Roles, departments and staffing are shipped machinery. They are plumbing: how a reviewer is
+found and how permissions are scoped, not the reason the system works.
 
 ---
 

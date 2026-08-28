@@ -6,9 +6,9 @@ description: What SynthOrg is and how every writer describes it, plus the visual
 # Brand Identity & UX Design System
 
 This page carries two things: the words SynthOrg uses about itself, which every
-other page inherits, and the visual system the dashboard is built from. The
-voice comes first, because a page can be accurate about the code and still be
-wrong about the product.
+other page inherits, and the visual system the dashboard is built from. The voice
+comes first, because a page can be accurate about the code and still be wrong
+about the product.
 
 ## What SynthOrg Is
 
@@ -17,68 +17,56 @@ wrong about the product.
 > parallel in isolated containers, and has each part checked by something that
 > did not write it. On your hardware, against models you choose.
 
-That is the brand line, and its order is load-bearing: the problem first, then
-the mechanism, then where it runs. Never lead with the mechanism.
+The order is load-bearing: problem, then mechanism, then where it runs. Never
+lead with the mechanism.
 
 **The binding constraint is decomposition quality, not agent supply.** The
 parallel tree is not a speed feature and must never be sold as one. A single
-agent working sequentially cannot hold a whole application in view, which is why
-that shape degrades as the application grows: it does one thing at a time, and
-the twentieth thing damages the first. A tree does not have that failure mode,
-provided the merges hold. Splitting the work so the parts are genuinely
-independent is the hard problem, and it is the one this system is built around.
+agent does one thing at a time, so the twentieth damages the first; a tree does
+not have that failure mode, provided the merges hold. Making the parts genuinely
+independent is the hard problem.
 
 ### The Three Claims, and How Far Each Goes
 
-**It fans out.** Work is decomposed recursively into a tree of units that can be
-built independently; the leaves are built concurrently in isolated containers and
-assembled bottom-up. Never state a size the system handles: whether the
-decomposition ceiling is per level or global is being measured, has no answer
-yet, and nothing you write may depend on which way it lands.
+**It fans out.** Work is decomposed recursively into units that can be built
+independently, built concurrently in isolated containers, and assembled
+bottom-up. Never state a size the system handles: the decomposition ceiling is
+being measured and has no answer yet.
 
 **Each part is checked by something that did not write it.** The reviewer is
-structurally prevented from being the author, in the service layer, in the model
-binding, and by a database constraint. The claim stops exactly there. It does not
-mean the work is correct, it does not mean nothing broken gets through, and it
-does not replace human judgement: an independent judge is a triage filter. Nor
-does it mean the two are independent in the way that would matter most: they are
-distinct identities with separately bound pairs, but nothing binds them to
-different model families, so a blind spot shared by both is a blind spot the pair
-cannot see. The narrow version is the true one and it is worth more than the
-broad one.
+structurally prevented from being the author, in the service layer, the model
+binding, and a database constraint. The claim stops there. It does not mean the
+work is correct, and nothing binds the two to different model families, so a
+blind spot they share is one the pair cannot see. The narrow version is the true
+one and it is worth more than the broad one.
 
-**It runs on your hardware.** Self-hosted, provider-agnostic, any models
-including local ones, and the code does not leave the machine. State it as a
-property, never as a boast.
+**It runs on your hardware.** Self-hosted and provider-agnostic, local models
+included, with no SynthOrg service in the path. State it as a property, never as
+a boast.
 
 ### What Is Not Sold
 
-The organisation metaphor. Roles, departments, staffing, and the approval gate
-are shipped, working machinery, and a page that documents them is documenting
-something real and must stay accurate. They are plumbing, described as plumbing,
-and never the headline. The organisational simulation is not the reason the
-system works, and no page may present it as the product.
+The organisation metaphor. Roles, departments, staffing, and the approval gate are
+shipped, working machinery, and pages documenting them must stay accurate. They
+are plumbing, described as plumbing, never the headline.
 
 ## Voice Rules
 
-These are not style preferences. A page that breaks one is wrong, not merely
-off-tone.
+A page that breaks one of these is wrong, not merely off-tone.
 
 | Rule | What it means |
 |------|---------------|
-| Never promise an outcome | No page says the reader will get working software. Every claim is about how the system is built and how it behaves. The loop has been driven live twelve times against a real deployment and has never once reached the assembly stage; no run has produced an assembled deliverable and no completion has been recorded |
+| Never promise an outcome | No page says the reader will get working software. Every claim is about how the system is built and behaves. The loop has been driven live twelve times and has never reached the assembly stage |
 | Pre-alpha, stated plainly | Not softened, not implied, not left below the fold |
 | No autonomy claims | Supervision is a property of the design, not a stage the product has graduated from |
-| Bound the checking claim | The thing that checks the work is not the thing that produced it. That is the whole claim; anything broader says more than the code supports, and model-family independence in particular is a recommendation the code does not implement |
-| Quote no build size | The decomposition ceiling is being measured and has no answer, so a figure invented for it is a claim about an open question |
-| Qualify or delete | If a sentence needs a qualifier to be true, write the qualifier |
-| Mark intent as intent | Never write a thing that is not built in the present tense, and never hedge one that genuinely ships |
+| Bound the checking claim | The thing that checks the work is not the thing that produced it. Anything broader says more than the code supports; model-family independence in particular is a recommendation the code does not implement |
+| Quote no build size | The decomposition ceiling has no measured answer, so a figure invented for it is a claim about an open question |
+| Mark intent as intent | Never write a thing that is not built in the present tense, and never hedge one that ships |
 
-House rules on every word: British English; no em-dashes; current state only (no
-change-narration, no back-references, no migration framing); no number nobody
-verified; and no LLM vendor privileged anywhere a provider or model is
-configured, dispatched to or illustrated, where the placeholders are
-`example-provider` and `example-{basic,capable,expert}-001`.
+House rules on every word: British English; no em-dashes; current state only; no
+unverified number; and no LLM vendor privileged where a provider or model is
+configured, dispatched to or illustrated (`example-provider`,
+`example-{basic,capable,expert}-001`).
 
 ## Design Direction
 

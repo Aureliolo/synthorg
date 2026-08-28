@@ -55,7 +55,7 @@ const { dimensions, categories, competitors } = data;
 const competitorCount = competitors.filter((c) => !c.is_synthorg).length;
 
 const title = `SynthOrg vs ${competitorCount}+ Agent Frameworks | Feature Comparison`;
-const description = `Interactive comparison of SynthOrg against ${competitorCount}+ agent orchestration frameworks, platforms, and research projects. Self-hosted execution, operator-chosen models, and a reviewer that did not write the work. Pre-alpha.`;
+const description = `Interactive comparison of SynthOrg against ${competitorCount}+ agent orchestration frameworks, platforms, and research projects. Self-hosted, operator-chosen models, and a reviewer that did not write the work.`;
 
 const siteUrl = Astro.site;
 const pageUrl = new URL("/compare/", Astro.site).href;
@@ -69,12 +69,6 @@ const pageUrl = new URL("/compare/", Astro.site).href;
   <!-- ============================================================ -->
   <section class="py-12 px-6" id="comparison-table">
     <div class="max-w-7xl mx-auto">
-      <p class="text-gray-400 leading-relaxed max-w-3xl mx-auto mb-8 text-center">
-        SynthOrg is pre-alpha. Its rows below describe machinery that is built, not outcomes
-        that are proven: the loop has been driven against a real deployment and has not yet
-        produced an assembled deliverable. Several projects listed here are mature software in
-        daily use, and nothing in this table asserts parity with them.
-      </p>
       <ComparisonTable
         client:load
         competitors={competitors}
@@ -89,17 +83,12 @@ const pageUrl = new URL("/compare/", Astro.site).href;
   <!-- ============================================================ -->
   <section class="py-16 px-6">
     <div class="max-w-5xl mx-auto">
-      <h2 class="text-3xl font-bold mb-6 text-center">
-        What the comparison
+      <h2 class="text-3xl font-bold mb-12 text-center">
+        Where SynthOrg is
         <span class="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-teal-400">
-          turns on
+          uniquely different
         </span>
       </h2>
-
-      <p class="text-gray-400 leading-relaxed max-w-2xl mx-auto mb-12 text-center">
-        Every project in the table is scored on the same dimensions. These four are where
-        SynthOrg differs by construction rather than by degree.
-      </p>
 
       <div class="grid md:grid-cols-2 gap-8">
         <!-- Deep-dive 1: Decomposition -->
@@ -111,12 +100,11 @@ const pageUrl = new URL("/compare/", Astro.site).href;
             <h3 class="text-xl font-semibold">Split into a tree, not held in one loop</h3>
           </div>
           <p class="text-gray-400 leading-relaxed">
-            A single agent in a loop holds one thing at a time, which is why that shape
-            degrades as an application grows: the twentieth thing damages the first. Here a
-            build is decomposed recursively into a tree of independently buildable units, the
-            leaves are built concurrently in isolated containers, and the results are
-            assembled bottom-up. Splitting work so the parts are genuinely independent is the
-            hard problem, and it is the one the system is built around.
+            A single agent holds one thing at a time, so that shape degrades as an
+            application grows. Here a build is split into a tree of independently
+            buildable units, the leaves built concurrently in isolated containers and
+            assembled bottom-up. Making the parts genuinely independent is the hard
+            problem, and the one the system is built around.
           </p>
         </div>
 
@@ -129,14 +117,11 @@ const pageUrl = new URL("/compare/", Astro.site).href;
             <h3 class="text-xl font-semibold">The reviewer did not write the work</h3>
           </div>
           <p class="text-gray-400 leading-relaxed">
-            A finished unit is judged by a different agent, chosen per review with the author
-            excluded from the candidate pool. The exclusion is structural rather than a
-            convention: the service layer removes the author, and a database constraint
-            refuses any verdict whose executor and reviewer are the same agent. The reviewer
-            runs on its own provider and model pair, bound by you, so it can sit on a
-            different model family from the one that produced the work. An independent judge
-            is a triage filter, not a correctness guarantee, and it does not stand in for
-            your own reading of the result.
+            A finished unit is judged by a different agent, chosen per review with the
+            author excluded from the pool. The exclusion is structural, not a convention:
+            the service layer removes the author, and a database constraint refuses any
+            verdict whose executor and reviewer match. An independent judge is a triage
+            filter, not a correctness guarantee.
           </p>
         </div>
 
@@ -149,14 +134,10 @@ const pageUrl = new URL("/compare/", Astro.site).href;
             <h3 class="text-xl font-semibold">It runs on your hardware</h3>
           </div>
           <p class="text-gray-400 leading-relaxed">
-            Containers you start, a database you hold, provider credentials you register. There
-            is no SynthOrg service in the path, no provider is privileged, and every dispatch
-            names a provider and model you chose, including models you run yourself, so what
-            reaches a third party is what that provider needs and nothing more. Spend
-            lands on your own accounts rather than on a metered platform bill. That is a
-            structural property rather than a boast: a hosted competitor sells metered compute,
-            so a genuinely self-hostable equivalent cannibalises its own margin and is
-            unattractive for it to build.
+            Containers you start, a database you hold, credentials you register. No
+            SynthOrg service sits in the path and no provider is privileged: every dispatch
+            names a provider and model you chose, including models you run yourself. Spend
+            lands on your own accounts rather than a metered platform bill.
           </p>
         </div>
 
@@ -171,9 +152,8 @@ const pageUrl = new URL("/compare/", Astro.site).href;
           <p class="text-gray-400 leading-relaxed">
             Actions route through an approval gate under an oversight mode you set (full,
             semi, supervised, locked), with an audit trail behind it and a Docker sandbox
-            around tool execution. Autonomy is never granted by an agent to itself: widening
-            it is a human act, and a failed governance check keeps the action gated. This is
-            how the system is built, not a milestone it has passed.
+            around tool execution. Autonomy is never granted by an agent to itself:
+            widening it is a human act, and a failed check keeps the action gated.
           </p>
         </div>
       </div>
@@ -194,8 +174,8 @@ const pageUrl = new URL("/compare/", Astro.site).href;
         </span>
       </h2>
       <p class="text-gray-400 mb-8">
-        Stand up the stack locally, register the providers you want to use, and drive the loop
-        under an oversight mode you set. It is pre-alpha, and it is built in the open.
+        Stand up the stack locally, register the providers you want, and drive the loop under
+        an oversight mode you set. Pre-alpha, built in the open.
       </p>
       <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
         <a href="/get/" class="px-8 py-3 bg-violet-600 hover:bg-violet-500 rounded-lg font-semibold transition-colors">

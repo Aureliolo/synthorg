@@ -2,21 +2,15 @@
 
 How to run SynthOrg.
 
-SynthOrg is built to take a description of a piece of software and build it in one pass: the
-work is split into a tree of parts, the parts are built in parallel in isolated containers,
-and each one is checked by something that did not write it. That is the execution flow, not
-a completed capability; see the warning below. It runs on your hardware, against the
-providers and models you configure, so nothing leaves your machine except what you send to
-a provider you chose. Point it at local models and nothing leaves at all.
+SynthOrg splits a build into a tree of parts, builds them in parallel in isolated
+containers, and has each part checked by something that did not write it. It runs on your
+own hardware. You choose the providers and models it dispatches to.
 
-!!! warning "Pre-alpha"
+!!! warning "Pre-alpha, and not yet fully working"
 
-    The loop has been driven live against a real deployment twelve times and has never
-    reached the assembly stage: no run has produced an assembled deliverable, and no
-    completion has been recorded. The platform, CLI, dashboard and setup wizard below are
-    built and do what this page describes, and every action the system takes runs under the
-    oversight mode you set. Nothing here promises you working software. See the
-    [Roadmap](roadmap/index.md) for what is wired versus what is intent.
+    The loop has been driven live twelve times and has never reached the assembly stage. The
+    platform, CLI, dashboard and setup wizard below are built and do what this page
+    describes. See the [Roadmap](roadmap/index.md) for what is wired versus what is intent.
 
 ## Prerequisites
 
@@ -49,9 +43,9 @@ To opt in to pre-release builds (dev channel), run `synthorg config set channel 
 
 ## Quick Start (manual Docker Compose)
 
-`docker/compose.yml` is the source-build stack: it builds the backend image from the
-repository rather than pulling a published one, so it is the path for development and for
-running an unreleased tree. It needs three things the CLI would otherwise do for you.
+`docker/compose.yml` builds the backend from the repository rather than pulling a published
+image, so it is the path for development. It needs three things the CLI would otherwise do
+for you.
 
 1. Clone the repository and create `docker/.env` from the example:
 

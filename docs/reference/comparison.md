@@ -35,7 +35,7 @@ A single agent in a loop cannot hold a whole application. That is why a system t
 
 | Framework | Category | License | Pricing | Self-Hosted | Multi-Agent | Task Delegation | Human-in-the-Loop |
 |:----------|:---------|:--------|:--------|:-----------:|:---:|:---:|:---:|
-| [**SynthOrg**](https://synthorg.io) | Build Platform | BUSL-1.1 | Depends | ✔ | ~ | ~ | ~ |
+| [**SynthOrg**](https://synthorg.io) | Build Platform | BUSL-1.1 | Depends | ✔ | ~ | ~ | ✔ |
 | [CrewAI](https://crewai.com) | Multi-Agent Framework | MIT | Open-core | ~ | ✔ | ✔ | ✔ |
 | [AutoGen](https://microsoft.github.io/autogen/) | Multi-Agent Framework | MIT | Free | ✔ | ✔ | ✔ | ✔ |
 | [LangGraph](https://www.langchain.com/langgraph) | Multi-Agent Framework | MIT | Open-core | ~ | ✔ | ✔ | ✔ |
@@ -85,7 +85,7 @@ A single agent in a loop cannot hold a whole application. That is why a system t
 
 | Framework | Category | License | Pricing | Self-Hosted | Memory | Tool Use | Security | Workflows |
 |:----------|:---------|:--------|:--------|:-----------:|:---:|:---:|:---:|:---:|
-| [**SynthOrg**](https://synthorg.io) | Build Platform | BUSL-1.1 | Depends | ✔ | ~ | ~ | ~ | ~ |
+| [**SynthOrg**](https://synthorg.io) | Build Platform | BUSL-1.1 | Depends | ✔ | ~ | ~ | ✔ | ~ |
 | [CrewAI](https://crewai.com) | Multi-Agent Framework | MIT | Open-core | ~ | ✔ | ✔ | ~ | ~ |
 | [AutoGen](https://microsoft.github.io/autogen/) | Multi-Agent Framework | MIT | Free | ✔ | ✔ | ✔ | ~ | ✔ |
 | [LangGraph](https://www.langchain.com/langgraph) | Multi-Agent Framework | MIT | Open-core | ~ | ✔ | ✔ | - | ✔ |
@@ -135,7 +135,7 @@ A single agent in a loop cannot hold a whole application. That is why a system t
 
 | Framework | Category | License | Pricing | Self-Hosted | Budget / Cost | Observability | Dashboard | CLI |
 |:----------|:---------|:--------|:--------|:-----------:|:---:|:---:|:---:|:---:|
-| [**SynthOrg**](https://synthorg.io) | Build Platform | BUSL-1.1 | Depends | ✔ | ~ | ✔ | ~ | ~ |
+| [**SynthOrg**](https://synthorg.io) | Build Platform | BUSL-1.1 | Depends | ✔ | ✔ | ✔ | ✔ | ✔ |
 | [CrewAI](https://crewai.com) | Multi-Agent Framework | MIT | Open-core | ~ | ~ | ~ | ~ | ✔ |
 | [AutoGen](https://microsoft.github.io/autogen/) | Multi-Agent Framework | MIT | Free | ✔ | - | ~ | ~ | - |
 | [LangGraph](https://www.langchain.com/langgraph) | Multi-Agent Framework | MIT | Open-core | ~ | - | ~ | ~ | ✔ |

@@ -3,40 +3,40 @@ const useCases = [
   {
     title: "Web application",
     description:
-      "A frontend, an API layer, and a data model split into independent leaves: each one built in its own container, then assembled bottom-up.",
+      "A frontend, an API layer, and a data model built as independent leaves, then assembled bottom-up.",
     features: [
       "Recursive task decomposition",
       "Isolated build containers",
-      "Reviewed by an agent that did not write it",
+      "Author barred from reviewing",
     ],
     color: "violet",
   },
   {
     title: "Command-line tool",
     description:
-      "Argument parsing, the core logic, and the output formatting split into parts a single agent would otherwise have to hold all at once.",
+      "Argument parsing, core logic, and output formatting split into parts one agent cannot hold at once.",
     features: [
       "Independently buildable units",
       "Bottom-up assembly",
-      "Runs on your own hardware",
+      "Runs on your hardware",
     ],
     color: "teal",
   },
   {
     title: "API service",
     description:
-      "Routes, request validation, and persistence become separate leaves, built at the same time and checked before they merge.",
+      "Routes, request validation, and persistence become separate leaves, built together and checked before they merge.",
     features: [
       "Concurrent leaf builds",
-      "Reviewer structurally separated from the author",
-      "Any provider, including local models",
+      "Reviewer separated from author",
+      "Any provider, local included",
     ],
     color: "violet",
   },
   {
     title: "Data pipeline",
     description:
-      "Extraction, transformation, and loading split into stages that can be built and checked without waiting on one another.",
+      "Extraction, transformation, and loading split into stages built and checked without waiting on each other.",
     features: [
       "Dependency-aware decomposition",
       "Isolated containers per leaf",
@@ -47,10 +47,10 @@ const useCases = [
   {
     title: "Browser extension",
     description:
-      "The background script, the content script, and the settings UI split into leaves rather than one agent trying to hold the whole thing.",
+      "Background script, content script, and settings UI as separate leaves rather than one tangle.",
     features: [
       "Parallel leaf builds",
-      "The author never reviews its own leaf",
+      "Never reviews its own work",
       "Self-hosted: no SynthOrg service in the path",
     ],
     color: "violet",
@@ -58,11 +58,11 @@ const useCases = [
   {
     title: "Internal tool",
     description:
-      "A form, a database schema, and a small dashboard split into leaves and assembled once each one has been checked by an agent barred from authoring it.",
+      "A form, a database schema, and a small dashboard, each checked by something that did not write it.",
     features: [
       "Recursive decomposition",
-      "Review by an agent barred from authoring",
-      "Runs against models you choose",
+      "Independent review",
+      "Models you choose",
     ],
     color: "teal",
   },

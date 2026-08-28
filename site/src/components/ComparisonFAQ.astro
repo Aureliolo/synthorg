@@ -2,11 +2,11 @@
 const faqs = [
   {
     question: "Why not just use CrewAI or AutoGen?",
-    answer: "CrewAI and AutoGen are excellent frameworks with strong communities and proven track records. CrewAI excels at role-based agent crews with a clean developer experience. AutoGen is powerful for conversation-driven agent systems (though now in maintenance mode as Microsoft merges it into the Agent Framework). SynthOrg targets a different problem: splitting a software build into a tree of independently buildable parts, building the leaves in parallel in isolated containers, and checking each one with a reviewer that is structurally barred from being the one that wrote it, self-hosted on infrastructure you choose. If your use case is a lightweight multi-agent pipeline or crew, CrewAI or AutoGen may be simpler and more mature. If you need that decomposition-and-check machinery, SynthOrg is built for it, though it remains pre-alpha: the loop has not yet completed a build end to end.",
+    answer: "CrewAI and AutoGen are excellent frameworks with strong communities and proven track records. CrewAI excels at role-based agent crews with a clean developer experience. AutoGen is powerful for conversation-driven agent systems (though now in maintenance mode as Microsoft merges it into the Agent Framework). SynthOrg targets a different problem: splitting a software build into a tree of independently buildable parts, building the leaves in parallel in isolated containers, and checking each with a reviewer barred from having written it. If your use case is a multi-agent pipeline or crew, CrewAI or AutoGen may be simpler and more mature. If you need that decomposition-and-check machinery, SynthOrg is built for it, though the loop has not yet completed a build end to end.",
   },
   {
     question: "How is SynthOrg different from ChatDev or MetaGPT?",
-    answer: "ChatDev and MetaGPT simulate a small fixed cast of company roles working through a scripted code-generation process. SynthOrg's approach is structural rather than role-based: a build decomposes recursively into a tree of independently buildable parts, the leaves build concurrently in isolated containers, and each one is checked by a reviewer that is structurally barred from being the one that wrote it, on infrastructure you host and models you choose. It also ships production infrastructure (Docker, dual-backend persistence, backup/restore, observability) that research projects typically lack. The loop itself is pre-alpha: it has not yet completed a run through to an assembled result.",
+    answer: "ChatDev and MetaGPT simulate a fixed cast of company roles working through a scripted code-generation process. SynthOrg's approach is structural rather than role-based: a build decomposes recursively into a tree of independently buildable parts, the leaves build concurrently in isolated containers, and each is checked by a reviewer barred from having written it. It also ships the production infrastructure (Docker, dual-backend persistence, backup/restore, observability) that research projects typically lack. The loop is pre-alpha and has not yet reached an assembled result.",
   },
   {
     question: "Is SynthOrg production-ready?",
@@ -14,7 +14,7 @@ const faqs = [
   },
   {
     question: "What about LangGraph for complex workflows?",
-    answer: "LangGraph excels at graph-based agent workflows with checkpointing, and leaves task decomposition, review, and infrastructure to the application built on top of it. SynthOrg decomposes a build recursively into a tree, executes it through sequential, parallel, Kanban, or Agile-sprint workflows, and checks each leaf with a reviewer that is structurally barred from being the one that wrote it, alongside budget tracking and security policy enforcement. The loop that drives this has not yet completed a run against real models end to end.",
+    answer: "LangGraph excels at graph-based agent workflows with checkpointing, and leaves decomposition, review, and infrastructure to the application built on top. SynthOrg decomposes a build recursively into a tree, runs it through sequential, parallel, Kanban, or Agile-sprint workflows, and checks each leaf with a reviewer barred from having written it, alongside budget tracking and security policy enforcement. That loop has not yet completed a run against real models end to end.",
   },
   {
     question: "Does SynthOrg support my LLM provider?",

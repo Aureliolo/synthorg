@@ -9,7 +9,7 @@ import ScrollSyncPanel from "../components/ScrollSyncPanel.astro";
 import DashboardPreview from "../components/islands/DashboardPreview";
 import GitHubButton from "../components/GitHubButton.astro";
 
-const description = "A single agent in a loop cannot hold a whole application. SynthOrg splits the work into parts that can be built independently, builds them in parallel in isolated containers, and has each part checked by something that did not write it. Self-hosted and pre-alpha: your hardware, your models, local ones included.";
+const description = "SynthOrg splits a build into parts that can be built independently, builds them in parallel in isolated containers, and has each part checked by something that did not write it. Self-hosted, on your hardware, against models you choose. Pre-alpha.";
 
 const siteUrl = Astro.site;
 
@@ -59,13 +59,9 @@ try {
 
       <!-- Subtext -->
       <p class="text-lg md:text-xl text-gray-400 max-w-2xl mx-auto mb-10">
-        It does one thing at a time, and the twentieth thing damages the first. So
-        the work is split before any of it is built: a tree of parts that stand on
-        their own, each leaf built in its own isolated container, each part checked
-        by something that did not write it. All of it on your hardware, against
-        whichever models you choose. There is no SynthOrg service in the path, so
-        what leaves is only what the provider you picked needs, and against local
-        models nothing leaves at all.
+        So the work is split before any of it is built: parts that stand on their
+        own, each built in its own container, each checked by something that did
+        not write it.
       </p>
 
       <!-- CTAs -->
@@ -105,7 +101,7 @@ try {
     <div class="max-w-4xl mx-auto text-center">
       <p class="text-sm text-gray-300">
         <span class="font-semibold text-violet-400">Honest status:</span>
-        Pre-alpha. The platform, the infrastructure and the agent runtime are built and exercised by deterministic harnesses, but driven live against real providers the loop has not yet reached the assembly stage: no run has produced an assembled deliverable. Do not expect working software out of it. Capability sections on this page are marked as available now or in active development.
+Pre-alpha, and not yet fully working. The platform, the infrastructure and the agent runtime are built and tested; driven live, the loop has not yet produced an assembled deliverable. Capability sections on this page are marked as available now or in active development.
         <a href="/docs/roadmap/" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">Roadmap</a> ·
         <a href="https://github.com/Aureliolo/synthorg/issues" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">Issue tracker</a> ·
         <a href="#contact" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">Get in touch</a>
@@ -151,7 +147,7 @@ try {
     <div class="max-w-6xl mx-auto">
       <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">What Makes SynthOrg Different</h2>
       <p class="text-gray-400 text-center max-w-2xl mx-auto mb-12">
-        The binding constraint on building software with agents is decomposition quality, not agent supply. The design puts its weight there: splitting work into parts that are genuinely independent, building them separately, and checking each one against something that did not write it.
+        The binding constraint is decomposition quality, not agent supply. The design puts its weight there: splitting work into genuinely independent parts, building them separately, and checking each against something that did not write it.
       </p>
       <FeatureShowcase />
     </div>
@@ -258,7 +254,7 @@ try {
     <div class="max-w-5xl mx-auto text-center">
       <h2 class="text-3xl md:text-4xl font-bold mb-4">See the Dashboard</h2>
       <p class="text-gray-400 mb-12 max-w-2xl mx-auto">
-        The React 19 dashboard for work, agents, approvals, and spend, with live WebSocket updates. It is the supervision surface: what is running, what is waiting on you, and what it is costing.
+        The React 19 dashboard for work, agents, approvals, and spend, with live WebSocket updates. It shows what is running, what is waiting on you, and what it costs.
       </p>
       <DashboardPreview client:visible />
     </div>
