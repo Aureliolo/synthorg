@@ -10,12 +10,14 @@ This page covers three things: decomposition became a tree, the tree became
 durable and dispatchable, and a harness exists to answer the question the tree
 raises.
 
-Recursion ships ON. The evidence is the sweep below: 0 of 42 requirements
-survived at depth 1 in BOTH arms, and 36 of 42 at depth 2. Both cap-1 merges
-wrote a report and touched no code, because one seven-way fan-in at the top
-integrated nothing; the two-to-three-way fan-ins a level down produced 36. What
-the result credits is narrow, per-subtree assembly. Recursion is how the
-harness got there, and it did no replanning at all.
+Recursion ships ON, and the sweep below is weaker evidence than it looks: its
+depth-1 cells scored 0 of 42 in both arms against 36 of 42 at depth 2, but that
+recording judged a merge on whether a path the PLANNER named before the tree
+existed had changed, and most merges at every cap failed that test. The pilot
+therefore cannot separate what depth did from what the verdict did, and the
+replication is what will. What still stands from it is narrower and does not
+depend on the ranking: the harness planned and assembled a tree of 58 units
+with no replanning at all.
 
 That is also the thing to keep in view. A static hundred-item tree planned in
 one pass, at the moment of maximum ignorance, is waterfall applied recursively.
@@ -498,9 +500,12 @@ namespacing exists to prevent, rather than a corner of it. The chain of
 positions is unique by construction, and each segment still carries the
 sanitised title so an operator can read the path.
 
-That is what turns one wide fan-in at the top into the narrow ones the sweep
-measured. The root keeps today's `INTEGRATING` tail stage, and its brief now
-names the plan's WORKSTREAMS rather than every leaf in the tree.
+That is what turns one wide fan-in at the top into a sequence of narrow ones.
+Whether the width was ever the binding constraint is open: the pilot's own
+table has the deeper, wider-fanning trees scoring better, so narrow assembly is
+argued for here on the grounds that a merge brief stays readable, not on a
+measured collapse. The root keeps today's `INTEGRATING` tail stage, and its
+brief now names the plan's WORKSTREAMS rather than every leaf in the tree.
 
 ## The experiment
 
@@ -979,19 +984,37 @@ its tree grew from 38 leaves to 58, and the ungated line ROSE, from 0.786 to
 decays, because that is what ARIES measured, and asked only whether gating
 rescues it. There was nothing to rescue.
 
-So the conclusion the question was gating still arrives, by a different route:
-the 11-to-25 coherent-unit ceiling is **per level** and depth buys scale. 58
-units at 86% is well past it. But verification is not what makes that true.
+What that does NOT establish is whether the 11-to-25 coherent-unit ceiling is
+per level or global. The tempting reading is that it is per level and depth
+buys scale, since 58 units scored 86% and 58 is well past the band. But a
+single tree at each cap, on a recording whose merge verdicts are known to be
+unreliable, cannot carry that: it is one draw, and the contrast it would rest
+on is the depth-1 row the section below shows cannot be read. The question is
+open and the replication is what will answer it. What survives here is the
+weaker and still useful fact that neither arm decayed with depth.
 
-**What moves the result is fan-in.** Depth 1 is seven units feeding one merge
-and it scored zero in both arms, with the journal saying why: both cap-1 merges
-wrote only `.synthorg/merge/report.md` and `.synthorg/merge/end-to-end.txt` and
-touched no code. The two-to-three-way fan-ins at depth 2 produced 36 of 42.
-Depth replaces one impossible integration with a sequence of small ones.
+**The depth-1 zero is not a fan-in effect, and this recording cannot say what
+it is.** The obvious reading, that seven units feeding one merge is an
+integration too wide to survive, is contradicted by the table it is drawn from:
+the deeper trees have more merges and more total fan-in, and they scored
+better. What actually distinguishes depth 1 is that it has exactly ONE merge,
+so that merge is a single point of failure with no second assembly to
+compensate.
 
-Note that cap 1's seven units sit BELOW the corroborated 11-to-25 band and
-still produced nothing at all, while 58 units at depth 3 sat well above it and
-produced 86%. The band counts units; what binds is unit size against the work.
+That merge was also judged by a rule since replaced. Both cap-1 merges record
+`no assembly attempt changed anything the node declared`, and both record their
+two declared paths as absent. The journal says nothing about what they wrote
+INSTEAD, because the rule in force recorded only declarations: that is the
+whole defect, and it is why the replacement reads the produced tree. So the row
+may be an honest zero or a verdict written off a naming disagreement, and this
+recording cannot tell them apart.
+
+The rule was not confined to depth 1. Merges carrying that same verdict: 1 of 1
+at cap 1, 6 of 7 at cap 2, and 12 of 19 (gated) and 12 of 16 (ungated) at cap
+3, in both arms throughout. Every row of the table above rests on cells where
+most assemblies were judged that way; the deeper rows are not clean readings
+spoiled by a contaminated first row, they are the same defect not proving
+fatal.
 
 ### What this run cannot support
 

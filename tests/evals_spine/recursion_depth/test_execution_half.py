@@ -874,7 +874,7 @@ class TestDeliveryIsAboutWorkNotTheDeclaration:
         assert outcome.delivered, outcome.detail
         # Still recorded, because a planner declaring what it does not need is
         # worth seeing. It just does not decide.
-        assert outcome.undeclared_paths == ("tests/__init__.py",)
+        assert outcome.missing_declared_paths == ("tests/__init__.py",)
 
     async def test_the_baseline_is_taken_before_the_session_runs(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

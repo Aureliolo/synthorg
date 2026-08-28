@@ -162,7 +162,9 @@ class MergeOutcome:
         verdict: The last verdict taken, absent in the ungated arm.
         parked: Whether the gate escalated with nobody to escalate to.
         amendments: How many child-interface changes the agent recorded.
-        undeclared_paths: Declared paths absent from the assembled tree.
+        missing_declared_paths: Declared paths ABSENT from the assembled tree.
+            Recorded because a planner over-declaring is worth seeing; it does
+            not decide delivery, which is read off the assembled tree.
             Diagnosis, never a verdict, for the reason the leaf's own field
             says.
         detail: Why it is not delivered, for a human reading the run.
@@ -180,7 +182,7 @@ class MergeOutcome:
     verdict: str | None = None
     parked: bool = False
     amendments: int = 0
-    undeclared_paths: tuple[str, ...] = ()
+    missing_declared_paths: tuple[str, ...] = ()
     detail: str = ""
 
 
@@ -399,7 +401,7 @@ async def run_merge(
         verdict=review.verdict,
         parked=review.parked,
         amendments=amendments,
-        undeclared_paths=final.missing,
+        missing_declared_paths=final.missing,
         detail=delivery.reason,
     )
 

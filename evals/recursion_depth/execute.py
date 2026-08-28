@@ -97,7 +97,9 @@ class LeafOutcome:
             built modules and failed a check is a different input from one
             that built nothing, and one word for both is what told a live
             root merge that four subtrees holding 169 modules had failed.
-        undeclared_paths: Declared paths absent from the finished tree.
+        missing_declared_paths: Declared paths ABSENT from the finished tree.
+            Recorded because a planner over-declaring is worth seeing; it does
+            not decide delivery, which is read off the produced tree.
             Diagnosis, never a verdict: the declaration is the planner's guess,
             written per node at whatever granularity it chose, so an
             over-declaring planner is worth seeing and must not be able to
@@ -113,7 +115,7 @@ class LeafOutcome:
     produced: bool = False
     tokens: int = 0
     executor: ModelPair | None = None
-    undeclared_paths: tuple[str, ...] = ()
+    missing_declared_paths: tuple[str, ...] = ()
     detail: str = ""
 
 
@@ -287,7 +289,7 @@ async def run_leaf(
         cost=spent.cost,
         tokens=spent.tokens,
         executor=ModelPair.of(owner, deps.declared_pairs),
-        undeclared_paths=final.missing,
+        missing_declared_paths=final.missing,
         detail=delivery.reason,
     )
 

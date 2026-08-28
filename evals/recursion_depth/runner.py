@@ -1383,7 +1383,7 @@ def _leaf_record(
         tokens=leaf.tokens,
         executor=leaf.executor,
         detail=leaf.detail,
-        undeclared_paths=leaf.undeclared_paths,
+        missing_declared_paths=leaf.missing_declared_paths,
     )
 
 
@@ -1412,7 +1412,7 @@ def _merge_record(
         verdict=NotBlankStr(outcome.verdict) if outcome.verdict is not None else None,
         parked=outcome.parked,
         amendments=outcome.amendments,
-        undeclared_paths=outcome.undeclared_paths,
+        missing_declared_paths=outcome.missing_declared_paths,
     )
 
 

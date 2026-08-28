@@ -22,6 +22,7 @@ from enum import StrEnum
 from typing import Final, Literal, Self
 
 from pydantic import (
+    AliasChoices,
     BaseModel,
     ConfigDict,
     Field,
@@ -214,7 +215,7 @@ class UnitRecord(BaseModel):
             passed in its own tree. Only a delivered leaf's claims enter the
             survival denominator: work that never worked cannot be work the
             merge lost. The declared list does not decide this; see
-            ``undeclared_paths``.
+            ``missing_declared_paths``.
         produced: Whether its own tree changed at all. Recorded beside
             ``delivered`` rather than derived from it because the two answer
             different questions and a resume has to reconstruct both: this is
@@ -251,7 +252,14 @@ class UnitRecord(BaseModel):
             child's interface to make the pieces fit. Contracts do not survive
             implementation, so this is expected to be non-zero; a run reporting
             none is reporting that nothing was integrated.
-        undeclared_paths: Declared paths absent from the finished tree.
+        missing_declared_paths: Declared paths ABSENT from the finished tree,
+            recorded because a planner over-declaring is worth seeing. Named
+            for what it holds after its previous name was read, in this
+            project's own design page, as the paths the unit had WRITTEN, which
+            inverted the meaning and turned a failed assembly into a merge that
+            "wrote a report and touched no code". It still parses the old key,
+            because the committed recordings under ``results/`` carry it and
+            stay re-scorable in place.
             Diagnosis, and deliberately not a verdict, because the list is the
             PLANNER's guess rather than the agent's work: it is written per
             node at whatever granularity the planner chose, so deciding
@@ -263,7 +271,11 @@ class UnitRecord(BaseModel):
             separated because what it measures is the planner.
     """
 
-    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+    # populate_by_name so the field is settable by its own name despite
+    # the alias below, which the committed recordings need on the read side.
+    model_config = ConfigDict(
+        frozen=True, extra="forbid", allow_inf_nan=False, populate_by_name=True
+    )
 
     unit_id: NotBlankStr
     title: NotBlankStr
@@ -283,7 +295,10 @@ class UnitRecord(BaseModel):
     verdict: NotBlankStr | None = None
     parked: bool = False
     amendments: int = Field(default=0, ge=0)
-    undeclared_paths: tuple[str, ...] = ()
+    missing_declared_paths: tuple[str, ...] = Field(
+        default=(),
+        validation_alias=AliasChoices("missing_declared_paths", "undeclared_paths"),
+    )
 
     @model_validator(mode="after")
     def _delivered_units_carry_no_reason(self) -> Self:
