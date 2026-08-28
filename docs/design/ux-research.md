@@ -1,67 +1,81 @@
 ---
-title: UX Research & Framework Decision
-description: Research, evaluation, and rationale behind the Vue 3 to React 19 migration for the SynthOrg web dashboard.
+title: Dashboard Framework Research
+description: The framework evaluation behind the dashboard stack, the alternatives weighed against it, and what each library is responsible for.
 ---
 
-# UX Research & Framework Decision
+# Dashboard Framework Research
 
-This document records the framework evaluation and migration decision that shaped the web dashboard rebuild.
+This page records why the dashboard is built on the stack it is built on. It is
+a framework evaluation, not user research: no operator study, interview round or
+usability test underlies it, and no page should cite it as though one did.
 
-## Background
+## The Stack
 
-The initial web dashboard (v0.1.3, #347) was built with **Vue 3 + PrimeVue + Pinia + ECharts + VueFlow**. While functional, the UX audit (#762) identified severe problems across every page: static data presentation, missing interactivity, no visual hierarchy, inconsistent components, and lack of polish. The setup wizard was the only well-designed flow.
+| Layer | Choice | Responsible for |
+|-------|--------|-----------------|
+| Framework | React 19 | Rendering and component model |
+| Components | shadcn/ui, vendored into `web/src/components/ui/` | Every shared primitive the dashboard composes pages from |
+| Accessibility primitives | Base UI | Dialog, popover, checkbox and the other headless behaviours the primitives wrap |
+| State | Zustand | Client stores fed by REST reads and WebSocket events |
+| Command palette | `cmdk-base` (the cmdk port on Base UI Dialog) | Global Cmd+K search and page-local scopes |
+| Animation | Motion | Spring and tween transitions, layout animation, reduced-motion detection |
+| Charts | Recharts | Sparklines, trends, forecast, and budget charts |
+| Graph canvases | `@xyflow/react`, `@dagrejs/dagre`, `d3-force` | Workflow editor, org-chart hierarchy layout, communication view |
+| Drag and drop | `@dnd-kit` | Agent reassignment, team reordering |
+| Icons | `lucide-react` | Every icon in the dashboard |
+| Build | Vite, TypeScript | Development server, bundling, type checking |
 
-Rather than incrementally fixing each page within the Vue stack, the team evaluated whether a framework migration would better serve the project's goals, particularly around component ownership, keyboard-first interaction, animation richness, and AI-assisted development.
+Data fetching is deliberately not on that list. The dashboard has no query
+library: reads go through the typed API client in `web/src/api/`, and anything
+that needs to refresh without a WebSocket channel uses the project's own
+`usePolling` hook, which carries a `skipIfFresh` gate so a page already fed by a
+live channel does not pay for the same state twice.
 
-## Framework Evaluation
+## Alternatives Considered
 
-| Criterion | Vue 3 + PrimeVue | React 19 + shadcn/ui | Svelte 5 | HTMX |
-|-----------|------------------|----------------------|----------|------|
-| **Component ownership** | npm dependency (PrimeVue owns components, updates can break) | Copy-paste model (shadcn generates into your codebase, full control) | Own components but smaller ecosystem | Server-rendered, minimal client components |
-| **Keyboard-first UX** | No established solution | cmdk-base (maintained cmdk port on Base UI Dialog) | No established solution | Not applicable |
-| **Animation ecosystem** | Limited (Vue Transition, no physics-based library at PrimeVue's level) | Motion (spring physics, layout animations, gesture support) | Built-in transitions but limited physics | Not applicable |
-| **Accessibility primitives** | PrimeVue has ARIA support | Base UI (headless, fully accessible, composable) | Limited headless options | Server-rendered (inherently accessible) |
-| **TypeScript DX** | Good but JSX errors less descriptive | Better TS error messages, especially for AI-assisted development | Good | Minimal TS involvement |
-| **State management** | Pinia (Vue-specific) | Zustand (framework-agnostic, minimal API surface) | Runes (built-in) | Server state |
-| **Ecosystem maturity** | Large but smaller than React | Largest ecosystem, most third-party libraries | Growing rapidly | Niche |
-| **Visualization libraries** | ECharts, VueFlow | Recharts, @xyflow/react | D3-based options | Server-rendered charts |
+| Criterion | React + shadcn/ui | Vue + PrimeVue | Svelte | HTMX |
+|-----------|-------------------|----------------|--------|------|
+| **Component ownership** | Copy-paste model: the components live in this repository and are edited in place | npm dependency; the library owns the components and an update can change them | Own components, smaller ecosystem to draw them from | Server-rendered, minimal client components |
+| **Keyboard-first UX** | `cmdk-base`, a maintained command-palette primitive | No established solution | No established solution | Not applicable |
+| **Animation** | Motion: spring physics, layout animations, gesture support | Vue Transition, with no physics-based library at the same level | Built-in transitions, limited physics | Not applicable |
+| **Accessibility primitives** | Base UI: headless, composable, WAI-ARIA behaviours | ARIA support inside the component library | Fewer headless options | Server-rendered |
+| **TypeScript experience** | Descriptive errors, which matters for machine-written code | Good, with less descriptive JSX errors | Good | Minimal TypeScript involvement |
+| **State management** | Zustand: framework-agnostic, small API surface | Pinia, Vue-specific | Runes, built in | Server state |
+| **Ecosystem** | Largest, so a niche need usually has a maintained answer | Large, smaller than React's | Growing | Niche |
+| **Visualisation** | Recharts, `@xyflow/react` | ECharts, VueFlow | D3-based options | Server-rendered charts |
 
-## Decision
+## Why This One
 
-**React 19 + shadcn/ui + Zustand** was chosen for the dashboard rebuild (#762).
+**Component ownership decided it.** The copy-paste model means the dashboard
+owns every component: no upstream release can change the UI, and a primitive is
+customised in place rather than fought with. That matters more here than in a
+typical application, because the design system is enforced by a gate
+(`scripts/check_web_design_system.py`) that can only enforce rules over
+components the repository actually holds.
 
-The deciding factors were:
+**Keyboard-first interaction is not decoration.** The dashboard is an operator
+surface for a system that is supervised, not autonomous, so the operator is in
+the loop constantly and needs fast access to any page, agent, or setting. A
+maintained command-palette primitive was a real differentiator between the
+options.
 
-1. **Component ownership**: shadcn/ui's copy-paste model means SynthOrg owns every component. No upstream dependency can break the UI on update. Components are customised in-place rather than fighting a library's opinion.
+**Accessibility is composed in, not bolted on.** Base UI supplies the behaviours
+(focus trapping, dialog semantics, roving focus) and the vendored primitives
+supply the styling, so an accessible dialog is the default rather than an
+achievement. The Storybook accessibility add-on fails a story on a WCAG
+violation, which only works because the components are local.
 
-2. **Keyboard-first interaction**: cmdk-base (the maintained cmdk port on Base UI Dialog) provides a production-ready command palette. This is central to SynthOrg's interaction model: operators manage autonomous agents and need fast, keyboard-driven access to any action.
+**Machine-written code is a first-class consumer.** Much of this dashboard is
+written by agents, and TypeScript diagnostics are part of the feedback loop they
+work against. More descriptive errors mean fewer wasted rounds.
 
-3. **Animation language**: Motion enables the "Warm Ops" design identity: spring-based entrance animations, layout transitions, and gesture interactions that make an autonomous operations dashboard feel alive rather than static.
+See also the [Tech Stack decisions table](../architecture/tech-stack.md).
 
-4. **Accessibility**: Base UI primitives handle WAI-ARIA compliance at the component level. Combined with shadcn/ui's composable approach, accessibility is built-in rather than bolted-on.
+## Reference Materials
 
-5. **AI-assisted development**: React's TypeScript integration produces more descriptive error messages, which improves the quality of AI-generated code contributions, relevant given SynthOrg's development workflow.
-
-See also: [Tech Stack decisions table](../architecture/tech-stack.md) (Web UI row).
-
-## Migration Timeline
-
-The migration was executed as part of the UX overhaul (#762):
-
-| Phase | Issues | Scope |
-|-------|--------|-------|
-| 0. Scaffold | #768 | React 19 + Vite 8 + TypeScript project setup |
-| 1. Infrastructure | #769 | Routing, state management, API client, WebSocket, auth |
-| 2. App shell | #770 | Layout, sidebar, status bar, command palette |
-| 3. API endpoints | #771--#774 | Backend API extensions for dashboard data needs |
-| 4. Design system | #775 | Design tokens, shared components, Storybook |
-| 5. Pages | #777--#789 | Individual page implementations |
-| 6. Cross-cutting | #790--#793 | Real-time UX, responsive, accessibility, performance QA |
-| 7. Cleanup | #794 | Remove Vue remnants, update infrastructure, close issues |
-
-## Outcome
-
-- Zero Vue, PrimeVue, or Pinia code remains in the `web/` directory
-- All Docker, CI, and documentation infrastructure references React 19
-- The Vue-era commit history is preserved in the changelog for audit purposes
-- Design system documentation lives in [Brand Identity & UX](brand-and-ux.md), [UX Guidelines](ux-guidelines.md), and [Page Structure](page-structure.md)
+| Resource | Location |
+|----------|----------|
+| Brand identity, voice rules, and visual rationale | [Brand & UX](brand-and-ux.md) |
+| Implementation specifications | [UX Guidelines](ux-guidelines.md) |
+| Page structure and navigation | [Page Structure & IA](page-structure.md) |
+| Dependency manifest | `web/package.json` |

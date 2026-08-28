@@ -1,13 +1,28 @@
 ---
 title: Organisation & Templates
-description: Company types, organisational hierarchy, department configuration, template system, and headcount changes in the SynthOrg framework.
+description: How a deployment declares its roster (templates, roles, departments, the reporting graph) and what the build reads out of that declaration.
 ---
 
 # Organisation & Templates
 
+A deployment declares a roster: which roles exist, how many agents hold each,
+and which department each sits in. The declaration is plumbing for the build,
+not a simulation anyone is meant to watch. Three things read it:
+
+- **Decomposition** is offered only the roles the roster actually staffs, so a
+  plan item is owned by a role somebody holds. Roles that judge work are
+  excluded from that list (see [Built-in Roles](agents.md#built-in-roles)).
+- **Selection** decides which agent takes a unit of work, and which agent is
+  available to check a unit it did not write.
+- **Posture** expands to the runtime feature flags the deployment starts with.
+
+Nothing on this page decides what gets built or whether it works. It decides who
+is available when the work is split up and when a finished part needs checking.
+
 ## Company Types
 
-SynthOrg provides pre-built company templates for common organisational patterns:
+Templates are pre-built rosters. Each declares its agents, departments,
+reporting lines and a posture:
 
 | Template | Size | Posture | Autonomy | Communication | Workflow | Use Case |
 |----------|------|---------|----------|---------------|----------|----------|
@@ -16,29 +31,29 @@ SynthOrg provides pre-built company templates for common organisational patterns
 | **Engineering Squad** | 6-10 | cost_disciplined | semi | hybrid | agile_kanban | Software throughput on a budget |
 | **Product Studio** | 9-14 | knowledge_heavy | semi | event_driven | agile_kanban | Discovery-led product development |
 | **Agency** | 10-15 | supervised_client_facing | supervised | hierarchical | kanban | Creative and marketing client work |
-| **Enterprise Org** | 20-50 | supervised_client_facing | supervised | hierarchical | agile_kanban | Enterprise simulation |
-| **Research Lab** | 5-10 | research_autonomous | full | event_driven | kanban | Autonomous research and analysis |
+| **Enterprise Org** | 20-50 | supervised_client_facing | supervised | hierarchical | agile_kanban | Large roster with department policies |
+| **Research Lab** | 5-10 | research_autonomous | full | event_driven | kanban | Research and analysis |
 | **Consultancy** | 4-6 | supervised_client_facing | supervised | hierarchical | kanban | Senior client-facing advisory |
 | **Data Team** | 5-8 | knowledge_heavy | full | event_driven | kanban | Analytics and ML pipelines |
 | **Support Desk** | 5-7 | supervised_client_facing | supervised | hierarchical | kanban | Customer support, incident response |
 | **Security Team** | 6-8 | security_hardened | supervised | hierarchical | kanban | Threat modelling, security review |
 | **Growth Marketing Studio** | 5-8 | cost_disciplined | semi | hybrid | agile_kanban | Content, campaigns, growth |
-| **Custom** | Any | -- | semi | hybrid | agile_kanban | Anything |
+| **Custom** | Any | none | semi | hybrid | agile_kanban | Anything |
 
 A template's **posture** expands to a coherent bundle of runtime feature flags
 (knowledge substrate, conversational chat modes, mid-flight steering, red-team
-gate, economical reasoning), so a template configures behaviour, not just an
-org chart. See [Operating Postures](#operating-postures).
+gate, economical reasoning), so a template configures runtime behaviour and not
+only who is on the roster. See [Operating Postures](#operating-postures).
 
-!!! info "Company size vs. per-task coordination group size"
-    The `Size` column above describes the full company roster, not the number of
-    agents working on any single task. Per-task coordination-group size is
-    bounded separately by `coordination.max_concurrency_per_wave` (settings
-    registry default **5**; **3-4 recommended** per research, adoption tracked
-    on R1 #1250); an Enterprise Org with 50 agents does not run 50-agent
-    coordination waves. See
+!!! info "Roster size is not wave size"
+    The `Size` column describes the whole roster, not the number of agents
+    working a single wave. Wave size is bounded separately by
+    `coordination.max_concurrency_per_wave` (settings-registry default **5**),
+    so a 50-agent roster does not run 50-agent waves. See
     [Task Decomposability & Coordination Topology](coordination.md#task-decomposability-coordination-topology)
-    for the full bounds and [S1 Multi-Agent Architecture Decision §2](../research/s1-multi-agent-decision.md#section-2-team-size-bounds).
+    for the full bounds, and
+    [S1 Multi-Agent Architecture Decision §2](../research/s1-multi-agent-decision.md#section-2-team-size-bounds)
+    for the cited per-group recommendation.
 
 See the [Template System](#template-system) section for details on how templates are defined,
 inherited, and customised.
@@ -113,8 +128,13 @@ activate different Tool Wrapper skills depending on the domain.
 
 ## Organisational Hierarchy
 
-The framework supports a full organisational hierarchy with reporting lines and
-delegation authority:
+Each `Role` declares an optional `reports_to`, and those declarations form a
+reporting graph rooted at the CEO. `core/authority.py` is what reads it, and it
+answers one question: which of two roles is the more senior. Owner selection,
+plan-review panel selection and department-head detection compare reporting
+depth through those helpers instead of reading a per-agent seniority number.
+
+A large template declares a graph of roughly this shape:
 
 ```mermaid
 graph TD
@@ -143,10 +163,11 @@ graph TD
     DevOpsLead --> SRE["SRE"]
 ```
 
-Each node in the hierarchy corresponds to an [agent](agents.md) whose authority and
-delegation rights derive from its role's position in the
-[reporting graph](hr-lifecycle.md) (`Role.reports_to`). A role's model capability is a
-separate axis driven by capability demand, not org position.
+Each node becomes an [agent](agents.md) once an operator staffs the role.
+Position in the graph decides delegation and approval authority and nothing
+else: a role's model capability is a separate axis driven by what the work
+demands, never by where the role sits. See
+[Authority: role and reporting graph](hr-lifecycle.md#authority-role-and-reporting-graph).
 
 ---
 
@@ -234,7 +255,7 @@ the primary mechanism for bootstrapping organisations.
 ### Template Structure
 
 ```yaml
-# templates/startup.yaml (simplified -- real templates also declare
+# templates/startup.yaml (simplified; real templates also declare
 # min_agents/max_agents, tags, and department policies)
 template:
   name: "Tech Startup"
@@ -347,7 +368,7 @@ template:
 ```
 
 Templates support **Jinja2-style variables** (`{{ variable | default(value) }}`) for
-user-customizable values.
+user-customisable values.
 
 ### Template Inheritance
 

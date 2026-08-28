@@ -1,6 +1,6 @@
 ---
 title: Budget & Cost Management
-description: Hierarchical budgets, cost tracking, CFO agent responsibilities, cost controls, quota degradation, LLM call analytics, risk budget, automated reporting, and Prefill Token Equivalents.
+description: Hierarchical budgets, cost tracking, cost enforcement and optimisation, cost controls, quota degradation, LLM call analytics, risk budget, automated reporting, and Prefill Token Equivalents.
 ---
 
 # Budget & Cost Management
@@ -215,7 +215,7 @@ summaries (aggregated from **all** matching records, not just the current page):
 - **`period_summary`**: overall stats including `avg_cost` (computed), `total_cost`,
   `total_input_tokens`, `total_output_tokens`, and `record_count`.
 
-## Cost Enforcement And Optimisation
+## Cost Enforcement and Optimisation
 
 Budget tracking, per-task cost recording, and cost controls are enforced by
 `BudgetEnforcer` (a service the engine composes): it blocks a task whose
@@ -226,7 +226,7 @@ operation against the live alert ladder before it runs.
 `GET /budget/cfo/anomalies` and `GET /budget/cfo/efficiency`:
 
 - Spending anomaly detection (sigma threshold + spike factor) over a
-  configurable lookback window.
+  configurable trailing window.
 - Per-agent cost efficiency analysis.
 - Advisory model-downgrade recommendations (a cheaper model on the agent's
   OWN provider, since a model reached through a different connection is a

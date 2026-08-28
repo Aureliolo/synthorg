@@ -5,10 +5,11 @@ description: A standing prompt directive instructs every agent to ask rather tha
 
 # The Org Asks
 
-> You tell the organisation "build me this", and it asks you questions: at the
-> start, and again during implementation, whenever a choice is material and hard
-> to reverse. The question reaches you where you already are, in the
-> conversation, and answering it there resumes the run.
+> An agent that guesses on a material, hard-to-reverse choice builds something
+> nobody asked for, and the guess is invisible until the work lands. So an agent
+> facing one is instructed to ask instead: the run parks while the question is
+> open, the question reaches the operator in the conversation they are already
+> in, and answering it there resumes the run.
 
 **Modules**: `src/synthorg/engine/ask_policy/` (the directive),
 `src/synthorg/tools/clarification_tool.py` and

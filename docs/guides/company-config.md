@@ -66,10 +66,10 @@ The `company_type` field selects a pre-defined organisational template:
 
 | Type | Description | Agents |
 |------|-------------|--------|
-| `solo_founder` | Solo builder with full autonomy | 2--3 |
-| `startup` | CEO + small engineering team | 3--5 |
+| `solo_founder` | Solo builder with full autonomy | 3--4 |
+| `startup` | CEO + small engineering team | 4--7 |
 | `dev_shop` | Engineering squad with quality gates | 6--10 |
-| `product_team` | Product-focused studio with design | 8--12 |
+| `product_team` | Product-focused studio with design | 9--14 |
 | `agency` | Project manager + specialists | 10--15 |
 | `full_company` | Enterprise org with all departments | 20--50 |
 | `research_lab` | Lead researcher + assistants | 5--10 |
@@ -77,7 +77,7 @@ The `company_type` field selects a pre-defined organisational template:
 | `data_team` | Analytics and ML-focused team | 5--8 |
 | `growth_marketing` | Campaign-driven marketing team | 5--8 |
 | `support_desk` | Ticket-driven customer support team | 5--7 |
-| `security_team` | Security review and audit team | 4--6 |
+| `security_team` | Security review and audit team | 6--8 |
 | `custom` | Build from scratch | Any |
 
 ### Autonomy Levels
@@ -164,11 +164,11 @@ Each provider lists its available models under the `models` key:
 
     ```yaml
     providers:
-      local-ollama:
+      local-model:
         auth_type: none
         base_url: "http://host.docker.internal:11434"
         models:
-          - id: "llama3:8b"
+          - id: "example-capable-001"
             alias: "capable"
             max_context: 8192
     ```
@@ -518,26 +518,22 @@ SynthOrg enforces the following cross-field validation rules at load time:
     agents:
       - role: "CEO"
         name: "Alice"
-        level: c_suite
         department: "executive"
         model:
           priority: "quality"
           min_context: 100000
       - role: "CTO"
         name: "Bob"
-        level: c_suite
         department: "executive"
         model:
           priority: "quality"
       - role: "Full-Stack Developer"
         name: "Charlie"
-        level: senior
         department: "engineering"
         model:
           priority: "balanced"
       - role: "Product Manager"
         name: "Diana"
-        level: senior
         department: "product"
         model:
           priority: "speed"
@@ -587,10 +583,6 @@ SynthOrg enforces the following cross-field validation rules at load time:
       enabled: true
       audit_enabled: true
       output_scan_policy_type: autonomy_tiered
-
-    trust:
-      strategy: disabled
-      initial_level: standard
 
     memory:
       backend: "sqlvector"

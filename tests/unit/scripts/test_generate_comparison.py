@@ -35,7 +35,6 @@ gen = _import_script()
 DIMS: list[dict[str, str]] = [
     {"key": "memory", "label": "Memory", "description": "Mem"},
     {"key": "tool_use", "label": "Tool Use", "description": "Tools"},
-    {"key": "org_structure", "label": "Org Structure", "description": ""},
     {"key": "multi_agent", "label": "Multi-Agent", "description": ""},
     {"key": "task_delegation", "label": "Task Delegation", "description": ""},
     {"key": "human_in_loop", "label": "HITL", "description": ""},
@@ -101,7 +100,8 @@ def _write_yaml(
 class TestLoadData:
     """Tests for _load_data validation logic."""
 
-    def test_valid_data(self, minimal_yaml_file: Path) -> None:
+    @pytest.mark.usefixtures("minimal_yaml_file")
+    def test_valid_data(self) -> None:
         data = gen._load_data()
         assert data["meta"]["last_updated"] == "2026-04-02"
         assert len(data["competitors"]) == 1
@@ -326,11 +326,20 @@ class TestMarkdownGeneration:
     def test_generate_markdown_structure(self) -> None:
         markdown = gen._generate_markdown(MINIMAL_YAML)
         assert "# Framework Comparison" in markdown
-        assert "## Organisation & Coordination" in markdown
+        assert "## Coordination" in markdown
+        # "Coordination" is a substring of the retired title, so the positive
+        # assertion above passes against either grouping; only this one tells
+        # the two apart.
+        assert "## Organisation & Coordination" not in markdown
         assert "## Technical Capabilities" in markdown
         assert "## Operations & Tooling" in markdown
         assert "## Maturity" in markdown
         assert "## Project Links" in markdown
+
+    def test_retired_org_axis_renders_no_column(self) -> None:
+        markdown = gen._generate_markdown(MINIMAL_YAML)
+        assert "org_structure" not in markdown
+        assert "Org Structure" not in markdown
 
     def test_generate_markdown_contains_competitor(self) -> None:
         markdown = gen._generate_markdown(MINIMAL_YAML)
@@ -380,7 +389,8 @@ class TestMarkdownGeneration:
 class TestMain:
     """Tests for the main() entrypoint."""
 
-    def test_main_success(self, tmp_path: Path, minimal_yaml_file: Path) -> None:
+    @pytest.mark.usefixtures("minimal_yaml_file")
+    def test_main_success(self, tmp_path: Path) -> None:
         out = tmp_path / "output.md"
         with (
             patch.object(gen, "OUTPUT_FILE", out),

@@ -750,7 +750,7 @@ message when `context_fill_percent` exceeds a configurable threshold (default
 | `safety_threshold_percent` | `95.0` | Auto-compaction safety net when `agent_controlled` is on; must exceed `fill_threshold_percent` |
 | `preserve_epistemic_markers` | `True` | Preserve marker-bearing sentences instead of truncating them (see [Agent-Controlled Context Compaction](#agent-controlled-context-compaction)) |
 | `llm_summarizer_enabled` | `False` | Summarise the archived batch via a completion call instead of concatenation; requires `llm_summary_model` |
-| `memory_offload_enabled` | `False` | Persist the archived batch to the memory backend for later rehydration |
+| `memory_offload_enabled` | `False` | Persist the archived batch to the memory backend so it can be read back later |
 
 Assistant message snippets included in the summary are sanitized via
 ``sanitize_message()`` to redact file paths and URLs before injection into LLM
@@ -891,7 +891,7 @@ in-process.
 
 ### Text summary (default path)
 
-With no summariser or offloader wired, `_build_summary()` performs snippet-join
+With neither the summariser nor the memory offload wired, `_build_summary()` performs snippet-join
 concatenation: assistant message snippets capped at 100 characters each, total summary
 capped at 500 characters. Epistemic markers ("wait", "hmm", "actually", and the wider
 hedging / reconsideration / uncertainty / verification / correction families in
@@ -913,9 +913,8 @@ Two independent upgrades layer onto the text path, both off by default:
   blocking compaction.
 - **Memory offload** (`memory_offload_enabled`): the archived batch is persisted to the
   memory backend as a PROCEDURAL entry tagged `compaction:offloaded` (`MemoryOffloader`),
-  scoped to the run's project, so a resume or investigation path can rehydrate detail the
-  in-context summary elided. Best-effort: a backend failure is logged and never blocks
-  compaction.
+  scoped to the run's project, so a resume or investigation path can read back detail the
+  in-context summary elided. A backend failure is logged and never blocks compaction.
 
 ### Agent-controlled mode
 

@@ -76,9 +76,9 @@ See also: [Multi-Agent Failure Audit](../research/multi-agent-failure-audit.md) 
 External research on multi-agent failure modes reports swarm topologies (agents
 coordinating with no fixed structure) failing markedly more often than orchestrated
 ones with defined agent boundaries. The guardrails below exist because the same
-drift can appear inside an orchestrated system too if those boundaries are left
-unmanaged: they are a mitigation, not a guarantee. This section documents current
-guardrails and known risks.
+drift can appear inside an orchestrated system too when those boundaries are not
+maintained: they reduce the drift rather than removing it. This section documents
+the guardrails and the known risks.
 
 ### Group Conversation Safety
 

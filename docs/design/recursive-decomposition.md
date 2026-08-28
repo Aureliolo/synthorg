@@ -347,7 +347,7 @@ real number, and the depth, width, and session backstops mirror their
 definitions in code (`context.py`, `_recursion.py`, `_ceilings.py`) so a
 harness running with no settings backend at all is still bounded.
 
-### What the sweep arms, and why the product default is wrong for it
+### What the sweep arms, and why it differs from the product defaults
 
 The recursion-depth sweep writes its settings through the real service, so what
 it measured is only interpretable against what it armed
@@ -861,7 +861,7 @@ one session per cell plus its merge attempts, and then adds "one per leaf and
 per node on top of that", leaves the entire tree out: for the recorded matrix
 that shape prints 42 against a real cost of roughly 158 sessions PER CELL, so a
 ceiling chosen from it is about four times too small. A run launched at a
-ceiling of 30 planned an 85-leaf tree, built six units and stopped with **zero
+ceiling of 30 planned an 85-leaf tree, built six units, and stopped with **zero
 cells measured**, which is the whole failure mode `max_sessions` exists to make
 survivable and was instead the thing that fired.
 

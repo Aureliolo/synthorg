@@ -48,7 +48,7 @@ API -> CLI
 | `/api/v1/healthz` | Liveness probe; always 200 while the process is alive (used by supervisors to decide whether to restart the pod) |
 | `/api/v1/readyz` | Readiness probe; 200 when every configured dependency (persistence, message bus, providers) is healthy, 503 otherwise (used by load-balancers to gate traffic). Body is topology- and version-free (binary outcome + uptime) |
 | `GET /api/v1/health` | Authenticated per-component health breakdown (persistence / message bus / providers / telemetry) for the dashboard; requires a read-access role |
-| `/api/v1/metrics` | Prometheus metrics scrape endpoint (unauthenticated). 12 metric families: `synthorg_app_info` (Info, version), `synthorg_active_agents_total` (Gauge with status, trust_level labels), `synthorg_tasks_total` (Gauge with status, agent labels), `synthorg_cost_total` (Gauge), `synthorg_budget_used_percent` (Gauge), `synthorg_budget_monthly_cost` (Gauge), `synthorg_budget_daily_used_percent` (Gauge, daily cost as % of prorated daily budget), `synthorg_agent_cost_total` (Gauge with agent_id label, per-agent accumulated cost), `synthorg_agent_budget_used_percent` (Gauge with agent_id label, per-agent daily cost as % of daily limit), `synthorg_coordination_efficiency` (Gauge, push-updated), `synthorg_coordination_overhead_percent` (Gauge, push-updated), `synthorg_security_evaluations_total` (Counter with verdict label). Most refreshed per-scrape; coordination and security metrics are push-updated. |
+| `/api/v1/metrics` | Prometheus metrics scrape endpoint (unauthenticated). Core families refreshed per-scrape: `synthorg_app_info` (Info, version), `synthorg_active_agents_total` (Gauge with status, trust_level labels), `synthorg_tasks_total` (Gauge with a status label only; a per-agent label was deliberately dropped as an unbounded-cardinality source, so per-agent task and cost breakdowns live in the REST task/cost APIs instead), `synthorg_cost_total` (Gauge, aggregate only), `synthorg_budget_used_percent` / `synthorg_budget_daily_used_percent` (Gauge, each paired with a `synthorg_budget_*_spend_measurability` state gauge that flags whether the percentage is a real measurement, understated, or unmeasurable). Push-updated on their own trigger rather than per-scrape: `synthorg_coordination_efficiency` / `synthorg_coordination_overhead_percent` (Gauge, after each multi-agent execution), `synthorg_security_evaluations_total` (Counter with a verdict label), and several dozen further counters and gauges covering approval decisions, provider calls, auth, the audit chain, WebSocket connections, and the Postgres connection pool. This list is representative, not exhaustive; scrape the endpoint for the current set. |
 | `/api/v1/auth` | Authentication: setup, login (HttpOnly cookie sessions, CSRF double-submit), password change (rotates session cookie), ws-ticket, session management (list/revoke, concurrent session limits), logout, account lockout, refresh token rotation (three-tier rate limiting; see `docs/security.md`) |
 | `/api/v1/auth/api-keys` | API-key management: issue (plaintext returned once), list (hash never exposed), revoke (owner-or-CEO, 404 for non-owner). Issuance is role-ceiling capped; issue/revoke emit signed audit-chain events |
 | `/api/v1/company` | CRUD company config |
@@ -65,7 +65,7 @@ API -> CLI
 | `/api/v1/messages` | Communication log |
 | `/api/v1/artifacts` | Artifact listing, creation, retrieval, deletion with binary content upload/download |
 | `/api/v1/budget` | Spending, limits, projections |
-| `/api/v1/approvals` | Pending human approvals queue |
+| `/api/v1/approvals` | Pending human approvals queue: agent escalations parked mid-execution and review-gate decisions (autonomy, hiring, promotion, ...) in one inbox, filterable by `source` |
 | `POST /api/v1/meta/chat/turn` | The unified "talk to your org" turn: one endpoint classifies the message to an intent (`explain` / `propose` / `act` / `group_convene` / `charter`) and dispatches to the matching capability, returning the classified `intent`, `intent_reason`, the one payload that fits, and any specialist `chime_ins` (multi-voice). Uncertainty degrades to `explain`, never `act`/`charter`; each intent keeps its own `chief_of_staff.*_enabled` gate (a closed gate 503s), `act` stays fail-closed + buffered. Rate-limited `meta.chat.turn` (5/60s/user); optional `Idempotency-Key` for idempotent replay |
 | `POST /api/v1/meta/chat/turn/stream` | Streaming sibling of the unified turn: an `explain` turn streams over SSE (`delta` frames token-by-token, then a `complete` frame carrying the full result, then a `chime` frame per specialist). Every other intent emits a single `deferred` frame carrying the classified intent and targets, and the client re-issues it against the buffered `POST /api/v1/meta/chat/turn`, so a side-effecting turn never runs on the stream |
 | `GET /api/v1/meta/chat/conversations`, `GET /api/v1/meta/chat/conversations/{id}` | Resume: owner-scoped, cursor-paginated conversation list + a conversation's turns (foreign/unknown id → 404). Backs reloading a prior transcript |
@@ -75,7 +75,7 @@ API -> CLI
 | `/api/v1/settings` | Runtime-editable configuration (<!--RS:settings_namespaces-->34<!--/RS--> namespaces), schema discovery |
 | `GET /api/v1/settings/security/export`, `POST /api/v1/settings/security/import` | Security policy export/import |
 | `GET /api/v1/security/audit` | Audit log query with filters |
-| `GET /api/v1/coordination/metrics` | Coordination metrics query (9 Kim et al. metrics) |
+| `GET /api/v1/coordination/metrics` | Coordination metrics query (the Kim et al. multi-agent-vs-single-agent coordination-efficiency metric suite) |
 | `/api/v1/providers/*` | Provider CRUD, presets, model discovery, discovery SSRF allowlist, local model management (pull with SSE progress, delete, per-model config) |
 | `/api/v1/providers/model-refresh/*` | Upgrade recommendations (`GET /recommendations`, approve/reject), manual `POST /refresh` (CEO/manager), `GET /status` |
 | `GET /api/v1/projects/{project_id}/docs/{slug}/receipt` | Deliverable receipt with provenance; `/receipt/validate` re-checks integrity |
@@ -84,7 +84,6 @@ API -> CLI
 | `/api/v1/admin/backups` | Manual backup, list, detail, delete |
 | `/api/v1/ws` | WebSocket for real-time updates. First-message auth preferred: connect without query params, then send `{"action":"auth","ticket":"<ticket>"}`. Query-param `?ticket=` is a legacy fallback. |
 | `POST /api/v1/auth/ws-ticket` | Exchange JWT for one-time WebSocket connection ticket |
-| `/api/v1/conflicts/escalations` | Human escalation approval queue |
 
 ## Per-Operation Rate Limiting
 
@@ -122,7 +121,7 @@ from `synthorg/api/rate_limits/guard.py`.
   - `PUT`/`DELETE /api/v1/settings/{namespace}/{key}` (60/60s by user)
   - `POST /api/v1/a2a/*` (120/60s by user_or_ip)
   - `GET /api/v1/oauth/callback` (30/60s by ip)
-  - `POST /api/v1/conflicts/escalations/{id}/decision` (30/60s by user)
+  - `POST /api/v1/approvals/{id}/approve` and `/reject` (100/60s each, by user)
 
 ## Domain Error Handler Registration
 

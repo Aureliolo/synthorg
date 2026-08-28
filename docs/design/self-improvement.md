@@ -382,7 +382,8 @@ system's job, not the user's, so there is no mode picker.
   (`self_improvement.chief_of_staff_enabled`): both must be on, so `routing`
   reads `enabled` in its own namespace yet stays inert until the master switch
   is turned on. `explain-chat`, `propose`, and `group-chat` are not behind that
-  master switch and are live by their own default-on flag alone. **`act` stays fail-closed** (503 when `direct_mcp_enabled` is off or
+  master switch and are live by their own default-on flag alone.
+  **`act` stays fail-closed** (503 when `direct_mcp_enabled` is off or
   security governance is inactive) **and buffered + idempotent, never
   streamed** (a streamed action that failed mid-run would re-run its tools on
   retry); a classified `act` naming no agent degrades to `explain` rather than

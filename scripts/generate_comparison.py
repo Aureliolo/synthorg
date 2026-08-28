@@ -84,8 +84,8 @@ SELF_HOSTED_LABELS = {
 # Thematic groupings for splitting the table
 TABLE_GROUPS = [
     {
-        "title": "Organisation & Coordination",
-        "keys": ["org_structure", "multi_agent", "task_delegation", "human_in_loop"],
+        "title": "Coordination",
+        "keys": ["multi_agent", "task_delegation", "human_in_loop"],
     },
     {
         "title": "Technical Capabilities",
@@ -303,8 +303,8 @@ def _frontmatter_and_intro(last_updated: str) -> list[str]:
         "---",
         "title: Framework Comparison",
         "description: >-",
-        "  How SynthOrg compares to every notable agent orchestration",
-        "  framework, platform, and research project.",
+        "  Where SynthOrg sits among agent orchestration frameworks,",
+        "  platforms, and research projects, and what the table cannot show.",
         "---",
         "",
         (
@@ -321,6 +321,45 @@ def _frontmatter_and_intro(last_updated: str) -> list[str]:
         ),
         "",
         f"Last updated: {last_updated}",
+        "",
+        "## What the rows cannot show",
+        "",
+        (
+            "A single agent in a loop cannot hold a whole application. That is"
+            " why a system that does one thing at a time degrades as an"
+            " application grows: the twentieth thing damages the first."
+            " SynthOrg decomposes the work into a tree of parts, builds the"
+            " parts concurrently in isolated containers, and assembles them"
+            " bottom-up. The dimensions below are shared axes across every"
+            " project in the table, so that shape does not appear in them."
+            " Two of its properties are worth stating outright."
+        ),
+        "",
+        (
+            "**It runs on your hardware.** Self-hosted, provider-agnostic, any"
+            " models including local ones. Your code does not leave your"
+            " machine. Hosted competitors monetise metered compute, so a"
+            " genuinely self-hostable equivalent cannibalises their margin and"
+            " is unattractive for them to build. The Self-Hosted column is the"
+            " one axis where this shows."
+        ),
+        "",
+        (
+            "**The thing that checks a part is not the thing that produced"
+            " it**, and it is bound to a different model family. That is a"
+            " structural property and it is rarely implemented. It does not"
+            " make the output correct: an independent judge is a triage"
+            " filter, so it does not mean nothing broken gets through and it"
+            " does not replace human judgement."
+        ),
+        "",
+        (
+            "**SynthOrg is pre-alpha.** Nothing here promises an outcome. The"
+            " rows describe how the system is built and how it behaves, never"
+            " what it will deliver."
+        ),
+        "",
+        "## Reading the tables",
         "",
         "**Legend:**",
         (

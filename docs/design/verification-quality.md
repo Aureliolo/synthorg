@@ -15,9 +15,9 @@ record. That property is enforced structurally rather than by convention, at
 three independent layers described in
 [Review Gate Invariants](security.md#review-gate-invariants).
 
-It is not a correctness guarantee, and nothing on this page should be read as
-one. An independent reviewer is a filter, not an authority: it catches some
-defects, misses others, and its verdict is one agent's judgement of another
+It does not establish that the work is correct, and nothing on this page should
+be read as saying so. An independent reviewer is a filter, not an authority: it
+catches some defects, misses others, and its verdict is one agent's judgement of another
 agent's work. The two agents are distinct identities with their own bound
 `(provider, model)` pairs, but nothing binds them to different model
 *families*, so a blind spot shared by both is a blind spot the pair cannot
@@ -409,7 +409,7 @@ The copy holds:
 - **No MCP capabilities** (`mcp_capabilities=()`). The internal MCP surface is
   how an agent reaches the rest of the org, and judging one deliverable needs
   no part of it.
-- **`REVIEW_DENIED_CATEGORIES`**, currently `ToolCategory.EXTERNAL_DATA`:
+- **`REVIEW_DENIED_CATEGORIES`** (`ToolCategory.EXTERNAL_DATA`):
   every governed connection tool (forge, chat, deploy, publish) plus the
   external-API and research tools. Withheld by CATEGORY rather than by name,
   because a name list re-opens the hole the day a tool joins the category.
@@ -448,7 +448,7 @@ The reviewer reads the thing it is approving. A gate shown only the closing
 prose grades the summary rather than the deliverable, and an APPROVE then means
 the agent wrote a convincing account of its own work. This is the most
 load-bearing gate in the chain (fail-closed, on by default,
-`min_stakes=low`), so the files are what it sees.
+`min_stakes=low`), so the files are what it reads.
 
 The closing message comes from the **run being judged**, passed in by the
 caller that is holding it (`attempt_deliverable`, bound onto the builder for

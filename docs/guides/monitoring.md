@@ -48,7 +48,7 @@ Bounded-label values are enforced at record time in `src/synthorg/observability/
 | `synthorg_budget_used_percent` | Gauge | - | Monthly budget utilisation. Published only when the period's spend is fully metered; a period mixing metered and flat-rate (subscription) connections, or one where nothing is metered, reads `0.0` here, with the verdict carried on `synthorg_budget_spend_measurability` instead of folded into this number. | `Health & SLO` |
 | `synthorg_budget_monthly_cost` | Gauge | - | Monthly budget in configured currency. | `Cost & Budget` |
 | `synthorg_budget_spend_measurability` | Gauge | `state` | What the monthly percentage above actually measures: exactly one of `measured` / `mixed` / `unmeasurable` reads `1`, the other two `0` (`state` bounded to `SpendMeasurability`). | n/a (scrape-only) |
-| `synthorg_budget_daily_used_percent` | Gauge | - | Daily utilisation (prorated). Same measurability caveat as `synthorg_budget_used_percent`, against the day's spend rather than the period's. | `Cost & Budget` |
+| `synthorg_budget_daily_used_percent` | Gauge | - | Daily utilisation (prorated). The same caveat as `synthorg_budget_used_percent` applies, against the day's spend rather than the period's. | `Cost & Budget` |
 | `synthorg_budget_daily_spend_measurability` | Gauge | `state` | The daily counterpart of `synthorg_budget_spend_measurability`, against the current day's spend. | n/a (scrape-only) |
 | `synthorg_budget_query_duration_seconds` | Histogram | `query_type` | Budget read-path query duration (`query_type` bounded to `balance` / `available_spend` / `burn_rate` / `daily_spend` / `cost_summary` / `total_cost` / `agent_cost` / `project_cost`; buckets 1ms-1s). | `Audit & Performance` |
 

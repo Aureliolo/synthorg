@@ -83,7 +83,7 @@ running an unreleased tree. It needs three things the CLI would otherwise do for
 
 | Service | Image | Description |
 |---------|-------|-------------|
-| **data-init** | `busybox` (digest-pinned) | One-shot: sets ownership on the named volumes, which are root-owned on creation and unwritable by the non-root images. Exits before the rest start. |
+| **data-init** | `busybox` (digest-pinned) | One-shot: sets ownership on the named volumes, which are root-owned on creation and so cannot be written to by the non-root images. Exits before the rest start. |
 | **postgres** | `dhi.io/pgvector` (digest-pinned) | Operational data and memory embeddings; the pgvector variant supplies the vector extension. |
 | **nats** | `dhi.io/nats` (digest-pinned) | Message bus for the distributed worker path. |
 | **backend** | built from `docker/backend/Dockerfile` | Python API server (Litestar). Two-stage build onto a Wolfi apko-composed distroless runtime (no shell), runs as non-root (UID 65532). |
@@ -155,7 +155,7 @@ judging it; that is why the smallest shipped template is three agents and not tw
 | `startup` | Tech Startup | Six-agent team oriented around shipping quickly |
 | `dev_shop` | Engineering Squad | Lean engineering team built for throughput on a tight budget |
 | `product_team` | Product Studio | Product organisation where UX research gathers requirements first |
-| `agency` | Agency | Client-services organisation combining creative, marketing and design |
+| `agency` | Agency | Client-services organisation combining creative, marketing, and design |
 | `full_company` | Enterprise Org | Full enterprise simulation spanning all departments with a C-suite |
 | `research_lab` | Research Lab | Autonomous research organisation, analysis-first |
 | `consultancy` | Consultancy | Senior-heavy, supervised client-facing advisory firm |

@@ -1,23 +1,32 @@
 ---
 title: HR & Agent Lifecycle
-description: Role catalog, reporting-graph authority, dynamic roles, hiring (templates + LLM), pruning, firing, performance tracking, and agent evolution.
+description: How an agent joins the roster, is measured on it, and leaves it. Role catalog, reporting-graph authority, dynamic roles, hiring, pruning, offboarding, performance tracking, and evolution.
 ---
 
 # HR & Agent Lifecycle
 
-This page covers the operational lifecycle of every agent in a synthetic organisation, from hiring through performance tracking, evolution, and offboarding. The HR subsystem is how SynthOrg simulates a workforce: closed-loop hiring when new skills are needed, performance-driven pruning when agents fail to deliver, and pluggable evolution for agents that need to adapt their identity.
+How an agent joins the roster, how it is measured while it is on it, and how it
+leaves. This matters to the build for one reason: the roster decides who can be
+dispatched a unit of work and who can be selected to check a unit somebody else
+produced. A role nobody holds is a plan item nobody can own, and a
+[gate role](agents.md#built-in-roles) nobody holds parks a finished deliverable
+rather than letting it through unchecked.
+
+Nothing self-hires and nothing self-fires. Hiring is an approval item, pruning
+is an approval item, and the evolution pipeline ships with identity mutation off
+and a review gate on.
 
 See [Agents](agents.md) for the identity layer (skills, tool namespaces, identity versioning).
 
-## Authority: role + reporting graph
+## Authority: role and reporting graph
 
 Authority is not a scalar rank. It derives from an agent's **role** and its position in the organisation's **reporting graph**. Each `Role` declares an optional `reports_to` (the role name of its supervisor); the CEO role sits at the root with `reports_to = None`.
 
-`core/authority.py` computes authority from that graph:
+`core/authority.py` reads that graph:
 
-- `role_depth(role)`: distance from the CEO root (CEO is 0, its reports 1, and so on).
+- `role_depth(role)`: distance from the CEO root (CEO is 0, its reports 1, and so on). A role the catalog cannot resolve, or whose chain never reaches a root, takes a depth larger than any real chain, so an unrecognised position never wins an authority contest by default.
 - `reporting_chain(role)`: the ordered chain of supervisors up to the root.
-- `outranks(a, b)` / `compare_authority(a, b)`: whether role `a` is a (transitive) superior of role `b`, and a sign-comparison by reporting depth.
+- `compare_authority(a, b)`: a sign comparison by reporting depth, negative when `a` is junior to `b`, zero at equal depth, positive when `a` is more senior.
 
 Consumers that need "who is more senior" (owner selection, plan-review panel selection, department-head detection) compare reporting depth via these helpers rather than reading a per-agent level. A role's model capability is a separate, independent axis driven by the work's capability demand (see [Providers](providers.md)), not by org position.
 
@@ -106,23 +115,40 @@ custom_roles:
 
 ## Hiring Process
 
-The HR system manages the agent workforce dynamically:
+One condition opens a hire: an unstaffed [gate role](agents.md#built-in-roles).
+A gate that finds nobody holding its role parks the work, and the
+review-staffing sweep turns that park into an approval item. There is no
+skill-gap detector and no endpoint an operator posts a vacancy to; an operator
+who wants another working agent edits the roster directly (see
+[Changing Headcount](organization.md#changing-headcount)). Nothing self-hires.
 
-1. HR agent (or human) identifies a skill gap or workload issue
-2. HR generates **candidate cards** based on team needs:
-    - What skills are underrepresented?
-    - What role (and where in the reporting graph) is needed?
-    - What model/provider fits the budget?
-3. Candidate cards are presented for approval (to CEO or human) as an
-   `ORG_HIRE` approval item, whose risk level comes from the risk map rather
-   than being restated at the submission site
-4. **Deciding the approval is what hires.** `api/controllers/_approval_org_hire.py`
-   picks the decision up in the approval fan-out, moves the request to
-   APPROVED, and calls `instantiate_agent`, which registers the identity and
-   runs onboarding; a rejection moves it to REJECTED and registers nobody. A
-   failure to instantiate is surfaced, never swallowed, because a hire that
-   silently did not land is indistinguishable from one nobody approved
-5. Onboarding includes: company context, project briefing, team introductions
+Once a request exists, `HiringService` runs it through five steps:
+
+1. **Request.** `create_request` records the role, department, reason, and any
+   budget ceiling. For a gate role it refuses a second request while one is
+   already on its way to an agent, so two sweeps cannot open two vacancies for
+   the one role. The guard sits on the invariant rather than on the caller, so
+   a caller added later inherits it instead of re-deciding it.
+2. **Candidate.** `generate_candidate` builds a `CandidateCard` from the role's
+   catalog defaults.
+3. **Approval.** The card is submitted as an `ORG_HIRE` approval item, whose
+   risk level comes from the risk map rather than being restated at the
+   submission site. A deployment with no approval store configured has nowhere
+   to put the question, and the request is auto-approved.
+4. **Decision.** Deciding the approval is what hires.
+   `api/controllers/_approval_org_hire.py` picks the decision up in the approval
+   fan-out, moves the request to APPROVED, and calls `instantiate_agent`, which
+   registers the identity and runs onboarding; a rejection moves it to REJECTED
+   and registers nobody. A failure to instantiate is surfaced, never swallowed,
+   because a hire that silently did not land is indistinguishable from one
+   nobody approved.
+5. **Onboarding.** A checklist of `company_context`, `project_briefing` and
+   `team_introductions`.
+
+The agent MCP surface reaches neither end of this pipeline. It refuses to decide
+an `org:hire` or `org:fire` approval, and it refuses to grant a gate role at all,
+because holding one confers judging authority over other agents' work. Both stay
+on the operator's own REST path.
 
 ### What model a new hire runs on
 
@@ -179,10 +205,11 @@ See [Nobody holds the role](verification-quality.md#nobody-holds-the-role).
 
 !!! info "Design decisions ([Decision Log](../architecture/decisions.md) D8)"
 
-    - **D8.1: Source.** Templates + LLM customisation. Templates for common roles
-      (reuses existing [template system](organization.md#template-system)). LLM generates
-      config for novel roles not covered by templates. Approval gate catches invalid/bad
-      configs before instantiation.
+    - **D8.1: Source.** A candidate card is built from the role catalog's own
+      defaults. Template presets (reusing the
+      [template system](organization.md#template-system)) and LLM customisation
+      for novel roles are intent, not built. Either way the approval gate
+      catches an invalid candidate before instantiation.
     - **D8.2: Persistence.** Operational store via `PersistenceBackend`. YAML stays as
       bootstrap seed; operational store wins for runtime state. Enables rehiring and
       auditable history.
@@ -295,11 +322,17 @@ agent_metrics:
 
 ## Agent Evolution
 
-Agents improve over time through a pluggable evolution pipeline that closes the loop
-between execution outcomes, learned knowledge, and agent behaviour. The system follows
-the [EvoSkill](https://arxiv.org/abs/2603.02766) three-agent separation principle:
-the executing agent does not propose its own identity changes; a separate analyser
-does.
+A pluggable pipeline that turns execution outcomes into proposed changes to an
+agent's prompt, its strategy preferences or its identity, each proposal passing
+a guard chain before anything is applied. It follows the
+[EvoSkill](https://arxiv.org/abs/2603.02766) three-agent separation principle:
+the executing agent does not propose its own identity changes; a separate
+analyser does.
+
+The identity adapter ships **off**, so out of the box the pipeline can adjust
+prompt injection and strategy preference and nothing else. Whether adaptation
+improves an agent is not something the pipeline asserts; the rollback guard
+watches the quality window afterwards and reverts on a regression.
 
 ### Architecture
 

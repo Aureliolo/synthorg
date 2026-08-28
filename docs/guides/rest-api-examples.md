@@ -73,7 +73,7 @@ Returns a paginated envelope; the `meta.next_cursor` field drives the next page.
 ```bash
 curl -s -b cookies.txt -X POST "$BASE/api/v1/tasks" \
   -H "Content-Type: application/json" \
-  --data '{"title":"Build a sample","description":"Smoke test","type":"development","project":"'"$PROJECT_ID"'","created_by":"'"$AGENT_NAME"'"}'
+  --data '{"title":"Build a sample","description":"Smoke test","type":"development","project":"'"$PROJECT_ID"'"}'
 ```
 
 ```python
@@ -84,7 +84,6 @@ resp = client.post(
         "description": "Smoke test",
         "type": "development",
         "project": project_id,
-        "created_by": agent_name,
     },
 )
 task = resp.json()["data"]
@@ -95,7 +94,7 @@ const r = await fetch(`${base}/api/v1/tasks`, {
   method: 'POST',
   credentials: 'include',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ title: 'Build a sample', description: 'Smoke test', type: 'development', project: projectId, created_by: agentName }),
+  body: JSON.stringify({ title: 'Build a sample', description: 'Smoke test', type: 'development', project: projectId }),
 })
 const { data: task } = await r.json()
 ```

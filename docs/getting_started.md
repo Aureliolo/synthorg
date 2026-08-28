@@ -149,6 +149,7 @@ pushed branch rather than locally.
 synthorg/
   src/synthorg/       # Main package (src layout)
     api/                # Litestar REST + WebSocket routes
+    backup/             # Backup/restore orchestrator
     budget/             # Cost tracking and spending controls
     cli/                # Python CLI module (see top-level cli/ for Go CLI)
     communication/      # Inter-agent message bus
@@ -168,7 +169,6 @@ synthorg/
     templates/          # Pre-built company templates
     tools/              # Tool registry, MCP integration
     workers/            # Distributed task-queue workers
-    backup/             # Backup/restore orchestrator
   tests/
     unit/               # Fast, isolated tests (no I/O)
     integration/        # Tests with I/O, databases, APIs

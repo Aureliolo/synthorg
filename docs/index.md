@@ -31,9 +31,9 @@ system is built around.
 ## The mechanism
 
 A tree does not have the single-agent failure mode, provided the merges hold. So the
-objective is decomposed recursively into a tree of independently buildable units, the
-leaves are built concurrently in isolated containers, and the tree is assembled from the
-bottom up.
+objective is decomposed recursively into a tree of units that can each be built on their
+own, the leaves are built concurrently in isolated containers, and the tree is assembled
+from the bottom up.
 
 - **Decomposition** turns an objective into a plan: a tree of units, each with declared
   dependencies and expected artefacts. A unit that is not atomic is split again. See
@@ -47,8 +47,8 @@ bottom up.
 - **Review** is done by something that did not write the work. The reviewer is selected
   from the roster and the executor is excluded, a narrowed identity is dispatched for the
   session, and the archive refuses a verdict row whose reviewer and executor are the same
-  agent. An independent check is a triage filter, not an authority: it does not guarantee
-  correctness, and it does not replace your judgement. See
+  agent. An independent check is a triage filter, not an authority: it does not establish
+  that the work is correct, and it does not replace your judgement. See
   [Verification Quality](design/verification-quality.md).
 - **Assembly** is a gated stage of its own, not an implicit side effect of the last unit
   finishing. Every plan item passing its gate opens an accountable assembly task, and then

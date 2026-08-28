@@ -85,9 +85,11 @@ SynthOrg ships with 30+ built-in roles organised by department:
 **Red Team** and **Completion Reviewer** judge finished work rather than
 performing it, so a holder of either reaches every project instead of the one
 team it is staffed on, and the matching completion gate selects a holder per
-review. They are assigned like any other role. Staff at least a Completion
-Reviewer: without one, each finished task parks awaiting a reviewer instead of
-being waved through. See
+review. They are assigned like any other role through the operator REST path
+covered in [Agent Management](agent-management.md); the agent MCP surface
+cannot grant or change a gate role, so an agent cannot appoint its own judge.
+Staff at least a Completion Reviewer: without one, each finished task parks
+awaiting a reviewer instead of being waved through. See
 [Built-in Roles](../design/agents.md#built-in-roles).
 
 ### Custom Roles
@@ -117,7 +119,7 @@ Departments group agents and define budget allocation and reporting structure:
 departments:
   - name: "engineering"
     budget_percent: 60
-    head_role: "CTO"
+    head: "CTO"
     reporting_lines:
       - subordinate: "Full-Stack Developer"
         subordinate_id: "fullstack-senior"
@@ -127,10 +129,10 @@ departments:
         supervisor: "CTO"
   - name: "product"
     budget_percent: 20
-    head_role: "Product Manager"
+    head: "Product Manager"
   - name: "executive"
     budget_percent: 20
-    head_role: "CEO"
+    head: "CEO"
     reporting_lines:
       - subordinate: "CTO"
         supervisor: "CEO"
@@ -160,8 +162,8 @@ graph TD
 |-------|------|---------|-------------|
 | `name` | string | *(required)* | Unique department name |
 | `budget_percent` | int | `0` | Percentage of company budget allocated |
-| `head_role` | string | `null` | Role name of the department head. Use the companion `head_merge_id` to disambiguate when several agents share the role |
-| `head_merge_id` | string | `null` | Department head agent `merge_id`; use when multiple agents share `head_role` |
+| `head` | string | `null` | Role name (or agent identifier) of the department head. Use the companion `head_id` to disambiguate when several agents share the role |
+| `head_id` | string | `null` | Unique identifier for the department head; use when multiple agents share `head` |
 | `reporting_lines` | list | `[]` | Subordinate-supervisor pairs |
 
 Use `subordinate_id` in reporting lines when you have multiple agents with the same role (matches the agent's `merge_id` when using templates).
@@ -214,15 +216,18 @@ Templates pre-populate agents, departments, and workflows. You can customise any
 
 | Template | Agents | Autonomy | Workflow | Communication |
 |----------|--------|----------|----------|---------------|
-| `solo_founder` | 2 | Full | Kanban | Event-driven |
-| `startup` | 5 | Semi | Agile/Kanban | Hybrid |
-| `dev_shop` | 6-10 | Semi | Kanban | Hybrid |
-| `product_team` | 8-12 | Semi | Agile/Kanban | Event-driven |
-| `agency` | 4-8 | Supervised | Pipeline | Hierarchical |
-| `full_company` | 8-15 | Semi | Agile | Hybrid |
+| `solo_founder` | 3-4 | Full | Kanban | Event-driven |
+| `startup` | 4-7 | Semi | Agile Kanban | Hybrid |
+| `dev_shop` | 6-10 | Supervised | Agile Kanban | Hybrid |
+| `product_team` | 9-14 | Supervised | Agile Kanban | Event-driven |
+| `agency` | 10-15 | Supervised | Kanban | Hierarchical |
+| `full_company` | 20-50 | Supervised | Agile Kanban | Hierarchical |
 | `research_lab` | 5-10 | Full | Kanban | Event-driven |
-| `consultancy` | 4-6 | Supervised | Pipeline | Hierarchical |
+| `consultancy` | 4-6 | Supervised | Kanban | Hierarchical |
 | `data_team` | 5-8 | Full | Kanban | Event-driven |
+| `growth_marketing` | 5-8 | Semi | Agile Kanban | Hybrid |
+| `support_desk` | 5-7 | Supervised | Kanban | Hierarchical |
+| `security_team` | 6-8 | Supervised | Kanban | Hierarchical |
 
 Templates support **inheritance** via the `extends` keyword (deep merge up to 10 levels) and **variables** with Jinja2 placeholders for customisation.
 

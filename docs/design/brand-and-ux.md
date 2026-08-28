@@ -1,17 +1,89 @@
 ---
 title: Brand Identity & UX Design System
-description: Visual identity, theme architecture, colour system, typography, density, animation, and UI guidelines for the SynthOrg dashboard.
+description: What SynthOrg is and how every writer describes it, plus the visual identity, colour system, typography, density and animation rules the dashboard is built from.
 ---
 
 # Brand Identity & UX Design System
+
+This page carries two things: the words SynthOrg uses about itself, which every
+other page inherits, and the visual system the dashboard is built from. The
+voice comes first, because a page can be accurate about the code and still be
+wrong about the product.
+
+## What SynthOrg Is
+
+> One agent in a loop cannot hold a whole application. SynthOrg splits the work
+> into a tree of parts that can be built independently, builds the leaves in
+> parallel in isolated containers, and has each part checked by something that
+> did not write it. On your hardware, against models you choose.
+
+That is the brand line, and its order is load-bearing: the problem first, then
+the mechanism, then where it runs. Never lead with the mechanism.
+
+**The binding constraint is decomposition quality, not agent supply.** The
+parallel tree is not a speed feature and must never be sold as one. A single
+agent working sequentially cannot hold a whole application in view, which is why
+that shape degrades as the application grows: it does one thing at a time, and
+the twentieth thing damages the first. A tree does not have that failure mode,
+provided the merges hold. Splitting the work so the parts are genuinely
+independent is the hard problem, and it is the one this system is built around.
+
+### The Three Claims, and How Far Each Goes
+
+**It fans out.** Work is decomposed recursively into a tree of units that can be
+built independently; the leaves are built concurrently in isolated containers and
+assembled bottom-up. Never state a size the system handles: whether the
+decomposition ceiling is per level or global is being measured, has no answer
+yet, and nothing you write may depend on which way it lands.
+
+**Each part is checked by something that did not write it.** The reviewer is
+structurally prevented from being the author, in the service layer, in the model
+binding, and by a database constraint, and the independence that matters is by
+model family, which is what is bound. The claim stops exactly there. It does not
+mean the work is correct, it does not mean nothing broken gets through, and it
+does not replace human judgement: an independent judge is a triage filter. The
+narrow version is the true one and it is worth more than the broad one.
+
+**It runs on your hardware.** Self-hosted, provider-agnostic, any models
+including local ones, and the code does not leave the machine. State it as a
+property, never as a boast.
+
+### What Is Not Sold
+
+The organisation metaphor. Roles, departments, staffing, and the approval gate
+are shipped, working machinery, and a page that documents them is documenting
+something real and must stay accurate. They are plumbing, described as plumbing,
+and never the headline. The organisational simulation is not the reason the
+system works, and no page may present it as the product.
+
+## Voice Rules
+
+These are not style preferences. A page that breaks one is wrong, not merely
+off-tone.
+
+| Rule | What it means |
+|------|---------------|
+| Never promise an outcome | No page says the reader will get working software. Every claim is about how the system is built and how it behaves. The loop has been driven live twelve times against a real deployment and has never once reached the assembly stage; no run has produced an assembled deliverable and no completion has been recorded |
+| Pre-alpha, stated plainly | Not softened, not implied, not left below the fold |
+| No autonomy claims | Supervision is a property of the design, not a stage the product has graduated from |
+| Bound the checking claim | The thing that checks the work is not the thing that produced it, and it is bound to a different model family. That is the whole claim; anything broader says more than the code supports |
+| Quote no build size | The decomposition ceiling is being measured and has no answer, so a figure invented for it is a claim about an open question |
+| Qualify or delete | If a sentence needs a qualifier to be true, write the qualifier |
+| Mark intent as intent | Never write a thing that is not built in the present tense, and never hedge one that genuinely ships |
+
+House rules on every word: British English; no em-dashes; current state only (no
+change-narration, no back-references, no migration framing); no number nobody
+verified; and no LLM vendor privileged anywhere a provider or model is
+configured, dispatched to or illustrated, where the placeholders are
+`example-provider` and `example-{basic,capable,expert}-001`.
 
 ## Design Direction
 
 **Chosen direction**: Warm Ops, a warm, approachable aesthetic with balanced density and spring-physics interactions, combined with semantic state-driven colour encoding where every colour communicates system status rather than serving as decoration.
 
-**Why this direction**: Warmth makes an AI operations tool feel approachable without losing professionalism. Tying colour exclusively to state (green = rising, amber = attention, red = critical) gives operators instant comprehension of system health. The brand accent is a warm soft blue, deliberately neutral so that semantic state colours dominate the visual hierarchy. Orange/amber means "attention needed," not "this is SynthOrg."
+**Why this direction**: warmth makes an operations dashboard approachable without losing professionalism. Tying colour exclusively to state (green = rising, amber = attention, red = critical) gives operators instant comprehension of system health. The brand accent is a warm soft blue, deliberately neutral so that semantic state colours dominate the visual hierarchy. Orange and amber mean "attention needed", not "this is SynthOrg".
 
-**What was rejected and why**: A cool blue-cyan palette (data centre aesthetic) was too generic, indistinguishable from Grafana/Datadog screenshots. A neutral grey palette (no hue) lacked enough identity to be recognisable. A high-energy violet/purple palette was visually fatiguing for sustained 8-hour use. These directions scored well on individual criteria but failed the combination of identity distinctiveness + sustained usability.
+**What was rejected and why**: a cool blue-cyan palette (data centre aesthetic) was too generic to tell apart from any other monitoring dashboard. A neutral grey palette (no hue) lacked enough identity to be recognisable. A high-energy violet/purple palette was visually fatiguing over a long working session. Each scored well on individual criteria and failed the combination of distinct identity plus sustained usability.
 
 **Design influences**: Linear (clean layout, balanced density), Vercel (status-first design), Dust.tt (warm approachability), Grafana (data density as a user preference).
 
@@ -51,15 +123,15 @@ Metric cards, sparklines, and trend indicators use colours dynamically based on 
 
 This ensures operators instantly understand system state from colours alone, without reading values. The same metric card shows green when tasks are completing faster and amber when they are slowing down.
 
-### How to Add a New Colour Theme
+### How to Add a New Colour Palette
 
-Each theme is a single configuration object (~50 lines). All colours are CSS custom properties consumed via `var(--theme-*)` tokens. To add a new theme:
+Every colour in the dashboard resolves through a `--so-*` custom property declared in `web/src/styles/design-tokens.css`. Warm Ops is `:root`; each other palette is a class on `<html>` that overrides only the properties it changes. To add one:
 
-1. Create a new theme config (e.g. `themes/midnight.ts`) with all colour tokens
-2. Register it in the theme index
-3. Done; all components automatically pick up the new palette
+1. Add a `.theme-<name>` block to `design-tokens.css` overriding the `--so-*` properties that differ from `:root`
+2. Add `<name>` to the `ColorPalette` union and the `COLOR_PALETTES` array in `web/src/stores/theme.ts`, which derives the class list from it
+3. Give it a label in the `THEME_META.PALETTE` map in `web/src/components/layout/AppLayout.tsx`, which is what the command palette and theme popover show
 
-No component code changes required. The 5 exploration themes (Ice Station, Warm Ops, Stealth, Signal, Neon) demonstrate this pattern: each theme is ~50 lines of colour token definitions with zero component changes.
+No component code changes. The five palettes (Warm Ops, Ice Station, Stealth, Signal, Neon) each override the accent pair and a handful of surfaces; everything else inherits from `:root`.
 
 ## Typography
 
@@ -97,21 +169,25 @@ Density is an **independent user preference**, not tied to theme colours.
 
 ### How to Add a New Density Level
 
-Create a new `ThemeDensity` object with padding, gap, and font size values. Register it in the density index. Components read density from the theme context; no component changes needed.
+Same shape as a palette. Balanced is `:root`; each other level is a `.density-<name>` class in `design-tokens.css` overriding the `--so-density-*` properties, registered in the `Density` union and `DENSITIES` array in `web/src/stores/theme.ts` and labelled in `THEME_META.DENSITY`. Components consume the density tokens (`p-card`, `gap-section-gap`, `gap-grid-gap`), so no component changes.
 
 ## Animation
 
 Animation is an **independent user preference**, controlling motion intensity.
 
-| Profile | Card entrance | Hover | Page transition | Status pulse | Use case |
-|---------|---------------|-------|-----------------|--------------|----------|
-| Minimal | 200ms fade | None | Fade only | Subtle | Reduced motion preference, distraction-free |
-| Spring | Spring physics | Lift + shadow | Slide | Yes | Playful, responsive feel |
-| Instant | No animation | None | None | No | Maximum performance, zero latency feel |
-| Status-driven | Fade | None | Fade | Only on state change | Animation earns attention; only moving things changed |
-| Aggressive | Slide + fade + scale | Lift + glow | Scale | Yes + shimmer | High energy, demo/presentation mode |
+Each profile resolves to one config in `useAnimationPreset()`: a primary transition (`spring`, used for modals, panels and card interactions, which need not be a spring), a `tween` for hover and colour changes, a stagger delay, and whether layout animations run at all. Components read the hook rather than reaching into `lib/motion.ts` directly.
 
-**Recommended default**: Status-driven. Animation should communicate state change, not decoration. Static elements stay still; only things that changed move.
+| Profile | Primary transition | Tween | Stagger | Layout animations | Use case |
+|---------|--------------------|-------|---------|-------------------|----------|
+| Minimal | `tweenFast` (150ms) | 150ms ease-out | None | Off | Distraction-free, close to reduced motion |
+| Spring | `springDefault` | `tweenDefault` (200ms) | 30ms | On | Playful, responsive feel |
+| Instant | Instant (zero duration) | Instant | None | Off | Maximum performance, zero-latency feel |
+| Status-driven | `tweenDefault` (200ms) | `tweenDefault` | 20ms | On | Animation earns attention; only what changed moves |
+| Aggressive | `springBouncy` | `tweenDefault` | 50ms | On | High-energy demo and presentation mode |
+
+**Recommended default**: status-driven. Animation should communicate a state change, not decorate. Static elements stay still; only things that changed move.
+
+Page transitions are deliberately outside this axis. Every profile gets the same short opacity cross-fade, because on a dense dashboard any horizontal slide reads as a layout shift rather than a transition.
 
 ## Sidebar
 
@@ -135,7 +211,7 @@ Notification badges render in every mode that shows labels, not only persistent.
 
 ### Persistence
 
-Sidebar collapse state is persisted in user preferences. If a user collapses the sidebar, it stays collapsed across sessions until they expand it again.
+Every appearance preference is backend-owned. The five theme axes live in the `appearance` settings namespace and the sidebar collapse state in `dashboard.sidebar_collapsed`; the stores hydrate from the API on mount and write each change straight back. There is no client-side copy, because the dashboard is a pure API consumer and a preference held only in the browser is a preference no other client can see.
 
 ## Theme Architecture
 
@@ -144,7 +220,7 @@ Sidebar collapse state is persisted in user preferences. If a user collapses the
 The theme system has 5 orthogonal axes that users can configure independently:
 
 ```text
-Color Palette  x  Density  x  Typography  x  Animation  x  Sidebar Mode
+Colour Palette  x  Density  x  Typography  x  Animation  x  Sidebar Mode
 ```
 
 This gives users full control without combinatorial explosion in theme definitions. A user can run "warm blue colours + dense layout + IBM Plex fonts + minimal animation + compact sidebar" without any custom theme code.
@@ -153,13 +229,15 @@ This gives users full control without combinatorial explosion in theme definitio
 
 ```mermaid
 flowchart TD
-    TP["ThemeProvider (React context)"]
-    TP --> P1["Sets CSS custom properties on wrapper div (--theme-accent, --theme-bg-base, ...)"]
-    TP --> P2["Tailwind @theme block maps --theme-* to utility classes"]
-    TP --> P3["Components use Tailwind classes (text-accent, bg-bg-card, border-border)"]
-    TP --> P4["Density / animation read from theme context object"]
-    TP --> P5["Sidebar mode selects which sidebar component to render"]
+    TS["Theme store (Zustand, hydrated from the appearance settings namespace)"]
+    TS --> P1["Applies one class per axis to the html element (theme-*, density-*, typography-*, animation-*, sidebar-*)"]
+    P1 --> P2["Each class overrides the --so-* custom properties it changes; the defaults live on :root"]
+    P2 --> P3["global.css maps --so-* onto Tailwind theme variables with @theme inline"]
+    P3 --> P4["Components use the resulting utilities (text-accent, bg-card, p-card, gap-section-gap)"]
+    TS --> P5["Animation preference is read through useAnimationPreset; sidebar mode selects the sidebar rendering"]
 ```
+
+Because the mapping is `@theme inline`, the compiled utilities resolve as `var(--so-*)` references rather than baked values, which is what lets a class swap on `<html>` restyle the whole dashboard at runtime.
 
 ### Critical Implementation Note: Tailwind v4 CSS Layers
 
@@ -175,11 +253,11 @@ When using Tailwind v4 with `@import "tailwindcss"`, **all custom CSS resets MUS
 }
 ```
 
-This was discovered during the design exploration (#765) and caused layout breakage that was difficult to diagnose because the utilities appeared in the generated CSS but had no visual effect.
+An unlayered reset is hard to diagnose because the utilities still appear in the generated CSS and simply have no visual effect.
 
 ## Dark Mode
 
-**Dark mode only** (confirmed in #762 research). No light mode planned. All colour tokens assume dark backgrounds. WCAG AA contrast ratios are validated against dark card/surface backgrounds.
+**Dark mode only.** There is no light mode. All colour tokens assume dark backgrounds, and WCAG AA contrast ratios are validated against the dark card and surface backgrounds.
 
 ## Accessibility
 
@@ -195,10 +273,10 @@ This was discovered during the design exploration (#765) and caused layout break
 The component development environment uses Storybook 10 with native type-safe configuration:
 
 - **Config**: `defineMain` (from `@storybook/react-vite/node`) and `definePreview` (from `@storybook/react-vite`) for full TypeScript inference
-- **Addons**: `@storybook/addon-docs` (autodocs) and `@storybook/addon-a11y` (WCAG testing). Essentials (backgrounds, controls, viewport, actions) and interactions are built into core
-- **Backgrounds**: Selected via `initialGlobals.backgrounds.value = 'dark'`, which references our `--so-bg-base` token (`#0a0a12`) through `backgrounds.options.dark.value`, ensuring stories render against the actual brand dark background
+- **Addons**: `@storybook/addon-docs` (autodocs), `@storybook/addon-a11y` (WCAG testing) and `msw-storybook-addon`. Essentials (backgrounds, controls, viewport, actions) and interactions are built into core
+- **Backgrounds**: `initialGlobals.backgrounds.value = 'dark'` selects the single `backgrounds.options.dark` entry, whose value is the same `#0a0a12` the `--so-bg-base` token carries, so stories render against the real brand background
 - **Decorator**: Global dark-mode wrapper (`div.dark.bg-background.p-4.text-foreground`) applies our design tokens to all stories
-- **API mocking**: MSW (Mock Service Worker) via `msw-storybook-addon`. Global `mswLoader` in `preview.tsx` intercepts API calls. Stories declare handlers via `parameters.msw.handlers` using pre-built handler arrays from `web/src/mocks/handlers/`. All responses use the `ApiResponse<T>` envelope via `apiSuccess()` helper
+- **API mocking**: MSW (Mock Service Worker) via `msw-storybook-addon`, registered in `preview.tsx` with an explicit worker whose `onUnhandledRequest` is `bypass`, so a story that mocks nothing stays silent instead of warning on every request. Stories declare handlers via `parameters.msw.handlers` using pre-built handler arrays from `web/src/mocks/handlers/`. All responses use the `ApiResponse<T>` envelope via the `apiSuccess()` helper
 
 ## Component Inventory
 
@@ -222,6 +300,21 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `PriorityBadge` | `task-status-indicator.tsx` | `priority: Priority`, `className?: string` | Task priority coloured pill badge. |
 | `ProviderHealthBadge` | `provider-health-badge.tsx` | `status: ProviderHealthStatus`, `label?: boolean`, `pulse?: boolean`, `className?: string` | Provider health status dot (up/degraded/down/unknown) with optional label. |
 | `RunOutcomeBadge` | `run-outcome-badge.tsx` | `outcome: RunOutcome`, `className?` | Failure-aware badge for a task run's outcome (`succeeded` / `empty` / `failed`): colour + icon + label so the signal is never colour alone. Shared across the approvals queue, review drawer, and chat prompts. |
+| `StatusPill` | `status-pill.tsx` | `tone?`, `toneClassName?`, `icon?`, `ariaLabel?`, `children`, `className?` | The single inline status-pill primitive (one corner radius, one padding scale). `tone` maps to the shared palette; `toneClassName` carries a feature-specific one. Every status pill composes this rather than re-implementing the span. |
+| `PlanStatusBadge` | `plan-status-badge.tsx` | `status: PlanStatus`, `className?` | Plan lifecycle pill across the tail: executing, integrating, evaluating, completed. Built on `StatusPill`. |
+| `CompletionOracleVerdictBadge` | `completion-oracle-verdict-badge.tsx` | `verdict: CompletionOracleVerdict`, `className?` | Semantic badge for a completion-review verdict. |
+| `RedTeamVerdictBadge` | `red-team-verdict-badge.tsx` | `verdict: RedTeamVerdict`, `className?` | Semantic badge for an adversarial red-team gate verdict. |
+| `ConnectionHealthBadge` | `connection-health-badge.tsx` | `status: ConnectionHealthStatus`, `label?`, `pulse?`, `className?` | Connection health dot. The single owner of the mapping from the connection enum (healthy/degraded/unhealthy/unknown) onto `ProviderHealthBadge`'s (up/degraded/down/unknown). Reports the outbound probe only; inbound readiness is surfaced separately, where it is actionable. |
+| `LocalityBadge` | `locality-badge.tsx` | `isLocal` | Flags an agent whose model runs on a local, free-to-run provider. Renders nothing when false. |
+| `ModelStalenessBadge` | `model-staleness-badge.tsx` | `stale: ModelStaleness \| null`, `className?` | Warning badge for a model the refresh service flagged as removed or deprecated, with the successor in a tooltip. Renders nothing for a current model. |
+| `ToolCallingUnavailableBadge` | `tool-calling-unavailable-badge.tsx` | `toolCallsVerified: boolean \| null`, `className?` | Warning badge for a model the runtime downgraded after repeated tool-call failures. Renders only on an explicit `false`, never on an unobserved verdict. |
+| `ProvenanceBadge` | `provenance-badge.tsx` | `className?`, `title?`, `children` | Presentational skeleton for data-provenance labels (measured vs absent). The caller owns the kind-to-tone mapping and passes the tone in. |
+| `Timeline` | `timeline.tsx` | `frames`, `currentIndex`, `onSeek`, `label?`, `className?` | Horizontal scrubber of recorded turns, colour-coded by status. Click a dot to seek; arrow keys step, Home/End jump to the ends. |
+| `ProgressIndicator` | `progress-indicator.tsx` | `variant: 'determinate' \| 'indeterminate' \| 'stages'`, `value?`, `label?`, `description?`, `stages?` | Long-running-operation progress. The indeterminate variant can carry a live elapsed-time chip. |
+| `Breadcrumbs` | `breadcrumbs.tsx` | `items`, `maxItems?`, `className?` | Trail for detail routes; collapses the middle to an ellipsis past `maxItems` (default 4). |
+| `ListHeader` | `list-header.tsx` | `title`, `count?`, `countLabel?`, `description?`, `primaryAction?`, `secondaryActions?` | Standard list-page header: title with count, primary action top-right, and a slot for search/filter/sort that sits inline on wide viewports. |
+| `InfoTooltip` | `info-tooltip.tsx` | `content`, `children`, `className?` | Hover/focus explanation beside an icon or compact control. Renders its trigger as a `<span>` so it can nest inside an existing interactive element; the popup is non-interactive. |
+| `KeyboardShortcutHint` | `keyboard-shortcut-hint.tsx` | `keys`, `label?`, `size?`, `className?` | Renders a key sequence as `<kbd>` pills with an optional trailing label. |
 
 ### Interaction Components
 
@@ -253,6 +346,36 @@ The following shared components live in `web/src/components/ui/` and form the bu
 | `ProjectStatusBadge` | `project-status-badge.tsx` | `status`, `showLabel?`, `className?` | Project status dot with optional label and semantic colours (planning/active/integrating/evaluating/on_hold/completed/cancelled). |
 | `ContentTypeBadge` | `content-type-badge.tsx` | `contentType`, `className?` | MIME content type pill badge with semantic colours (JSON, PDF, Image, Text, Markdown, CSV, Binary). |
 | `TaskProgress` | `task-progress.tsx` | `status`, `stages`, `className?` | Live task-execution progress panel (`running` / `finished` / `error` header + accumulated `ProgressStage`s). Presentational leaf fed by the `useTaskProgress` hook; shown inline in the chat flows so an operator watches approved work execute instead of a silent gap. |
+| `Dialog` | `dialog.tsx` | `open`, `onOpenChange`, `children`; composed with `DialogContent`, `DialogHeader`, `DialogTitle`, `DialogDescription`, `DialogCloseButton` | Themed modal built on the Base UI Dialog primitive, for anything that is not a confirmation. `ConfirmDialog` is the pre-composed confirmation. |
+| `Checkbox` | `checkbox.tsx` | `checked?`, `defaultChecked?`, `onCheckedChange?`, `disabled?`, `id?`, `name?`, `value?`, `aria-label?` | Themed checkbox on the Base UI primitive, so selection controls match the design system instead of the browser-native box. |
+| `Collapsible` | `collapsible.tsx` | `title`, `summary?`, `open?` / `defaultOpen?`, `onOpenChange?`, `disabled?`, `children`, `contentClassName?` | Disclosure section with a trigger row and an optional right-aligned summary (count, status, badge). Controlled or uncontrolled. |
+| `Pagination` | `pagination.tsx` | `page`, `pageSize`, `total`, `onPageChange`, `onPageSizeChange?`, `pageSizeOptions?`, `hidePageSize?`, `ariaLabel?` | 1-indexed pager with page-size selector. An undefined `total` signals an unknown count. |
+| `SearchInput` | `search-input.tsx` | `value`, `onChange`, `placeholder?`, `ariaLabel?`, `focusShortcut?`, `disabled?` | List-page search field. `focusShortcut` binds the global `/` key on the page's primary search only, and is ignored while focus is already in a text field. |
+| `SearchFilterSort` | `search-filter-sort.tsx` | `search?`, `filters?`, `sort?`, `trailing?`, `className?` | Layout wrapper for list-page controls, so search, filters and sort line up identically on every list. |
+| `BulkActionBar` | `bulk-action-bar.tsx` | `selectedCount`, `onClear`, `children`, `loading?`, `ariaLabel?` | Slide-up bar for a multi-select list. The caller owns the action buttons; the bar owns the count, the Clear control, and the disabled state. |
+| `BulkDeleteControls` | `bulk-delete-controls.tsx` | `selection`, `noun`, `description`, `ariaLabel` | The bar plus the confirmation behind "delete the rows I picked". One component rather than a copy per list, so no list can skip the confirmation or word the count differently. |
+| `DetailNavBar` | `detail-nav-bar.tsx` | `label?`, `canPrev`, `canNext`, `onPrev`, `onNext`, `position`, `bindShortcuts?` | Previous/next navigation between detail rows with a position counter, binding `J` / `ArrowLeft` and `K` / `ArrowRight` by default. A `null` position hides the counter (deep link or refresh). |
+| `CommandCheatsheet` | `command-cheatsheet.tsx` | `open?`, `onOpenChange?`, `disableShortcut?` | The `?` keyboard-shortcut overlay, rendered from the live shortcut registry rather than a hand-written list. Self-manages when uncontrolled. |
+| `ErrorBanner` | `error-banner.tsx` | `variant?`, `severity?`, `title`, `description?`, `onRetry?`, `retryAfterSeconds?` | Page, inline, and offline error banners. `error` takes `role="alert"`, while `warning` and `info` take `role="status"`. A `retryAfterSeconds` value renders a cosmetic countdown on the Retry button; the caller still owns the retry. |
+| `ErrorTechnicalDetails` | `error-technical-details.tsx` | `technical`, `className?` | Collapsed-by-default technical panel with copy-to-clipboard, shared by the router error page and the page-level error boundary. |
+| `WsConnectionBanner` | `ws-connection-banner.tsx` | `title?`, `description?` | The standard "real-time updates disconnected" notice, so every live page words a dropped channel the same way. |
+| `InheritToggle` | `inherit-toggle.tsx` | `inherit`, `onChange`, `inheritFrom?`, `disabled?` | Inherit-or-override switch for a setting that has a parent scope. |
+| `AgentModelPicker` | `agent-model-picker/` | `currentProvider`, `currentModelId`, `providers`, `onChange`, `label?`, `hideLabel?`, `disabled?` | The `(provider, model)` picker. Both halves are chosen together, because a model id means nothing without the connection it is reached through. |
+| `HealthPopover` | `health-popover/` | `children` (the trigger) | Shared system-health dialog behind both the StatusBar pill and the sidebar connection indicator. Reads the shared health snapshot and the live WebSocket state rather than fetching its own. |
+| `Slot` | `slot.tsx` | `children`, standard HTML attributes | Merges its props and ref onto its single child, for components that need to render as whatever element the caller passes. |
+
+### Conversational Components
+
+Used by the Chat surface and the other places the organisation speaks.
+
+| Component | File | Props | Purpose |
+|-----------|------|-------|---------|
+| `ChatBubble` | `chat-bubble.tsx` | `variant`, `content?`, `children?`, `timestamp?`, `roleLabel?`, `agentName?`, `agentRole?`, `agentTopic?`, `isError?` | One turn in a transcript. Markdown body for an assistant or agent turn, plain text for a human one, and a custom body for the event and notice variants. A streaming bubble is hidden from assistive technology until it settles. |
+| `ChatMarkdown` | `chat-markdown.tsx` | `content`, `className?` | Renders assistant markdown through descendant selectors only, so the tree carries design tokens and no raw HTML reaches the DOM. Tables and code blocks scroll inside themselves. |
+| `ChatInputArea` | `chat-input-area.tsx` | `value`, `onChange`, `onSend`, `disabled`, `inputDisabled?`, `label`, `hideLabel?`, `placeholder` | Composer. `disabled` blocks sending while leaving the field editable, so composed text is never discarded; `inputDisabled` freezes the field itself for terminal states. |
+| `ExamplePrompts` | `example-prompts.tsx` | `prompts`, `onSelect`, `disabled?` | Clickable starting points on an empty conversational surface. |
+| `ResponderAttribution` | `responder-attribution.tsx` | `name`, `role?`, `topic?`, `loading?` | Names the agent that answered, with its role and the concern topic that routed to it. A responder carrying no role renders name-only. |
+| `RequestCard` | `request-card.tsx` | `request`, `pending`, `onScope`, `onApprove`, `onReject` | A client request in the intake queue, with per-request in-flight flags so a double submission is impossible. |
 
 ### Utility Functions
 
@@ -311,15 +434,17 @@ The following shared components live in `web/src/components/ui/` and form the bu
 |------|------|--------|
 | `AgentRuntimeStatus` | `utils/agent-status.ts` | `"active"`, `"idle"`, `"error"`, `"offline"` |
 | `SemanticColor` | `utils/agent-status.ts` | `"success"`, `"accent"`, `"warning"`, `"danger"` |
-| `TaskStatus` | `api/types/enums` | `"created"`, `"assigned"`, `"in_progress"`, `"in_review"`, `"completed"`, `"blocked"`, `"failed"`, `"interrupted"`, `"suspended"`, `"cancelled"`, `"rejected"`, `"auth_required"` |
+| `TaskStatus` | `api/types/enums` | `"created"`, `"assigned"`, `"in_progress"`, `"in_review"`, `"completed"`, `"blocked"`, `"failed"`, `"interrupted"`, `"suspended"`, `"cancelled"`, `"rejected"`, `"auth_required"`, `"awaiting_input"` |
 | `Priority` | `api/types/enums` | `"critical"`, `"high"`, `"medium"`, `"low"` |
 | `ProviderHealthStatus` | `api/types/providers` | `"up"`, `"degraded"`, `"down"`, `"unknown"` |
 | `ApprovalStatus` | `api/types/enums` | `"pending"`, `"approved"`, `"rejected"`, `"expired"` |
 | `ApprovalRiskLevel` | `api/types/enums` | `"low"`, `"medium"`, `"high"`, `"critical"` |
 | `UrgencyLevel` | `api/types/enums` | `"critical"`, `"high"`, `"normal"`, `"no_expiry"` |
 | `ApprovalPageFilters` | `utils/approvals` | Filter shape: `status?`, `riskLevel?`, `actionType?`, `search?` |
-| `ProjectStatus` | `api/types/enums` | `"planning"`, `"active"`, `"integrating"`, `"evaluating"`, `"on_hold"`, `"completed"`, `"cancelled"` |
+| `ProjectStatus` | `api/types/enums` | `"planning"`, `"active"`, `"integrating"`, `"evaluating"`, `"on_hold"`, `"completed"`, `"cancelled"`, `"failed"` |
 | `ArtifactType` | `api/types/enums` | `"code"`, `"tests"`, `"documentation"` |
+
+Every enum above is re-exported from `web/src/api/types/enum-values.gen.ts`, generated from the backend's own API surface by `scripts/generate_dto_types_ts.py` and held in step by a pre-push drift check. A value is added by changing the backend and regenerating, never by editing the generated file.
 
 ### When to Create a New Shared Component
 
@@ -344,8 +469,11 @@ A PostToolUse hook (`scripts/check_web_design_system.py`) runs automatically on 
 
 | Resource | Location |
 |----------|----------|
-| Design exploration mockups (5 variations) | `feat/765-design-exploration` branch, `mockups-v2/` (exploration artifacts, not production code) |
-| Original winning prototype (Mission Control / C+D direction) | `research/762-ux-mockups` branch, `mockups/direction-cd/` |
-| UX research document | `research/762-ux-mockups` branch, `docs/design/ux-research.md` |
 | Page structure and information architecture | [Page Structure & IA](page-structure.md) |
 | UX design guidelines (implementation specs) | [UX Guidelines](ux-guidelines.md) |
+| Framework evaluation behind the dashboard stack | [Dashboard Framework Research](ux-research.md) |
+| Design tokens (the source of every colour, spacing and density value) | `web/src/styles/design-tokens.css` |
+| Theme axes and their persisted keys | `web/src/stores/theme.ts` |
+| Motion presets | `web/src/lib/motion.ts` |
+| WCAG verification script | `scripts/wcag_check.py` |
+| Design-system enforcement hook | `scripts/check_web_design_system.py` |
