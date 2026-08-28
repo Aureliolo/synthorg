@@ -78,7 +78,7 @@ Every LLM dispatch names an explicit `(provider, model)` pair; for an agent that
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `budget.total_monthly` | float | `100.0` | Monthly cap in `currency`. |
-| `budget.currency` | str | `USD` | ISO 4217 code; relabels new cost records without converting past ones. |
+| `budget.currency` | str | `USD` | ISO 4217 code stamped onto new cost records. The default is not a regional preference: SynthOrg converts nothing, and provider token prices are published in USD, so this is the unit the upstream numbers already carry. Changing it relabels subsequent records without translating any value, which is why an operator sets it only when their provider bills in something else. |
 | `budget.reset_day` | int (1..28) | `1` | Day-of-month for the monthly reset. |
 | `budget.alerts.warn_at` | int (0..100) | `75` | Warning threshold percentage; must stay `warn_at < critical_at < hard_stop_at`. |
 | `budget.alerts.critical_at` | int (0..100) | `90` | Critical threshold percentage. |

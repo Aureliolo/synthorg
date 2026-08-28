@@ -375,6 +375,48 @@ class TestSuppressionMarker:
         )
         assert any("CodeRabbit" in i for i in issues), issues
 
+    def test_markdown_html_comment_marker_same_line(self, src_dir: Path) -> None:
+        """Markdown has no line comment, so the opt-out is an HTML comment."""
+        issues = _scan(
+            src_dir,
+            "docs/design/security.md",
+            "Named in pre-PR review #1234."
+            " <!-- lint-allow: review-origin -- quoting the rule -->\n",
+        )
+        assert issues == [], issues
+
+    def test_markdown_html_comment_marker_preceding_line(self, src_dir: Path) -> None:
+        issues = _scan(
+            src_dir,
+            "docs/design/security.md",
+            (
+                "<!-- lint-allow: review-origin -- documenting the rule shape -->\n"
+                "Named in pre-PR review #1234.\n"
+            ),
+        )
+        assert issues == [], issues
+
+    def test_markdown_marker_without_reason_does_not_suppress(
+        self, src_dir: Path
+    ) -> None:
+        issues = _scan(
+            src_dir,
+            "docs/design/security.md",
+            "Named in pre-PR review #1234. <!-- lint-allow: review-origin -->\n",
+        )
+        assert any("pre-PR review" in i for i in issues), issues
+
+    def test_markdown_unterminated_comment_does_not_suppress(
+        self, src_dir: Path
+    ) -> None:
+        """An unclosed ``<!--`` is prose quoting the marker, not a comment."""
+        issues = _scan(
+            src_dir,
+            "docs/design/security.md",
+            "Named in pre-PR review #1234. <!-- lint-allow: review-origin -- ok\n",
+        )
+        assert any("pre-PR review" in i for i in issues), issues
+
 
 class TestPathAllowlist:
     """Historical-genre paths are skipped; current-state prose is not."""

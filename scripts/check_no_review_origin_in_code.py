@@ -48,6 +48,7 @@ import re
 import subprocess
 import sys
 import tokenize
+from collections.abc import Callable
 from pathlib import Path
 from typing import Final
 
@@ -107,6 +108,12 @@ _SEC_PATTERN: Final[re.Pattern[str]] = re.compile(r"\bSEC-\d+\b")
 
 # Suppression marker -- requires non-empty justification.
 _SUPPRESSION_MARKER: Final[str] = "lint-allow: review-origin"
+
+# Markdown carries no line comment, so the opt-out there is an HTML
+# comment. Both delimiters are needed: an unterminated ``<!--`` would
+# let prose that merely quotes the marker suppress the rest of a line.
+_HTML_COMMENT_OPEN: Final[str] = "<!--"
+_HTML_COMMENT_CLOSE: Final[str] = "-->"
 
 # Sentinel prefix prepended to I/O failure entries so ``main()`` can
 # distinguish them from policy violations and surface a distinct
@@ -222,11 +229,40 @@ def _line_has_dedicated_marker(line: str) -> bool:
     -- later`` -- is rejected so it cannot bleed forward into the next
     line. Reused from the equivalent guard in
     ``check_forbidden_literals.py``.
+
+    Three comment syntaxes are accepted because the gate scans three
+    kinds of file: ``#`` for Python and YAML, ``--`` for SQL, and the
+    HTML comment for Markdown. A Markdown page has no other way to
+    write a comment, so without the third form a documentation page
+    would have no reachable opt-out at all.
     """
     stripped = line.strip()
+    if stripped.startswith(_HTML_COMMENT_OPEN) and stripped.endswith(
+        _HTML_COMMENT_CLOSE
+    ):
+        return _has_marker_with_reason(
+            stripped[len(_HTML_COMMENT_OPEN) : -len(_HTML_COMMENT_CLOSE)]
+        )
     if not stripped.startswith("#") and not stripped.startswith("--"):
         return False
     return _has_marker_with_reason(stripped)
+
+
+def _line_has_trailing_marker_markdown(line: str) -> bool:
+    """Return True iff a Markdown line carries a trailing HTML comment marker.
+
+    The marker must be the last thing on the line, so prose that merely
+    mentions the marker inside a sentence does not suppress anything.
+    """
+    idx = line.rfind(_HTML_COMMENT_OPEN)
+    if idx == -1:
+        return False
+    comment = line[idx:].rstrip()
+    if not comment.endswith(_HTML_COMMENT_CLOSE):
+        return False
+    return _has_marker_with_reason(
+        comment[len(_HTML_COMMENT_OPEN) : -len(_HTML_COMMENT_CLOSE)]
+    )
 
 
 def _line_has_trailing_marker_python(line: str) -> bool:
@@ -265,6 +301,12 @@ def _line_has_trailing_marker_sql(line: str) -> bool:
         return False
     comment = line[idx:]
     return _has_marker_with_reason(comment)
+
+
+_TRAILING_MARKER_BY_SUFFIX: Final[dict[str, Callable[[str], bool]]] = {
+    ".sql": _line_has_trailing_marker_sql,
+    ".md": _line_has_trailing_marker_markdown,
+}
 
 
 # ── Path resolution ────────────────────────────────────────────────
@@ -346,9 +388,11 @@ def _scan_file(file_path: Path, rel: str) -> list[str]:
         return [f"{_IO_ERROR_PREFIX}{rel}:0: unable to scan file: {exc}"]
     issues: list[str] = []
     file_lines = text.splitlines()
-    is_sql = file_path.suffix == ".sql"
-    trailing_marker = (
-        _line_has_trailing_marker_sql if is_sql else _line_has_trailing_marker_python
+    # The trailing-marker reader is chosen by comment syntax, not by
+    # language family: Markdown has only the HTML comment, SQL only
+    # ``--``, and everything else here (Python, YAML) uses ``#``.
+    trailing_marker = _TRAILING_MARKER_BY_SUFFIX.get(
+        file_path.suffix, _line_has_trailing_marker_python
     )
     patterns = _all_patterns(rel)
     for idx, line in enumerate(file_lines, start=1):

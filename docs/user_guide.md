@@ -56,15 +56,24 @@ for you.
     ```
 
 2. Fill in the required secrets in `docker/.env`. Every one of them is commented out in the
-   example, and the stack refuses to start without them:
+   example, and the stack refuses to start without them. `SYNTHORG_SETTINGS_KEY` is a
+   Fernet key rather than free bytes, so it is generated in a container here: the
+   prerequisites above are Docker alone, and nothing on this path needs a host Python.
 
     ```bash
     # each of these prints one value to paste into docker/.env
-    python -c "import secrets; print(secrets.token_urlsafe(48))"   # SYNTHORG_JWT_SECRET
-    python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"  # SYNTHORG_SETTINGS_KEY
-    python -c "import secrets; print(secrets.token_urlsafe(32))"   # SYNTHORG_PAGINATION_CURSOR_SECRET
-    python -c "import secrets; print(secrets.token_urlsafe(32))"   # POSTGRES_PASSWORD
+    openssl rand -base64 48 | tr -d '\n'   # SYNTHORG_JWT_SECRET
+    openssl rand -base64 32 | tr -d '\n'   # SYNTHORG_PAGINATION_CURSOR_SECRET
+    openssl rand -base64 32 | tr -d '\n'   # POSTGRES_PASSWORD
+
+    # SYNTHORG_SETTINGS_KEY (Fernet: 32 url-safe base64-encoded bytes)
+    docker run --rm python:3-alpine sh -c \
+      "pip install --quiet cryptography && python -c \
+       'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
     ```
+
+    With a host Python that already has `cryptography` installed, the last one is
+    `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
 
 3. Build and start, naming the runtime base image the backend Dockerfile layers on. There
    is deliberately no default: a build without `BASE_IMAGE` fails fast rather than pulling a

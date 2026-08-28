@@ -47,8 +47,11 @@ isolated containers, and the tree is assembled from the bottom up.
 
 Self-hosted, on your hardware. Every LLM dispatch names its own explicit `(provider, model)`
 pair, including local models, with no default to fall back on. No SynthOrg service sits in
-the path, so what leaves the machine is what your chosen provider needs; against local
-models, nothing does.
+the path, so on the model path what leaves the machine is what your chosen provider needs,
+and against local models nothing does. Two outbound integrations exist and both ship off:
+[product telemetry](reference/telemetry.md) and
+[cross-deployment analytics](cross-deployment-privacy.md), each sending only what its own
+page documents, and only once you enable it.
 
 ---
 

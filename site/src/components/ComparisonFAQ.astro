@@ -2,7 +2,7 @@
 const faqs = [
   {
     question: "Why not just use CrewAI or AutoGen?",
-    answer: "CrewAI and AutoGen are excellent frameworks with strong communities and proven track records. CrewAI excels at role-based agent crews with a clean developer experience. AutoGen is powerful for conversation-driven agent systems (though now in maintenance mode as Microsoft merges it into the Agent Framework). SynthOrg targets a different problem: splitting a software build into a tree of independently buildable parts, building the leaves in parallel in isolated containers, and checking each with a reviewer barred from having written it. If your use case is a multi-agent pipeline or crew, CrewAI or AutoGen may be simpler and more mature. If you need that decomposition-and-check machinery, SynthOrg is built for it, though the loop has not yet completed a build end to end.",
+    answer: "CrewAI and AutoGen are excellent frameworks with strong communities and proven track records. CrewAI excels at role-based agent crews with a clean developer experience. AutoGen is powerful for conversation-driven agent systems (now in maintenance mode, with Microsoft pointing new projects at the Agent Framework instead). SynthOrg targets a different problem: splitting a software build into a tree of independently buildable parts, building the leaves in parallel in isolated containers, and checking each with a reviewer barred from having written it. If your use case is a multi-agent pipeline or crew, CrewAI or AutoGen may be simpler and more mature. If you need that decomposition-and-check machinery, SynthOrg is built for it, though the loop has not yet completed a build end to end.",
   },
   {
     question: "How is SynthOrg different from ChatDev or MetaGPT?",

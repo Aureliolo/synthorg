@@ -183,13 +183,13 @@ histogram_quantile(0.95, sum by (le) (rate(synthorg_workflow_execution_seconds_b
 
 ```promql
 # Burned 80% of the monthly budget (gate on full measurability -- see below)
-synthorg_budget_used_percent > 80 and on() synthorg_budget_spend_measurability{state="measured"} == 1
+synthorg_budget_used_percent > 80 and ignoring(state) synthorg_budget_spend_measurability{state="measured"} == 1
 
 # Total accumulated cost (per-agent breakdown lives in the REST cost API / logs)
 synthorg_cost_total
 ```
 
-`synthorg_budget_used_percent` reads `0` whenever the period's spend is not fully metered (any flat-rate connection in the mix, or nothing metered at all), so an unqualified `> N` alert can silently never fire on such a deployment. Gate it on `synthorg_budget_spend_measurability{state="measured"} == 1` as above, or watch that gauge directly to catch a deployment where the percentage has gone structurally unmeasurable. The `on()` is load-bearing: `synthorg_budget_used_percent` carries no labels while `synthorg_budget_spend_measurability` carries `state`, so under default matching the two sides share no label set, `and` yields nothing, and the alert never fires however far over budget the deployment runs.
+`synthorg_budget_used_percent` reads `0` whenever the period's spend is not fully metered (any flat-rate connection in the mix, or nothing metered at all), so an unqualified `> N` alert can silently never fire on such a deployment. Gate it on `synthorg_budget_spend_measurability{state="measured"} == 1` as above, or watch that gauge directly to catch a deployment where the percentage has gone structurally unmeasurable. The `ignoring(state)` is load-bearing, and `on()` is the wrong tool here: the two metrics differ only by the `state` label, so plain `and` matches nothing and the alert never fires however far over budget the deployment runs. `on()` would fix that by matching on the empty label set, which also discards `job` and `instance`, so one target reporting `measured` would keep every other target's series. `ignoring(state)` drops the one label that differs and keeps target identity, so each target is gated on its own `synthorg_budget_spend_measurability` series.
 
 ### Coordination health
 
