@@ -84,8 +84,11 @@ def fingerprint_tree(
         return frozenset()
     excluded = frozenset(exclude)
     entries: list[tuple[str, int]] = []
-    for parent, directories, files in root.walk():
+    for parent, directories, files in root.walk(on_error=_walk_failed):
         at_root = parent == root
+        # Assigning through the slice is what prunes the walk: ``Path.walk``
+        # reads this same list to decide where it descends next, so rebinding
+        # the name would leave the subtree walked and the pruning inert.
         directories[:] = [
             name
             for name in directories
@@ -97,6 +100,26 @@ def fingerprint_tree(
                 continue
             entries.append(((relative / name).as_posix(), _size_of(parent / name)))
     return frozenset(entries)
+
+
+def _walk_failed(exc: OSError) -> None:
+    """Report a subtree the walk could not enter.
+
+    ``Path.walk`` discards its own :class:`OSError` unless handed this, so a
+    directory the filesystem refuses simply vanishes from the fingerprint. The
+    verdict this fingerprint drives is that a run produced nothing anywhere,
+    so a silently shrunk walk can fail delivered work with nothing in the log
+    to say the tree was never fully read. Reported rather than raised, on the
+    same rule as :func:`_size_of`: one unreadable subtree must not cost the
+    answer for everything beside it.
+    """
+    logger.warning(
+        EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,
+        phase="fingerprint_walk",
+        subtree=str(exc.filename or ""),
+        error_type=type(exc).__name__,
+        error=safe_error_description(exc),
+    )
 
 
 def _size_of(path: Path) -> int:

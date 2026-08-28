@@ -7,11 +7,16 @@ produced nothing, and a run that wrote code under a name nobody declared
 produced something.
 """
 
+import os
 from pathlib import Path
 
 import pytest
+import structlog
 
 from synthorg.engine.artifacts.workspace_fingerprint import fingerprint_tree
+from synthorg.observability.events.execution import (
+    EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -118,3 +123,62 @@ class TestWhatIsPruned:
         assert {
             path for path, _ in fingerprint_tree(tmp_path, exclude={"README.md"})
         } == {"sqlcsv/README.md"}
+
+
+class TestAFilesystemThatRefusesToAnswer:
+    """Missing evidence must never read as an absence.
+
+    This fingerprint is the sole evidence behind failing a run for having
+    produced nothing anywhere, so a path silently dropped from it is a
+    delivered run failed on a permission error.
+    """
+
+    def test_an_unmeasurable_file_keeps_its_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Sized ``-1`` rather than dropped, and never at its neighbours' cost."""
+        _write(tmp_path / "readable.py", "xyz")
+        refused = _write(tmp_path / "refused.py", "xyz")
+        real_stat = Path.stat
+
+        def _refuse(self: Path, **kwargs: object) -> object:
+            if self == refused:
+                raise PermissionError(13, "refused", str(self))
+            return real_stat(self, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(Path, "stat", _refuse)
+
+        assert fingerprint_tree(tmp_path) == frozenset(
+            {("readable.py", 3), ("refused.py", -1)}
+        )
+
+    def test_a_subtree_the_walk_cannot_enter_is_reported(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """``Path.walk`` discards its own error unless handed a handler.
+
+        Without one the subtree simply vanishes and the verdict it drives is
+        reached with nothing in the log to say the tree was never fully read.
+        """
+        _write(tmp_path / "readable.py", "xy")
+        refused = _write(tmp_path / "locked" / "hidden.py", "xyz").parent
+        real_scandir = os.scandir
+
+        def _refuse(path: str | Path = ".") -> object:
+            if Path(path) == refused:
+                raise PermissionError(13, "refused", str(path))
+            return real_scandir(path)
+
+        monkeypatch.setattr(os, "scandir", _refuse)
+
+        with structlog.testing.capture_logs() as captured:
+            fingerprint = fingerprint_tree(tmp_path)
+
+        # The readable half survives: one refused subtree must not cost the
+        # answer for everything beside it.
+        assert fingerprint == frozenset({("readable.py", 2)})
+        assert [
+            entry["event"]
+            for entry in captured
+            if entry["event"] == EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED
+        ] == [EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED]
