@@ -13,14 +13,18 @@ renumbered:
   ``Issue #N``, ``fixes #N``, ``closes #N``, ``see PR #N``,
   ``as part of #N``, ``GH-NNNN``, ``WP-N`` work-package labels, and
   ``RFC#N`` orphaned planning labels (use the canonical ADR number).
-* Naked ``SEC-N`` taxonomy in ``src/synthorg/`` or ``tests/`` -- the
-  canonical home is ``docs/design/`` / ``docs/reference/``; appearing
-  unexplained in code wastes the next reader's time.
+* Naked ``SEC-N`` taxonomy outside ``docs/`` -- the cluster it names is
+  written down under ``docs/``, so the tag is decodable there and
+  opaque anywhere else, where it wastes the next reader's time.
 
-The gate scans ``*.py`` files under ``src/synthorg/`` and ``tests/``
-plus ``*.sql`` under ``src/synthorg/persistence/``. Documentation
-trees (``docs/design/``, ``docs/reference/``, ``CHANGELOG.md``) are
-the canonical home for these tokens and are NEVER scanned.
+Scope is ``src/synthorg/``, ``tests/``, ``docker/`` and ``docs/``, over
+``*.py``, ``*.sql``, ``*.yml``, ``*.yaml`` and ``*.md``. A reader meets
+a stale citation in a design page sooner than in a module, so prose
+describing CURRENT state is in scope exactly as code is. What is exempt
+is the historical genre rather than the file type: a decision record, a
+research record and a dated audit trail all exist to say what was
+decided or observed at a point in time, so a citation is their content.
+Those are listed by path below.
 
 Per-line opt-out::
 
@@ -323,9 +327,9 @@ def _scan_file(file_path: Path, rel: str) -> list[str]:
 
     *rel* is the POSIX-style path used in the violation message; the
     caller chooses the anchor (project root for production, tmp root
-    for tests). Out-of-scope files (anything outside ``src/synthorg/``
-    or ``tests/``) and allowlisted paths short-circuit to ``[]`` so
-    the function is safe to call directly from unit tests.
+    for tests). Out-of-scope files (anything outside ``_DEFAULT_ROOTS``)
+    and allowlisted paths short-circuit to ``[]`` so the function is
+    safe to call directly from unit tests.
     """
     if not _path_in_scope(rel):
         return []

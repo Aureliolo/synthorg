@@ -377,27 +377,72 @@ class TestSuppressionMarker:
 
 
 class TestPathAllowlist:
-    """Files under canonical-doc paths are not scanned."""
+    """Historical-genre paths are skipped; current-state prose is not."""
 
-    def test_docs_design_skipped(self, src_dir: Path) -> None:
-        """``docs/design/<file>.md`` is the canonical SEC-N home."""
-        fp = _write_fixture(
+    def test_docs_design_scanned(self, src_dir: Path) -> None:
+        """``docs/design/`` describes current state, so a citation is rot."""
+        issues = _scan(
             src_dir,
             "docs/design/security.md",
-            "We use the SEC-1 taxonomy and pre-PR review #1234.\n",
+            "Discussed in pre-PR review #1234.\n",
         )
-        rel = fp.relative_to(src_dir).as_posix()
-        issues = _MODULE._scan_file(fp, rel)  # type: ignore[attr-defined]
-        assert issues == [], issues
+        assert any("pre-PR review" in i for i in issues), issues
 
-    def test_docs_reference_skipped(self, src_dir: Path) -> None:
-        fp = _write_fixture(
+    def test_docs_reference_scanned(self, src_dir: Path) -> None:
+        issues = _scan(
             src_dir,
             "docs/reference/conventions.md",
-            "Forbidden: pre-PR review #N, CodeRabbit, Round-N.\n",
+            "The retry ladder (#1615) is documented here.\n",
         )
-        rel = fp.relative_to(src_dir).as_posix()
-        issues = _MODULE._scan_file(fp, rel)  # type: ignore[attr-defined]
+        assert any("(#NNNN)" in i for i in issues), issues
+
+    def test_sec_taxonomy_allowed_under_docs(self, src_dir: Path) -> None:
+        """SEC-N is decodable under ``docs/``: that is where it is defined."""
+        issues = _scan(
+            src_dir,
+            "docs/design/security.md",
+            "Untrusted content is fenced per SEC-1.\n",
+        )
+        assert issues == [], issues
+
+    def test_sec_taxonomy_still_flagged_outside_docs(self, src_dir: Path) -> None:
+        """The same bare tag is opaque in code and stays forbidden there."""
+        issues = _scan(src_dir, "src/synthorg/x.py", "# fenced per SEC-1\n")
+        assert any("SEC-N" in i for i in issues), issues
+
+    def test_hex_colour_is_not_a_backref(self, src_dir: Path) -> None:
+        """A parenthesised CSS colour is three or six hex digits, not an id."""
+        issues = _scan(
+            src_dir,
+            "docs/design/ux-guidelines.md",
+            "Hover uses (#181828) and (#abc) tokens.\n",
+        )
+        assert issues == [], issues
+
+    def test_docs_decisions_skipped(self, src_dir: Path) -> None:
+        """A decision record exists to say what was decided, and when."""
+        issues = _scan(
+            src_dir,
+            "docs/decisions/0001-thing.md",
+            "Superseded by pre-PR review #1234; see #999 per CodeRabbit.\n",
+        )
+        assert issues == [], issues
+
+    def test_docs_research_skipped(self, src_dir: Path) -> None:
+        issues = _scan(
+            src_dir,
+            "docs/research/some-eval.md",
+            "Recorded once #1615 landed, per CodeRabbit.\n",
+        )
+        assert issues == [], issues
+
+    def test_loop_round_log_skipped(self, src_dir: Path) -> None:
+        """A dated log of live runs, reached by file among current-state pages."""
+        issues = _scan(
+            src_dir,
+            "docs/reference/loop-round-log.md",
+            "Round 8 stopped on the replan cap, tracked by #2842.\n",
+        )
         assert issues == [], issues
 
     def test_changelog_skipped(self, src_dir: Path) -> None:
