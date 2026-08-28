@@ -64,10 +64,11 @@ _CONFIDENCE_CODE_MODIFICATION: Final[float] = 0.5
 _MODEL_KEY: Final[str] = "code_modification_model"
 
 _SYSTEM_PROMPT = """\
-You are a framework improvement analyst for SynthOrg, a framework \
-for building synthetic organizations. Your task is to propose \
-concrete code changes that improve the framework based on observed \
-signal patterns.
+You are a framework improvement analyst for SynthOrg, which splits a \
+software build into independently buildable parts, builds them in \
+parallel, and has each part checked by something that did not write \
+it. Your task is to propose concrete code changes that improve the \
+framework based on observed signal patterns.
 
 Rules:
 - Propose changes only to the files and modules specified.
