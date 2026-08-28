@@ -168,10 +168,10 @@ gate refuses is refused at the gate.
 
 The `AutonomyChangeStrategy` protocol (`security/autonomy/protocol.py`:
 `request_promotion`) is a pluggable subsystem following the
-risk-tier-classifier pattern: a `StrEnum` discriminator + frozen config
-+ safe default + `StrategyRegistry` factory. Promotion is the only
-direction on the seam, so a wrapping strategy decides that one question
-and holds a base to delegate it to.
+risk-tier-classifier pattern: a `StrEnum` discriminator, a frozen
+config, a safe default, and a `StrategyRegistry` factory. Promotion is
+the only direction on the seam, so a wrapping strategy decides that one
+question and holds a base to delegate it to.
 
 | `AutonomyStrategyType` | Implementation | Behaviour |
 |---|---|---|
