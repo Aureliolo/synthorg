@@ -4,7 +4,7 @@ import Base from "../../layouts/Base.astro";
 
 <Base
   title="Get SynthOrg | Install the CLI"
-  description="Install the SynthOrg CLI on Linux, macOS, or Windows with a single command, or inspect the install scripts before running them."
+  description="Install the SynthOrg CLI on Linux, macOS, or Windows with a single command, or inspect the install scripts before running them. Requires Docker; everything runs on your own machine."
 >
   <!-- ============================================================ -->
   <!-- HERO (compact) -->
@@ -19,7 +19,7 @@ import Base from "../../layouts/Base.astro";
         </span>
       </h1>
       <p class="text-lg text-gray-400 max-w-xl mx-auto">
-        Install the CLI to set up and run the SynthOrg platform in seconds. (Acceptance against a real provider is in active development; see the <a href="/docs/roadmap/" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">roadmap</a>.)
+        The CLI orchestrates Docker: it writes a Compose file, verifies and pulls the images, and brings the stack up on your own machine. SynthOrg is pre-alpha; see the <a href="/docs/roadmap/" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">roadmap</a> for what is built and what is not.
       </p>
     </div>
   </section>
@@ -29,7 +29,11 @@ import Base from "../../layouts/Base.astro";
   <!-- ============================================================ -->
   <section class="py-10 px-6">
     <div class="max-w-7xl mx-auto">
-      <h2 class="text-2xl md:text-3xl font-bold mb-6 text-center">Quick Install</h2>
+      <h2 class="text-2xl md:text-3xl font-bold mb-3 text-center">Quick Install</h2>
+
+      <p class="text-sm text-gray-400 text-center max-w-xl mx-auto mb-6">
+        Prerequisite: <a href="https://docs.docker.com/get-docker/" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">Docker</a> Engine 20.10 or later with Compose, running and reachable. The CLI pulls its images from a registry, so the first start needs network access.
+      </p>
 
       <!-- Side-by-side terminals: stacked on mobile, side-by-side on md+ -->
       <div class="grid lg:grid-cols-2 gap-5 mb-6">
@@ -102,11 +106,11 @@ import Base from "../../layouts/Base.astro";
               Copy
             </button>
           </div>
-          <pre class="p-4 text-sm font-mono text-gray-300 overflow-x-auto leading-relaxed"><code><span class="text-gray-400">$</span> synthorg init      <span class="text-gray-600"># interactive setup wizard</span>
-<span class="text-gray-400">$</span> synthorg start     <span class="text-gray-600"># pull images + start containers</span></code></pre>
+          <pre class="p-4 text-sm font-mono text-gray-300 overflow-x-auto leading-relaxed"><code><span class="text-gray-400">$</span> synthorg init      <span class="text-gray-600"># setup wizard: data dir, secrets, compose file</span>
+<span class="text-gray-400">$</span> synthorg start     <span class="text-gray-600"># verify signatures, pull images, start the stack</span></code></pre>
         </div>
         <p class="text-xs text-gray-400 mt-3">
-          The web dashboard opens at <a href="http://localhost:3000" class="text-gray-400 hover:text-white transition-colors"><code>http://localhost:3000</code></a> (default).
+          The dashboard is served at <a href="http://localhost:3000" class="text-gray-400 hover:text-white transition-colors"><code>http://localhost:3000</code></a> and the API at <code>http://localhost:3001</code>, by default. <code>synthorg status</code> reports container health; <code>synthorg stop</code> brings the stack down.
         </p>
       </div>
     </div>
@@ -129,7 +133,8 @@ import Base from "../../layouts/Base.astro";
           <p class="text-sm text-gray-400 mb-4 flex-1">
             Review the exact scripts the install commands run. They download a binary from
             <a href="https://github.com/Aureliolo/synthorg/releases" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">GitHub Releases</a>,
-            verify its SHA-256 checksum, and place it in your PATH.
+            verify its SHA-256 checksum against the release manifest, and install it to a
+            directory on your PATH.
             Each release also includes SLSA Level 3 provenance attestations for independent verification.
           </p>
           <div class="flex flex-wrap gap-2">
@@ -173,7 +178,7 @@ import Base from "../../layouts/Base.astro";
             </a>
           </div>
           <p class="text-xs text-gray-400 mt-3">
-            Then run: <code class="text-gray-400">bash install.sh</code> or <code class="text-gray-400">.\install.ps1</code>
+            Then run: <code class="text-gray-400">bash install.sh</code>, or on Windows <code class="text-gray-400">powershell -ExecutionPolicy Bypass -File .\install.ps1</code>
           </p>
         </div>
 
@@ -186,11 +191,11 @@ import Base from "../../layouts/Base.astro";
           <ol class="space-y-2.5 text-sm text-gray-400">
             <li class="flex gap-2">
               <span class="w-5 h-5 rounded-full bg-violet-600/20 flex items-center justify-center text-violet-400 text-xs font-bold shrink-0 mt-0.5">1</span>
-              <span>Download archive from <a href="https://github.com/Aureliolo/synthorg/releases/latest" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">latest release</a></span>
+              <span>Download your platform's archive from the <a href="https://github.com/Aureliolo/synthorg/releases/latest" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">latest release</a> (<code class="text-gray-300">.tar.gz</code>, or <code class="text-gray-300">.zip</code> on Windows), alongside <code class="text-gray-300">checksums.txt</code></span>
             </li>
             <li class="flex gap-2">
               <span class="w-5 h-5 rounded-full bg-violet-600/20 flex items-center justify-center text-violet-400 text-xs font-bold shrink-0 mt-0.5">2</span>
-              <span>Verify with <code class="text-gray-300">sha256sum -c checksums.txt</code></span>
+              <span>Verify with <code class="text-gray-300">sha256sum --ignore-missing -c checksums.txt</code></span>
             </li>
             <li class="flex gap-2">
               <span class="w-5 h-5 rounded-full bg-violet-600/20 flex items-center justify-center text-violet-400 text-xs font-bold shrink-0 mt-0.5">3</span>
@@ -208,8 +213,11 @@ import Base from "../../layouts/Base.astro";
         <div class="bg-[#0F1219] rounded-xl p-6 border border-white/10 flex flex-col">
           <h3 class="text-lg font-semibold mb-3">Skip the CLI entirely</h3>
           <p class="text-sm text-gray-400 mb-4 flex-1">
-            The CLI automates Docker Compose setup, image pulling, health checks, and updates.
-            If you're comfortable with Docker, run the containers directly.
+            The CLI automates Compose file generation, secret generation, signature-verified
+            image pulls, health checks, and updates. To do it by hand, clone the repository,
+            copy <code class="text-gray-300">docker/.env.example</code> to
+            <code class="text-gray-300">docker/.env</code> and fill in the required secrets it
+            leaves blank, then bring up <code class="text-gray-300">docker/compose.yml</code>.
           </p>
           <a
             href="/docs/user_guide/"

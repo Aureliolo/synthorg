@@ -7,8 +7,8 @@
     <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">How It Is Designed To Work</h2>
     <p class="text-gray-400 text-center max-w-2xl mx-auto mb-16">
       Steps 1-2 (pick a template, configure via wizard or REST API) work today.
-      Steps 3-4 show agents collaborating and the operations view, both
-      exercised by deterministic harnesses rather than a real provider.
+      Steps 3-4 show the decomposition and review machinery: driven live
+      against real models, and no run has yet reached the assembly stage.
     </p>
 
     <div class="md:grid md:grid-cols-[1fr_auto_1fr] md:gap-8">
@@ -78,16 +78,16 @@
                 <span class="ml-3 text-sm text-gray-400 font-mono">activity log</span>
               </div>
               <pre class="text-sm font-mono text-gray-300 overflow-x-auto"><code><span class="text-violet-400">[TASK]</span>  #12 created: "Redesign checkout flow"
-<span class="text-teal-400">[ENGINE]</span> PM decomposed #12 into 4 subtasks
-<span class="text-teal-400">[ENGINE]</span> #12a -> UX Designer (role-based)
+<span class="text-teal-400">[ENGINE]</span> PM decomposed #12 into 4 leaves
+<span class="text-teal-400">[ENGINE]</span> #12a -> UX Designer (manual)
 <span class="text-teal-400">[ENGINE]</span> #12b -> Backend Dev (cost-aware)
-<span class="text-teal-400">[ENGINE]</span> #12c -> Frontend Dev (role-based)
-<span class="text-teal-400">[ENGINE]</span> #12d -> QA Engineer (role-based)
+<span class="text-teal-400">[ENGINE]</span> #12c -> Frontend Dev (smart)
+<span class="text-teal-400">[ENGINE]</span> #12d -> QA Engineer (fastest)
 <span class="text-teal-400">[COMMS]</span>  UX Designer -> PM: "Wireframes ready"
-<span class="text-green-400">[DONE]</span>  #12a approved by PM (quality: 94%)
-<span class="text-teal-400">[COMMS]</span>  Meeting: sprint review (round-robin)</code></pre>
+<span class="text-green-400">[DONE]</span>  #12a checked by a different model family
+<span class="text-teal-400">[COMMS]</span>  Backend Dev -> QA Engineer: "Ready for review"</code></pre>
             </div>
-            <p class="mt-4 text-sm text-gray-500 italic">Runtime behaviour under a scripted provider: DAG-based decomposition, routing strategies, meetings, delegation, and conflict resolution.</p>
+            <p class="mt-4 text-sm text-gray-500 italic">Runtime behaviour: recursive decomposition, routing strategies, and delegation. Driven live against real models; no run has yet reached the assembly stage.</p>
           </div>
         </div>
 

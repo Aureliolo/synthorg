@@ -47,8 +47,8 @@ const architecture = [
         href: "/docs/design/engine/",
       },
       {
-        name: "5 Routing Strategies",
-        description: "Manual, role-based, cost-aware, fastest, and smart model routing.",
+        name: "Routing Strategies",
+        description: "Manual, cost-aware, fastest, and smart model routing.",
         href: "/docs/design/engine/",
       },
       {
@@ -62,8 +62,8 @@ const architecture = [
         href: "/docs/design/engine/",
       },
       {
-        name: "Conflict Resolution",
-        description: "Authority-based, debate with judge, human escalation, hybrid (debate + LLM review).",
+        name: "Independent Review",
+        description: "A reviewer bound to a different model family than the one that wrote the work, enforced structurally, never merely by agent identity.",
         href: "/docs/design/engine/",
       },
     ],
@@ -97,7 +97,7 @@ const architecture = [
       },
       {
         name: "Identity & Authority",
-        description: "Bound (role, model) agents, 8 seniority levels, skills, authority nesting.",
+        description: "Bound (role, model) agents; skills; authority derived structurally from a role's position in the reporting graph.",
         href: "/docs/design/agents/",
       },
     ],
@@ -111,7 +111,7 @@ const architecture = [
     submodules: [
       {
         name: "LLM Providers",
-        description: "90+ via LiteLLM, 20 built-in presets, hot-reload management, health probing every 30 minutes.",
+        description: "90+ via LiteLLM, curated built-in presets, hot-reload management, periodic background health probing.",
         href: "/docs/design/providers/",
       },
       {
