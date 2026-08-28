@@ -78,7 +78,7 @@ isolation for high-risk tools.
         workspace_only: true               # restrict filesystem access to project dir
         restricted_path: true              # strip dangerous binaries from PATH
       docker:
-        image: "ghcr.io/aureliolo/synthorg-sandbox:v<release>" # version-pinned, resolved at startup
+        image: "ghcr.io/aureliolo/synthorg-sandbox:vX.Y.Z"  # replace with the release you run
         network: "none"                    # no network by default
         network_overrides:                 # category-specific network policies
           database: "bridge"               # database tools need TCP access to DB host

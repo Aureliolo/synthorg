@@ -14,8 +14,9 @@ about the product.
 
 > Real software takes a whole organisation. SynthOrg is a synthetic one: it
 > splits the work into a tree of parts that can be built independently, builds
-> the leaves in parallel in isolated containers, and has each part checked by
-> something that did not write it. On your hardware, against models you choose.
+> the leaves in parallel, each in its own workspace, and has each part checked
+> by something that did not write it. On your hardware, against models you
+> choose.
 
 The order is load-bearing: problem, then mechanism, then where it runs. Never
 lead with the mechanism. The product name carries the problem, so the opening
@@ -31,9 +32,13 @@ independent is the hard problem.
 ### The Three Claims, and How Far Each Goes
 
 **It fans out.** Work is decomposed recursively into units that can be built
-independently, built concurrently in isolated containers, and assembled
+independently, built concurrently, each in its own git worktree, and assembled
 bottom-up. Never state a size the system handles: the decomposition ceiling is
-being measured and has no answer yet.
+being measured and has no answer yet. The isolation to name is the workspace,
+never a container per part: the shipped sandbox default is `subprocess`
+(`tools/sandbox/sandboxing_config.py`), and where an operator selects Docker a
+container belongs to an agent and is reused across every command and task that
+agent runs (`tools/sandbox/lifecycle/config.py`).
 
 **Each part is checked by something that did not write it.** The reviewer is
 structurally prevented from being the author, in the service layer, the model

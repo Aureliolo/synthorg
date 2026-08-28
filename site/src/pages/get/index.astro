@@ -195,7 +195,7 @@ import Base from "../../layouts/Base.astro";
             </li>
             <li class="flex gap-2">
               <span class="w-5 h-5 rounded-full bg-violet-600/20 flex items-center justify-center text-violet-400 text-xs font-bold shrink-0 mt-0.5">2</span>
-              <span>Verify with <code class="text-gray-300">sha256sum --ignore-missing -c checksums.txt</code>, or on Windows compare <code class="text-gray-300">Get-FileHash &lt;archive&gt; -Algorithm SHA256</code> against the archive's line in <code class="text-gray-300">checksums.txt</code></span>
+              <span>Verify on Linux with <code class="text-gray-300">sha256sum --ignore-missing -c checksums.txt</code>. On macOS run <code class="text-gray-300">shasum -a 256 &lt;archive&gt;</code>, and on Windows <code class="text-gray-300">Get-FileHash &lt;archive&gt; -Algorithm SHA256</code>, then compare the digest against the archive's line in <code class="text-gray-300">checksums.txt</code></span>
             </li>
             <li class="flex gap-2">
               <span class="w-5 h-5 rounded-full bg-violet-600/20 flex items-center justify-center text-violet-400 text-xs font-bold shrink-0 mt-0.5">3</span>

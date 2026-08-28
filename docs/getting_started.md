@@ -3,7 +3,7 @@
 Set up a development environment for SynthOrg.
 
 SynthOrg takes a description of a piece of software and builds it in one pass: the work is
-split into a tree of parts, the parts are built in parallel in isolated containers, and each
+split into a tree of parts, the parts are built in parallel, each in its own workspace, and each
 one is checked by something that did not write it, on your hardware against models you
 choose. This page is about the repository and the toolchain, not about running the platform.
 To run it, see the [User Guide](user_guide.md).

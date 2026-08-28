@@ -15,7 +15,7 @@ A single agent working alone cannot hold a whole application: it does one thing 
 and the twentieth thing damages the first. Adding agents does not fix that by itself,
 because the binding constraint is not agent supply, it is **decomposition quality**. So the
 objective is decomposed recursively into a tree of independently buildable units, the leaves
-are built concurrently in isolated containers, and the tree is assembled bottom-up, with
+are built concurrently, each in its own workspace, and the tree is assembled bottom-up, with
 every piece checked by something that did not write it. The [documentation home](../index.md)
 covers the full mechanism; the cards below link straight to it.
 

@@ -3,8 +3,8 @@
 One agent in a loop cannot hold a whole application. That is the constraint the
 mechanism on this page answers: the binding limit on building software with
 agents is decomposition quality rather than agent supply, so work is split
-until each unit is one agent's worth, the leaves are built concurrently in
-isolated containers, and each level is assembled from the level below it. The
+until each unit is one agent's worth, the leaves are built concurrently, each
+in its own workspace, and each level is assembled from the level below it. The
 fan-out is not there to make a run finish sooner.
 
 A decomposition is therefore a tree rather than a list. `DecompositionService`

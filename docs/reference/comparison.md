@@ -11,11 +11,13 @@ description: >-
 
 How SynthOrg compares to agent orchestration frameworks, platforms, and research projects.
 
-Last updated: 2026-08-28
+Comparison data last changed: 2026-08-28
+
+Rows are compiled from each project's own documentation and repository. Only a row carrying `source_verified_at` has a recorded check date; the rest are point-in-time and may have drifted since.
 
 ## What the rows cannot show
 
-A single agent in a loop cannot hold a whole application. That is why a system that does one thing at a time degrades as an application grows: the twentieth thing damages the first. SynthOrg decomposes the work into a tree of parts, builds the parts concurrently in isolated containers, and assembles them bottom-up. The dimensions below are shared axes across every project in the table, so that shape does not appear in them. Two of its properties are worth stating outright.
+A single agent in a loop cannot hold a whole application. That is why a system that does one thing at a time degrades as an application grows: the twentieth thing damages the first. SynthOrg decomposes the work into a tree of parts, builds the parts concurrently, each in its own workspace, and assembles them bottom-up. The dimensions below are shared axes across every project in the table, so that shape does not appear in them. Two of its properties are worth stating outright.
 
 **It runs on your hardware.** Self-hosted, provider-agnostic, any models including local ones. There is no SynthOrg service in the path, so on the model path what reaches a third party is whatever the provider you configured needs, and against local models nothing leaves at all. The two outbound integrations, product telemetry and cross-deployment analytics, both ship off and send only what their own pages document. Hosted competitors monetise metered compute, so a genuinely self-hostable equivalent cannibalises their margin and is unattractive for them to build. The Self-Hosted column is the one axis where this shows.
 

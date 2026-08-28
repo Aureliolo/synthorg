@@ -36,10 +36,8 @@ if (missing.length > 0) {
   throw new Error(`Invalid structure in ${dataPath}: missing required keys: ${missing.join(", ")}`);
 }
 
-// The dimension set is owned by the data file and changes there. The page
-// renders whatever it is handed, so the only thing worth refusing is an empty
-// or non-list value, which would otherwise render a table with no columns and
-// no error. An empty array passes the truthiness check above.
+// An empty array passes the truthiness check above, so a data file that lost
+// its dimensions would render a table with no columns and no error.
 const emptyLists = ["dimensions", "categories", "competitors"].filter((k) => {
   const value = data?.[k];
   return !Array.isArray(value) || value.length === 0;
@@ -75,6 +73,11 @@ const pageUrl = new URL("/compare/", Astro.site).href;
         dimensions={dimensions}
         categories={categories}
       />
+      <p class="mt-6 text-sm text-gray-500 text-center max-w-3xl mx-auto">
+        Rows are compiled from each project's own documentation and repository, and
+        may have drifted since. The table includes SynthOrg's own row, so it shows one
+        more entry than the {competitorCount} it is compared against.
+      </p>
     </div>
   </section>
 
@@ -102,8 +105,8 @@ const pageUrl = new URL("/compare/", Astro.site).href;
           <p class="text-gray-400 leading-relaxed">
             A single agent holds one thing at a time, so that shape degrades as an
             application grows. Here a build is split into a tree of independently
-            buildable units, the leaves built concurrently in isolated containers and
-            assembled bottom-up. Making the parts genuinely independent is the hard
+            buildable units, the leaves built concurrently, each in its own workspace,
+            and assembled bottom-up. Making the parts genuinely independent is the hard
             problem, and the one the system is built around.
           </p>
         </div>
@@ -151,8 +154,8 @@ const pageUrl = new URL("/compare/", Astro.site).href;
           </div>
           <p class="text-gray-400 leading-relaxed">
             Actions route through an approval gate under an oversight mode you set (full,
-            semi, supervised, locked), with an audit trail behind it and a Docker sandbox
-            around tool execution. Autonomy is never granted by an agent to itself:
+            semi, supervised, locked), with an audit trail behind it and a sandbox around
+            tool execution. Autonomy is never granted by an agent to itself:
             widening it is a human act, and a failed check keeps the action gated.
           </p>
         </div>

@@ -884,8 +884,9 @@ abstractions above the computation graph level.
 
 ## Agent-Controlled Context Compaction
 
-Compaction runs one of two paths, chosen by `CompactionConfig`, and both share the same
-split/finalise machinery in `compaction/summarizer.py`; the `invoke_compaction()` helper in
+Compaction always runs the text path, and two independent enhancements layer onto it, each
+enabled separately by `CompactionConfig` and neither excluding the other. All of it shares
+the same split/finalise machinery in `compaction/summarizer.py`; the `invoke_compaction()` helper in
 `engine/loop_helpers.py` is the shared entry point for any loop that manages its own context
 in-process.
 
@@ -898,11 +899,13 @@ hedging / reconsideration / uncertainty / verification / correction families in
 `compaction/epistemic.py`) are preserved rather than truncated when a message crosses a
 complexity-adaptive density threshold (`preserve_epistemic_markers`, default on): such a
 message is kept as its marker-bearing sentences (up to 200 characters) instead of being cut
-to the standard 100-character snippet. Empirical data (arXiv:2603.24472) shows that
-discarding these markers degrades accuracy by up to 63% on complex reasoning tasks (AIME24),
-which is what this preservation is for.
+to the standard 100-character snippet. Suppressing that expression has a measured cost:
+arXiv:2603.24472 finds that self-distillation which shortens traces by suppressing epistemic
+verbalization drops AIME24 accuracy by up to 40%. That result is about training rather than
+summarisation, so preserving markers here applies its reasoning by analogy; it is not a
+measured property of this compactor.
 
-### Semantic path (opt-in)
+### Semantic enhancements (opt-in)
 
 Two independent upgrades layer onto the text path, both off by default:
 

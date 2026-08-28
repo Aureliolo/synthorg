@@ -320,7 +320,14 @@ def _frontmatter_and_intro(last_updated: str) -> list[str]:
             " platforms, and research projects."
         ),
         "",
-        f"Last updated: {last_updated}",
+        f"Comparison data last changed: {last_updated}",
+        "",
+        (
+            "Rows are compiled from each project's own documentation and"
+            " repository. Only a row carrying `source_verified_at` has a"
+            " recorded check date; the rest are point-in-time and may have"
+            " drifted since."
+        ),
         "",
         "## What the rows cannot show",
         "",
@@ -329,8 +336,8 @@ def _frontmatter_and_intro(last_updated: str) -> list[str]:
             " why a system that does one thing at a time degrades as an"
             " application grows: the twentieth thing damages the first."
             " SynthOrg decomposes the work into a tree of parts, builds the"
-            " parts concurrently in isolated containers, and assembles them"
-            " bottom-up. The dimensions below are shared axes across every"
+            " parts concurrently, each in its own workspace, and assembles"
+            " them bottom-up. The dimensions below are shared axes across every"
             " project in the table, so that shape does not appear in them."
             " Two of its properties are worth stating outright."
         ),

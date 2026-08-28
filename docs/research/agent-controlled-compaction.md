@@ -131,10 +131,11 @@ The resulting summary is a list of sentence fragments with no structure.
 - Whether the current turn boundary is semantically significant
 - The complexity of the task (SIMPLE vs. COMPLEX/EPIC tasks need different strategies)
 
-**No epistemic marker awareness.** Research (arXiv:2603.24472) shows that removing
-markers like "wait", "hmm", "actually", "let me reconsider" from reasoning traces degrades
-AIME24 accuracy by up to 63%. The current `_build_summary()` truncates these markers
-indiscriminately via the 100-char snippet cap and sanitization.
+**No epistemic marker awareness.** Research (arXiv:2603.24472) shows that suppressing
+markers like "wait", "hmm", "actually", "maybe" during self-distillation degrades AIME24
+accuracy by up to 40%. That is a training-time result rather than a summarisation one, but
+the current `_build_summary()` truncates these markers indiscriminately via the 100-char
+snippet cap and sanitization.
 
 **Fixed threshold regardless of model capacity.** `fill_threshold_percent=80.0` applies
 uniformly. A model with a 200k token context window starts compacting at 160k tokens. A
@@ -169,10 +170,12 @@ SynthOrg's threshold is appropriately conservative.
 
 ### Why It Matters
 
-Self-Distillation & Epistemic Verbalization (arXiv:2603.24472) shows that "thinking tokens"
-(hedging, self-correction, uncertainty markers) are functionally important for
-out-of-distribution reasoning. In experiments, models that had these markers removed from
-their compressed traces degraded by up to 63% on AIME24 benchmarks.
+"Why Does Self-Distillation (Sometimes) Degrade the Reasoning Capability of LLMs?"
+(arXiv:2603.24472) shows that epistemic verbalization, a model's expressed uncertainty
+during reasoning, is functionally important. Self-distillation that shortens traces by
+suppressing it dropped AIME24 accuracy by up to 40%, and AMC23 by around 15%, even though
+the training traces carried correct answers. The paper measures training, not summarisation;
+the argument below carries it across by analogy.
 
 The current `_build_summary()` function provides no protection for these markers. A 500-char
 concatenation of message snippets will strip "wait, I think I made an error, let me

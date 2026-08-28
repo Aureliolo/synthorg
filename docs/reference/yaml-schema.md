@@ -12,6 +12,8 @@ The company template YAML describes a synthetic organisation: its agents, depart
 ```yaml
 company_name: Acme Robotics
 company_type: startup
+config:
+  ...
 agents:
   - name: ...
 departments:
@@ -39,7 +41,7 @@ Every top-level key is optional except `company_name`. Missing sections fall bac
 | `company_name` | str | (required) | Company display name. |
 | `company_type` | enum | `custom` | Company template type (e.g. `startup`, `agency`, `full_company`). |
 
-Company-wide runtime settings (autonomy, default budget, communication pattern, tool access) live under the top-level `config:` block. The dashboard locale is not privileged towards any region: it resolves from the browser locale, falling back to the neutral `en` tag only when that is unavailable; see [docs/reference/regional-defaults.md](regional-defaults.md).
+Company-wide runtime settings (autonomy, default budget, communication pattern, tool access) live under the top-level `config:` block, typed as `CompanyConfig` in `src/synthorg/config/schema.py`. The dashboard locale is not privileged towards any region: it resolves from the browser locale, falling back to the neutral `en` tag only when that is unavailable; see [docs/reference/regional-defaults.md](regional-defaults.md).
 
 ## `agents`
 

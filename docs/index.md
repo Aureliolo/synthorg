@@ -24,8 +24,8 @@ independent is the hard problem, and the one this system is built around.
 ## The mechanism
 
 A tree does not have the single-agent failure mode, provided the merges hold. So an objective
-is decomposed into units that can each be built alone, the leaves build concurrently in
-isolated containers, and the tree is assembled from the bottom up.
+is decomposed into units that can each be built alone, the leaves build concurrently, each
+in its own workspace, and the tree is assembled from the bottom up.
 
 - **Decomposition** turns an objective into a tree of units, each with declared dependencies
   and expected artefacts. A unit that is not atomic is split again. See
@@ -33,7 +33,7 @@ isolated containers, and the tree is assembled from the bottom up.
 - **Dispatch** builds waves from the whole tree's dependency graph, so independent subtrees
   run together. A unit whose declared inputs died is parked with the reason, never dispatched
   onto dead work. See [Coordination](design/coordination.md).
-- **Execution** runs each unit in its own sandboxed container with a scoped workspace and a
+- **Execution** runs each unit in its own scoped workspace, sandboxed from the host, with a
   governed tool surface. See [Agent Execution](design/agent-execution.md).
 - **Review** is done by something that did not write the work: the executor is excluded from
   selection, and the archive refuses a verdict whose reviewer and executor match. An
@@ -180,8 +180,8 @@ paths, not a claim that a run delivers.
   parallel waves, and level-triggered recovery after a restart.
 - **Independent review**: roster-staffed gate roles, executor exclusion, and archived verdicts
   recording the model each judgement was made under.
-- **Sandboxed execution**: per-unit containers, a scoped shared workspace, and a governed tool
-  surface including an MCP bridge.
+- **Sandboxed execution**: each unit in its configured sandbox, a scoped shared workspace, and
+  a governed tool surface including an MCP bridge.
 - **Explicit provider binding**: an unconfigured feature is off and says so rather than
   borrowing a default.
 - **Budgets and cost attribution**: per-agent limits, run and token ceilings, spend attributed

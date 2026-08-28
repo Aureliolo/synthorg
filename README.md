@@ -17,7 +17,7 @@
 
 A single agent in a loop cannot hold a whole application. It does one thing at a time, and the twentieth thing damages the first, which is why an assistant that codes well in a small repository degrades as the application around it grows. The binding constraint on building software with agents is decomposition quality, not agent supply.
 
-SynthOrg is built around that constraint. Describe a piece of software, and the work is decomposed recursively into a tree of independently buildable units; the leaves are built concurrently in isolated containers and assembled from the bottom up, and each part is checked by something that did not write it. Splitting the work so the parts are genuinely independent is the hard problem, and it is the one the system is organised around.
+SynthOrg is built around that constraint. Describe a piece of software, and the work is decomposed recursively into a tree of independently buildable units; the leaves are built concurrently, each in its own workspace, and assembled from the bottom up, and each part is checked by something that did not write it. Splitting the work so the parts are genuinely independent is the hard problem, and it is the one the system is organised around.
 
 It is self-hosted: your hardware, your provider credentials, and no SynthOrg service in the path. Point it at a hosted model provider and that provider receives what it needs, under your own key, exactly as from any other client; point it at local models and nothing leaves the machine.
 
@@ -29,7 +29,7 @@ It is provider-agnostic (<!--RS:providers_via_litellm-->95+<!--/RS--> LLM provid
 
 ## How it works
 
-- **The work is split before any of it is built.** An objective is decomposed recursively into a tree of units that can be built independently. The leaves are built concurrently, each agent in its own container and its own git worktree, and the tree is assembled from the bottom up. The parallelism is not there for speed: a tree does not have the failure mode a single loop has, provided the merges hold. No size is claimed here, because the decomposition ceiling is still being measured.
+- **The work is split before any of it is built.** An objective is decomposed recursively into a tree of units that can be built independently. The leaves are built concurrently, each agent in its own git worktree and its own sandbox, and the tree is assembled from the bottom up. The parallelism is not there for speed: a tree does not have the failure mode a single loop has, provided the merges hold. No size is claimed here, because the decomposition ceiling is still being measured.
 - **Each part is checked by something that did not write it.** The author cannot be the reviewer, structurally rather than by convention: selection excludes the agent that executed the work, and a database constraint rejects a verdict whose reviewer is its executor. Nothing binds the two to different model families, so a pair can still share a blind spot. An independent judge is a triage filter, not an authority.
 - **It runs where you put it.** Self-hosted, provider-agnostic, local models included. Nothing about the design assumes a hosted control plane, and there is no SynthOrg service in the path.
 

@@ -208,7 +208,7 @@ Add or update a provider via `/api/v1/providers`, set `routing.strategy` via `/a
 
 ### Enable agent sandbox
 
-Set `tools.sandboxing.default_backend` to `docker` in the `tools` namespace. Pull the sandbox image once via `synthorg start --sandbox true`. The backend spawns ephemeral sandbox containers per tool invocation.
+Set `tools.sandboxing.default_backend` to `docker` in the `tools` namespace (the shipped default is `subprocess`). Pull the sandbox image once via `synthorg start --sandbox true`. A container then belongs to an agent and is reused across its commands; set `tools.sandboxing.docker.lifecycle.strategy` to `per-task` or `per-call` for tighter isolation. See [Tools](../design/tools.md) for the trade-offs.
 
 ### Swap log sinks
 

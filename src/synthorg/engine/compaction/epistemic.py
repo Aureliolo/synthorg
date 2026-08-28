@@ -5,8 +5,10 @@ verification, correction) in assistant messages.  Messages with
 high marker density are preserved during compaction to maintain
 reasoning chain integrity.
 
-Reference: arXiv:2603.24472 -- removing epistemic markers degrades
-accuracy by up to 63% on complex reasoning tasks.
+Reference: arXiv:2603.24472, which finds that self-distillation
+shortening traces by suppressing epistemic verbalization drops AIME24
+accuracy by up to 40%.  That is a training-time result, so preserving
+markers here applies its reasoning to summarisation by analogy.
 """
 
 import re
