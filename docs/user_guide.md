@@ -55,10 +55,14 @@ for you.
     cp docker/.env.example docker/.env
     ```
 
-2. Fill in the required secrets in `docker/.env`. Every one of them is commented out in the
-   example, and the stack refuses to start without them. `SYNTHORG_SETTINGS_KEY` is a
-   Fernet key rather than free bytes, so it is generated in a container here: the
-   prerequisites above are Docker alone, and nothing on this path needs a host Python.
+2. Fill in the secrets in `docker/.env`. Every one of them is commented out in the
+   example. The stack refuses to start without the first four; the fifth,
+   `SYNTHORG_MASTER_KEY`, it starts without, which is why it needs stating: the
+   connection-secret backend defaults to encrypted-at-rest, and with no master key it
+   downgrades to storing those secrets in plain form and carries on. `SYNTHORG_SETTINGS_KEY`
+   and `SYNTHORG_MASTER_KEY` are Fernet keys rather than free bytes, so they are generated
+   in a container here: the prerequisites above are Docker alone, and nothing on this path
+   needs a host Python.
 
     ```bash
     # each of these prints one value to paste into docker/.env
@@ -66,13 +70,14 @@ for you.
     openssl rand -base64 32 | tr -d '\n'   # SYNTHORG_PAGINATION_CURSOR_SECRET
     openssl rand -base64 32 | tr -d '\n'   # POSTGRES_PASSWORD
 
-    # SYNTHORG_SETTINGS_KEY (Fernet: 32 url-safe base64-encoded bytes)
+    # SYNTHORG_SETTINGS_KEY and SYNTHORG_MASTER_KEY, one Fernet key each
+    # (32 url-safe base64-encoded bytes); run this twice and do not reuse the value
     docker run --rm python:3-alpine sh -c \
       "pip install --quiet cryptography && python -c \
        'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'"
     ```
 
-    With a host Python that already has `cryptography` installed, the last one is
+    With a host Python that already has `cryptography` installed, the Fernet keys are
     `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`.
 
 3. Build and start, naming the runtime base image the backend Dockerfile layers on. There

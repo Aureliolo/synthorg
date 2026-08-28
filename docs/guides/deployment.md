@@ -85,7 +85,7 @@ All environment variables are configured in `docker/.env` (copy from `docker/.en
 | `SYNTHORG_PAGINATION_CURSOR_SECRET` | HMAC signing key for opaque pagination cursor tokens, >= 16 bytes. The backend refuses to start without a stable value, in every channel: an ephemeral per-process key would silently invalidate every outstanding cursor across a restart. Generate: `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
 | `POSTGRES_PASSWORD` | Superuser password for the bundled Postgres service. Required whenever that service runs (the default for both the CLI-generated and the hand-maintained compose); the container refuses to start without it. Generate: `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
 
-`synthorg init` generates and stores all four; a manual Docker Compose install must set them in `docker/.env` itself.
+`synthorg init` generates and stores all four; a manual Docker Compose install must set them in `docker/.env` itself. Set `SYNTHORG_MASTER_KEY` alongside them: it is not on this list because the stack starts without it, but the connection-secret backend then downgrades to storing those secrets unencrypted rather than refusing, and the operator gets no signal that at-rest encryption is off.
 
 ### Optional
 

@@ -35,7 +35,7 @@ A single agent in a loop cannot hold a whole application. That is why a system t
 
 ## Coordination
 
-| Framework | Category | License | Pricing | Self-Hosted | Multi-Agent | Task Delegation | Human-in-the-Loop |
+| Project | Category | License | Pricing | Self-Hosted | Multi-Agent | Task Delegation | Human-in-the-Loop |
 |:----------|:---------|:--------|:--------|:-----------:|:---:|:---:|:---:|
 | [**SynthOrg**](https://synthorg.io) | Build Platform | BUSL-1.1 | Depends | ✔ | ~ | ~ | ✔ |
 | [CrewAI](https://crewai.com) | Multi-Agent Framework | MIT | Open-core | ~ | ✔ | ✔ | ✔ |
@@ -85,7 +85,7 @@ A single agent in a loop cannot hold a whole application. That is why a system t
 
 ## Technical Capabilities
 
-| Framework | Category | License | Pricing | Self-Hosted | Memory | Tool Use | Security | Workflows |
+| Project | Category | License | Pricing | Self-Hosted | Memory | Tool Use | Security | Workflows |
 |:----------|:---------|:--------|:--------|:-----------:|:---:|:---:|:---:|:---:|
 | [**SynthOrg**](https://synthorg.io) | Build Platform | BUSL-1.1 | Depends | ✔ | ~ | ~ | ✔ | ~ |
 | [CrewAI](https://crewai.com) | Multi-Agent Framework | MIT | Open-core | ~ | ✔ | ✔ | ~ | ~ |
@@ -135,7 +135,7 @@ A single agent in a loop cannot hold a whole application. That is why a system t
 
 ## Operations & Tooling
 
-| Framework | Category | License | Pricing | Self-Hosted | Budget / Cost | Observability | Dashboard | CLI |
+| Project | Category | License | Pricing | Self-Hosted | Budget / Cost | Observability | Dashboard | CLI |
 |:----------|:---------|:--------|:--------|:-----------:|:---:|:---:|:---:|:---:|
 | [**SynthOrg**](https://synthorg.io) | Build Platform | BUSL-1.1 | Depends | ✔ | ✔ | ✔ | ✔ | ✔ |
 | [CrewAI](https://crewai.com) | Multi-Agent Framework | MIT | Open-core | ~ | ~ | ~ | ~ | ✔ |
@@ -185,7 +185,7 @@ A single agent in a loop cannot hold a whole application. That is why a system t
 
 ## Maturity
 
-| Framework | Category | License | Pricing | Self-Hosted | Production Ready | Templates |
+| Project | Category | License | Pricing | Self-Hosted | Production Ready | Templates |
 |:----------|:---------|:--------|:--------|:-----------:|:---:|:---:|
 | [**SynthOrg**](https://synthorg.io) | Build Platform | BUSL-1.1 | Depends | ✔ | ~ | ✔ |
 | [CrewAI](https://crewai.com) | Multi-Agent Framework | MIT | Open-core | ~ | ~ | ~ |

@@ -443,7 +443,7 @@ def _thematic_tables(
 
         dim_headers = [_dimension_label(dimensions, k) for k in group["keys"]]
         header = (
-            "| Framework | Category | License | Pricing | Self-Hosted | "
+            "| Project | Category | License | Pricing | Self-Hosted | "
             + " | ".join(dim_headers)
             + " |"
         )

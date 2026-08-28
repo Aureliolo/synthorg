@@ -325,7 +325,7 @@ class TestMarkdownGeneration:
 
     def test_generate_markdown_structure(self) -> None:
         markdown = gen._generate_markdown(MINIMAL_YAML)
-        assert "# Framework Comparison" in markdown
+        assert "# Ecosystem Comparison" in markdown
         assert "## Coordination" in markdown
         # "Coordination" is a substring of the retired title, so the positive
         # assertion above passes against either grouping; only this one tells
@@ -400,7 +400,7 @@ class TestMain:
         assert result == 0
         assert out.exists()
         content = out.read_text(encoding="utf-8")
-        assert "# Framework Comparison" in content
+        assert "# Ecosystem Comparison" in content
 
     def test_main_missing_data_file(self, tmp_path: Path) -> None:
         with (
