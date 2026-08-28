@@ -245,7 +245,7 @@ Because the dispatcher only observes and publishes, the engine's single-writer p
 
 The distributed **task queue** is governed by a separate switch, `config.queue.enabled`, and **ships `false`**. This is the deliberate, validated shipped default:
 
-- **Single-node (the default, `queue.enabled: false`)**: tasks dispatch in-process through the `TaskEngine` mutation queue. No NATS container, no worker processes, lowest latency. This is correct for one synthetic organisation on one host and is what the overwhelming majority of deployments should run. Nothing in this section applies to them.
+- **Single-node (the default, `queue.enabled: false`)**: tasks dispatch in-process through the `TaskEngine` mutation queue. No NATS container, no worker processes, lowest latency. This is correct for a single deployment on one host and is what the overwhelming majority should run. Nothing in this section applies to them.
 - **Multi-instance (opt-in, `queue.enabled: true`)**: required only when execution must span processes or hosts. The operator sets `queue.enabled: true`, points `communication.message_bus.nats` at a reachable NATS JetStream server, and runs one or more worker pools via `synthorg worker start`. With the switch off the dispatcher observer, the JetStream queue, the dead-letter consumer, the dedup pruner, and the heartbeat subscriber are never constructed, so the in-process path is byte-identical to a build without the distributed code.
 
 The default is `false` because the distributed path costs an extra service to operate and a network hop per dispatch for a capability most deployments never need; turning it on is a conscious scaling decision, not a default users back into.

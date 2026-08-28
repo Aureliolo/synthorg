@@ -83,7 +83,7 @@ evidence that the loop completes; see [Status](#status).
 - **Distributed dispatch**: NATS JetStream queue, worker pool, dead-letter
   consumer, dedup pruner, and heartbeat subscriber, validated under
   multi-worker synthetic load (no loss, no duplication).
-- **Conversational org interface**: one unified "talk to your org" chat in
+- **Conversational interface**: one unified chat with the running system, in
   natural language. A single turn is classified to an intent (answer a question,
   steer work a charter already authorised, convene a group, act, run a charter
   interview, configure the control plane) and dispatched, with transparent
@@ -99,9 +99,9 @@ evidence that the loop completes; see [Status](#status).
   log shipping, Prometheus metrics, OTLP, HttpOnly-cookie multi-user sessions
   with CSRF protection, Wolfi apko-composed distroless images, Trivy
   scanning, cosign signatures, and SLSA L3 provenance.
-- **Product studio substrate**: persistent project workspace with pluggable
-  git, brownfield codebase intake, living documentation, and a deep
-  requirements interview.
+- **Delivery substrate**: persistent project workspace with pluggable git,
+  brownfield codebase intake, living documentation, and a deep requirements
+  interview.
 - **Operate tier**: golden-company benchmark, mission control with run replay,
   a cost forecast/kill-switch dial, a measurable learning curve, deterministic
   replay, run narratives, and an adversarial red-team.

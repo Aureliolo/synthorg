@@ -1,6 +1,6 @@
 ---
 title: Research Mode
-description: A real research subsystem for synthetic organisations. A research brief drives query planning, multi-source retrieval (internal knowledge plus web, academic, and code search), source-credibility triage, deduplication, and citation-backed synthesis. Every run is recorded and replayable, and the deliverable's claims resolve to retrievable sources.
+description: A research subsystem agents can use. A research brief drives query planning, multi-source retrieval (internal knowledge plus web, academic, and code search), source-credibility triage, deduplication, and citation-backed synthesis. Every run is recorded and replayable, and the deliverable's claims resolve to retrievable sources.
 ---
 
 # Research Mode

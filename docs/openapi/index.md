@@ -1,6 +1,6 @@
 # REST API Reference
 
-SynthOrg exposes a REST + WebSocket API built on [Litestar](https://litestar.dev/). The API is the primary integration surface for the web dashboard, the Go CLI, and any external clients that want to drive a synthetic organisation programmatically.
+SynthOrg exposes a REST + WebSocket API built on [Litestar](https://litestar.dev/). The API is the primary integration surface for the web dashboard, the Go CLI, and any external client that drives the system programmatically.
 
 **[Open Interactive Reference :material-open-in-new:](reference.html){ .md-button .md-button--primary }**
 **[Download OpenAPI Schema :material-download:](openapi.json){ .md-button }**

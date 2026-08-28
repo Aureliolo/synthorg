@@ -5,9 +5,9 @@ description: Configurable house writing style injected into agent prompts, plus 
 
 # Output-Style Policy
 
-> Give the synthetic organisation a way to control and enforce the writing style
-> of what its agents produce, so the output does not read as obviously
-> AI-written and can be held to hard house rules such as no em-dashes.
+> Give the operator a way to control and enforce the writing style of what the
+> agents produce, so the output does not read as obviously AI-written and can be
+> held to hard house rules such as no em-dashes.
 
 **Module**: `src/synthorg/engine/output_style/`
 

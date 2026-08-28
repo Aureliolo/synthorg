@@ -425,7 +425,7 @@ Budget carries no sidebar indicator. A budget threshold reaches the operator thr
 | Route | Page | Notes |
 |-------|------|-------|
 | `/` | Dashboard | Home. Redirects to `/setup` if not configured |
-| `/chat` | Chat | One unified "talk to your org" conversation. No mode picker: the org detects intent and responds inline (answer / plan draft / group / act), escalating visibly, and surfaces a parked agent question as an answerable card. Backed by `POST /meta/chat/turn` and `/meta/chat/questions` |
+| `/chat` | Chat | One unified conversation with the running system. No mode picker: intent is detected and answered inline (answer / plan draft / group / act), escalating visibly, and surfaces a parked agent question as an answerable card. Backed by `POST /meta/chat/turn` and `/meta/chat/questions` |
 | `/login` | Login | No sidebar, full page |
 | `/setup` | Setup Wizard | No sidebar, full page. Redirects to `/` if already complete |
 | `/setup/:step` | Setup Wizard step | **Guided**: `account` (conditional), `mode`, `template`, `providers`, `company`, `agents`, `capabilities`, `theme`, `complete`<br>**Quick**: `account` (conditional), `mode`, `providers`, `company`, `complete` |

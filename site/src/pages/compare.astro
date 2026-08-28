@@ -54,8 +54,8 @@ const { dimensions, categories, competitors } = data;
 // Exclude SynthOrg itself from the "N+ frameworks compared" count
 const competitorCount = competitors.filter((c) => !c.is_synthorg).length;
 
-const title = `SynthOrg vs ${competitorCount}+ Agent Frameworks | Feature Comparison`;
-const description = `Interactive comparison of SynthOrg against ${competitorCount}+ agent orchestration frameworks, platforms, and research projects. Self-hosted, operator-chosen models, and a reviewer that did not write the work.`;
+const title = `SynthOrg vs ${competitorCount} Agent Frameworks | Feature Comparison`;
+const description = `Interactive comparison of SynthOrg against ${competitorCount} agent orchestration frameworks, platforms, and research projects. Self-hosted, operator-chosen models, and a reviewer that did not write the work.`;
 
 const siteUrl = Astro.site;
 const pageUrl = new URL("/compare/", Astro.site).href;

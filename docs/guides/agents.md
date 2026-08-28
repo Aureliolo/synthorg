@@ -5,7 +5,7 @@ description: Define agents, roles, departments, and reporting lines.
 
 # Agent Roles & Hierarchy
 
-Agents are the core building blocks of a synthetic organisation. Each agent has an identity (role, name), a position in the hierarchy (department, reporting line), and capabilities (model, tools, authority). This guide covers how to configure all of these.
+An agent is what executes a unit of work. Each has an identity (role, name), a position in the hierarchy (department, reporting line), and capabilities (model, tools, authority). This guide covers how to configure all of these.
 
 ---
 
