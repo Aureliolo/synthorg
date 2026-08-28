@@ -23,7 +23,7 @@ The canonical helper for transient-I/O backoff is `synthorg.core.resilience.Gene
 
 **Anti-pattern**: tuning `base=0` to bypass backoff so you can shoehorn semantic self-correction (Pattern B) through the same helper. The retry would observe the same error every attempt because nothing about the request changed; that is what Pattern B exists to address.
 
-**Deliberately not retried (fail-open)**: `providers/management/live_discovery_probe.py::LiveDiscoveryProbe.discover_report` reaches the live catalogue through `providers/discovery.py::discover_models`, whose `_await_fetch` already catches `httpx.ConnectError` / `TimeoutException` / `HTTPStatusError` and returns an empty result. A transient blip therefore surfaces as an empty discovered set -- a documented no-op the refresh strategies treat as "nothing changed this cycle" rather than flagging every configured model absent. Wrapping the probe in `GeneralRetryHandler` would be dead code (the call never raises a transient error to retry); the next cycle re-probes, so do not add a retry here.
+**Deliberately not retried (fail-open)**: `providers/management/live_discovery_probe.py::LiveDiscoveryProbe.discover_report` reaches the live catalogue through `providers/discovery.py::discover_models`, whose `_safe_fetch` already catches `httpx.ConnectError` / `TimeoutException` / `HTTPStatusError` and returns an empty result. A transient blip therefore surfaces as an empty discovered set -- a documented no-op the refresh strategies treat as "nothing changed this cycle" rather than flagging every configured model absent. Wrapping the probe in `GeneralRetryHandler` would be dead code (the call never raises a transient error to retry); the next cycle re-probes, so do not add a retry here.
 
 Also fail-open: `providers/ollama_usage_tier.py::_scrape_tier` makes a single failure-tolerant `GET` against the Ollama cloud model page and, on any exception or non-200, immediately falls back to the parameter-count tier approximation. The page structure is brittle and the fallback is always available, so a transient blip is absorbed as "use the approximation" rather than retried; the next enrichment re-scrapes.
 
@@ -57,9 +57,9 @@ Two distinct sub-cases share this section because both are inline-by-necessity f
 
 **Sites**:
 
-- `src/synthorg/persistence/postgres/decision_repo.py` `_execute_insert`: version-race retry for the decision-history append path (inline constraint-name branch).
+- `src/synthorg/persistence/postgres/decision/_cas.py` `_execute_insert`: version-race retry for the decision-history append path (inline constraint-name branch).
 - `src/synthorg/persistence/sqlite/conversation_repo/_turns.py` `append`: sequence-collision retry on the `(conversation_id, sequence)` uniqueness race, exhaustion raising a retryable `TurnSequenceConflictError`.
-- `src/synthorg/persistence/postgres/conversation_repo.py` `append`: the Postgres twin of the same sequence-collision retry (fresh connection per attempt; correctness rests on the unique constraint plus the bounded retry).
+- `src/synthorg/persistence/postgres/conversation_repo/_turns.py` `append`: the Postgres twin of the same sequence-collision retry (fresh connection per attempt; correctness rests on the unique constraint plus the bounded retry).
 - `src/synthorg/core/concurrency/cas_retry.py` `CASRetryHandler`: the shared version-token (`expected_updated_at`) compare-and-set retry handler. Retries a read-modify-write on `VersionConflictError` and re-raises after a bounded attempt count; the settings-blob sites below drive it rather than hand-rolling the loop.
 - `src/synthorg/organization/team_navigation.py` (`mutate_company_departments` / `with_company_departments_cas`) and `src/synthorg/api/controllers/template_packs.py` (`_apply_pack_to_settings`): CAS over the `company.departments` / `company.agents` settings blob through `CASRetryHandler`; the retry budget resolves per call from `coordination.company_departments_cas_retry_attempts`.
 - `src/synthorg/api/controllers/_plan_review_resume.py` `_sync_plan_status`: CAS over the durable plan's status when reflecting an approval decision, through `CASRetryHandler`; exhaustion is swallowed-and-logged (the decision already persisted on the approval), not re-raised.
@@ -91,7 +91,7 @@ Two distinct sub-cases share this section because both are inline-by-necessity f
 
 **Sites**:
 
-- `src/synthorg/settings/dispatcher.py` `SettingsChangeDispatcher._poll_loop`: polls the settings-change channel; a poll error backs off `_ERROR_BACKOFF` and continues, breaking only when `consecutive_errors` hits the channel-dead ceiling.
+- `src/synthorg/settings/dispatcher.py` `SettingsChangeDispatcher._poll_loop`: polls the settings-change channel; a poll error backs off the live-resolved `error_backoff()` setting and continues, breaking only when `consecutive_errors` hits the channel-dead ceiling (`max_consecutive_errors()`).
 - `src/synthorg/api/bus_bridge.py` the per-channel bridge poll loop: polls a bus channel to fan WebSocket events out; a poll error backs off `poll_timeout` and continues, breaking on the same consecutive-error ceiling.
 
 ## Pattern E -- Deliberate no-retry (governed one-shot)

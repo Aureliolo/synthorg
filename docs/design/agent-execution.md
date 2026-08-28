@@ -746,6 +746,11 @@ message when `context_fill_percent` exceeds a configurable threshold (default
 | `fill_threshold_percent` | `80.0` | Fill percentage that triggers compaction |
 | `min_messages_to_compact` | `4` | Minimum messages before compaction is allowed |
 | `preserve_recent_turns` | `3` | Recent turn pairs to keep uncompressed |
+| `agent_controlled` | `False` | Let the `compact_context` tool trigger compaction; auto-compaction then defers to `safety_threshold_percent` |
+| `safety_threshold_percent` | `95.0` | Auto-compaction safety net when `agent_controlled` is on; must exceed `fill_threshold_percent` |
+| `preserve_epistemic_markers` | `True` | Preserve marker-bearing sentences instead of truncating them (see [Agent-Controlled Context Compaction](#agent-controlled-context-compaction)) |
+| `llm_summarizer_enabled` | `False` | Summarise the archived batch via a completion call instead of concatenation; requires `llm_summary_model` |
+| `memory_offload_enabled` | `False` | Persist the archived batch to the memory backend so it can be read back later |
 
 Assistant message snippets included in the summary are sanitized via
 ``sanitize_message()`` to redact file paths and URLs before injection into LLM
@@ -870,7 +875,7 @@ external audiences; use SynthOrg terms in implementation discussions.
 | Parallel Composition | `ParallelExecutor`, `CoordinationWave`, `asyncio.TaskGroup` | Strong | Fan-out/fan-in with DAG wave execution |
 | Resource Constraints | `BudgetEnforcer`, quota degradation, `ContextBudget` | Strong | Richer than ACG: pre-flight and in-flight enforcement |
 | Graph Mutation | Stagnation correction injection, mid-flight steering adoption | Partial | Runtime; not exposed as first-class graph mutation |
-| Termination Conditions | `TerminationReason` enum (8 reasons) | Strong | Explicit enumeration covers all exit paths |
+| Termination Conditions | `TerminationReason` enum (9 reasons) | Strong | Explicit enumeration covers all exit paths |
 | Node Cost | `TurnRecord.cost`, `TokenUsage` | Strong | Per-turn cost attribution |
 
 **SynthOrg concepts not captured by ACG**: episodic memory,
@@ -879,35 +884,53 @@ abstractions above the computation graph level.
 
 ## Agent-Controlled Context Compaction
 
-Context compaction is invoked at turn boundaries when context fill exceeds the configured
-threshold (`CompactionConfig.fill_threshold_percent`, default 80%). The `invoke_compaction()`
-helper in `engine/loop_helpers.py` is the shared entry point for any loop that
-manages its own context in-process.
+Compaction always builds the snippet-join text summary, and two enhancements layer onto it
+from `CompactionConfig`. They are not alike: the LLM summariser replaces that text when it is
+enabled, taking it as the fallback for a provider failure, while the memory offload is purely
+additive and leaves the summary untouched. All of it shares the same split/finalise machinery
+in `compaction/summarizer.py`; the `invoke_compaction()` helper in `engine/loop_helpers.py` is
+the shared entry point for any loop that manages its own context in-process.
 
-### Current Implementation
+### Text summary (default path)
 
-The current `_build_summary()` in `compaction/summarizer.py` performs simple text
+With the LLM summariser disabled, `_build_summary()` performs snippet-join
 concatenation: assistant message snippets capped at 100 characters each, total summary
-capped at 500 characters. No LLM calls, no semantic awareness, no preservation of
-reasoning artifacts.
+capped at 500 characters. Epistemic markers ("wait", "hmm", "actually", and the wider
+hedging / reconsideration / uncertainty / verification / correction families in
+`compaction/epistemic.py`) are preserved rather than truncated when a message crosses a
+complexity-adaptive density threshold (`preserve_epistemic_markers`, default on): such a
+message is kept as its marker-bearing sentences (up to 200 characters) instead of being cut
+to the standard 100-character snippet. Suppressing that expression has a measured cost:
+arXiv:2603.24472 finds that self-distillation which shortens traces by suppressing epistemic
+verbalization drops AIME24 accuracy by up to 40%. That result is about training rather than
+summarisation, so preserving markers here applies its reasoning by analogy; it is not a
+measured property of this compactor.
 
-**Known limitations**:
+### Semantic enhancements (opt-in)
 
-- Fixed 80% threshold is not context-aware; too aggressive for simple tasks, potentially
-  too late for complex multi-step tasks.
-- Epistemic markers ("wait", "hmm", "actually") are stripped or truncated. These carry
-  disproportionate value for reasoning chains: empirical data (arXiv:2603.24472) shows
-  their removal degrades accuracy by up to 63% on complex reasoning tasks (AIME24).
-- No memory offloading; compacted context is discarded rather than written to
-  `MemoryBackend`. LangChain's Deep Agents offload at 20k tokens; SynthOrg has no
-  equivalent.
-- Summarization quality is significantly below LLM-based approaches (LangChain uses
-  LLM-based summarization; SynthOrg uses concatenation).
+Two independent upgrades layer onto the text path, both off by default:
 
-Future direction for this subsystem (agent-guided compaction tool, LLM summarisation,
-memory offload, and semantic token-cost weighting) is tracked on the
-[Roadmap](../roadmap/future-vision.md) with the design exploration in
-[Agent-Controlled Compaction](../research/agent-controlled-compaction.md).
+- **LLM summarisation** (`llm_summarizer_enabled`, requires `llm_summary_model`): the
+  archived batch is summarised by a completion call (`LLMSummarizer`) instead of
+  concatenated; the archived content is fenced with `wrap_untrusted` before it reaches the
+  prompt. Any provider failure, or empty content, falls back to the text summary rather than
+  blocking compaction.
+- **Memory offload** (`memory_offload_enabled`): the archived batch is persisted to the
+  memory backend as a PROCEDURAL entry tagged `compaction:offloaded` (`MemoryOffloader`),
+  scoped to the run's project, so a resume or investigation path can read back detail the
+  in-context summary elided. A backend failure is logged and never blocks compaction.
+
+### Agent-controlled mode
+
+With `agent_controlled` enabled, the `compact_context` tool lets an agent request compaction
+directly when it judges context fill is hurting reasoning quality; automatic compaction then
+defers to `safety_threshold_percent` (must exceed `fill_threshold_percent`) as a safety net
+rather than firing at `fill_threshold_percent` itself. With `agent_controlled` off (the
+default), only the fixed `fill_threshold_percent` threshold triggers compaction.
+
+Semantic, cost-aware weighting of what gets archived first (rather than oldest-first) is not
+built; see [Agent-Controlled Compaction](../research/agent-controlled-compaction.md) and the
+[Roadmap](../roadmap/future-vision.md).
 
 ---
 

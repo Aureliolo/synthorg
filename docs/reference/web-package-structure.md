@@ -11,10 +11,10 @@ On-demand reference for the React dashboard's directory layout. The short summar
 
 ```text
 web/src/
-  api/            # Axios client (`client.ts`), endpoint modules (`endpoints/`, 67 modules), and narrow-domain types under `types/` (53 hand-written modules; there is no barrel `index.ts` and consumers import from `@/api/types/<domain>`, one barrel per name)
+  api/            # Axios client (`client.ts`), endpoint modules (`endpoints/`, one file per domain), and narrow-domain types under `types/` (hand-written modules plus the `.gen.ts` generated files; there is no barrel `index.ts` and consumers import from `@/api/types/<domain>`, one barrel per name)
   components/     # React components: ui/ (shadcn primitives + SynthOrg core components), layout/ (app shell, sidebar with external link support, status bar); feature dirs added as pages are built
   hooks/          # React hooks (auth, login lockout, WebSocket, polling, freshness gate, optimistic updates, command palette, flash effects, status transitions, page data composition, count animation, auto-scroll, roving tabindex, breakpoint detection, update tracking, animation presets, settings dirty state, settings keyboard shortcuts, communication edges, artifact / project data composition, useWorkflowsData, useBulkSelection, useEmptyStateProps)
-  lib/            # Utilities (cn() class merging, semantic color mappers), Motion presets, CSP nonce reader, structured logger factory
+  lib/            # Utilities (cn() class merging, chart layout/stroke constants, error classification, global error-handler wiring), Motion presets, CSP nonce reader, structured logger factory
   mocks/          # MSW request handlers (handlers/) shared between Storybook stories and the Vitest suite; test-setup.tsx bootstraps them via setupServer(...defaultHandlers)
   pages/          # Lazy-loaded page components (one per route); page-scoped sub-components in pages/<page-name>/ subdirs (e.g. tasks/, org-edit/, settings/, workflows/, fine-tuning/, security/). A page-scoped hook lives beside them (pages/connections/useConnectionTypes.ts hydrates the connection-type registry for every surface that renders from it, so none inherits a sibling's fetch)
   router/         # React Router config, route constants (incl. DOCUMENTATION, an external link not SPA-routed), auth/setup guards
@@ -56,9 +56,9 @@ web/e2e/
                   # agents, approvals, budget, memory, providers, setup,
                   # tasks, workflows. Each factory accepts an overrides
                   # object so tests vary single fields without rebuilding
-                  # the whole payload (#1604 / W5a).
+                  # the whole payload.
   fixtures/       # mock-api.ts (route stubs + freezeTime) and
-                  # websocket-harness.ts (#1604 / W5a). The harness
+                  # websocket-harness.ts. The harness
                   # swaps the global WebSocket constructor for a
                   # controllable stub via page.addInitScript and exposes
                   # `injectEvent(page, event)` so flow specs can push

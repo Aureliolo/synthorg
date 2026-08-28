@@ -9,7 +9,7 @@ import ScrollSyncPanel from "../components/ScrollSyncPanel.astro";
 import DashboardPreview from "../components/islands/DashboardPreview";
 import GitHubButton from "../components/GitHubButton.astro";
 
-const description = "An AI software company that reports to you: a self-hostable platform where a synthetic organisation of role-based AI agents plans, builds and proves software under budgets, an oversight mode you set, and a gate on every action.";
+const description = "Where one agent stops, an organisation starts. SynthOrg is a synthetic one: it staffs the roles, splits the work into jobs that stand alone, builds them in parallel, each in its own isolated workspace, and sends each one to a reviewer who had no hand in it. Self-hosted, on your hardware, against models you choose. Pre-alpha.";
 
 const siteUrl = Astro.site;
 
@@ -36,7 +36,7 @@ try {
 }
 ---
 
-<Base title="SynthOrg | An AI Software Company That Reports To You" description={description} enableRecaptcha={true}>
+<Base title="SynthOrg | Self-Hosted AI Software Organisation" description={description} enableRecaptcha={true}>
   <!-- ============================================================ -->
   <!-- HERO (Dark) -->
   <!-- ============================================================ -->
@@ -46,24 +46,22 @@ try {
     <div class="relative z-10 max-w-4xl mx-auto text-center">
       <!-- Eyebrow -->
       <p class="text-sm tracking-widest text-violet-400 mb-6 font-mono">
-        Python 3.14+ &middot; BUSL 1.1 &middot; Source Available
+        Pre-alpha &middot; Self-hosted &middot; BUSL 1.1 &middot; Source Available
       </p>
 
       <!-- Headline -->
       <h1 class="text-5xl md:text-7xl font-bold leading-tight mb-6">
-        An AI software company
+        Where one agent stops,
         <span class="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-teal-400">
-          that reports to you.
+          an organisation starts
         </span>
       </h1>
 
       <!-- Subtext -->
       <p class="text-lg md:text-xl text-gray-400 max-w-2xl mx-auto mb-10">
-        Describe what to build, or hand over a codebase you already have: a synthetic
-        organisation of role-based AI agents, with budgets, memory, and governance,
-        plans it and builds it. Autonomy is not trust. You set how much runs
-        unattended, every action clears a gate, and done means a build, passing
-        tests, and an independent review.
+        SynthOrg is a synthetic one: it staffs the roles, splits the work into
+        jobs that stand alone, and sends each one to a reviewer who had no hand
+        in it
       </p>
 
       <!-- CTAs -->
@@ -102,8 +100,7 @@ try {
   <section class="py-4 px-6 bg-gradient-to-r from-violet-600/10 via-teal-600/10 to-violet-600/10 border-y border-violet-500/20">
     <div class="max-w-4xl mx-auto text-center">
       <p class="text-sm text-gray-300">
-        <span class="font-semibold text-violet-400">Honest status:</span>
-        The platform, infrastructure, and the agent runtime are built and exercised by deterministic harnesses with a scripted provider. Operator-facing maturity and acceptance against a real provider are in active development and tracked in the open. Capability sections on this page are marked as available now or in active development.
+        Pre-alpha software, not yet fully working.
         <a href="/docs/roadmap/" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">Roadmap</a> ·
         <a href="https://github.com/Aureliolo/synthorg/issues" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">Issue tracker</a> ·
         <a href="#contact" class="text-teal-400 underline decoration-teal-400/40 hover:decoration-teal-400">Get in touch</a>
@@ -129,10 +126,10 @@ try {
         <span class="w-2 h-2 rounded-full bg-teal-400"></span> Provider-Agnostic
       </span>
       <span class="flex items-center gap-2">
-        <span class="w-2 h-2 rounded-full bg-violet-400"></span> 90+ LLM Providers
+        <span class="w-2 h-2 rounded-full bg-violet-400"></span> Runs Local Models
       </span>
       <span class="flex items-center gap-2">
-        <span class="w-2 h-2 rounded-full bg-teal-400"></span> Enterprise Security
+        <span class="w-2 h-2 rounded-full bg-teal-400"></span> Self-Hosted
       </span>
     </div>
   </section>
@@ -149,7 +146,7 @@ try {
     <div class="max-w-6xl mx-auto">
       <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">What Makes SynthOrg Different</h2>
       <p class="text-gray-400 text-center max-w-2xl mx-auto mb-12">
-        Not just agent orchestration. SynthOrg is designed as a complete organisational system: HR, governance, role-driven teams, and cost controls, modelled as a real company rather than a chain of function calls.
+        The binding constraint is decomposition quality, not agent supply. The design puts its weight there: splitting work into genuinely independent parts, building them separately, and checking each against something that did not write it.
       </p>
       <FeatureShowcase />
     </div>
@@ -161,7 +158,7 @@ try {
   <section class="py-16 px-6">
     <div class="max-w-5xl mx-auto text-center">
       <h2 class="text-3xl md:text-4xl font-bold mb-4">Architecture</h2>
-      <p class="text-gray-400 mb-12">The modular, protocol-driven architecture. Every component is pluggable and built as tested code; acceptance against a real provider is in active development.</p>
+      <p class="text-gray-400 mb-12">The modular, protocol-driven architecture. Every component is pluggable and built as tested code.</p>
 
       <ExpandableArchitecture />
 
@@ -178,10 +175,9 @@ try {
     <div class="max-w-6xl mx-auto">
       <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">Security-First by Design</h2>
       <p class="text-gray-400 text-center max-w-2xl mx-auto mb-16">
-        Autonomous agents need guardrails. The CI/CD pipeline and container
-        infrastructure security below is in place today; the application-runtime
-        guardrails gate every action under deterministic harnesses, with
-        real-provider acceptance in active development.
+        Agents that run tools need guardrails. The pipeline and container
+        hardening below ships today, and the runtime guardrails gate every
+        action.
       </p>
 
       <div class="grid md:grid-cols-3 gap-8">
@@ -189,7 +185,7 @@ try {
         <a href="/docs/security/#application-security" class="block bg-[#0F1219] rounded-xl p-8 border border-teal-500/20 hover:border-teal-500/40 transition-colors no-underline text-white">
           <div class="w-12 h-12 rounded-lg bg-teal-600/20 flex items-center justify-center text-teal-400 mb-4 text-xl">&#128737;</div>
           <h3 class="text-xl font-semibold mb-3">Runtime Protection</h3>
-          <p class="text-gray-400 mb-4">Hybrid SecOps: a fail-closed rule-engine fast-path with an LLM evaluator for uncertain cases, classified action types, and four operator-set oversight modes (full, semi, supervised, locked). Wired and exercised by deterministic harnesses; not yet run against a real provider.</p>
+          <p class="text-gray-400 mb-4">Hybrid SecOps: a fail-closed rule-engine fast-path with an LLM evaluator for uncertain cases, classified action types, and four operator-set oversight modes (full, semi, supervised, locked).</p>
           <ul class="text-sm text-gray-400 space-y-1">
             <li>Fail-closed rule engine + LLM fallback evaluator</li>
             <li>Four oversight modes, widened only by a human</li>
@@ -202,10 +198,10 @@ try {
         <a href="/docs/security/#container-hardening" class="block bg-[#0F1219] rounded-xl p-8 border border-teal-500/20 hover:border-teal-500/40 transition-colors no-underline text-white">
           <div class="w-12 h-12 rounded-lg bg-teal-600/20 flex items-center justify-center text-teal-400 mb-4 text-xl">&#128230;</div>
           <h3 class="text-xl font-semibold mb-3">Hardened Infrastructure</h3>
-          <p class="text-gray-400 mb-4">Distroless containers, digest-pinned images, and CIS Docker Benchmark compliance. Every image is scanned by two tools and signed before push.</p>
+          <p class="text-gray-400 mb-4">Distroless containers, digest-pinned images, and CIS Docker Benchmark compliance. Every image is vulnerability-scanned and signed before push.</p>
           <ul class="text-sm text-gray-400 space-y-1">
             <li>Wolfi apko-composed distroless runtime (no shell)</li>
-            <li>Trivy + Grype dual scanning</li>
+            <li>Trivy vulnerability scanning</li>
             <li>cosign keyless image signing</li>
             <li>CIS 5.3 / 5.12 / 5.25 compliance</li>
           </ul>
@@ -240,9 +236,7 @@ try {
     <div class="max-w-6xl mx-auto">
       <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">Use Cases</h2>
       <p class="text-gray-400 text-center max-w-2xl mx-auto mb-16">
-        SynthOrg is built for organisations like these. They describe the target
-        shape of a SynthOrg company, not runs validated against a real provider,
-        which is in active development.
+        These describe the shape of work the system is designed for.
       </p>
 
       <UseCaseCards />
@@ -256,7 +250,7 @@ try {
     <div class="max-w-5xl mx-auto text-center">
       <h2 class="text-3xl md:text-4xl font-bold mb-4">See the Dashboard</h2>
       <p class="text-gray-400 mb-12 max-w-2xl mx-auto">
-        The React 19 dashboard for agents, tasks, budgets, and communications, with live WebSocket updates. Shipped today; it becomes a live operations view as the agent runtime comes online.
+        The React 19 dashboard for work, agents, approvals, and spend, with live WebSocket updates. It shows what is running, what is waiting on you, and what it costs.
       </p>
       <DashboardPreview client:visible />
     </div>
@@ -276,11 +270,11 @@ try {
             </h2>
             <p class="text-gray-400 max-w-xl">
               See a side-by-side comparison against CrewAI, AutoGen, LangGraph, ChatDev, and more,
-              across 14 dimensions from org structure to production readiness.
+              from how work is decomposed to how it is checked and where it runs.
             </p>
           </div>
           <span class="shrink-0 px-6 py-3 rounded-lg bg-violet-600 group-hover:bg-violet-500 font-semibold transition-colors">
-            Compare Frameworks
+            Compare Projects
           </span>
         </div>
       </a>
@@ -379,8 +373,8 @@ try {
   <section class="py-16 px-6 bg-gradient-to-b from-[#0F1219] to-[#1a1025]">
     <div class="max-w-3xl mx-auto text-center">
       <h2 class="text-3xl md:text-5xl font-bold mb-6">
-        Operate a company
-        <span class="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-teal-400">that builds.</span>
+        Keep the build
+        <span class="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-teal-400">on your own machine.</span>
       </h2>
 
       <a

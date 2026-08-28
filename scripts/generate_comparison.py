@@ -84,8 +84,8 @@ SELF_HOSTED_LABELS = {
 # Thematic groupings for splitting the table
 TABLE_GROUPS = [
     {
-        "title": "Organisation & Coordination",
-        "keys": ["org_structure", "multi_agent", "task_delegation", "human_in_loop"],
+        "title": "Coordination",
+        "keys": ["multi_agent", "task_delegation", "human_in_loop"],
     },
     {
         "title": "Technical Capabilities",
@@ -301,10 +301,10 @@ def _frontmatter_and_intro(last_updated: str) -> list[str]:
     """Generate the frontmatter, title, legend, and intro callout."""
     return [
         "---",
-        "title: Framework Comparison",
+        "title: Ecosystem Comparison",
         "description: >-",
-        "  How SynthOrg compares to every notable agent orchestration",
-        "  framework, platform, and research project.",
+        "  Where SynthOrg sits among agent frameworks, platforms, workflow",
+        "  engines, and developer tools, and what the table cannot show.",
         "---",
         "",
         (
@@ -313,14 +313,71 @@ def _frontmatter_and_intro(last_updated: str) -> list[str]:
             " do not edit directly -->"
         ),
         "",
-        "# Framework Comparison",
+        "# Ecosystem Comparison",
         "",
         (
-            "How SynthOrg compares to agent orchestration frameworks,"
-            " platforms, and research projects."
+            "How SynthOrg compares to agent frameworks, platforms,"
+            " workflow engines, and developer tools."
         ),
         "",
-        f"Last updated: {last_updated}",
+        f"Comparison data last changed: {last_updated}",
+        "",
+        (
+            "Rows are compiled from each project's own documentation and"
+            " repository. Only a row carrying `source_verified_at` has a"
+            " recorded check date; the rest are point-in-time and may have"
+            " drifted since."
+        ),
+        "",
+        "## What the rows cannot show",
+        "",
+        (
+            "A single agent in a loop cannot hold a whole application. That is"
+            " why a system that does one thing at a time degrades as an"
+            " application grows: the twentieth thing damages the first."
+            " SynthOrg decomposes the work into a tree of parts, builds the"
+            " parts concurrently, each in its own workspace, and assembles"
+            " them bottom-up. The dimensions below are shared axes across every"
+            " project in the table, so that shape does not appear in them."
+            " Two of its properties are worth stating outright."
+        ),
+        "",
+        (
+            "**It runs on your hardware.** Self-hosted, provider-agnostic, any"
+            " models including local ones. There is no SynthOrg service in the"
+            " path, so on the model path what reaches a third party is"
+            " whatever the provider you configured needs, and against local"
+            " models nothing leaves at all. The two outbound integrations,"
+            " product telemetry and cross-deployment analytics, both default"
+            " to off, and each sends only what its own page documents once an"
+            " operator turns it on. Every competitor"
+            " surveyed for this table monetises hosted metered compute; the"
+            " inference drawn from that, that a genuinely self-hostable"
+            " equivalent cannibalises their margin and is unattractive for"
+            " them to build, is analysis rather than something the table"
+            " measures. The Self-Hosted column is the one axis where the"
+            " observation itself shows."
+        ),
+        "",
+        (
+            "**The thing that checks a part is not the thing that produced"
+            " it.** That separation is structural, enforced in the service"
+            " layer, in the model binding, and by a database constraint, and"
+            " it is rarely implemented. It does not make the output correct:"
+            " an independent judge is a triage filter, so it does not mean"
+            " nothing broken gets through and it does not replace human"
+            " judgement. The two reviewers are also not bound to different"
+            " model families, so a blind spot they share is one the pair"
+            " cannot see."
+        ),
+        "",
+        (
+            "**SynthOrg is pre-alpha.** Nothing here promises an outcome. The"
+            " rows describe how the system is built and how it behaves, never"
+            " what it will deliver."
+        ),
+        "",
+        "## Reading the tables",
         "",
         "**Legend:**",
         (
@@ -387,7 +444,7 @@ def _thematic_tables(
 
         dim_headers = [_dimension_label(dimensions, k) for k in group["keys"]]
         header = (
-            "| Framework | Category | License | Pricing | Self-Hosted | "
+            "| Project | Category | License | Pricing | Self-Hosted | "
             + " | ".join(dim_headers)
             + " |"
         )

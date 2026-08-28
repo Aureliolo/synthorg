@@ -7,9 +7,9 @@ description: Validated page list, navigation hierarchy, URL routing map, WebSock
 
 ## Overview
 
-This document defines the information architecture for the web dashboard. It was validated against the backend API surface (controllers and WebSocket channels) and the design decisions from #762 (Mission Control direction, 4 differentiators) and #765 (Warm Ops identity).
+This document defines the information architecture for the web dashboard: the pages, how they are reached, and which backend domain each one is a view of. It is held against the backend API surface (controllers and WebSocket channels) and the Warm Ops identity described in [Brand & UX](brand-and-ux.md).
 
-**Guiding principle**: every page maps to a real backend domain with live data. No user-facing placeholder pages or "under construction" stubs. ProjectController and ArtifactController have full persistence backends (#612) and dashboard pages (#946).
+**Guiding principle**: every page maps to a real backend domain with live data. No user-facing placeholder pages and no "under construction" stubs.
 
 ---
 
@@ -41,7 +41,7 @@ One unified conversation with the organisation, Claude-Code-style: a single comp
 
 #### Org Chart (`/org`)
 
-Living org visualization with real-time agent status. Two view modes toggled via toolbar:
+Living org visualisation with real-time agent status. Two view modes toggled via toolbar:
 
 - **Hierarchy view** (default): Dagre-based hierarchical layout with CEO, departments, teams, and agents carrying status dots and health overlays. Supports drag-drop agent reassignment between departments (optimistic update with rollback on API failure, ARIA live announcements, drop zone highlight with accent border). Left-to-right sibling order is the operator's own: the chart reads departments, each department's agents, and each department's teams in the order the reorder endpoints persist, so the Hierarchy view and Edit Organisation always agree. The chart flows top to bottom, and every set of three or more siblings **wraps into a block** rather than a line: `min(n, ceil(sqrt(n)))` columns, so three read as two and one, four as two and two, nine as three by three, and the departments hanging off the root fill a block centred on it instead of one endless row. The rule is unconditional rather than triggered by a width budget, because a budget only ever answers "not yet" until the row is already too wide to read. Fill order is the operator's own, row by row, so the Hierarchy view and Edit Organisation still agree. Connectors are routed from the placed geometry rather than per edge: siblings share one trunk, each row of a block gets its own bus, and a row below the first is reached by a riser dropped through a column gutter, so no line crosses a card. The whole layout is anchored on the root department, so adding or removing an agent or a department extends the chart outward rather than shifting what the operator is looking at.
 
@@ -60,7 +60,7 @@ Click agent nodes to open Agent Detail panel.
 
 Kanban view (default) and list view toggle. Filter by status, assignee, department. Task cards show title, assignee, status, priority. Click opens task detail with full context, state transition buttons, and "Coordinate" action (triggers multi-agent coordination via `/tasks/{id}/coordinate`).
 
-Project filter dropdown available. Dedicated Projects page shipped (#946).
+A project filter dropdown narrows the board; the Projects page is the full view of the same domain.
 
 `POST /tasks` is a board-entry handoff: the controller routes the filing through `TaskBoardEntryAdapter` and returns HTTP 202 with `TaskBoardSubmissionResponse` (`correlation_id`, `title`, `project`, `status: "submitted"`). The spine creates the task inside its background intake phase; the board UI subscribes to the `tasks` WS channel and inserts the spine-created task on the matching `task.created` event correlated by `correlation_id`. Empty-company (no provider / no adapter) returns 409 `AgentRuntimeNotConfiguredError`. Board column moves remain pure status walks of the spine-created task.
 
@@ -76,7 +76,7 @@ P&L management dashboard, not a billing tab. Current period spend vs budget, per
 
 #### Approvals (`/approvals`)
 
-Pending decisions queue: agents are blocked waiting for human action, so this is the highest-urgency page. Risk-level grouping with collapsible sections, urgency countdown indicators, batch select with approve/reject actions, detail drawer with approval timeline and metadata, filter bar with URL-synced state. Sidebar badge shows live pending count. **Plan reviews are excluded** from this generic inbox (a `source` filter): a plan review is decision-gathering, not a binary approval, so it has its own surface and badge on Plan Review (#2593).
+Pending decisions queue: agents are blocked waiting for human action, so this is the highest-urgency page. Risk-level grouping with collapsible sections, urgency countdown indicators, batch select with approve/reject actions, detail drawer with approval timeline and metadata, filter bar with URL-synced state. Sidebar badge shows live pending count. **Plan reviews are excluded** from this generic inbox (a `source` filter): a plan review is decision-gathering, not a binary approval, so it has its own surface and badge on Plan Review.
 
 Each row is evidence-backed and failure-aware: it shows the resolved task title, project, and agent name (never raw UUIDs), a run-outcome badge (`succeeded` / `empty` / `failed`), and the produced-artifact set in the detail drawer. A failed run is styled unmistakably (danger surface) and never as a routine low-risk completion; its buttons relabel Approve/Reject to **Acknowledge**/**Retry** (approve acknowledges the failure and leaves the task failed, reject retries it). While an approved task executes, the detail view streams live execution progress (start, tool-call by tool-call, finish/fail) from the task's AG-UI SSE stream, so the completion review is no longer a surprise.
 
@@ -92,9 +92,37 @@ The detail page also carries the **delivery verdict**: once the evaluate stage h
 **API endpoints**: `GET /plans`, `GET /plans/{id}`, `PATCH /plans/{id}`, `DELETE /plans/{id}`, `POST /plans/{id}/request-changes`, `GET /plans/{id}/comments`, `POST /plans/{id}/comments/items/{item_id}`, `GET /plans/{id}/evaluation`, plus `POST /approvals/{id}/approve` / `reject` (inline whole-plan decision)
 **WS channels**: `plans`
 
+#### Mission Control (`/mission-control`)
+
+Three tabs over one live run, switched in page state rather than in the URL. The **live cockpit** shows what is executing, with stuck and runaway flags and pause / kill interventions. **Steering** issues a mid-flight directive that in-flight agents adopt at their next safe boundary, and lists the active directives on a project. The **flight recorder** pages backwards through an execution's recorded turns, seeks to any one of them, and shows the durable red-team verdict for that run.
+
+**API endpoints**: `GET /cockpit/snapshot`, `GET /cockpit/flight-recorder/{execution_id}/frames`, `GET /cockpit/flight-recorder/{execution_id}/seek/{turn_index}`, `GET /cockpit/flight-recorder/{execution_id}/red-team`, `POST /cockpit/interventions/pause`, `POST /cockpit/interventions/kill`, `POST /cockpit/steering`, `GET /cockpit/steering?project_id=`, `POST /cockpit/steering/{directive_id}/supersede`
+**WS channels**: `tasks`, `agents` (the cockpit also refreshes through `usePolling`, which skips a tick while the live channel is fresh)
+
+#### Roles (`/roles`)
+
+The distinct role definitions the organisation staffs, derived client-side from the company configuration rather than read from a backend roles endpoint, since none exists. Each role links to its own version timeline at `/roles/{roleName}/versions`, which is read-only: it lists versions and shows one, with neither diff nor rollback.
+
+**API endpoints**: the company read behind the company store, plus the role-version reads
+**WS channels**: (none)
+
+#### Reports (`/reports`)
+
+Generates and lists periodic organisation reports. A report is requested for a period and then browsed by its generated sections (spending, performance, task completion, risk trends), each of which may be absent when the period holds nothing to report.
+
+**API endpoints**: `GET /reports/periods`, `POST /reports/generate`
+**WS channels**: (none)
+
+#### Meta Loop (`/meta`)
+
+The self-improvement surface: observed signals, generated proposals, the status of the rules in force, the A/B experiments explorer with its assignment history, and the evolution view. The whole page renders a disabled state when the meta loop is switched off, so the off state is stated plainly rather than left to look like an empty page. Custom operator-defined rules live on their own route at `/meta/custom-rules`.
+
+**API endpoints**: `GET /meta/config` and the proposal, alert, signal, A/B and evolution reads beneath `/meta`
+**WS channels**: (none)
+
 ### Secondary Navigation
 
-Lower-frequency destinations in a collapsible "Workspace" section.
+Lower-frequency destinations: the collapsible "Workspace" section, the Integrations group, and the tail section below it.
 
 #### Agents (`/agents`)
 
@@ -112,8 +140,10 @@ Agent profiles as card grid. Each card shows name, role, department, status dot,
 
 **Deferred to future iteration**: Spending breakdown and tabbed layout (Access tab).
 
-**API endpoints**: `GET /agents`, `GET /agents/{agent_id}`, `GET /agents/{agent_id}/performance`, `GET /agents/{agent_id}/activity`, `GET /agents/{agent_id}/history`, `GET /agents/{agent_id}/health`, `GET /agents/{agent_id}/autonomy`, `POST /agents/{agent_id}/autonomy`
+**API endpoints**: `GET /agents`, `GET /agents/{agent_id}`, `GET /agents/{agent_id}/performance`, `GET /agents/{agent_id}/activity`, `GET /agents/{agent_id}/history`, `GET /agents/{agent_id}/health`
 **WS channels**: `agents`, `tasks` (detail page)
+
+The per-agent autonomy endpoints (`GET` / `POST /agents/{agent_id}/autonomy`) exist on the backend and have a typed client, but no page calls them. Per-initiative oversight is set on the Project detail page instead. A per-agent control on this page is intent, not shipped.
 
 #### Projects (`/projects`)
 
@@ -183,7 +213,7 @@ Channel-filtered message feed for inspecting agent-to-agent communications. Two-
 
 LLM provider management. CRUD cards for configured providers with health status display (up/degraded/down/unknown) and 24-hour health metrics (average response time, error rate percentage, call count, total tokens, cost). Connection test button. Preset-based creation flow with subscription auth support requiring ToS acceptance for applicable providers. Model auto-discovery with capability badges (tools, vision, streaming) per model. Provider list supports filtering and sorting by health status, name, and model count. Provider detail/edit at `/providers/{name}`.
 
-No WebSocket subscription; provider changes are low-frequency admin operations. TanStack Query polling is sufficient.
+No WebSocket subscription; provider changes are low-frequency admin operations, so the page refreshes through the shared `usePolling` hook.
 
 **API endpoints**: `GET /providers`, `GET /providers/{name}`, `GET /providers/{name}/models`, `GET /providers/{name}/health`, `POST /providers`, `PUT /providers/{name}`, `DELETE /providers/{name}`, `POST /providers/{name}/test`, `GET /providers/presets`, `POST /providers/from-preset`, `POST /providers/{name}/discover-models`, `POST /providers/probe-local`, `GET /providers/discovery-policy`, `POST /providers/discovery-policy/entries`, `POST /providers/discovery-policy/remove-entry`, `POST /providers/{name}/models` (manual add), `POST /providers/{name}/models/sync` (bulk sync), `POST /providers/{name}/credentials/rotate`, `GET /providers/{name}/rate-limits`, `PATCH /providers/{name}/rate-limits`, `GET /providers/presets/{preset_name}/override`, `PATCH /providers/presets/{preset_name}/override`, `DELETE /providers/presets/{preset_name}/override`, `GET /providers/{name}/audit`
 
@@ -234,9 +264,9 @@ Configuration for every setting namespace the backend registry exposes (api, mem
 
 The **Code edit mode** uses a **split-pane diff editor view**: the left pane shows the current persisted configuration (read-only), and the right pane is an editable CodeMirror editor for composing changes. This allows operators to see exactly what will change before saving.
 
-Enabling advanced mode for the first time shows a confirmation dialog warning about misconfiguration risk. The warning is deduplicated per session via `sessionStorage`. Advanced mode preference persists in `localStorage`.
+Enabling advanced mode for the first time shows a confirmation dialog warning about misconfiguration risk. Both the preference and the fact that the warning has been seen are backend-owned, in the `dashboard` settings namespace (`settings_advanced_mode`, `settings_advanced_warned`), read and written through the dashboard-preferences store. Nothing about them is held in browser storage: the dashboard is a pure API consumer, and a preference the backend cannot see is one no other client can honour.
 
-Dependency indicators are driven by a frontend-maintained `SETTING_DEPENDENCIES` map in `web/src/utils/constants.ts` (not by backend schema). When a controller setting is disabled, its dependent settings display in a muted state.
+Dependency indicators are driven by a frontend-maintained `SETTING_DEPENDENCIES` map in `web/src/pages/settings/settings-constants.ts`, not by the backend schema. When a controller setting is disabled, its dependent settings display in a muted state.
 
 The **observability namespace** includes a dedicated **Sinks** sub-page (`/settings/observability/sinks`) for managing log sink configuration. The sinks page displays all active sinks (console and file) as cards showing identifier, log level, format, rotation policy, and routing prefixes. Operators can edit sink overrides and define custom sinks with a test-before-save workflow.
 
@@ -251,7 +281,7 @@ System-managed settings (e.g. `api/setup_complete`) are hidden from the GUI. Set
 
 #### Documentation (`/docs/`)
 
-Served as static MkDocs HTML by Caddy, not a React page. The `/docs/` Caddy handle block serves pre-built documentation directly, bypassing the SPA's `try_files` fallback. The sidebar "Docs" link renders a plain `<a href>` (full-page navigation) instead of a React Router `<NavLink>`. MkDocs Material's own search, navigation, and dark mode function independently of the React app. Theme colours are customised via `docs/overrides/extra.css` to match the dashboard design system.
+Static HTML served by Caddy, not a React page. The site is built by zensical from `mkdocs.yml` with the Material theme; the `/docs/` Caddy handle block serves the pre-built output directly, bypassing the SPA's `try_files` fallback. The sidebar "Docs" link renders a plain `<a href>` for full-page navigation instead of a React Router `<NavLink>`, and the site's own search, navigation and dark mode work independently of the React app. Theme colours are customised through `docs/overrides/extra.css` to match the dashboard design system.
 
 **API endpoints**: (none; static HTML served by Caddy)
 **WS channels**: (none)
@@ -333,53 +363,58 @@ Navigates to a dedicated full page at `/agents/{agentId}`. Single scrollable pag
 
 ## Navigation Hierarchy
 
-Sidebar layout (220px expanded, 56px icon rail):
+Sidebar layout (220px expanded, 56px icon rail), defined in `web/src/components/layout/SidebarNav.tsx`. Four sections, separated by a border; only the middle two carry a label.
 
 - **Brand**: Logo / brand mark
-- **Primary**:
+- **Primary** (no label; the items speak for themselves):
   - Dashboard, `LayoutDashboard`, `/`
-  - Chat, `MessagesSquare`, `/chat` (unified talk-to-your-org conversation)
+  - Chat, `MessagesSquare`, `/chat` (the unified talk-to-your-org conversation)
+  - Mission Control, `Radio`, `/mission-control` (live cockpit, steering, flight recorder)
   - Org Chart, `GitBranch`, `/org`
   - Roles, `Briefcase`, `/roles`
   - Task Board, `KanbanSquare`, `/tasks`
-  - Budget, `DollarSign`, `/budget` (amber dot when >85% spent)
-  - Mission Control, `Radio`, `/mission-control` (live cockpit, steering, flight recorder)
+  - Budget, `DollarSign`, `/budget`
+  - Reports, `FileText`, `/reports`
   - Approvals, `ShieldCheck`, `/approvals` (badge: pending count, excluding plan reviews)
   - Plan Review, `ListChecks`, `/plans` (badge: pending plan-review count)
-- **Workspace** (collapsible label):
+  - Meta Loop, `Orbit`, `/meta`
+- **Workspace**:
   - Agents, `Users`, `/agents`
+  - Learning, `LineChart`, `/analytics/learning`
   - Projects, `FolderKanban`, `/projects`
   - Workflows, `Workflow`, `/workflows`
   - Subworkflows, `Layers`, `/subworkflows`
   - Artifacts, `Package`, `/artifacts`
-  - Messages, `MessageSquare`, `/messages` (badge: unread count)
+  - Messages, `MessageSquare`, `/messages`
   - Providers, `Cpu`, `/providers`
-  - Docs, `BookOpen`, `/docs/` (external; static HTML, not SPA)
-  - Fine-Tuning, `Sparkles`, `/settings/memory/fine-tuning`
-  - Settings, `Settings`, `/settings`
-- **Integrations** (collapsible label):
-  - Connections, `Cable`, `/connections` (external-service credentials + tunnel providers; the tunnel card mints/reads a tunnel connection and surfaces device-login providers here)
+  - Ontology, `Shapes`, `/ontology`
+- **Integrations**:
+  - Connections, `Plug`, `/connections` (external-service credentials plus tunnel providers; the tunnel card mints and reads a tunnel connection and surfaces device-login providers here)
   - OAuth Apps, `KeyRound`, `/integrations/oauth-apps`
-  - MCP Catalog, `Boxes`, `/integrations/mcp-catalog`
+  - MCP Catalog, `LibraryBig`, `/integrations/mcp-catalog`
   - SSRF Violations, `ShieldAlert`, `/providers/ssrf-violations`
-- **Bottom**:
-  - Collapse toggle
-  - Notifications bell + badge
-  - `Cmd+K` hint
-  - Connection status dot from `/health`
-  - User avatar / role badge / logout
+- **Tail** (no label):
+  - Docs, `BookOpen`, `/docs/` (external; static HTML, not the SPA)
+  - Clients, `UserCheck`, `/clients`
+  - Request Queue, `Inbox`, `/clients/requests`
+  - Simulations, `Activity`, `/clients/simulations`
+  - Fine-Tuning, `Sparkles`, `/settings/memory/fine-tuning`
+  - Settings, `Settings`, `/settings` (does not highlight while Fine-Tuning is active, though that route is nested under it)
 
-**Icon source**: Lucide React (already a project dependency).
+The footer sits below the nav: collapse toggle (rendered only in the modes that have one), notifications bell with its badge, the Cmd+K search hint, a connection-status indicator that opens the shared health popover, and the signed-in username with its role and a logout control.
 
-**Visual separators**: Thin border lines between Primary, Workspace, and Bottom sections. No section headers for Primary; items speak for themselves. "Workspace" label for secondary section, hidden when sidebar is collapsed to icon rail.
+**Icon source**: Lucide React.
+
+**Visual separators**: a thin border above Workspace, above Integrations, and above the tail section. The "Workspace" and "Integrations" labels are hidden when the sidebar is collapsed to the icon rail.
 
 **Badge behaviours**:
 
-- **Approvals**: Live count of pending approvals from WS `approvals` channel, excluding plan reviews (they have their own surface). Red badge. Disappears at zero.
-- **Plan Review**: Live count of pending plan-review approvals, derived from the same approvals store the Approvals badge reads. Red badge. Disappears at zero.
-- **Messages**: Unread message count from WS `messages` channel. Muted badge. Disappears at zero.
-- **Budget**: Amber dot (no number) when budget exceeds 85% threshold. Source: WS `budget` channel alerts.
-- **Notifications bell**: Aggregate unread count from system + approvals + budget alerts. Disappears at zero.
+- **Approvals**: live count of pending approvals from the WS `approvals` channel, excluding plan reviews, which have their own surface. Red badge, gone at zero.
+- **Plan Review**: live count of pending plan-review approvals, derived from the same approvals store the Approvals badge reads. Red badge, gone at zero.
+- **Messages**: the item reserves a badge slot but is wired to a constant zero, so no count renders. Unread-count wiring against the WS `messages` channel is intent, not shipped.
+- **Notifications bell**: aggregate unread count across the system, approvals, and budget channels. Gone at zero.
+
+Budget carries no sidebar indicator. A budget threshold reaches the operator through the notifications drawer and its toast, on the `budget.threshold` and `budget.exhausted` categories.
 
 ---
 
@@ -390,24 +425,30 @@ Sidebar layout (220px expanded, 56px icon rail):
 | Route | Page | Notes |
 |-------|------|-------|
 | `/` | Dashboard | Home. Redirects to `/setup` if not configured |
-| `/chat` | Chat | One unified "talk to your org" conversation. No mode picker: the org detects intent and responds inline (answer / plan draft / group / act), escalating visibly, and surfaces a parked agent question as an answerable card. Backed by `POST /meta/chat/turn` and `/meta/chat/questions` |
+| `/chat` | Chat | One unified conversation with the running system. No mode picker: intent is detected and answered inline (answer / plan draft / group / act), escalating visibly, and surfaces a parked agent question as an answerable card. Backed by `POST /meta/chat/turn` and `/meta/chat/questions` |
 | `/login` | Login | No sidebar, full page |
 | `/setup` | Setup Wizard | No sidebar, full page. Redirects to `/` if already complete |
 | `/setup/:step` | Setup Wizard step | **Guided**: `account` (conditional), `mode`, `template`, `providers`, `company`, `agents`, `capabilities`, `theme`, `complete`<br>**Quick**: `account` (conditional), `mode`, `providers`, `company`, `complete` |
-| `/org` | Org Chart | Interactive visualization with Hierarchy (default, drag-drop agent reassignment) and Communication (d3-force) views, 400ms animated transitions |
+| `/org` | Org Chart | Interactive visualisation with Hierarchy (default, drag-drop agent reassignment) and Communication (d3-force) views, 400ms animated transitions |
 | `/org/edit` | Org Chart (edit mode) | Form-based company config CRUD. Query params: `?tab=general` (default), `?tab=agents`, `?tab=departments` switch sub-tabs |
+| `/org/versions` | Company versions | Read-only version timeline for the company configuration |
 | `/roles` | Roles | Distinct role definitions derived from the org structure (no backend `GET /roles`); each links to its version history |
 | `/roles/:roleName/versions` | Role versions | Read-only role-definition version timeline (list + get; no diff/rollback) |
 | `/tasks` | Task Board | Kanban default |
 | `/tasks?view=list` | Task Board (list) | List view toggle |
 | `/tasks?status=:status` | Task Board (filtered) | Filter by task status |
 | `/tasks/:taskId` | Task detail | Full-page detail view (direct navigation / deep linking) |
+| `/tasks/:taskId/decompose` | Task decomposition | Decomposition view for a single task |
 | `/tasks?selected=:taskId` | Task detail (panel) | Panel overlay on board view |
 | `/budget` | Budget | P&L dashboard |
 | `/budget/forecast` | Budget forecast | Projection charts |
+| `/budget/versions` | Budget versions | Read-only version timeline for the budget configuration |
+| `/reports` | Reports | Generate and browse periodic organisation reports by period |
 | `/mission-control` | Mission Control | Tabbed: live cockpit (stuck/runaway flags, pause/kill), mid-flight steering, and the flight recorder (time-travel seek/replay + durable red-team verdict). The active tab is in-page state, not URL-addressable |
 | `/mission-control?executionId=:id` | Flight recorder (deep link) | Auto-loads the execution into the recorder (from a live cockpit agent row); `?taskId=:id` is accepted as a fallback key |
 | `/mission-control?project=:id` | Steering (deep link) | Seeds the steering project from the URL |
+| `/meta` | Meta Loop | Self-improvement surface: signals, proposals, rule status, experiments, and evolution. Renders a disabled state when the meta loop is switched off |
+| `/meta/custom-rules` | Custom Rules | Operator-defined rules the meta loop evaluates |
 | `/approvals` | Approvals | Pending queue |
 | `/approvals?status=:status` | Approvals (filtered) | Filter by approval status |
 | `/approvals?risk=:level` | Approvals (filtered) | Filter by risk level |
@@ -415,13 +456,18 @@ Sidebar layout (220px expanded, 56px icon rail):
 | `/approvals?search=:query` | Approvals (filtered) | Search by title/description |
 | `/approvals?selected=:id` | Approvals (detail) | Side panel overlay for approval detail |
 | `/agents` | Agents | Profile list |
+| `/agents/model-recommendations` | Model recommendations | Per-agent model recommendation review. Registered before `:agentId` so the literal segment is not captured as an agent identifier |
 | `/agents/:agentId` | Agent detail | Full page with scrollable sections |
 | `/projects` | Projects | List with search/filter |
 | `/projects/:projectId` | Project detail | Full page with team, tasks |
 | `/projects/:projectId/docs` | Living docs | Per-project wiki: doc list + viewer (status reports, deliverables, knowledge notes, codebase analyses, run narratives) |
 | `/projects/:projectId/docs/:slug` | Living doc detail | Full doc view with typed-block rendering |
+| `/projects/:projectId/brain` | Project brain | Per-project memory entries |
+| `/projects/:projectId/brain/:entryId` | Project brain entry | A single memory entry |
 | `/workflows` | Workflows | Card grid list with search, type filter, create (blank or from blueprint)/duplicate/delete |
 | `/workflows/editor` | Workflow Editor | Visual DAG editor for workflow definitions (8 node types incl. subworkflow, 4 edge types, YAML preview, validation, version history with diff/rollback) |
+| `/workflows/:id/executions` | Workflow executions | Run history for one workflow definition |
+| `/workflows/:id/versions` | Workflow versions | Version timeline for one workflow definition with compare and restore actions |
 | `/subworkflows` | Subworkflows | Registry card grid with search, I/O signature, version count, and a detail drawer with parents and delete |
 | `/artifacts` | Artifacts | List with search/filter |
 | `/artifacts/:artifactId` | Artifact detail | Full page with metadata, content preview |
@@ -434,11 +480,22 @@ Sidebar layout (220px expanded, 56px icon rail):
 | `/messages?channel=:name&search=:query` | Messages (filtered) | Search by content/sender |
 | `/messages?channel=:name&message=:id` | Messages (detail) | Side drawer for message detail |
 | `/providers` | Providers | Provider list |
+| `/providers/ssrf-violations` | SSRF Violations | Blocked outbound-request log. Registered before `:providerName` so the literal segment is not captured as a provider name |
 | `/providers/:providerName` | Provider detail | Edit/test provider |
+| `/connections` | Connections | External-service credentials and tunnel providers |
+| `/integrations/oauth-apps` | OAuth Apps | Registered OAuth applications |
+| `/integrations/mcp-catalog` | MCP Catalog | Browsable MCP server catalogue with install |
+| `/integrations/webhooks/receipts` | Webhook receipts | Inbound webhook delivery log |
+| `/ontology` | Ontology | Entity catalogue plus an admin section (re-derive, sync org memory) |
+| `/analytics/coordination` | Coordination Metrics | Per-run efficiency, overhead, and redundancy |
+| `/analytics/meta` | Meta Analytics | Cross-deployment patterns |
+| `/analytics/learning` | Learning | Learning-curve view over recorded runs |
+| `/admin/audit` | Admin Audit Log | Security audit trail |
 | `/settings` | Settings | Namespace overview (tab bar navigation) |
 | `/settings/:namespace` | Settings (filtered) | Single namespace view via tab bar |
 | `/settings/observability/sinks` | Settings Sinks | Observability sink management (card grid with edit/test) |
 | `/settings/security/sessions` | Active Sessions | Active-session list with per-row revoke (current device disabled); reached via a Settings action card from the security namespace |
+| `/settings/users` | Users | Operator account administration |
 | `/settings/memory/fine-tuning` | Fine-Tuning | Embedding fine-tuning pipeline management (status, run history, preflight checks, start/cancel) |
 | `/admin/backups` | Admin Backups | System backup lifecycle: create, cursor-paginated list, restore (restart notice), delete; reached via a Settings action card from the backup namespace |
 | `/clients` | Client List | Synthetic-client roster with search/filter |
@@ -481,9 +538,13 @@ Single WebSocket connection per session, established after login. Each page subs
 | **Artifacts** (list) | `artifacts` | Artifact creation, deletion, upload events |
 | **Artifacts** (detail) | `artifacts` | Artifact changes for selected artifact |
 | **Plan Review** (list + detail) | `plans` | Plan rework and request-changes events |
-| **Providers** | (none) | N/A; polling via TanStack Query |
+| **Mission Control** | `tasks`, `agents` | Live cockpit rows; `usePolling` backs the snapshot and skips a tick while the channel is fresh |
+| **Providers** | (none) | N/A; refreshes via `usePolling` |
 | **Workflows** (list) | (none) | N/A |
-| **Subworkflows** | (none) | N/A; refreshes via polling (30s) |
+| **Subworkflows** | (none) | N/A; refreshes via `usePolling` every 30s |
+| **Reports** | (none) | N/A; a report is generated on request |
+| **Roles** | (none) | N/A; derived from the company store |
+| **Meta Loop** | (none) | N/A |
 | **Workflow Editor** | (none) | N/A; REST API only, no real-time collaboration |
 | **Settings** | (none) | N/A; a write applies live, so there is nothing to be told about later |
 | **Notifications panel** | `system`, `approvals`, `budget` | System errors, new approvals, budget alerts |
@@ -493,7 +554,7 @@ Single WebSocket connection per session, established after login. Each page subs
 - `system`: Connection status, shutdown notices
 - `approvals`: Badge count for sidebar
 - `budget`: Threshold alert for sidebar indicator
-- `messages`: Unread count for sidebar badge
+- `messages`: inter-agent message traffic. The sidebar unread count it was intended to feed is not wired; the Messages badge reads a constant zero
 
 ---
 
@@ -522,7 +583,7 @@ Org Chart / Company view lives in the
 
 ## Controller-to-Page Map
 
-Every backend controller has a home in the page structure. No orphans.
+Where each principal backend domain surfaces. `src/synthorg/api/controllers/__init__.py` is the authority on what exists; the registry holds considerably more controllers than the rows below, because a domain is often split across several (providers, settings, setup and the version-history family each span a group). A controller absent here is not necessarily an orphan, but a page absent here is a gap.
 
 | Controller | Page |
 |------------|------|
@@ -543,12 +604,12 @@ Every backend controller has a home in the page structure. No orphans.
 | ApprovalsController | Approvals, Dashboard |
 | SettingsController | Settings |
 | BackupController | Admin Backups page (`/admin/backups`) |
-| AutonomyController | Agent Detail page (planned) |
+| AutonomyController | No page. Per-initiative oversight is set on Project detail; the per-agent endpoints are unconsumed |
 | CoordinationController | Task Board (task detail action) |
 | CoordinationMetricsController | Coordination Metrics page (per-run efficiency / overhead / redundancy table) |
 | ExperimentsController | Meta page (read-only Experiments explorer: variants + assignment history) |
 | MetaAnalyticsController | Meta Analytics page (Cross-deployment patterns section) |
-| OntologyController / OntologyAdminController | Ontology page (entity catalog + Admin section: re-derive, sync org memory) |
+| OntologyController / OntologyAdminController | Ontology page (entity catalogue + Admin section: re-derive, sync org memory) |
 | InterruptController | Mission Control (offline interrupts fallback panel) |
 | EventStreamController | Mission Control (per-task AG-UI SSE at `/events/stream`) + all pages (session-less dashboard SSE fallback at `/events/dashboard` when the WebSocket is proxy-blocked) |
 | MemoryEntriesController | Agent Detail page (memory administration: delete entry, CEO/SYSTEM only) |
@@ -562,12 +623,30 @@ Every backend controller has a home in the page structure. No orphans.
 | RequestController | Request Queue |
 | SimulationController | Simulation Dashboard |
 | ReviewController | Review Pipeline |
+| ReportsController | Reports page (`/reports`) |
+| MetaController | Meta Loop page (`/meta`) |
+| CustomRuleController | Custom Rules page (`/meta/custom-rules`) |
+| LearningController | Learning page (`/analytics/learning`) |
+| ConnectionsController / TunnelController | Connections page (`/connections`) |
+| OAuthController | OAuth Apps page (`/integrations/oauth-apps`) |
+| MCPCatalogController | MCP Catalog page (`/integrations/mcp-catalog`) |
+| WebhooksActivityController | Webhook receipts page (`/integrations/webhooks/receipts`) |
+| SsrfViolationController | SSRF Violations page (`/providers/ssrf-violations`) |
+| RoleVersionController | Roles page and its version timeline |
+| ProjectDocsController | Living documentation (`/projects/{id}/docs`) |
+| ProjectBrainController | Project brain (`/projects/{id}/brain`) |
+| DecompositionController | Task decomposition view (`/tasks/{id}/decompose`) |
+| CockpitController / SteeringController | Mission Control |
+| WorkflowExecutionController | Workflow executions (`/workflows/{id}/executions`) |
+| UserController / UserOrgRolesController | Users page (`/settings/users`) |
+| MemoryFineTuneController | Fine-Tuning page (`/settings/memory/fine-tuning`) |
+| TurnController / ChatQuestionsController / ConversationHistoryController / CharterController | Chat |
 
 ---
 
 ## Design Principle Compliance
 
-How this page structure supports the 10 design principles from #762:
+How this page structure supports the dashboard's ten design principles:
 
 | # | Principle | How the structure supports it |
 |---|-----------|-------------------------------|
@@ -588,13 +667,12 @@ How this page structure supports the 10 design principles from #762:
 
 | Resource | Location |
 |----------|----------|
-| Brand identity and UX design system | [Brand & UX](brand-and-ux.md) |
-| UX research and competitor analysis | `research/762-ux-mockups` branch, `docs/design/ux-research.md` |
-| Design exploration mockups | `feat/765-design-exploration` branch, `mockups-v2/` |
-| Winning prototype (Mission Control) | `research/762-ux-mockups` branch, `mockups/direction-cd/` |
+| Brand identity, voice rules, and design system | [Brand & UX](brand-and-ux.md) |
+| Implementation specifications | [UX Guidelines](ux-guidelines.md) |
+| Framework evaluation behind the stack | [Dashboard Framework Research](ux-research.md) |
+| Route path constants | `web/src/router/routes.ts` |
+| Registered route table | `web/src/router/index.tsx` |
+| Sidebar navigation | `web/src/components/layout/SidebarNav.tsx` |
 | WebSocket channel definitions | `src/synthorg/api/channels.py` |
 | API controller registry | `src/synthorg/api/controllers/__init__.py` |
 | API surface | [Human Interaction Layer](../guides/human-interaction.md) |
-| Parent UX overhaul issue | [#762](https://github.com/Aureliolo/synthorg/issues/762) |
-| Design exploration issue | [#765](https://github.com/Aureliolo/synthorg/issues/765) |
-| Page structure issue | [#766](https://github.com/Aureliolo/synthorg/issues/766) |

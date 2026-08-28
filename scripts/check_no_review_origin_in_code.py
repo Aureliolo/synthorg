@@ -13,14 +13,18 @@ renumbered:
   ``Issue #N``, ``fixes #N``, ``closes #N``, ``see PR #N``,
   ``as part of #N``, ``GH-NNNN``, ``WP-N`` work-package labels, and
   ``RFC#N`` orphaned planning labels (use the canonical ADR number).
-* Naked ``SEC-N`` taxonomy in ``src/synthorg/`` or ``tests/`` -- the
-  canonical home is ``docs/design/`` / ``docs/reference/``; appearing
-  unexplained in code wastes the next reader's time.
+* Naked ``SEC-N`` taxonomy outside ``docs/`` -- the cluster it names is
+  written down under ``docs/``, so the tag is decodable there and
+  opaque anywhere else, where it wastes the next reader's time.
 
-The gate scans ``*.py`` files under ``src/synthorg/`` and ``tests/``
-plus ``*.sql`` under ``src/synthorg/persistence/``. Documentation
-trees (``docs/design/``, ``docs/reference/``, ``CHANGELOG.md``) are
-the canonical home for these tokens and are NEVER scanned.
+Scope is ``src/synthorg/``, ``tests/``, ``docker/`` and ``docs/``, over
+``*.py``, ``*.sql``, ``*.yml``, ``*.yaml`` and ``*.md``. A reader meets
+a stale citation in a design page sooner than in a module, so prose
+describing CURRENT state is in scope exactly as code is. What is exempt
+is the historical genre rather than the file type: a decision record, a
+research record and a dated audit trail all exist to say what was
+decided or observed at a point in time, so a citation is their content.
+Those are listed by path below.
 
 Per-line opt-out::
 
@@ -44,6 +48,7 @@ import re
 import subprocess
 import sys
 import tokenize
+from collections.abc import Callable
 from pathlib import Path
 from typing import Final
 
@@ -64,8 +69,16 @@ _REVIEWER_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
 
 # In-code issue / PR back-refs.
 _BACKREF_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
-    # Paren-form (#NNNN) where N is at least 3 digits to skip placeholders.
-    ("(#NNNN)", re.compile(r"\(#\d{3,}\b")),
+    # Paren-form (#NNNN) where N is at least 3 digits to skip
+    # placeholders. The leading guard rejects a parenthesised CSS hex
+    # colour, which is exactly three or six hex characters before the
+    # closing paren: ``(#181828)`` and ``(#abc)`` are colours,
+    # ``(#1234)`` is an issue. Without it a design page quoting a
+    # palette reads as a back-reference.
+    (
+        "(#NNNN)",
+        re.compile(r"\(#(?![0-9a-fA-F]{6}\)|[0-9a-fA-F]{3}\))\d{3,}\b"),
+    ),
     # Narrative back-refs that name an issue / PR by number.
     (
         "narrative #N",
@@ -96,6 +109,12 @@ _SEC_PATTERN: Final[re.Pattern[str]] = re.compile(r"\bSEC-\d+\b")
 # Suppression marker -- requires non-empty justification.
 _SUPPRESSION_MARKER: Final[str] = "lint-allow: review-origin"
 
+# Markdown carries no line comment, so the opt-out there is an HTML
+# comment. Both delimiters are needed: an unterminated ``<!--`` would
+# let prose that merely quotes the marker suppress the rest of a line.
+_HTML_COMMENT_OPEN: Final[str] = "<!--"
+_HTML_COMMENT_CLOSE: Final[str] = "-->"
+
 # Sentinel prefix prepended to I/O failure entries so ``main()`` can
 # distinguish them from policy violations and surface a distinct
 # exit code (3 vs 1). Tests assert on this prefix verbatim.
@@ -109,8 +128,14 @@ _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 # canonical home or the gate's own self-test fixtures). The gate
 # does not read their contents at all.
 _PATH_ALLOWLIST_PREFIXES: Final[tuple[str, ...]] = (
-    "docs/design/",
-    "docs/reference/",
+    # Historical genres. An architecture decision record, a research
+    # record and a dated audit trail all exist to say what was decided
+    # or observed at a point in time, so a citation is their content
+    # rather than rot. Prose that describes CURRENT state is not
+    # exempt, which is why docs/design/ and docs/reference/ are not
+    # listed wholesale.
+    "docs/decisions/",
+    "docs/research/",
     "_audit/",
     ".claude/",
     ".github/",
@@ -132,6 +157,16 @@ _PATH_ALLOWLIST_FILES: Final[frozenset[str]] = frozenset(
     {
         "CHANGELOG.md",
         ".github/CHANGELOG.md",
+        # An unflinching log of live runs and a dated cleanup trail:
+        # the same historical genre as docs/decisions/, reached by file
+        # rather than by directory because they sit among current-state
+        # reference pages.
+        "docs/reference/loop-round-log.md",
+        "docs/reference/protocols-audit.md",
+        "docs/reference/protocols-audit-log.md",
+        # Documents the rule and the gates that enforce it, so it
+        # quotes the tokens it forbids.
+        "docs/reference/convention-gates.md",
         "scripts/check_no_review_origin_in_code.py",
         "scripts/check_no_migration_framing.py",
         "tests/unit/scripts/test_check_no_review_origin_in_code.py",
@@ -142,11 +177,16 @@ _PATH_ALLOWLIST_FILES: Final[frozenset[str]] = frozenset(
 # In-scope file suffixes. SQL is included so persistence-revision
 # header comments get caught; YAML so the deployment files do, which are
 # hand-written prose with the same failure mode and were invisible here.
-_SCANNED_SUFFIXES: Final[frozenset[str]] = frozenset({".py", ".sql", ".yml", ".yaml"})
+_SCANNED_SUFFIXES: Final[frozenset[str]] = frozenset(
+    {".py", ".sql", ".yml", ".yaml", ".md"}
+)
 
 # Roots whose tree is in scope. Anything outside is silently skipped
-# -- the gate is opt-in by directory.
-_DEFAULT_ROOTS: Final[tuple[str, ...]] = ("src/synthorg", "tests", "docker")
+# -- the gate is opt-in by directory. ``docs`` is in scope because a
+# reader meets a stale issue citation there sooner than in a module,
+# and the historical genres are exempted by path above rather than by
+# leaving the whole tree unscanned.
+_DEFAULT_ROOTS: Final[tuple[str, ...]] = ("src/synthorg", "tests", "docker", "docs")
 
 
 # ── Suppression-marker detection ───────────────────────────────────
@@ -189,11 +229,40 @@ def _line_has_dedicated_marker(line: str) -> bool:
     -- later`` -- is rejected so it cannot bleed forward into the next
     line. Reused from the equivalent guard in
     ``check_forbidden_literals.py``.
+
+    Three comment syntaxes are accepted because the gate scans three
+    kinds of file: ``#`` for Python and YAML, ``--`` for SQL, and the
+    HTML comment for Markdown. A Markdown page has no other way to
+    write a comment, so without the third form a documentation page
+    would have no reachable opt-out at all.
     """
     stripped = line.strip()
+    if stripped.startswith(_HTML_COMMENT_OPEN) and stripped.endswith(
+        _HTML_COMMENT_CLOSE
+    ):
+        return _has_marker_with_reason(
+            stripped[len(_HTML_COMMENT_OPEN) : -len(_HTML_COMMENT_CLOSE)]
+        )
     if not stripped.startswith("#") and not stripped.startswith("--"):
         return False
     return _has_marker_with_reason(stripped)
+
+
+def _line_has_trailing_marker_markdown(line: str) -> bool:
+    """Return True iff a Markdown line carries a trailing HTML comment marker.
+
+    The marker must be the last thing on the line, so prose that merely
+    mentions the marker inside a sentence does not suppress anything.
+    """
+    idx = line.rfind(_HTML_COMMENT_OPEN)
+    if idx == -1:
+        return False
+    comment = line[idx:].rstrip()
+    if not comment.endswith(_HTML_COMMENT_CLOSE):
+        return False
+    return _has_marker_with_reason(
+        comment[len(_HTML_COMMENT_OPEN) : -len(_HTML_COMMENT_CLOSE)]
+    )
 
 
 def _line_has_trailing_marker_python(line: str) -> bool:
@@ -234,6 +303,12 @@ def _line_has_trailing_marker_sql(line: str) -> bool:
     return _has_marker_with_reason(comment)
 
 
+_TRAILING_MARKER_BY_SUFFIX: Final[dict[str, Callable[[str], bool]]] = {
+    ".sql": _line_has_trailing_marker_sql,
+    ".md": _line_has_trailing_marker_markdown,
+}
+
+
 # ── Path resolution ────────────────────────────────────────────────
 
 
@@ -271,13 +346,22 @@ def _path_in_scope(rel: str) -> bool:
 # ── Scanning ───────────────────────────────────────────────────────
 
 
-def _all_patterns() -> tuple[tuple[str, re.Pattern[str]], ...]:
-    """Return every (label, regex) pair the gate enforces."""
-    return (
+def _all_patterns(rel: str = "") -> tuple[tuple[str, re.Pattern[str]], ...]:
+    """Return every (label, regex) pair the gate enforces for *rel*.
+
+    ``SEC-N`` is the one rule that varies by location. Under ``docs/``
+    the taxonomy is decodable, because that is where the cluster it
+    names is written down, so a bare ``SEC-1`` there is a reference
+    rather than shorthand a reader cannot resolve. Everywhere else it
+    is opaque and stays forbidden.
+    """
+    patterns: tuple[tuple[str, re.Pattern[str]], ...] = (
         *_REVIEWER_PATTERNS,
         *_BACKREF_PATTERNS,
-        ("SEC-N taxonomy", _SEC_PATTERN),
     )
+    if not rel.startswith("docs/"):
+        patterns = (*patterns, ("SEC-N taxonomy", _SEC_PATTERN))
+    return patterns
 
 
 def _scan_file(file_path: Path, rel: str) -> list[str]:
@@ -285,9 +369,9 @@ def _scan_file(file_path: Path, rel: str) -> list[str]:
 
     *rel* is the POSIX-style path used in the violation message; the
     caller chooses the anchor (project root for production, tmp root
-    for tests). Out-of-scope files (anything outside ``src/synthorg/``
-    or ``tests/``) and allowlisted paths short-circuit to ``[]`` so
-    the function is safe to call directly from unit tests.
+    for tests). Out-of-scope files (anything outside ``_DEFAULT_ROOTS``)
+    and allowlisted paths short-circuit to ``[]`` so the function is
+    safe to call directly from unit tests.
     """
     if not _path_in_scope(rel):
         return []
@@ -304,11 +388,13 @@ def _scan_file(file_path: Path, rel: str) -> list[str]:
         return [f"{_IO_ERROR_PREFIX}{rel}:0: unable to scan file: {exc}"]
     issues: list[str] = []
     file_lines = text.splitlines()
-    is_sql = file_path.suffix == ".sql"
-    trailing_marker = (
-        _line_has_trailing_marker_sql if is_sql else _line_has_trailing_marker_python
+    # The trailing-marker reader is chosen by comment syntax, not by
+    # language family: Markdown has only the HTML comment, SQL only
+    # ``--``, and everything else here (Python, YAML) uses ``#``.
+    trailing_marker = _TRAILING_MARKER_BY_SUFFIX.get(
+        file_path.suffix, _line_has_trailing_marker_python
     )
-    patterns = _all_patterns()
+    patterns = _all_patterns(rel)
     for idx, line in enumerate(file_lines, start=1):
         # Cheap regex first: only lines that actually match a forbidden
         # pattern pay the tokenize-based suppression checks below, which

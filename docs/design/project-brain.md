@@ -35,7 +35,7 @@ answers "what is decided, what is open, what is blocked, what is at risk, what
 depends on what, and why" as **structured data**, not prose an agent must
 re-read and re-interpret.
 
-This is the concrete acceptance bar (issue #1996): after a multi-session gap the
+This is the concrete acceptance bar: after a multi-session gap the
 org resumes and correctly answers "what is decided, what is open, what is
 blocked, and why" from the project brain, not by re-deriving. Validated under the
 simulation harness.
@@ -149,7 +149,7 @@ class Citation(BaseModel):
 
 Citations let a brain entry point at the evidence behind it: a task, a living
 doc, a knowledge-substrate source chunk, another brain entry, or an external URL.
-They supply the provenance that documentary mode (#1985) needs.
+They supply the provenance that documentary mode needs.
 
 ### Kinds, payloads, and status
 
@@ -228,7 +228,7 @@ flowchart LR
   Service -->|append_with_next_revision| SQL[(project_brain_entries)]
   Service -->|serialize| Writer[BrainWriter]
   Writer -->|git add+commit| Branch[synthorg/docs branch]
-  Branch -->|push via #1974 queue| Backend[GitBackend]
+  Branch -->|push via docs queue| Backend[GitBackend]
   Service -->|chunk| Chunker[BrainChunker]
   Chunker --> Indexer[BrainIndexer]
   Indexer -->|MemoryBackend.store| Memory[(PROJECT_BRAIN entries)]
@@ -397,15 +397,15 @@ storage, mirroring the living-documentation and knowledge-substrate boundaries.
 
 ## Feeds to documentary mode and mid-flight steering
 
-The brain is a source the rest of EPIC #1987 consumes.
+The brain is a source the surrounding subsystems consume.
 
-**Documentary mode (#1985)** reads the brain's current state and history to
+**Documentary mode** reads the brain's current state and history to
 narrate the run: the decisions taken and their rationale, who recorded them and
 when, and the outcomes. The `citations` tuple, the `related_task_ids`, and the
 commit-aligned git snapshot supply the provenance the narrative attaches to each
 claim. The brain is queried by the narrator; it does not itself produce prose.
 
-[**Mid-flight steering (#1997)**](mid-flight-steering.md) both writes to and
+[**Mid-flight steering**](mid-flight-steering.md) both writes to and
 reads from the brain. When the operator issues a steering redirect, the brain
 receives a new `PLAN_REVISION` entry (tagged `steering`, with the directive as
 its rationale and the operator as author) **before** the directive propagates to
@@ -488,7 +488,7 @@ dashboard renders already-stored structured data.
   the shared `synthorg/docs` branch.
 - **Logging**: `get_logger`, event-name constants, structured keyword arguments,
   and SEC-1 redaction (no `str(exc)`, no `exc_info`).
-- **Ghost-wiring discipline (#1987)**: every boot-constructed symbol is listed
+- **Ghost-wiring discipline**: every boot-constructed symbol is listed
   ENFORCED in `scripts/_ghost_wiring_manifest.txt` in the same change.
 - **Module-size budget**: the unified envelope keeps each persistence aggregator
   to a single added property; the one new `core/memory_enums.py` member is added

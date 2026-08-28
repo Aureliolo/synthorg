@@ -1,4 +1,4 @@
-# Lifecycle Synchronization
+# Lifecycle Synchronisation
 
 On-demand reference. The short rule in `CLAUDE.md` is: services with async `start()` / `stop()` use a dedicated `self._lifecycle_lock: asyncio.Lock` separate from any hot-path lock, and a timed-out stop must mark the service unrestartable.
 
@@ -29,7 +29,7 @@ For services whose `stop()` drains across `await` boundaries, wrap the drain in 
 - `OAuthTokenManager` (`integrations/oauth/token_manager.py`)
 - `QuotaPoller` (`budget/quota_poller.py`)
 - `NotificationDispatcher` (`notifications/dispatcher.py`): no spawned background task; the drain is the bounded `aclose()` idle-wait wrapped in `asyncio.wait_for(asyncio.shield(...), timeout=...)`.
-- `MessageBus` NATS connection (`communication/bus/nats.py`, `communication/bus/_nats_connection.py`): the client `drain()` is shielded under the timeout so a timeout marks `stop_failed` without cancelling the in-flight drain.
+- `JetStreamMessageBus` (`communication/bus/nats.py`, `communication/bus/_nats_connection.py`): the client `drain()` is shielded under the timeout so a timeout marks `stop_failed` without cancelling the in-flight drain.
 - `PruningService` (`hr/pruning/service.py`)
 - `NgrokAdapter` (`integrations/tunnel/ngrok_adapter.py`): lifecycle lock only; no spawned background task, so the drain timeout / unrestartable flag do not apply.
 

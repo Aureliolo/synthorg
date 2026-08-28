@@ -8,10 +8,10 @@
  *     every ``setItem`` / ``removeItem`` / ``clear`` call so other
  *     same-origin tabs can react to writes. In a single-tab test
  *     environment those timers are pure overhead. The dashboard
- *     reaches localStorage from two paths -- Zustand's ``persist``
- *     middleware (setup-wizard, org-chart-prefs) and direct
- *     ``localStorage.setItem`` calls (theme, notifications) -- so the
- *     timer overhead compounds across every store-mutating test.
+ *     reaches localStorage for transient per-device UX only: the
+ *     workflow-editor canvas viewport, the unsaved-changes draft
+ *     guard, and the build-version check. Domain state is
+ *     backend-persisted, so it never lands here.
  *   * No app or test code subscribes to the ``storage`` event
  *     (verified via ``addEventListener('storage')`` grep), so the
  *     dispatch is dead weight in the test runner.

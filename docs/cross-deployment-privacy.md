@@ -54,14 +54,14 @@ Cross-deployment analytics is **disabled by default**. To enable:
 self_improvement:
   cross_deployment_analytics:
     enabled: true
-    collector_url: "https://your-collector.example.com/api/meta/analytics"
+    collector_url: "https://your-collector.example.com/api/v1/meta/analytics"
     deployment_id_salt: "your-secret-salt-string"
     industry_tag: "technology"  # optional
 ```
 
 Required fields when `enabled: true`:
 
-- `collector_url`: HTTPS endpoint to POST anonymised events to
+- `collector_url`: HTTPS base for the collector's analytics routes. The emitter appends `/events`, so a collector running this product wants `https://<host>/api/v1/meta/analytics` and receives `POST /api/v1/meta/analytics/events`
 - `deployment_id_salt`: Secret salt for deployment identification
 
 ## How to Inspect Events
@@ -74,10 +74,11 @@ logging:
     synthorg.meta.telemetry: DEBUG
 ```
 
-Events are visible in the structured log output with event metadata (event type, queue depth, batch size, HTTP status). Note: the full serialised event payload is not logged; only operational metadata is emitted for diagnostics. Event names:
+Event names:
 
 - `cross_deployment.event.queued`: event buffered (logs event_type and pending count)
 - `cross_deployment.batch.flushed`: batch sent to collector (logs event_count and HTTP status)
+- `cross_deployment.batch.flush_failed` / `.flush_retrying` / `.dropped`: delivery failure paths
 
 ## Data Retention
 
@@ -85,7 +86,7 @@ The default collector (`InMemoryAnalyticsCollector`) stores events **in memory o
 
 ## Access Control
 
-The collector endpoint (`POST /api/meta/analytics/events`) requires **write access** and is protected by the standard API authentication and authorization middleware. Pattern and recommendation queries (`GET`) require read access.
+The collector endpoint (`POST /api/v1/meta/analytics/events`) requires **write access**, is protected by the standard API authentication and authorisation middleware, and answers at all only on a deployment that set `collector_enabled: true`. It is a backend-to-backend ingestion path with no dashboard surface. Pattern and recommendation queries (`GET /api/v1/meta/analytics/patterns` and `/recommendations`) require read access.
 
 ## Collector Role
 
@@ -95,9 +96,9 @@ A deployment can optionally act as a collector that receives events from other d
 self_improvement:
   cross_deployment_analytics:
     enabled: true
-    collector_url: "https://this-deployment/api/meta/analytics"
+    collector_url: "https://this-deployment/api/v1/meta/analytics"
     deployment_id_salt: "salt"
     collector_enabled: true  # enable collector role
 ```
 
-The collector never receives unanonymized data; it only receives the anonymised events described above.
+The collector never receives raw data; it receives only the anonymised events described above.

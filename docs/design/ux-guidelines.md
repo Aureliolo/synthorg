@@ -5,9 +5,9 @@ description: Authoritative design guidelines for the SynthOrg web dashboard. Cov
 
 # UX Design Guidelines
 
-This document is the single source of truth for all dashboard page implementations. It codifies the decisions from the design exploration (#765, Warm Ops winner) and page structure (#766) into concrete, implementable specifications.
+This document is the single source of truth for all dashboard page implementations: the concrete, implementable form of the Warm Ops identity and the page structure.
 
-**Prerequisite reading**: [Brand Identity & UX Design System](brand-and-ux.md) for rationale behind each decision. This document covers the *what*; brand-and-ux.md covers the *why*.
+**Prerequisite reading**: [Brand Identity & UX Design System](brand-and-ux.md), which carries the product's voice rules and the rationale behind each visual decision. This document covers the *what*; brand-and-ux.md covers the *why*.
 
 ---
 
@@ -51,7 +51,7 @@ Metric cards, sparklines, and trend indicators assign colour by data direction:
 
 #### Dark Mode Only
 
-The dashboard is dark-mode only (confirmed in #762). All colour tokens assume dark backgrounds. No light mode is planned. WCAG AA ratios are validated against bg-base, bg-surface, bg-card, and bg-card-hover.
+The dashboard is dark-mode only. All colour tokens assume dark backgrounds and there is no light mode. WCAG AA ratios are validated against bg-base, bg-surface, bg-card, and bg-card-hover.
 
 ### 1.2 Typography Scale
 
@@ -335,8 +335,9 @@ it was left out at first, and the omission cost a real leak: a properties drawer
 printed a node id the editor mints from a UUID. Comments are blanked before any
 of this, so a route documented as `PATCH /agents/{id}` is read as documentation.
 
-A genuine exception takes a marker on the line above, written in the comment
-syntax of the boundary it sits at:
+A genuine exception takes a marker written in the comment syntax of the boundary
+it sits at. In JSX and TypeScript it goes on the line above; in Python it may sit
+on the line above or on the line itself:
 
 | Boundary | Marker |
 | --- | --- |
@@ -497,11 +498,16 @@ All animation values are defined in `web/src/lib/motion.ts` and imported as cons
 
 ### 4.2 Page Transitions
 
+A pure opacity cross-fade with no horizontal translation, run by `AnimatedPresence`. The shape is the same under every animation preset; the timings below are the standard ones. Reduced motion is the one exception: `AnimatedPresence` swaps to `reducedPageVariants` (opacity only, 150ms in, 100ms out), and the instant profile plays no transition at all.
+
 | Property | Value |
 |----------|-------|
-| Exit | Opacity 1 -> 0, x: 0 -> -8px, `tweenExitFast` |
-| Enter | Opacity 0 -> 1, x: 8px -> 0, duration 200ms, `tweenDefault` |
-| Direction | Content slides in the direction of navigation (deeper = right, back = left) |
+| Enter | Opacity 0 -> 1, `tweenCrossfadeEnter` (120ms ease-out) |
+| Exit | Opacity 1 -> 0, `tweenCrossfadeExit` (60ms ease-in) |
+| Mode | `popLayout`, so the outgoing page leaves while the incoming one arrives in the same frame and there is no blank gap |
+| First mount | `initial={false}`, so a fresh load does not play a fade the operator did not trigger |
+
+**No slide.** On a dense dashboard layout a horizontal translation reads as a layout shift rather than a transition, and it doubles under a development-mode double mount. The total duration is kept under 120ms: visible as a soft fade, imperceptible as a delay.
 
 ### 4.3 Card Entrance
 
@@ -549,13 +555,19 @@ When a value updates in real-time (via WebSocket):
 
 ### 4.7 Reduced Motion
 
-When `prefers-reduced-motion: reduce` is active:
+Reduced motion is honoured by each consumer rather than by a single global switch, because the right answer differs by surface: a page transition should still fade, a counting metric should not count.
 
-- All spring animations become instant (duration: 0)
-- Tween durations halve (200ms -> 100ms)
-- Infinite animations (pulse, shimmer) are disabled
-- Page transitions reduce to simple opacity fade (150ms)
-- Card entrance stagger is removed (all cards appear simultaneously)
+| Surface | Behaviour under `prefers-reduced-motion: reduce` |
+|---------|--------------------------------------------------|
+| Page transitions | `AnimatedPresence` swaps to `reducedPageVariants`: opacity only, 150ms in, 100ms out |
+| Metric counters | `useCountAnimation` returns the target value immediately, with no interpolation |
+| Real-time flash | `useFlash` skips the flash |
+| Skeleton shimmer | Disabled by a CSS media query |
+| Sparkline draw | Draw animation disabled by a CSS media query on the stable class |
+| Force-directed edges | Communication-view edge animation is disabled |
+| Anywhere else | Use `reducedMotionInstant` from `lib/motion.ts` as the transition, or Motion's `useReducedMotion()` to branch |
+
+The Instant animation profile resolves to the same `reducedMotionInstant` transition, so an operator can opt into still interfaces without an OS-level preference.
 
 ---
 
@@ -685,73 +697,38 @@ Sidebar state is persisted in user preferences. When resizing from >= 1280px int
 
 ---
 
-## Exported Artifacts
+## Where the Tokens Live
 
-### Tailwind `@theme` Snippet
+Every value in this document has exactly one home in the code, and the chain runs one way.
 
-The following `@theme` block contains all design tokens for Tailwind v4. This replaces the existing colour definitions in `web/src/styles/global.css` (to be integrated in #775).
+### 1. `web/src/styles/design-tokens.css`
 
-> **Note**: The `@theme` block uses Tailwind's native property naming (`--color-*`, `--spacing-*`), while `design-tokens.css` uses the `--so-*` prefix for non-Tailwind contexts. Both define the same underlying values.
+The single source. Declares each design value as a `--so-*` custom property: `:root` carries the Warm Ops palette, Balanced density and the Geist pairing, and each `.theme-*`, `.density-*` and `.typography-*` class overrides only what it changes. This file is also what non-Tailwind contexts read directly (inline styles, third-party library theming, SVG).
+
+### 2. `web/src/styles/global.css`
+
+Bridges those properties onto Tailwind with `@theme inline`, so `--color-accent` resolves to `var(--so-accent)` rather than to a baked hex. That indirection is what lets a class swap on `<html>` restyle the running dashboard, and it is why utilities must never be given a literal colour.
 
 ```css
-@theme {
-  /* Brand colors */
-  --color-accent: #38bdf8;
-  --color-accent-dim: #0ea5e9;
-
-  /* State colors */
-  --color-success: #10b981;
-  --color-warning: #f59e0b;
-  --color-danger: #ef4444;
-
-  /* Text colors */
-  --color-text-primary: #e2e8f0;
-  --color-text-secondary: #94a3b8;
-  --color-text-muted: #8b95a5;
-
-  /* Background colors */
-  --color-bg-base: #0a0a12;
-  --color-bg-surface: #0f0f1a;
-  --color-bg-card: #13131f;
-  --color-bg-card-hover: #181828;
-
-  /* Border colors */
-  --color-border: #1e1e2e;
-  --color-border-bright: #2a2a3e;
-
-  /* Typography */
-  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'Geist Mono Variable', ui-monospace, monospace;
-
-  /* Spacing (8px base) */
-  --spacing-1: 4px;
-  --spacing-2: 8px;
-  --spacing-3: 12px;
-  --spacing-4: 16px;
-  --spacing-5: 20px;
-  --spacing-6: 24px;
-  --spacing-8: 32px;
-  --spacing-10: 48px;
-  --spacing-12: 64px;
-
-  /* Radii */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
+@theme inline {
+  --color-accent: var(--so-accent);
+  --color-success: var(--so-success);
+  --font-mono: var(--so-font-mono);
+  --spacing-card: var(--so-density-card-padding);
+  --spacing-section-gap: var(--so-density-section-gap);
 }
 ```
 
-### CSS Custom Properties
+### 3. Components
 
-Exported to `web/src/styles/design-tokens.css` for non-Tailwind contexts (e.g. inline styles, third-party library theming, SVG styling).
+Consume the resulting utilities (`text-accent`, `bg-card`, `p-card`, `gap-section-gap`) and never a raw hex, font stack, or pixel value. `scripts/check_web_design_system.py` runs as a PostToolUse hook on every edit under `web/src/` and enforces this.
 
 ### Motion Config
 
-Exported to `web/src/lib/motion.ts` as TypeScript constants. Import and use:
+Exported from `web/src/lib/motion.ts` as TypeScript constants. Components read `useAnimationPreset()` where the animation preference should apply, and import the constants directly only where it should not:
 
 ```tsx
-import { springDefault, tweenDefault, cardEntrance, staggerChildren } from "@/lib/motion";
+import { cardEntrance } from "@/lib/motion";
 
 <motion.div variants={cardEntrance} initial="hidden" animate="visible">
   ...
@@ -764,14 +741,13 @@ import { springDefault, tweenDefault, cardEntrance, staggerChildren } from "@/li
 
 | Resource | Location |
 |----------|----------|
-| Brand identity rationale | [Brand & UX](brand-and-ux.md) |
+| Brand identity, voice rules, and visual rationale | [Brand & UX](brand-and-ux.md) |
 | Page structure and navigation | [Page Structure & IA](page-structure.md) |
 | WCAG verification script | `scripts/wcag_check.py` |
+| Design-system enforcement hook | `scripts/check_web_design_system.py` |
+| Raw-identifier gate | `scripts/check_no_raw_id_in_ui.py` |
 | CSS design tokens | `web/src/styles/design-tokens.css` |
+| Tailwind bridge | `web/src/styles/global.css` |
 | Motion presets | `web/src/lib/motion.ts` |
 | CSP nonce reader | `web/src/lib/csp.ts` |
 | Structured logger factory | `web/src/lib/logger.ts` |
-| Winning prototype (visual reference) | `research/762-ux-mockups` branch, `mockups/direction-cd/` |
-| Design exploration mockups | `feat/765-design-exploration` branch, `mockups-v2/` |
-| Design tokens implementation | #775 |
-| Parent UX overhaul issue | #762 |

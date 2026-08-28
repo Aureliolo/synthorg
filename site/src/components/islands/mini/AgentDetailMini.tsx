@@ -94,7 +94,7 @@ export default function AgentDetailMini({ tick }: Props) {
 
       <div className="mt-2 text-center">
         <span className="text-xs px-2 py-0.5 rounded-full border inline-block dp-pill">
-          Role-driven teams with career progression
+          Role-bound agents with performance tracking
         </span>
       </div>
     </div>

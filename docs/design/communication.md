@@ -10,11 +10,6 @@ page covers transport-level concerns: patterns, standards, the message
 contract, and bus configuration. Federation, orchestration, and the event
 stream are split into sibling pages.
 
-> **Strategic agents** (C-suite, VP, Director) receive additional anti-trendslop
-> mitigation through the [Strategy module](strategy.md), which injects
-> constitutional principles, multi-lens analysis, and confidence calibration
-> into their system prompts.
-
 ## Related design docs
 
 * [A2A External Gateway](communication-a2a.md): optional federation with external A2A-compatible systems (gateway, agent cards, concept mapping, SSE streaming, outbound client).

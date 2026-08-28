@@ -259,7 +259,7 @@ nav:
       - reference/research.md
       - reference/standards.md
       - Implicit Conventions: reference/conventions.md
-      - Framework Comparison: reference/comparison.md
+      - Ecosystem Comparison: reference/comparison.md
       - Error Reference: errors.md
       - Error Code Reference: reference/errors.md
       - Cross-Deployment Privacy: cross-deployment-privacy.md

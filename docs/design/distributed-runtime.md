@@ -12,8 +12,7 @@ This page describes the **first distributed backend** that plugs into the existi
 This page is for:
 
 - Operators deploying SynthOrg beyond a single host
-- Contributors adding a new distributed backend behind the pluggable `MessageBus` factory after the first one ships
-- Reviewers of Issues #236 and #237
+- Contributors adding a new distributed backend behind the pluggable `MessageBus` factory alongside the NATS one
 
 If you are running SynthOrg on one machine for one organisation, you can skip this page. Nothing changes for you.
 
@@ -27,7 +26,7 @@ The in-memory bus hits three hard limits once a deployment wants to move past si
 2. **No multi-process execution.** `asyncio.Queue` cannot cross process boundaries. All agent execution, all tool invocations, and all LLM calls funnel through one Python event loop. Horizontally scaling the execution layer, or isolating expensive agents on a dedicated host, is impossible without a transport that works across processes.
 3. **No external observability.** The bus is invisible to anything outside Python. You cannot inspect channels, replay history, or measure queue depth from a terminal, a Prometheus scrape, or a Grafana dashboard without adding application-level code for every metric.
 
-These limits are acceptable for `Phase 1: Local Single-Process` in the [Scaling Path](../roadmap/future-vision.md#scaling-path). They are the reason `Phase 2: Local Multi-Process` exists.
+These limits are acceptable for single-process operation, `Phase 1: Local Single-Process` in the [Scaling Path](../roadmap/future-vision.md#scaling-path). The NATS backend and distributed task queue described below are the `Phase 2: Local Multi-Process` answer to them, implemented and opt-in.
 
 ---
 
@@ -70,7 +69,7 @@ Five candidates were evaluated against the constraints of the existing `MessageB
 
 ### Per-candidate narratives
 
-**NATS JetStream.** Pull consumers map one-to-one onto the `receive(timeout=t)` semantics the existing Protocol exposes. Per-subscriber durable consumers replace per-(channel, subscriber) `asyncio.Queue` without any impedance mismatch. A single stream with `LimitsPolicy` and `MaxMsgsPerSubject` preserves the existing bounded-history semantic natively, without application-level bookkeeping. The task queue in Phase 4 uses a second stream with `WorkQueuePolicy` for the claim/ack lifecycle. Footprint is the smallest of the credible candidates, which matters for the default case where a user opts in and expects "run `docker compose --profile distributed up`" to be cheap. License is Apache 2.0, client is official and asyncio-native.
+**NATS JetStream.** Pull consumers map one-to-one onto the `receive(timeout=t)` semantics the existing Protocol exposes. Per-subscriber durable consumers replace per-(channel, subscriber) `asyncio.Queue` without any impedance mismatch. A single stream with `LimitsPolicy` and `MaxMsgsPerSubject` preserves the existing bounded-history semantic natively, without application-level bookkeeping. The task queue uses a second stream with `WorkQueuePolicy` for the claim/ack lifecycle. Footprint is the smallest of the credible candidates, which matters for the default case where a user opts in and expects "run `docker compose --profile distributed up`" to be cheap. License is Apache 2.0, client is official and asyncio-native.
 
 **Valkey/Redis Streams.** Functionally a close second. `XADD` + `XREADGROUP BLOCK` map cleanly to `publish()` / `receive()`, and consumer groups give per-subscriber claims. The blocker is licensing: Redis 7.4+ is now SSPL/RSALv2 (non-OSS), which matters for a BUSL-licensed project that wants to stay compatible with downstream packaging. The mitigation is pinning Valkey 7.2+ (BSD fork, drop-in via `redis.asyncio`). If the first distributed backend were Redis/Valkey, the design doc and install instructions would have to lead with this license distinction, which is operational friction for a feature most users never touch. Workable but adds narrative weight.
 
@@ -78,11 +77,11 @@ Five candidates were evaluated against the constraints of the existing `MessageB
 
 **Kafka (KRaft).** Strongest replay story in the list and unmatched for per-partition ordering at scale. Overkill for a first distributed backend in a pre-alpha project: ~400 MB JVM image, ~512 MB RAM idle, partition planning, consumer group rebalancing, and a work-queue story that awkwardly reuses partitions as worker slots. Good fit later if SynthOrg's analytics side ever needs Kafka; not a good first step.
 
-**ZeroMQ brokerless.** The ClawTeam research note referenced in Issue #236 uses this pattern. Zero extra containers, pure Python library. But ZMQ gives us sockets, not a bus: no durability, no replay, no dead-letter, no built-in per-subscriber queues, and delivery is at-most-once unless we layer on a DIY sqlite sidecar. Attractive for zero-container deployment, rejected because "first distributed backend" should be a real distributed system, not a partially-rebuilt one.
+**ZeroMQ brokerless.** An internal research note on brokerless designs surveyed this pattern. Zero extra containers, pure Python library. But ZMQ gives us sockets, not a bus: no durability, no replay, no dead-letter, no built-in per-subscriber queues, and delivery is at-most-once unless we layer on a DIY sqlite sidecar. Attractive for zero-container deployment, rejected because "first distributed backend" should be a real distributed system, not a partially-rebuilt one.
 
-### Decision: NATS JetStream
+### Why NATS JetStream
 
-NATS JetStream wins on three dimensions that matter most for a first distributed backend:
+NATS JetStream was chosen on three dimensions that matter most for a first distributed backend:
 
 1. **Protocol fit without impedance mismatch.** The pull-model `receive()` Protocol was written before NATS was considered, yet JetStream pull consumers are a one-line mapping to the same semantics. Every other candidate requires adapter code to bridge the push/pull gap, and at least one (Kafka) requires partition planning that has no analogue in the current Protocol.
 
@@ -90,7 +89,7 @@ NATS JetStream wins on three dimensions that matter most for a first distributed
 
 3. **Future-proof without lock-in.** JetStream's primitives (streams, durable consumers, KV buckets, work queues) map naturally onto what the design needs today *and* leave room for what the project will want later (leaf nodes for multi-region, KV for distributed config). Apache 2.0 license, official asyncio client, active project.
 
-NATS JetStream is the shipped distributed backend. The comparison above preserves the full evaluation so that a future change of backend (or addition of a second adapter) can be audited against the same criteria.
+NATS JetStream is the shipped distributed backend, implemented in `src/synthorg/communication/bus/nats.py`. The comparison above preserves the full evaluation so that a future change of backend (or addition of a second adapter) can be audited against the same criteria.
 
 #### NATS client library
 
@@ -112,7 +111,7 @@ A single JetStream stream named `SYNTHORG_BUS` holds all message bus traffic.
   - `synthorg.bus.direct.<a>:<b>` for lazily-created `DIRECT` channels (where `a < b` are the sorted agent IDs, matching the in-memory `@a:b` convention)
 - **Sanitization**: JetStream subject tokens accept alphanumerics, `-`, `_`, and `.` as a separator. Channel names with any other character get a stable sanitization pass before they become subject tokens. The original channel name stays in the `Channel` registry so protocol callers see the names they passed in.
 
-The Phase 4 task queue uses a **separate** stream `SYNTHORG_TASKS` with `WorkQueuePolicy` retention. Separation matters because the two streams have incompatible retention requirements: the bus retains the last N messages per subject, the task queue deletes messages after ack.
+The distributed task queue uses a **separate** stream `SYNTHORG_TASKS` with `WorkQueuePolicy` retention. Separation matters because the two streams have incompatible retention requirements: the bus retains the last N messages per subject, the task queue deletes messages after ack.
 
 ### Per-message TTL (NATS 2.11+)
 
@@ -138,7 +137,7 @@ Each `(channel_name, subscriber_id)` pair in the in-memory backend owns its own 
 - **Durable name**: `<sanitized_channel>__<sanitized_subscriber>`. Double underscore separator because JetStream durable names cannot contain `.` or spaces.
 - **Filter subject**: the subject for the channel (`synthorg.bus.channel.<name>` or `synthorg.bus.direct.<a>:<b>`).
 - **Ack policy**: explicit ack. The backend acks on successful fetch (see below).
-- **Max deliver**: 1 at the bus layer (we do not retry; callers do not expect retry semantics from `receive()`). The Phase 4 task queue uses its own consumers with higher `max_deliver`.
+- **Max deliver**: 1 at the bus layer (we do not retry; callers do not expect retry semantics from `receive()`). The distributed task queue uses its own consumers with higher `max_deliver`.
 - **`receive(timeout=t)` implementation**: `consumer.fetch(batch=1, timeout=t)`. Returns a `DeliveryEnvelope` on success, `None` on timeout or shutdown.
 
 ### Ack semantics
@@ -148,7 +147,7 @@ The `MessageBus` Protocol does not expose ack to callers. `receive()` returns a 
 The NATS backend matches that semantic by acking immediately on successful fetch, before returning the envelope to the caller. Consequences:
 
 - **At-most-once from the caller's point of view.** If a caller crashes between `receive()` returning and the caller processing the envelope, the message is gone. Same as in-memory.
-- **At-least-once is not promised at the bus layer.** The Phase 4 task queue does not rely on bus-layer at-least-once. It speaks to JetStream directly with manual ack and its own `max_deliver` configuration, precisely because worker crash recovery needs different semantics than bus delivery.
+- **At-least-once is not promised at the bus layer.** The distributed task queue does not rely on bus-layer at-least-once. It speaks to JetStream directly with manual ack and its own `max_deliver` configuration, precisely because worker crash recovery needs different semantics than bus delivery.
 
 This is the right split. The bus layer gives callers a simple pull-and-forget experience matching the existing Protocol. The task queue layer gets the delivery semantics it needs by talking to JetStream under the bus.
 
@@ -194,7 +193,7 @@ All existing bus events (`COMM_BUS_STARTED`, `COMM_CHANNEL_CREATED`, `COMM_MESSA
 
 ## Task Queue Design
 
-The task queue in Phase 4 builds on top of the NATS backend but does **not** go through the `MessageBus` Protocol. It is a separate concern with different delivery semantics (at-least-once, manual ack, retry with backoff) that the bus layer does not promise.
+The distributed task queue builds on top of the NATS backend but does **not** go through the `MessageBus` Protocol. It is a separate concern with different delivery semantics (at-least-once, manual ack, retry with backoff) that the bus layer does not promise. It ships in `src/synthorg/workers/` and is exercised by integration tests against a real NATS container; it has not been run against a genuine multi-host deployment.
 
 ### Stream and subjects
 
@@ -205,7 +204,7 @@ A second JetStream stream named `SYNTHORG_TASKS` with `WorkQueuePolicy` retentio
 
 ### Worker lifecycle
 
-Workers are separate Python processes launched via `synthorg worker start` (Phase 4 adds the Go CLI wrapper). Each worker:
+Workers are separate Python processes launched via `synthorg worker start` (the Go CLI wrapper around `python -m synthorg.workers`). Each worker:
 
 1. **Connects** to NATS and to the backend HTTP API (separate connections; NATS for claim, HTTP for transitions).
 2. **Claims** a ready task by fetching from `SYNTHORG_TASKS` with a durable consumer. Manual ack. Two independent controls bound the consumer. `ack_wait` (a time deadline, default 300 seconds) is the per-message window within which a claim must be acked or extended before JetStream redelivers it; `heartbeat_interval_seconds` is configured strictly below `ack_wait_seconds` so an in-progress working-ack extends the deadline before it lapses. `max_ack_pending` (a count) is the cap on unacknowledged claims in flight across the shared consumer: the backpressure lever that makes a slow pool throttle intake instead of buffering unboundedly. The two are orthogonal, one bounding per-message latency and the other bounding concurrent inflight executions.
@@ -228,13 +227,13 @@ The distributed worker preserves this by calling the backend HTTP API for every 
 
 ### Dispatcher hook
 
-The existing `TaskEngine.register_observer(callback)` at `src/synthorg/engine/task_engine.py:135` is the clean extension seam. Phase 4 adds a distributed dispatcher that:
+The existing `TaskEngine.register_observer(callback)` at `src/synthorg/engine/task_engine.py:180` is the extension seam the distributed dispatcher uses:
 
-1. Registers as an observer at engine startup, but only when `config.queue.enabled` is true.
-2. Watches `TaskStateChanged` events for the transition to the runnable state.
-3. On match, publishes a claim message to `synthorg.tasks.ready.<task_id>` on the `SYNTHORG_TASKS` stream.
+1. It registers as an observer at engine startup, but only when `config.queue.enabled` is true.
+2. It watches `TaskStateChanged` events for the transition to the runnable state.
+3. On match, it publishes a claim message to `synthorg.tasks.ready.<task_id>` on the `SYNTHORG_TASKS` stream.
 
-Because the dispatcher only observes and publishes, the engine's single-writer path is unchanged. Reads still bypass the mutation queue as they do today. Tests with `queue.enabled = false` show byte-identical behaviour to the pre-PR engine.
+Because the dispatcher only observes and publishes, the engine's single-writer path is unchanged. Reads still bypass the mutation queue as they do today. Tests with `queue.enabled = false` show byte-identical behaviour to the in-process-only engine.
 
 ---
 
@@ -246,7 +245,7 @@ Because the dispatcher only observes and publishes, the engine's single-writer p
 
 The distributed **task queue** is governed by a separate switch, `config.queue.enabled`, and **ships `false`**. This is the deliberate, validated shipped default:
 
-- **Single-node (the default, `queue.enabled: false`)**: tasks dispatch in-process through the `TaskEngine` mutation queue. No NATS container, no worker processes, lowest latency. This is correct for one synthetic organisation on one host and is what the overwhelming majority of deployments should run. Nothing in this section applies to them.
+- **Single-node (the default, `queue.enabled: false`)**: tasks dispatch in-process through the `TaskEngine` mutation queue. No NATS container, no worker processes, lowest latency. This is correct for a single deployment on one host and is what the overwhelming majority should run. Nothing in this section applies to them.
 - **Multi-instance (opt-in, `queue.enabled: true`)**: required only when execution must span processes or hosts. The operator sets `queue.enabled: true`, points `communication.message_bus.nats` at a reachable NATS JetStream server, and runs one or more worker pools via `synthorg worker start`. With the switch off the dispatcher observer, the JetStream queue, the dead-letter consumer, the dedup pruner, and the heartbeat subscriber are never constructed, so the in-process path is byte-identical to a build without the distributed code.
 
 The default is `false` because the distributed path costs an extra service to operate and a network hop per dispatch for a capability most deployments never need; turning it on is a conscious scaling decision, not a default users back into.
@@ -370,7 +369,7 @@ Operator-relevant ones:
 
 Once NATS is running, operators can inspect bus state without a Python interpreter:
 
-- `nats stream ls`: list streams, including `SYNTHORG_BUS` and (if Phase 4 is running) `SYNTHORG_TASKS`
+- `nats stream ls`: list streams, including `SYNTHORG_BUS` and (when the distributed task queue is running) `SYNTHORG_TASKS`
 - `nats stream info SYNTHORG_BUS`: message counts, subject cardinality, retention policy
 - `nats consumer ls SYNTHORG_BUS`: per-(channel, subscriber) durable consumers with pending / delivered / ack-pending counts
 - `nats sub 'synthorg.bus.channel.>'`: tail messages across all bus channels in real time
@@ -382,7 +381,8 @@ Once NATS is running, operators can inspect bus state without a Python interpret
 
 ## Open Questions
 
-Points to resolve during Phase 1 review. Each becomes a decision the Phase 2 implementation commits to.
+Points raised while this backend was designed, kept with the recommendation each
+one carried, so a later adapter can be argued against the same reasoning.
 
 - **Dynamic channel registry source of truth.** JetStream KV bucket vs eager channel creation from config vs a distributed consensus store. Recommendation: KV bucket + config bootstrap, as described in "Channel registry" above. KV is already a JetStream primitive, no extra infrastructure.
 - **Should `publish()` wait for server ack?** `nats-py` exposes fire-and-forget and ack-waiting publish variants. In-memory is synchronous so a caller knows the message reached the queue before `publish()` returns. Recommendation: ack-waiting publish in the default code path, with a config knob to downgrade to fire-and-forget for latency-sensitive deployments. Adds ~1 ms per publish, preserves semantics.
@@ -401,5 +401,4 @@ Points to resolve during Phase 1 review. Each becomes a decision the Phase 2 imp
 - [Notifications](notifications.md): notification dispatcher and sinks
 - [Architecture: Tech Stack](../architecture/tech-stack.md): Message Bus row in the stack table
 - [Roadmap: Scaling Path](../roadmap/future-vision.md#scaling-path): Phase 2 Local Multi-Process constraints
-- [Issue #236](https://github.com/Aureliolo/synthorg/issues/236): distributed/persistent message bus backend
-- [Issue #237](https://github.com/Aureliolo/synthorg/issues/237): distributed task queue
+- [Roadmap](../roadmap/index.md): the NATS JetStream queue, worker pool, dead-letter consumer and heartbeat subscriber, under what is built and exercised

@@ -66,8 +66,7 @@ short-circuit before the DB row is consulted).
 
 Examples: `api.server_port`, `api.server_host`, `api.api_prefix`,
 `communication.nats_url`, `workers.count`, `observability.log_directory`,
-`api.cors_allowed_origins`, `api.trusted_proxies`,
-`api.rate_limiter_enabled`.
+`api.cors_allowed_origins`, `api.trusted_proxies`.
 
 ### Category 3: Bootstrap secret (init-time exception)
 
@@ -180,6 +179,15 @@ that exact name instead. Settings using overrides:
 | `memory/fine_tune_image` | `SYNTHORG_FINE_TUNE_IMAGE` |
 | `memory/fine_tune_data_volume` | `SYNTHORG_FINE_TUNE_DATA_VOLUME` |
 | `integrations/tunnel_state_dir` | `SYNTHORG_TUNNEL_STATE_DIR` |
+| `budget/coordination_metrics_max_entries` | `SYNTHORG_BUDGET_COORDINATION_METRICS_MAX_ENTRIES` |
+| `budget/benchmark_provider` | `SYNTHORG_BUDGET_BENCHMARK_PROVIDER` |
+| `budget/model_capability_overrides` | `SYNTHORG_BUDGET_MODEL_CAPABILITY_OVERRIDES` |
+| `budget/baseline_window_size` | `SYNTHORG_BUDGET_BASELINE_WINDOW_SIZE` |
+| `telemetry/enabled` | `SYNTHORG_TELEMETRY_ENABLED` |
+
+The last five happen to equal the auto-derived name; they are listed because
+the registry entry sets `env_var_override` explicitly, not because the
+operator-facing name differs from what auto-derivation would produce.
 
 When `env_var_override` is set, the auto-derived name is **not**
 consulted: only the override. This keeps the operator surface clean:
@@ -245,7 +253,7 @@ rate_limiter_enabled = resolved.value
 
 Used by:
 
-- `synthorg.api.app._build_rate_limiter_enabled` (rate-limiter middleware boot)
+- `synthorg.api.lifecycle_helpers.boot_resolvers.resolve_rate_limiter_enabled` (rate-limiter middleware boot)
 - `synthorg.api.app_builders._bootstrap_app_logging` (log directory)
 - `synthorg.observability.setup._apply_console_level_override` (console log level)
 
@@ -327,6 +335,7 @@ registered default is then applied.
 | `parse_str_tuple_json` | `(str) -> tuple[str, ...] \| None` | JSON list-of-strings into a tuple. |
 | `parse_json_int_pair_dict` | `(str) -> dict[str, list[int]] \| None` | JSON `{op: [int, int]}` (e.g. `PerOpRateLimitConfig.overrides`). Top-level shape only; the owning config's `mode="before"` validator promotes inner lists to tuples and rejects negatives. |
 | `parse_json_int_dict` | `(str) -> dict[str, int] \| None` | JSON `{op: int}` (e.g. `PerOpConcurrencyConfig.overrides`). Top-level shape only; the owning validator rejects non-int / negative values. |
+| `parse_json_str_dict` | `(str) -> dict[str, str] \| None` | JSON `{key: str}`. Validates only top-level shape (an object keyed and valued by strings); the owning config validates the values (e.g. against a canonical set). |
 
 The two JSON-dict parsers deliberately validate only the top-level
 JSON structure. Per-entry semantics (non-blank keys, tuple arity,
@@ -606,41 +615,72 @@ violation, not a covered one.
 
 ### Security toggle write guardrail
 
-`security.enabled`, `audit_enabled`, `post_tool_scanning_enabled`, and
-`output_scan_policy_type` are hot-reloadable, but **weakening** them is a
-deliberate-action decision: turning a boolean off, or switching
-`output_scan_policy_type` to `log_only`, requires `confirm=True` plus a
-non-blank `reason` and actor at the write path
-(`settings/write_governance.py`, enforced centrally in
-`SettingsService.set` / `set_many`, surfaced via the dedicated
-`POST /settings/security/import` endpoint). Enabling / tightening applies
-immediately with no gate. The per-request interceptor reads the live config
-through `app_state.security_runtime_config`, which the
-`SecurityBridgeSettingsSubscriber` swaps on an authorised change.
+`security.enabled`, `audit_enabled`, `post_tool_scanning_enabled` and
+`tls_verify` are hot-reloadable booleans; turning any of them off is a
+deliberate-action decision. Three more `security` keys are guarded on their
+value rather than on truthiness: switching `output_scan_policy_type` to
+`log_only`, narrowing `auth_token_bytes` (the byte width of minted session,
+password-reset, refresh and OAuth-state tokens), and moving
+`mcp_self_consumer_mode` off `disabled` (opening the agent -> SynthOrg-MCP
+bridge). All seven need `confirm=True` plus a non-blank `reason` and actor at
+the write path (`settings/write_governance.py` for enforcement,
+`settings/write_governance_policy.py` for the per-namespace judgement of which
+transition weakens; enforced centrally in `SettingsService.set` / `set_many`,
+surfaced via the dedicated `POST /settings/security/import` endpoint).
+Enabling / tightening applies immediately with no gate. The per-request
+interceptor reads the live config through `app_state.security_runtime_config`,
+which the `SecurityBridgeSettingsSubscriber` swaps on an authorised change.
 
-The same guardrail covers four more namespaces: `engine` (the completion-oracle
-keys, the agent middleware, and the three
-human-ask toggles `ask_policy_enabled`, `clarification_enabled` and
-`scoping_enabled`, whose off direction removes the only in-run path by which an
-agent defers a material, hard-to-reverse choice to a human), `tools` (MCP
-sandbox isolation and each
-destructive tool family's enable + targets), `output_style` (disable, shadow,
-exemptions, pack swap), and `providers` (`gateway_enabled`,
-`failover_enabled`, `failover_routes`).
+The same guardrail covers seven more namespaces:
+
+- `engine`: the completion-oracle enable and shadow-mode toggles
+  (`completion_oracle_enabled`, `completion_oracle_shadow_mode`), the agent
+  middleware toggle (`enable_agent_middleware`), the three human-ask toggles
+  `ask_policy_enabled`, `clarification_enabled` and `scoping_enabled` (whose
+  off direction removes the only in-run path by which an agent defers a
+  material, hard-to-reverse choice to a human), `ask_policy_extra_directives`
+  (guarded on adding a directive, since one addition can neutralise the
+  standing deferral directive org-wide), the three stakes floors
+  (`completion_oracle_min_stakes`, `red_team_min_stakes`,
+  `capability_park_min_stakes`, guarded on raising), and the four capability
+  floors (`capability_floor_low`, `capability_floor_normal`,
+  `capability_floor_high`, `capability_floor_critical`, guarded on lowering).
+- `tools`: MCP sandbox isolation (`mcp_sandbox_enabled`, `mcp_sandbox_network`,
+  `mcp_sandbox_cpus`) and each destructive tool family's enable + targets
+  (`deploy_tools_enabled` / `deploy_tools_targets`, `publish_tools_enabled` /
+  `publish_tools_targets`).
+- `output_style`: disable, shadow, exemptions, pack swap.
+- `providers`: `gateway_enabled`, `failover_enabled`, `failover_routes`.
+- `integrations`: `webhook_receipt_retention_days` (shortening only).
+- `api`: `rate_limiter_enabled`, `rate_limit_time_unit`, and the four
+  request-cap keys (`rate_limit_floor_max_requests`,
+  `rate_limit_unauth_max_requests`, `rate_limit_auth_max_requests`,
+  `rate_limit_auth_endpoint_max_requests`).
+- `self_improvement`: `code_modification_enabled`.
 
 The guarded direction differs by what turning a toggle on actually does.
 
 `providers.gateway_enabled` ships **off**, so its guarded direction is the plain
 one and unset counts as off: the first stored `true` needs
 confirm+reason+actor, because that is what opens an HTTP surface dispatching
-billed LLM calls from outside the runtime.
+billed LLM calls from outside the runtime. `self_improvement.code_modification_enabled`
+and `security.mcp_self_consumer_mode` ship the same way: the first move off
+`false` / `disabled` is guarded, because each opens the widest blast radius in
+its area (the meta-loop proposing changes to its own source; every running
+agent reaching the product's own MCP tool surface).
 
 For the three **human-ask toggles** (`ask_policy_enabled`,
 `clarification_enabled`, `scoping_enabled`) it is the mirror image: turning one
 off is what removes the deferral path, so `true` -> `false` and `unset` ->
 `false` need confirm+reason+actor (unset counts because it resolves to the
 registered `true`), while `false` -> `true` restores the posture and is
-unguarded.
+unguarded. The completion-oracle toggle and the three stakes floors follow the
+same logic as their own defaults: disabling the oracle or raising a floor
+removes review coverage and is guarded, while the four capability floors are
+guarded on lowering, since dropping all four to the bottom rung makes every fit
+read as an exact match and logs no concession. The `api` rate-limit keys are
+guarded on whatever admits more traffic: disabling the limiter, shortening
+`rate_limit_time_unit`, or raising any of the four caps.
 
 Whichever direction is guarded, the guardrail is a live-write control, not an
 upgrade-time one: a
@@ -648,16 +688,19 @@ deployment that never wrote an explicit row inherits the new default on its
 next boot with no prompt, so a default flip on any of these belongs in the
 release notes.
 
-Seven `tools` keys this guardrail covers are also frozen `construction-only` in
+Three `tools` keys this guardrail covers are also frozen `construction-only` in
 `scripts/setting_live_or_compose_set_baseline.txt`: `mcp_sandbox_enabled`,
-`mcp_sandbox_network`, `mcp_sandbox_cpus`, `mcp_sandbox_memory_limit`,
-`mcp_sandbox_pids_limit`, `forge_tools_enabled` and `chat_tools_enabled`. The
-combination is worth naming: an operator completes the confirm + reason + actor
-prompt, the write is accepted and the dashboard shows the new value, and the
-sandbox isolation posture stays as it was until the next runtime rebuild. For
-these the gap is a security-posture one rather than a convenience one, so they
-are the priority set for the follow-up that makes each key live, ahead of the
-timeout and limit entries sitting beside them in the baseline.
+`mcp_sandbox_network` and `mcp_sandbox_cpus`. Two more sandbox tunables sit in
+that same baseline (`mcp_sandbox_memory_limit`, `mcp_sandbox_pids_limit`) but
+are not part of the write-governance guardrail. The combination is worth
+naming for the three that are both: an operator completes the confirm +
+reason + actor prompt, the write is accepted and the dashboard shows the new
+value, and the sandbox isolation posture stays as it was until the next
+runtime rebuild. `forge_tools_enabled` and `chat_tools_enabled` have since
+been made live (watched by `RuntimeReloadSettingsSubscriber`, which reloads
+the agent-tools wiring on change) and dropped from the baseline; the three
+guarded MCP sandbox keys remain the priority set for the same follow-up,
+ahead of the timeout and limit entries sitting beside them in the baseline.
 
 The two **declared-failover** keys ship **off**, so their guarded direction is
 the plain one and unset counts as off. `providers.failover_enabled` needs
@@ -754,8 +797,8 @@ Enforced by `scripts/check_long_running_loops_have_kill_switch.py`
 (`_ticket_cleanup_loop`, `ProviderHealthProber._run_loop`,
 `_webhook_receipt_cleanup_loop`) are lint-enforced. Per-call
 non-loop surfaces such as `NotificationDispatcher.dispatch` are
-covered by project convention and reviewed by CodeRabbit / human
-review, but they sit outside the AST gate's loop-shaped detection.
+covered by project convention and caught in review, but they sit
+outside the AST gate's loop-shaped detection.
 
 ## Sandbox image cache
 

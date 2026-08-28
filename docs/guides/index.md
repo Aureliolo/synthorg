@@ -5,7 +5,22 @@ description: Practical how-to guides for configuring and operating SynthOrg.
 
 # Guides
 
-Practical guides for configuring, operating, and extending your synthetic organisation. Each guide is self-contained with a clear goal. Start with the Quickstart Tutorial if you are new to SynthOrg. Note: the platform, configuration surface, and the agent runtime that executes work are available today, exercised by deterministic e2e harnesses with a scripted provider; operator-facing maturity and real-provider acceptance are in active development (see the [Roadmap](../roadmap/index.md)).
+**Describe a piece of software, and the work is split into parts that stand alone, built in
+parallel, and each part checked by something that did not write it. On your hardware,
+against the models you choose.**
+
+These guides cover the machinery that runs that process: standing up the platform, and
+configuring the agents, roles, and approval gate that carry out and check the work. Each
+guide is self-contained with a clear goal.
+
+!!! warning "Pre-alpha"
+
+    SynthOrg is pre-alpha. The loop has been driven live against a real deployment twelve
+    times and has never reached the assembly stage: no run has produced an assembled
+    deliverable, and no completion has been recorded. Nothing on these pages promises you
+    working software; they describe how the system is built and how it behaves, which you
+    can check against the code. See the [Roadmap](../roadmap/index.md) for what is wired
+    versus what is intent.
 
 !!! tip "New to SynthOrg?"
 

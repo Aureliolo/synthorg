@@ -65,7 +65,6 @@ This page is the developer-oriented reference for the problem-type URIs and the 
 | 2013 | `STEERING_KIND_INVALID` | Steering directive kind not recognised |
 | 2014 | `STEERING_DIRECTIVE_FIELD_BLANK` | Steering directive required field blank |
 | 2015 | `STEERING_TASK_PROJECT_MISMATCH` | Steering task does not belong to the project |
-| 2016 | `ESCALATION_DECISION_INVALID` | Human-supplied escalation decision is invalid or not accepted by the active processor |
 | 2017 | `GIT_BACKEND_CONFIG_INVALID` | Git-backend configuration invalid for the selected strategy |
 | 2018 | `ENVIRONMENT_CONFIG_INVALID` | Reproducible-environment configuration invalid for the selected strategy |
 | 2019 | `WORKFLOW_DEFINITION_INVALID` | Workflow definition failed validation at activation time |
@@ -194,6 +193,7 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 6007 | `COST_FORECAST_REJECTED` | Cost forecast was rejected |
 | 6008 | `RESEARCH_BUDGET_EXCEEDED` | Research budget exhausted |
 | 6009 | `GATEWAY_BUDGET_EXHAUSTED` | Run token/cost ceiling exhausted at the LLM gateway |
+| 6010 | `RUN_HARD_TOKEN_CEILING_EXCEEDED` | Per-brief hard token ceiling exceeded (token-denominated twin of 6006) |
 
 ## Provider / Integration (7xxx)
 
@@ -212,6 +212,7 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 7010 | `CONVERSATIONAL_PROPOSE_RESPONSE_INVALID` | Chief-of-Staff proposer returned an invalid response |
 | 7011 | `CHARTER_INTERVIEW_RESPONSE_INVALID` | Charter interview agent returned an invalid response |
 | 7012 | `STAKES_MODEL_UNAVAILABLE` | No configured tool-capable model meets the tier this task's stakes require |
+| 7013 | `PROVIDER_PAYMENT_REQUIRED` | Upstream 402: billing must be topped up before the model will serve (non-retryable) |
 
 ## Internal (8xxx)
 
@@ -277,6 +278,8 @@ All share the same `type` URI; the numeric code is the discriminator.
 | 8059 | `SUBSYSTEM_GRAPH_INVALID` | Subsystem dependency graph is invalid |
 | 8060 | `SUBSYSTEM_ACTIVATION_FAILED` | A subsystem's activation raised during a reconciliation pass |
 | 8061 | `SUBSYSTEM_DECLINED` | A subsystem declined activation on a condition it named |
+| 8062 | `PLAN_REVIEW_UNAVAILABLE` | Every seated reviewer's provider failed; the plan carries no quality signal |
+| 8063 | `CREDENTIAL_CATALOG_UNAVAILABLE` | The always-on credential catalog could not be built during boot |
 
 ## Content negotiation
 

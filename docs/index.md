@@ -1,12 +1,57 @@
 # SynthOrg Documentation
 
-**An AI software company that reports to you**: a self-hostable platform where a synthetic organisation of role-based AI agents plans, builds, and proves software under budgets, an oversight mode you set, and a gate on every action.
+**Describe a piece of software, and the work is split into parts that stand alone, built in
+parallel, and each part checked by something that did not write it. On your hardware,
+against the models you choose.**
 
-SynthOrg lets you define agents with roles, hierarchy, budgets, and tools as a virtual organisation. The platform, infrastructure, and runtime are built and tested; the agent runtime, multi-agent coordinator, and work pipeline are wired and exercised by deterministic e2e harnesses. Operator-facing maturity and real-provider acceptance are the focus of current work.
+!!! warning "Pre-alpha, and not yet fully working"
 
-!!! warning "Honest status: pre-alpha"
+    The loop has been driven live twelve times and has never reached the assembly stage: no
+    run has produced an assembled deliverable. These pages describe how the system is built
+    and how it behaves, which you can check against the code. Expect bugs, missing polish,
+    and breaking changes. See the [Roadmap](roadmap/index.md) for what is wired versus what
+    is intent.
 
-    SynthOrg is **pre-alpha**. The platform, dashboard, CLI, persistence, provider layer, agent runtime, multi-agent coordinator, work pipeline spine, intake engine, sandbox lifecycle dispatch, and distributed-path consumers are all wired and exercised by deterministic e2e harnesses with a scripted provider (no real LLM spend). Operator-facing onboarding against a real provider and real workloads has not been exercised end to end by a human. Design-specification pages describe intended behaviour and mark per-area status; treat any gap between a spec and the code as the work, not the spec. See the [Roadmap](roadmap/index.md) for exactly what is available now versus in active development.
+---
+
+## The problem
+
+An agent working alone cannot hold a whole application: it does one thing at a time, and the
+twentieth damages the first. Adding agents does not fix that, because the binding constraint
+is not agent supply but **decomposition quality**. Splitting work so the parts are genuinely
+independent is the hard problem, and the one this system is built around.
+
+## The mechanism
+
+A tree does not have the single-agent failure mode, provided the merges hold. So an objective
+is decomposed into units that can each be built alone, the leaves build concurrently, each
+in its own workspace, and the tree is assembled from the bottom up.
+
+- **Decomposition** turns an objective into a tree of units, each with declared dependencies
+  and expected artefacts. A unit that is not atomic is split again. See
+  [Recursive Decomposition](design/recursive-decomposition.md).
+- **Dispatch** builds waves from the whole tree's dependency graph, so independent subtrees
+  run together. A unit whose declared inputs died is parked with the reason, never dispatched
+  onto dead work. See [Coordination](design/coordination.md).
+- **Execution** runs each unit in its own scoped workspace, sandboxed from the host, with a
+  governed tool surface. See [Agent Execution](design/agent-execution.md).
+- **Review** is done by something that did not write the work: the executor is excluded from
+  selection, and the archive refuses a verdict whose reviewer and executor match. An
+  independent check is a triage filter, not an authority. See
+  [Verification Quality](design/verification-quality.md).
+- **Assembly** is a gated stage of its own, not a side effect of the last unit finishing: an
+  accountable assembly task, then an evaluation pass scored against the plan's own criteria.
+  See [Initiative Tail](design/initiative-tail.md).
+
+## Where it runs
+
+Self-hosted, on your hardware. Every LLM dispatch names its own explicit `(provider, model)`
+pair, including local models, with no default to fall back on. No SynthOrg service sits in
+the path, so on the model path what leaves the machine is what your chosen provider needs,
+and against local models nothing does. Two outbound integrations exist and both ship off:
+[product telemetry](reference/telemetry.md) and
+[cross-deployment analytics](cross-deployment-privacy.md), each sending only what its own
+page documents, and only once you enable it.
 
 ---
 
@@ -14,19 +59,27 @@ SynthOrg lets you define agents with roles, hierarchy, budgets, and tools as a v
 
 <div class="grid cards" markdown>
 
--   :material-play-circle:{ .lg .middle } **Use SynthOrg**
+-   :material-play-circle:{ .lg .middle } **Run it**
 
     ---
 
-    Pick a template and stand up the SynthOrg platform via Docker.
+    Stand up the platform with Docker and configure it through the dashboard.
 
     [:octicons-arrow-right-24: User Guide](user_guide.md)
 
--   :material-code-braces:{ .lg .middle } **Develop SynthOrg**
+-   :material-rocket-launch:{ .lg .middle } **Quickstart**
 
     ---
 
-    Clone the repo, set up your dev environment, and contribute.
+    Install the CLI, start the stack, and complete the setup wizard.
+
+    [:octicons-arrow-right-24: Quickstart](guides/quickstart.md)
+
+-   :material-code-braces:{ .lg .middle } **Develop it**
+
+    ---
+
+    Clone the repository, set up a development environment, and contribute.
 
     [:octicons-arrow-right-24: Developer Setup](getting_started.md)
 
@@ -34,7 +87,7 @@ SynthOrg lets you define agents with roles, hierarchy, budgets, and tools as a v
 
     ---
 
-    In-depth guides for configuration, agents, budgets, security, deployment, and more.
+    Configuration, providers, budgets, security, deployment, and operations.
 
     [:octicons-arrow-right-24: Guides](guides/index.md)
 
@@ -44,7 +97,8 @@ SynthOrg lets you define agents with roles, hierarchy, budgets, and tools as a v
 
 ## Design Specification
 
-The design spec covers the full intended architecture of SynthOrg, from agent identity to budget enforcement. It is the source of truth for designed behaviour; each area marks its current wiring status as operator-facing maturity lands.
+The design pages are the source of truth for designed behaviour. Each area marks its own
+wiring status; treat any gap between a page and the code as the work, not the spec.
 
 <div class="grid cards" markdown>
 
@@ -52,76 +106,95 @@ The design spec covers the full intended architecture of SynthOrg, from agent id
 
     ---
 
-    Vision, principles, core concepts, and glossary.
+    What the system is for, its principles, and the vocabulary the other pages use.
 
     [:octicons-arrow-right-24: Design Overview](design/index.md)
 
--   **Agents & HR**
+-   **Recursive Decomposition**
 
     ---
 
-    Agent identity, roles, hiring, performance tracking, promotions.
+    How an objective becomes a tree, the atomicity gate, and the recursion bounds.
 
-    [:octicons-arrow-right-24: Agents](design/agents.md)
+    [:octicons-arrow-right-24: Decomposition](design/recursive-decomposition.md)
 
--   **Organisation & Templates**
-
-    ---
-
-    Company types, hierarchy, departments, template system.
-
-    [:octicons-arrow-right-24: Organisation](design/organization.md)
-
--   **Communication**
+-   **Coordination**
 
     ---
 
-    Message bus, delegation, loop prevention, event stream.
+    Dependency-gated waves, parallel dispatch, parking, and run recovery.
 
-    [:octicons-arrow-right-24: Communication](design/communication.md)
+    [:octicons-arrow-right-24: Coordination](design/coordination.md)
 
--   **Task & Workflow Engine**
-
-    ---
-
-    Task lifecycle, execution loops, routing, recovery, shutdown.
-
-    [:octicons-arrow-right-24: Engine](design/engine.md)
-
--   **Memory & Persistence**
+-   **Verification Quality**
 
     ---
 
-    Memory types, backends, retrieval pipeline, operational data.
+    Who reviews, why they cannot be the author, and what a verdict does and does not mean.
 
-    [:octicons-arrow-right-24: Memory](design/memory.md)
+    [:octicons-arrow-right-24: Verification](design/verification-quality.md)
 
--   **Providers & Cost**
+-   **Initiative Tail**
 
     ---
 
-    LLM providers, budget, tools, security.
+    Assembly and evaluation: the only path by which a plan reaches completion.
+
+    [:octicons-arrow-right-24: Initiative Tail](design/initiative-tail.md)
+
+-   **Agent Execution**
+
+    ---
+
+    The execution loop, sandboxed tool use, context budget, and termination.
+
+    [:octicons-arrow-right-24: Agent Execution](design/agent-execution.md)
+
+-   **Providers & Budget**
+
+    ---
+
+    Explicit provider binding, cost recording, and spending controls.
 
     [:octicons-arrow-right-24: Providers](design/providers.md)
+
+-   **Security**
+
+    ---
+
+    Autonomy levels, the approval gate, sandboxing, and untrusted-content fencing.
+
+    [:octicons-arrow-right-24: Security](design/security.md)
 
 </div>
 
 ---
 
-## Key capabilities
+## What is wired
 
-These run today, exercised by deterministic e2e harnesses with a scripted
-provider; real-provider acceptance and operator polish are in flight (see the
-[Roadmap](roadmap/index.md)).
+Every item below is implemented and exercised by deterministic end-to-end harnesses driven by
+a scripted provider, so the suite involves no real spend. That is a statement about the code
+paths, not a claim that a run delivers.
 
-- **Agent Orchestration**: agents with roles, models, and tools; task decomposition, routing, and collaboration through the multi-agent coordinator and work pipeline spine.
-- **Budget Enforcement**: per-agent cost limits, run and token ceilings, spending reports, and CFO-level cost optimisation.
-- **Security**: SecOps agent, fail-closed rule engine, autonomy levels, and audit logging.
-- **Memory**: per-agent and shared organisational memory with retrieval pipeline, consolidation, and archival.
-- **Communication**: message bus, delegation, loop prevention, and the event stream.
-- **HR Engine**: hiring, firing, onboarding, offboarding, performance tracking, and human-approved autonomy changes.
-- **Tool Integration**: built-in tools (file system, git, sandbox, code runner) plus an MCP bridge for external tools.
-- **LLM Providers**: provider-agnostic via LiteLLM, with routing strategies, retry/rate-limiting, and capability matching.
+- **Decomposition and dispatch**: recursive planning, a dependency graph over the whole tree,
+  parallel waves, and level-triggered recovery after a restart.
+- **Independent review**: roster-staffed gate roles, executor exclusion, and archived verdicts
+  recording the model each judgement was made under.
+- **Sandboxed execution**: each unit in its configured sandbox, a scoped shared workspace, and
+  a governed tool surface including an MCP bridge.
+- **Explicit provider binding**: an unconfigured feature is off and says so rather than
+  borrowing a default.
+- **Budgets and cost attribution**: per-agent limits, run and token ceilings, spend attributed
+  by prompt purpose.
+- **Approval gate and audit**: actions parked for a human by autonomy level, with a signed
+  audit chain.
+- **Memory and knowledge**: per-agent and shared memory with a retrieval pipeline, plus an
+  ingested corpus agents can cite.
+- **Operator surfaces**: a React dashboard, a REST and WebSocket API, and runtime-editable
+  settings.
+
+Roles, departments and staffing are shipped machinery. They are plumbing: how a reviewer is
+found and how permissions are scoped, not the reason the system works.
 
 ---
 

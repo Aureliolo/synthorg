@@ -8,7 +8,7 @@ The gate's job is to catch the SECOND occurrence of the category; the audit's jo
 
 ## Gate inventory
 
-This table is the single source of truth for every custom `scripts/check_*.py` gate: the stages it runs at, the tree it scopes to, whether it re-scans its whole scope or only the changed files, whether it is baseline-driven, and the audit verdict. If an entry below disappears or a new `check_*.py` script lands, update this table in the same PR.
+This table is the single source of truth for every custom `scripts/check_*` gate, whatever it is written in: the stages it runs at, the tree it scopes to, whether it re-scans its whole scope or only the changed files, whether it is baseline-driven, and the audit verdict. Most are `check_*.py`; the shell gates (`check_cli_bench_regression.sh`) carry a row on the same terms. If an entry below disappears or a new `check_*` script lands, update this table in the same PR.
 
 That update is a convention, not an enforced one. `check_convention_gate_inventory.py` reconciles CLAUDE.md's `(MANDATORY)` paragraphs against `scripts/convention_gate_map.yaml`; it never reads this table and never enumerates `scripts/check_*.py`, so a new gate that skips its row here fails nothing. Two gates were added without a row before that gap was noticed.
 
@@ -35,6 +35,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_chat_inbound_fenced.py` | push | `integrations/chat_api/inbound/` | full | no | none | add |
 | `check_ci_rollup_complete.py` | commit+push | `.github/workflows/{verify-backend,verify-cli,build-images,perf-benchmarks,perf-web-vitals}.yml` + `branch_protection.yml` | full | no | none | add |
 | `check_ci_workflow_resilience.py` | push | `.github/workflows/` + `.github/actions/` + `docker/**/Dockerfile` | full | no | none | add |
+| `check_cli_bench_regression.sh` | CI (`verify-cli.yml :: cli-bench`) | `cli/internal/*_bench_test.go` (path-scoped via the `cli-changes` gate) | n/a | n/a | none (in-CI A/B compare, not a committed baseline) | keep |
 | `check_comparison_md_in_sync.py` | push | `competitors.yaml` + `comparison.md` + generator | full | no | none | keep |
 | `check_completion_config_temperature.py` | commit+push | `src/synthorg/` | full | no | none | keep |
 | `check_compose_template_comments.py` | push | `cli/internal/compose/compose.yml.tmpl` | full | no | none | add |

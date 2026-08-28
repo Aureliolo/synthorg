@@ -35,9 +35,6 @@ meta:
   last_updated: "auto"
 
 dimensions:
-  - key: org_structure
-    label: "Org Structure"
-    description: "Departments, hierarchy, roles, reporting lines, HR"
   - key: multi_agent
     label: "Multi-Agent"
     description: "Agents collaborating on shared goals"
@@ -79,6 +76,8 @@ dimensions:
     description: "Pre-built configurations, inheritance, per-agent model requirements"
 
 categories:
+  - key: build_platform
+    label: "Build Platform"
   - key: multi_agent_framework
     label: "Multi-Agent Framework"
   - key: virtual_org
@@ -91,7 +90,7 @@ categories:
     label: "Developer Tool"
 
 # ---------------------------------------------------------------------------
-# Competitors (44 entries + SynthOrg across 5 categories)
+# Competitors (44 entries + SynthOrg across 6 categories)
 # ---------------------------------------------------------------------------
 
 competitors:
@@ -105,27 +104,26 @@ competitors:
     url: "https://synthorg.io"
     repo: "https://github.com/Aureliolo/synthorg"
     source_verified_at: "2026-08-02"
-    description: "An AI software company that reports to you: a self-hostable platform for synthetic organisations of role-based AI agents, under an oversight mode you set and a gate on every action. Platform, infrastructure, and the agent runtime are built and exercised by deterministic e2e harnesses with a scripted provider; operator-facing maturity and real-provider acceptance are in active development."
+    description: "Describe a piece of software and it is split into a tree of parts that can be built independently, built concurrently, each in its own workspace, then assembled bottom-up, with each part checked by an agent barred from having authored it. Self-hosted and provider-agnostic against any models including local ones: there is no SynthOrg service in the path, and what reaches a third party is whatever the provider you configured needs, or nothing at all against local models. Pre-alpha: the platform, infrastructure and agent runtime are exercised by deterministic e2e harnesses with a scripted provider, and no live run has yet produced an assembled deliverable."
     license: "BUSL-1.1"
     language: "Python"
-    category: virtual_org
+    category: build_platform
     pricing: depends
     self_hosted: "true"
     is_synthorg: true
     features:
-      org_structure: {support: partial, note: "Departments, hierarchy, the role reporting graph, and HR are modelled and exercised by a deterministic e2e harness with a scripted provider; real-provider acceptance is in active development"}
-      multi_agent: {support: partial, note: "The /coordinate path runs decompose, route, parallel execution, then rollup end to end behind the provider-present switch, exercised by a deterministic e2e harness with a scripted provider; assignment strategies, coordination dispatchers, and conflict resolution ship; real-provider acceptance is in active development"}
-      task_delegation: {support: partial, note: "DAG decomposition, assignment strategies, and delegation chains run through the work pipeline spine end to end, exercised by a deterministic e2e harness with a scripted provider; real-provider acceptance is in active development"}
-      memory: {support: partial, note: "Pluggable backends and memory types with hybrid retrieval are wired into the working loop on a durable substrate, exercised by a deterministic e2e harness; the embedding model is the operator's explicit choice and memory stays off until it resolves"}
-      tool_use: {support: partial, note: "MCP protocol, forced Docker sandbox isolation, and invocation tracking run inside the agent runtime, exercised by a deterministic e2e harness; real-provider acceptance is in active development"}
-      human_in_loop: {support: partial, note: "Approval gates, review workflows, and four operator-set oversight modes run today: a sensitive action parks with no side effect and resumes on a human decision, exercised by a deterministic e2e harness"}
-      budget_tracking: {support: partial, note: "Per-token/per-agent budgets, hierarchical cascades, a pre-flight forecast gate, and a hard run ceiling that parks execution run end to end against real budget components; model auto-downgrade ships disabled by default"}
-      security_model: {support: partial, note: "Rule engine plus LLM evaluator, classified action types, audit trail, and output scanning gate every action and fail closed; the adversarial red-team gate ships off by default"}
+      multi_agent: {support: partial, note: "Decompose, route, parallel execution and rollup run end to end, alongside assignment strategies, coordination dispatchers and conflict resolution. Exercised by a deterministic harness; a live run has not yet reached assembly"}
+      task_delegation: {support: partial, note: "DAG decomposition, assignment strategies and delegation chains run through the work pipeline end to end. Exercised by a deterministic harness; a live run has not yet reached assembly"}
+      memory: {support: partial, note: "Pluggable backends and memory types with hybrid retrieval, wired into the working loop on a durable substrate. The embedding model is the operator's explicit choice and memory stays off until it resolves"}
+      tool_use: {support: partial, note: "MCP protocol, per-category sandbox isolation (subprocess by default, Docker where an operator selects it) and invocation tracking run inside the agent runtime. Exercised by a deterministic harness; a live run has not yet reached assembly"}
+      human_in_loop: {support: full, note: "Approval gates, review workflows, and four operator-set oversight modes run today: a sensitive action parks with no side effect and resumes on a human decision"}
+      budget_tracking: {support: full, note: "Per-token and per-agent budgets, hierarchical cascades, a pre-flight forecast gate, and a hard run ceiling that parks execution. An agent is a fixed (role, model) pair that nothing re-points, so budget pressure refuses rather than silently substituting a cheaper model"}
+      security_model: {support: full, note: "Rule engine plus LLM evaluator, classified action types, audit trail, and output scanning gate every action and fail closed. The adversarial red-team gate is staffed from the roster and applies from high stakes upward"}
       observability: {support: full, note: "Structured logging, correlation tracking, log shipping, redaction, Prometheus metrics, and OTLP ship and run today"}
-      web_dashboard: {support: partial, note: "React 19 dashboard (org chart, tasks, budgets, approvals, workflow editor, setup wizard, WebSocket + SSE) ships and runs; dashboard polish against real workloads is in active development"}
-      cli: {support: partial, note: "Go binary for container orchestration and supply-chain verification; deliberately not used for agent orchestration"}
-      production_ready: {support: partial, note: "Infrastructure ships (Docker + CI/CD + cosign + SLSA L3, SQLite + PostgreSQL backends, backup/restore); the product is pre-alpha and operator-facing onboarding against a real provider has not been exercised end to end by a human"}
-      workflow_types: {support: partial, note: "Sequential, parallel, Kanban, Agile sprints and velocity execute through the agent runtime, exercised by a deterministic e2e harness; real-provider acceptance is in active development"}
+      web_dashboard: {support: full, note: "React 19 dashboard (org chart, tasks, budgets, approvals, workflow editor, setup wizard, WebSocket + SSE) ships and runs; polish against real workloads continues"}
+      cli: {support: full, note: "Go binary for container orchestration and supply-chain verification; deliberately not used for agent orchestration"}
+      production_ready: {support: partial, note: "Infrastructure ships (Docker + CI/CD + cosign + SLSA L3, SQLite + PostgreSQL backends, backup/restore); the product is pre-alpha. The loop has been driven live against a real deployment and has never reached the assembly stage, so no assembled deliverable and no recorded completion exists"}
+      workflow_types: {support: partial, note: "Sequential, parallel, Kanban, Agile sprints and velocity execute through the agent runtime. Exercised by a deterministic harness; a live run has not yet reached assembly"}
       template_system: {support: full, note: "Company templates and locale-aware name generation ship and are usable today without the runtime"}
 
   - name: "CrewAI"
@@ -139,7 +137,6 @@ competitors:
     pricing: open-core
     self_hosted: "partial"
     features:
-      org_structure: { support: partial, note: "Hierarchical manager-worker processes and role-based agents; no persistent org model" }
       multi_agent: { support: full, note: "Crews with role, goal, backstory; sequential and hierarchical processes" }
       task_delegation: { support: full, note: "allow_delegation flag; hierarchical manager distributes tasks; allowed_agents scoping" }
       memory: { support: full, note: "Unified Memory with hierarchical scopes, LanceDB backend, consolidation" }
@@ -165,7 +162,6 @@ competitors:
     pricing: free
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: full, note: "RoundRobinGroupChat, SelectorGroupChat, Swarm, GraphFlow, AgentTool" }
       task_delegation: { support: full, note: "Handoff pattern with delegate tools; hierarchical supervisor-worker teams" }
       memory: { support: full, note: "ListMemory, ChromaDB, Redis, Mem0 backends; persistent cross-session retrieval" }
@@ -191,7 +187,6 @@ competitors:
     pricing: open-core
     self_hosted: "partial"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: full, note: "Graph nodes, supervisor pattern, hierarchical teams, agent-as-tool composition" }
       task_delegation: { support: full, note: "Supervisor delegates to workers; multi-level hierarchies; tool-based delegation" }
       memory: { support: full, note: "Short-term and long-term memory with checkpointing; SQLite and PostgreSQL backends" }
@@ -217,7 +212,6 @@ competitors:
     pricing: free
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: full, note: "Handoffs and agents-as-tools for multi-agent orchestration; triage agents" }
       task_delegation: { support: full, note: "Handoffs transfer control to specialists; agents-as-tools for bounded subtasks" }
       memory: { support: partial, note: "Sessions with in-memory and SQLite backends; no long-term semantic memory" }
@@ -243,7 +237,6 @@ competitors:
     pricing: free
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: full, note: "Sequential, concurrent, handoff, group chat, magentic orchestration patterns" }
       task_delegation: { support: full, note: "Handoff orchestration; triage agents route to specialists; A2A protocol support" }
       memory: { support: full, note: "GA vector store abstractions; Azure AI Search, Elasticsearch, Chroma, in-memory connectors" }
@@ -269,7 +262,6 @@ competitors:
     pricing: open-core
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: full, note: "Parent-child agent trees, LLM-driven delegation, agent transfer, A2A support" }
       task_delegation: { support: full, note: "LLM-driven dynamic routing, agent transfer between siblings/parent/sub-agents" }
       memory: { support: partial, note: "Session state (in-memory, DB, Firestore); long-term memory only via Vertex AI Memory Bank (paid)" }
@@ -295,7 +287,6 @@ competitors:
     pricing: open-core
     self_hosted: "partial"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: partial, note: "Agents delegate via tool calls and graph control flow; no built-in orchestration layer" }
       task_delegation: { support: partial, note: "Parent agents invoke children through tool functions; no task queue or assignment system" }
       memory: { support: none, note: "" }
@@ -321,7 +312,6 @@ competitors:
     pricing: free
     self_hosted: "true"
     features:
-      org_structure: { support: partial, note: "Workforce module with coordinator/worker topology; no persistent org chart or departments" }
       multi_agent: { support: full, note: "Role-playing societies, workforce coordination, OASIS million-agent simulations" }
       task_delegation: { support: full, note: "Coordinator decomposes tasks via task agent; assigns subtasks with dependency tracking" }
       memory: { support: full, note: "ChatHistoryMemory, VectorDBMemory, LongtermAgentMemory with configurable retrieval" }
@@ -347,7 +337,6 @@ competitors:
     pricing: free
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: partial, note: "Hierarchical managed_agents; limited to tree hierarchies, no peer communication" }
       task_delegation: { support: partial, note: "Manager agents call managed agents by name; no task queuing or load balancing" }
       memory: { support: partial, note: "In-memory per-run AgentMemory; no persistent long-term or cross-run memory" }
@@ -373,7 +362,6 @@ competitors:
     pricing: free
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: full, note: "GroupChat, Swarm, sequential chats, nested chats, AutoPattern speaker selection" }
       task_delegation: { support: partial, note: "GroupChat manager selects speakers; nested chats for delegation; no task decomposition" }
       memory: { support: partial, note: "No built-in long-term memory; Mem0 and Zep as external plugins" }
@@ -399,7 +387,6 @@ competitors:
     pricing: open-core
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: full, note: "Teams with coordinate, route, broadcast, tasks modes; nested teams" }
       task_delegation: { support: full, note: "Team leader decomposes goals, delegates, synthesizes results" }
       memory: { support: full, note: "MemoryManager with optimization; per-session/user; knowledge bases with vector stores" }
@@ -425,7 +412,6 @@ competitors:
     pricing: open-core
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: full, note: "Multi-agent messaging (async, sync, broadcast); supervisor-worker teams" }
       task_delegation: { support: full, note: "Supervisor-worker with tag-based routing for inter-agent delegation" }
       memory: { support: full, note: "Tiered: core in-context, archival long-term, recall; agents self-manage via tools" }
@@ -451,7 +437,6 @@ competitors:
     pricing: open-core
     self_hosted: "true"
     features:
-      org_structure: { support: partial, note: "Organizational role metaphors (CEO, Developer); no formal org chart" }
       multi_agent: { support: full, note: "Directional communication flows; shared instructions; configurable patterns" }
       task_delegation: { support: full, note: "send_message with directional communication_flows governing delegation" }
       memory: { support: partial, note: "Thread persistence via callbacks; no semantic memory or knowledge base" }
@@ -477,7 +462,6 @@ competitors:
     pricing: open-core
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: full, note: "Supervisor agents coordinate subagents with delegation hooks and scoring" }
       task_delegation: { support: full, note: "Supervisor-to-subagent with onDelegationStart/Complete hooks" }
       memory: { support: full, note: "Message history, observational, working, semantic recall; configurable backends" }
@@ -503,7 +487,6 @@ competitors:
     pricing: free
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: full, note: "Hierarchical task trees, sub-task delegation, round-robin, DAG topologies" }
       task_delegation: { support: full, note: "Tasks wrap agents; recursive sub-task composition via add_sub_task" }
       memory: { support: partial, note: "Vector-store RAG (Qdrant, Chroma, LanceDB, etc.); no cross-session agent memory" }
@@ -529,7 +512,6 @@ competitors:
     pricing: free
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: full, note: "Graph, Swarm, Workflow, Agents-as-Tools patterns; cyclic/acyclic graphs" }
       task_delegation: { support: full, note: "Agents-as-Tools for hierarchical delegation; Graph for conditional routing" }
       memory: { support: partial, note: "Session managers (file, S3); no long-term semantic memory in SDK" }
@@ -555,7 +537,6 @@ competitors:
     pricing: free
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: full, note: "HandoffTool for delegation; AgentWorkflow for sequential multi-agent pipelines" }
       task_delegation: { support: full, note: "HandoffTool routes tasks to specialist agents; workflow step chaining" }
       memory: { support: partial, note: "In-memory only (sliding window, token-based, summarize); no persistent backend" }
@@ -581,7 +562,6 @@ competitors:
     pricing: open-core
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: partial, note: "ComponentTool for coordinator-to-sub-agent delegation; no coordination protocol" }
       task_delegation: { support: partial, note: "Coordinator delegates via ComponentTool; implicit via LLM tool selection" }
       memory: { support: partial, note: "InMemoryChatMessageStore; Mem0 integration; no unified cross-agent memory" }
@@ -611,7 +591,6 @@ competitors:
     pricing: free
     self_hosted: "true"
     features:
-      org_structure: { support: partial, note: "v1.0 had CEO/CTO/Programmer roles; v2.0 uses user-defined roles via YAML" }
       multi_agent: { support: full, note: "DAG-based workflows with agent, model, python, human, subgraph node types" }
       task_delegation: { support: partial, note: "DAG edges define static task flow; no dynamic runtime delegation" }
       memory: { support: full, note: "SimpleMemory (FAISS), FileMemory (document KBs), BlackboardMemory (append-only)" }
@@ -637,7 +616,6 @@ competitors:
     pricing: open-core
     self_hosted: "true"
     features:
-      org_structure: { support: partial, note: "Fixed software company roles (PM, architect, engineer) via SOPs; not configurable" }
       multi_agent: { support: full, note: "Agents communicate through shared message pool with role-based subscriptions" }
       task_delegation: { support: full, note: "SOP-driven pipeline: PRD -> design -> tasks -> code; artifacts flow between roles" }
       memory: { support: partial, note: "Short-term message memory; optional RAG (Faiss/ChromaDB); no persistent agent memory" }
@@ -663,7 +641,6 @@ competitors:
     pricing: open-core
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: full, note: "Networks combining agents with shared state and configurable routers" }
       task_delegation: { support: partial, note: "Router determines agent; no sub-task decomposition or delegation chains" }
       memory: { support: partial, note: "Network state (key-value shared); long-term requires external Mem0" }
@@ -693,7 +670,6 @@ competitors:
     pricing: open-core
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: partial, note: "Multi-agent patterns documented but no native agent abstraction; users implement agents as activities" }
       task_delegation: { support: full, note: "Task Queues with worker polling, sticky execution, priority, rate limiting" }
       memory: { support: partial, note: "Durable workflow state (Event History); no semantic/vector memory" }
@@ -719,7 +695,6 @@ competitors:
     pricing: depends
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: partial, note: "AI Agent Tool node for orchestrator-to-sub-agent delegation; agents are workflow nodes" }
       task_delegation: { support: partial, note: "Orchestrator delegates to sub-agents via visual wiring; not dynamic runtime" }
       memory: { support: partial, note: "Window/buffer/vector memory via LangChain; Redis, Postgres, MongoDB backends" }
@@ -745,7 +720,6 @@ competitors:
     pricing: open-core
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: partial, note: "Agent Node with pluggable strategies (CoT, ToT, GoT); no inter-agent delegation" }
       task_delegation: { support: partial, note: "Workflow nodes chain LLM calls; no agent-to-agent hierarchy" }
       memory: { support: partial, note: "Conversation variables (v0.7+); RAG knowledge retrieval; no persistent agent memory" }
@@ -771,7 +745,6 @@ competitors:
     pricing: open-core
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: partial, note: "Child workflows and event-based agent communication; no coordination protocols" }
       task_delegation: { support: partial, note: "Child workflow spawning and event routing; no task decomposition" }
       memory: { support: partial, note: "Event handler state; execution persistence via continueAsNew; no semantic memory" }
@@ -797,7 +770,6 @@ competitors:
     pricing: open-core
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: partial, note: "Flyte 2.0 orchestrates LLM agents as tasks; agents are stateless gRPC connectors" }
       task_delegation: { support: partial, note: "DAGs with task dependencies and dynamic branching; no agent-to-agent delegation" }
       memory: { support: none, note: "" }
@@ -823,7 +795,6 @@ competitors:
     pricing: open-core
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: full, note: "Agentflow V2: supervisor/worker delegation, branching, loops, shared state" }
       task_delegation: { support: full, note: "Supervisor decomposes and delegates to worker agents with aggregation" }
       memory: { support: partial, note: "Buffer, summary, Redis, DynamoDB, Zep memory; no long-term organizational memory" }
@@ -849,7 +820,6 @@ competitors:
     pricing: open-core
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: partial, note: "Multi-agent flows with sequential chaining and CrewAI integration" }
       task_delegation: { support: partial, note: "Primary agent calls sub-agents as tools; no autonomous routing" }
       memory: { support: partial, note: "Chat memory per session; no long-term organizational memory" }
@@ -875,7 +845,6 @@ competitors:
     pricing: open-core
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: partial, note: "Agent Blocks for hierarchical graphs; no inter-agent negotiation" }
       task_delegation: { support: partial, note: "Parent agents invoke sub-agents via Blocks; no dynamic routing" }
       memory: { support: partial, note: "Short-term context; long-term via vector DB mentioned but limited evidence" }
@@ -901,7 +870,6 @@ competitors:
     pricing: depends
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: partial, note: "Event-driven multi-agent via queued messages between Steps; no agent primitives" }
       task_delegation: { support: partial, note: "Steps enqueue to topics; no explicit delegation protocol or routing" }
       memory: { support: partial, note: "Persistent key-value state across Steps; no semantic or long-term agent memory" }
@@ -930,7 +898,6 @@ competitors:
     pricing: paid
     self_hosted: "partial"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: partial, note: "Multi-agent via open-source LangGraph; platform hosts and monitors" }
       task_delegation: { support: partial, note: "Delegation via LangGraph patterns; platform provides infrastructure" }
       memory: { support: partial, note: "Checkpoint persistence for graph state; long-term via BaseStore (Postgres, Redis)" }
@@ -955,7 +922,6 @@ competitors:
     pricing: paid
     self_hosted: "false"
     features:
-      org_structure: { support: partial, note: "Hierarchical multi-agent teams (3 layers deep); no formal org modeling" }
       multi_agent: { support: full, note: "GA multi-agent with supervisor and supervisor-with-routing modes" }
       task_delegation: { support: full, note: "Supervisor decomposes, routes to collaborators, orchestrates parallel execution" }
       memory: { support: full, note: "Short-term session, long-term persistent, episodic memory via AgentCore Memory" }
@@ -981,7 +947,6 @@ competitors:
     pricing: paid
     self_hosted: "false"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: full, note: "ADK hierarchical agents, LLM-driven delegation, workflow agents" }
       task_delegation: { support: full, note: "transfer_to_agent, AgentTool wrapping, shared session state" }
       memory: { support: full, note: "Agent Engine Memory Bank (GA); Sessions (GA) with IAM access control" }
@@ -1007,7 +972,6 @@ competitors:
     pricing: paid
     self_hosted: "false"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: full, note: "Multi-Agent Orchestration with primary + specialist agents via Atlas Reasoning" }
       task_delegation: { support: full, note: "Primary delegates based on topic matching; dynamic routing" }
       memory: { support: full, note: "Two-tier: short-term session + long-term profile graph via Data Cloud" }
@@ -1032,7 +996,6 @@ competitors:
     pricing: paid
     self_hosted: "false"
     features:
-      org_structure: { support: partial, note: "Workforce teams with defined roles and handoff rules; no formal hierarchy" }
       multi_agent: { support: full, note: "Multi-Agent Systems with coordinated teams, handoffs, routing, escalation" }
       task_delegation: { support: full, note: "Agents hand off with context; configurable triggers, routing, per-edge approval" }
       memory: { support: partial, note: "RAG over files, Google Drive, SharePoint; no long-term episodic agent memory" }
@@ -1058,7 +1021,6 @@ competitors:
     pricing: free
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: partial, note: "Multi-agent sessions with sequential calls; no autonomous coordination" }
       task_delegation: { support: partial, note: "Sub-workflows via yield step; orchestrator-worker pattern exists" }
       memory: { support: partial, note: "Session conversation history; document RAG; no standalone long-term memory" }
@@ -1088,7 +1050,6 @@ competitors:
     pricing: open-core
     self_hosted: "partial"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: full, note: "AgentWorkflow with handoffs, orchestrator-as-tool, custom planner patterns" }
       task_delegation: { support: partial, note: "Agent handoffs and tool invocation; no formal task queue or dependency tracking" }
       memory: { support: partial, note: "Context class for serializable state; no built-in long-term vector memory" }
@@ -1114,7 +1075,6 @@ competitors:
     pricing: open-core
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: none, note: "" }
       task_delegation: { support: none, note: "" }
       memory: { support: none, note: "" }
@@ -1140,7 +1100,6 @@ competitors:
     pricing: open-core
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: none, note: "" }
       task_delegation: { support: none, note: "" }
       memory: { support: none, note: "" }
@@ -1166,7 +1125,6 @@ competitors:
     pricing: open-core
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: full, note: "DelegateTool for spawning parallel sub-agents with inherited config" }
       task_delegation: { support: full, note: "Hierarchical delegation; parent spawns and monitors sub-agents" }
       memory: { support: partial, note: "Condenser system summarizes history; no persistent cross-session memory in core" }
@@ -1192,7 +1150,6 @@ competitors:
     pricing: free
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: partial, note: "Subgraphs and project references for composing agent graphs; no coordination" }
       task_delegation: { support: partial, note: "Subgraph and external call nodes; no formal task routing" }
       memory: { support: partial, note: "Vector store and KNN nodes for retrieval; global variables; no cross-session" }
@@ -1218,7 +1175,6 @@ competitors:
     pricing: open-core
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: partial, note: "Subagent pattern via tool calls in SDK 6; no built-in orchestration primitives" }
       task_delegation: { support: partial, note: "Subagents spawned as tool calls; no hierarchical decomposition" }
       memory: { support: partial, note: "Stateless by default; MemoryAdapter interface landed; production requires external providers" }
@@ -1245,7 +1201,6 @@ competitors:
     pricing: free
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: none, note: "Single-agent Responses API only; multi-agent requires third-party frameworks" }
       task_delegation: { support: none, note: "" }
       memory: { support: partial, note: "Vector stores API for document storage and RAG; no conversational memory" }
@@ -1271,7 +1226,6 @@ competitors:
     pricing: free
     self_hosted: "true"
     features:
-      org_structure: { support: none, note: "" }
       multi_agent: { support: partial, note: "Router and supervisor patterns in docs; no built-in multi-agent runtime" }
       task_delegation: { support: partial, note: "Manual schema-alignment delegation; not a built-in system" }
       memory: { support: partial, note: "ChatHistory with FIFO eviction and JSON serialization; no persistent backends" }

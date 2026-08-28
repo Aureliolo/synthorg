@@ -13,7 +13,9 @@ For the architecture (identity versioning, evolution, performance tracking), see
 
 ## Hiring
 
-Agents are hired via `POST /api/v1/agents` with a `CreateAgentOrgRequest` body. The DTO accepts only: `name`, `role`, `department`, and the `model_provider` / `model_id` pair (both together or both omitted; if omitted, the model matcher falls back to the provider catalog default). Authority follows from the role's position in the reporting graph, not a per-agent level.
+Agents are hired via `POST /api/v1/agents` with a `CreateAgentOrgRequest` body. The DTO accepts only: `name`, `role`, `department`, and the `model_provider` / `model_id` pair (both together or both omitted). There is no shared default provider to fall back on: an agent hired without a pair is created with no explicit model override, and the company's routing strategy resolves one at dispatch time from the agent's role and the task type; setting the pair explicitly pins it. Authority follows from the role's position in the reporting graph, not a per-agent level.
+
+A gate role (`Completion Reviewer`, `Red Team`) cannot be granted through the agent MCP surface: `agents.create` and `agents.update` both refuse a gate-role assignment, because a role that judges finished work must not be handed out through the same ambient surface an agent could reach for itself. Granting or changing a gate role goes through this REST path only, under the operator's own session.
 
 ```bash
 curl -X POST http://localhost:3001/api/v1/agents \

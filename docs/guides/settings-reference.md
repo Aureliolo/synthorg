@@ -84,6 +84,7 @@ These surface previously-hardcoded timeouts, batch sizes, and resource limits. A
 | `chief_of_staff` | Unified-chat + Chief-of-Staff capability flags (turn-router, multi-voice, propose, concern-routing, group-chat, learning, alerts, narrative, invite, direct-MCP) and per-feature models |
 | `knowledge` | Knowledge substrate (document ingestion + retrieval) enable and optional generative-RAG synthesis (model, strategy, per-answer chunk budget) |
 | `design` | Image-generation master flag and the image model the design `image_generator` tool routes through |
+| `output_style` | House writing-style guardrail: master enable, shadow mode, active pack, and exemptions |
 | `demo` | Demo-mode showcase content (e.g. greeting copy) |
 
 ### Security headers and error documentation
@@ -207,7 +208,7 @@ Add or update a provider via `/api/v1/providers`, set `routing.strategy` via `/a
 
 ### Enable agent sandbox
 
-Set `tools.sandboxing.default_backend` to `docker` in the `tools` namespace. Pull the sandbox image once via `synthorg start --sandbox true`. The backend spawns ephemeral sandbox containers per tool invocation.
+Set `tools.sandboxing.default_backend` to `docker` in the `tools` namespace (the shipped default is `subprocess`). Pull the sandbox image once via `synthorg start --sandbox true`. A container then belongs to an agent and is reused across its commands; set `tools.sandboxing.docker.lifecycle.strategy` to `per-task` or `per-call` for tighter isolation. See [Tools](../design/tools.md) for the trade-offs.
 
 ### Swap log sinks
 

@@ -15,7 +15,7 @@ Autonomy levels control which actions require human approval. Set the company-wi
 
 | Level | Value | Behaviour |
 |-------|-------|----------|
-| Full | `full` | Agents execute all actions without approval |
+| Full | `full` | Approval routing is off; the deny list and the built-in detectors still run |
 | Semi | `semi` | Risky actions (deploy, db:admin, org:fire) require approval |
 | Supervised | `supervised` | Most actions require approval |
 | Locked | `locked` | All actions require approval |
@@ -97,6 +97,7 @@ security:
     credential_patterns_enabled: true
     data_leak_detection_enabled: true
     destructive_op_detection_enabled: true
+    mcp_destructive_op_detection_enabled: true
     path_traversal_detection_enabled: true
     max_argument_length: 100000
     custom_allow_bypasses_detectors: false
@@ -109,9 +110,11 @@ security:
 | Credential patterns | `credential_patterns_enabled` | API keys, passwords, tokens in arguments |
 | Data leak detection | `data_leak_detection_enabled` | PII, sensitive file paths, internal URLs |
 | Destructive operations | `destructive_op_detection_enabled` | `rm -rf`, `DROP TABLE`, force-push |
+| MCP destructive operations | `mcp_destructive_op_detection_enabled` | Delete, purge, and revoke calls against a third-party MCP server, which the shell and SQL detector cannot see |
 | Path traversal | `path_traversal_detection_enabled` | `../` sequences, path escape attempts |
 
-Each detector can be independently enabled or disabled.
+Each detector defaults to on and can be independently disabled. The policy
+validator runs ahead of all of them and is not optional.
 
 ---
 
@@ -150,20 +153,43 @@ security:
 
 ### Action Types
 
-Action types follow a `category:action` format. Built-in types include:
+Action types follow a `category:action` format. The built-in taxonomy is
+`ActionType` in `src/synthorg/security/autonomy/enums.py`:
 
 | Category | Actions |
 |----------|---------|
 | `code` | `read`, `write`, `create`, `delete`, `refactor` |
 | `test` | `write`, `run` |
 | `docs` | `write` |
+| `design` | `generate`, `delete` |
 | `vcs` | `read`, `commit`, `push`, `branch` |
 | `deploy` | `staging`, `production` |
+| `publish` | `staging`, `production` |
 | `comms` | `internal`, `external` |
 | `budget` | `spend`, `exceed` |
-| `org` | `hire`, `fire`, `promote` |
+| `org` | `hire`, `fire`, `promote`, `delegate` |
 | `db` | `query`, `mutate`, `admin` |
 | `arch` | `decide` |
+| `tool` | `create` |
+| `memory` | `read` |
+| `knowledge` | `ingest`, `reindex` |
+| `browser` | `navigate`, `screenshot`, `diff`, `accessibility_scan`, `spec` |
+| `external_data` | `request` |
+| `research` | `run` |
+| `desktop` | `launch`, `click`, `type`, `key`, `screenshot`, `scroll` |
+
+!!! warning "A bare category grant expands to whatever the taxonomy holds"
+
+    An autonomy preset grants categories, not concrete types, so its
+    auto-approved set is whatever `category:*` expands to when the resolver
+    runs, and a type added later joins it with nobody deciding. Every concrete
+    type a built-in preset may auto-approve therefore has to be declared in
+    `WORKTREE_CONFINED_ACTION_TYPES` (`src/synthorg/security/action_types.py`),
+    which is a claim about where the action *lands* rather than how the verb
+    sounds: `code:delete` qualifies because it deletes a file in a throwaway
+    worktree, and `design:delete` does not because the asset store outlives the
+    run. Expansion for auto-approval covers built-in types only, since a grant
+    cannot have meant a custom type registered after it was written.
 
 !!! warning "Bypass mode restriction"
 
@@ -223,18 +249,28 @@ This section covers runtime operations on the autonomy and tool-permission surfa
 
 ### Promote or demote an agent's autonomy
 
-Human-only. No agent (not even the CEO) can escalate privileges programmatically.
+Human-only, on a dedicated endpoint guarded by `require_ceo_or_manager`. The
+request body carries a mandatory `reason` (at least three non-whitespace
+characters), which lands on the audit trail and, where the configured change
+strategy requires one, on the approval item the request opens rather than
+applying at once.
 
 ```bash
-curl -X PATCH http://localhost:3001/api/v1/agents/${AGENT_NAME} \
+curl -X POST http://localhost:3001/api/v1/agents/${AGENT_ID}/autonomy \
   -H "Content-Type: application/json" \
   -H "Cookie: ${SESSION}" \
-  -d '{"autonomy_level": "semi"}'
+  -d '{"level": "semi", "reason": "Handing routine deploys back after a clean fortnight"}'
 ```
 
-Valid values: `full`, `semi`, `supervised`, `locked`.
+Valid levels: `full`, `semi`, `supervised`, `locked`. `GET` on the same path
+reads the effective level back. The path parameter is the agent's stable id, not
+its name.
 
-Automatic demotions happen on: sustained high error rate (one level down), budget exhausted (`supervised`), security incident (`locked`). Recovery from auto-downgrade is human-only.
+`PATCH /api/v1/agents/{agent_id}` also accepts an `autonomy_level`, but that
+edits the org configuration rather than performing a runtime autonomy change,
+and it takes no reason.
+
+Automatic demotions happen on four declared reasons. A sustained high error rate steps the agent down exactly one level from wherever it is (`full` to `semi` to `supervised` to `locked`), because a noisy run is a graded signal. Budget exhaustion and risk-budget exhaustion drop it to a fixed floor of `supervised`, and a security incident to `locked`, regardless of the level it held. Recovery from an auto-downgrade is human-only.
 
 ### Set a department-level override
 
@@ -264,23 +300,43 @@ Clear with `{"mode": null}` to inherit the department/company default. Setting `
 
 ### Tool permission management
 
-Per-agent tool permissions are managed via the agent's `tools.allowed` / `tools.denied` lists:
+Per-agent tool permissions are declared on the identity, in the company
+configuration, and applied at bootstrap. There is no REST or MCP write surface
+for them: `PATCH /api/v1/agents/{agent_id}` forbids unknown fields and carries no
+`tools` key, so a request shaped like one is rejected rather than silently
+ignored.
 
-```bash
-# Grant a category
-curl -X PATCH http://localhost:3001/api/v1/agents/${AGENT_NAME} \
-  -H "Content-Type: application/json" \
-  -H "Cookie: ${SESSION}" \
-  -d '{"tools": {"allowed": ["file_system", "git", "web"], "denied": ["deployment"]}}'
+```yaml
+agents:
+  - role: "Junior Developer"
+    tools:
+      access_level: standard
+      allowed: ["file_system", "git", "web"]
+      denied: ["deployment"]
+      denied_categories: ["deploy"]
+      mcp_capabilities: ["tasks:read"]
 ```
 
-Resolution precedence: `denied` > `allowed` > access-level default > deny.
+`denied_categories` exists because a name list goes stale the moment a tool joins
+the category: an identity that must not reach a whole class of tool says so by
+category and stays correct as the category grows.
+
+Resolution runs in order and stops at the first match: a name in `denied` is
+denied, then a name in `allowed` is allowed, then a `custom` access level denies
+everything it did not name, then category gating decides (which is where
+`denied_categories` applies), and anything unmatched is denied. Because the name
+lists are consulted before category gating, one entry in `allowed` readmits a
+single tool from an otherwise withheld category. Name matching is
+case-insensitive.
 
 ### Audit log queries
 
+`since` and `until` take ISO 8601 timestamps, not Unix epochs, and `verdict` is
+lowercase.
+
 ```bash
-# Last 24h of security evaluations
-curl "http://localhost:3001/api/v1/security/audit?since=$(date -u -d '24 hours ago' +%s)" \
+# The last day of security evaluations
+curl "http://localhost:3001/api/v1/security/audit?since=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)" \
   -H "Cookie: ${SESSION}" | jq
 
 # Filter by agent + action type
@@ -288,11 +344,17 @@ curl "http://localhost:3001/api/v1/security/audit?agent_id=${AGENT_ID}&action_ty
   -H "Cookie: ${SESSION}" | jq
 
 # Filter by verdict
-curl "http://localhost:3001/api/v1/security/audit?verdict=DENY" \
+curl "http://localhost:3001/api/v1/security/audit?verdict=deny" \
   -H "Cookie: ${SESSION}" | jq '.data[] | {agent_id, action_type, tool_name, reason, timestamp}'
 ```
 
-Supported filters: `agent_id`, `tool_name`, `verdict` (`ALLOW`, `DENY`, `ESCALATE`), `action_type`, `since`, `until`.
+Supported filters, all AND-combined, results newest-first: `agent_id`,
+`tool_name`, `action_type` (which must match `category:action`), `verdict`
+(`allow`, `deny`, `escalate`, `output_scan`), `since`, and `until`. The response
+is cursor-paginated via `cursor` and `limit`. Two further filters,
+`jsonb_contains` and `jsonb_key_exists`, run containment and key-existence
+queries against the `matched_rules` column and need a PostgreSQL backend; on
+SQLite they answer `422`.
 
 ---
 

@@ -22,12 +22,11 @@ When adding a new primitive, prefer the direct-import path; do not introduce a s
 | `Select` | **Not adopted** | `SelectField` is a native `<select>`; we intentionally keep the native mobile picker for iOS / Android UX. Replacing with a custom dropdown would lose that. |
 | `Combobox`, `Autocomplete` | **Not adopted (for now)** | v1.4.0 adds passive keyboard nav + autofill improvements. No current typeahead call sites in the dashboard (connections page uses button grid, SelectField uses native `<select>`). Re-evaluate when filterable selects become a feature requirement. |
 | `OTP Field` | **Not adopted (preview)** | v1.4.0 preview component for one-time password / verification code input. Evaluate when authentication / 2FA flows are built. |
+| `Tooltip` | **Adopted** | Powers `<InfoTooltip>` (`components/ui/info-tooltip.tsx`): a non-interactive hover/focus explanation next to an icon or compact control, composed with `Portal` + `Positioner` + `Popup` and animated purely off Base UI's open/closed data attributes. |
 
 ## Adding new primitives
 
-When adding new dashboard primitives, prefer Base UI components for accessibility (Dialog, AlertDialog, Popover, Tabs, Menu, Drawer) and keep the existing custom components (`SelectField`, `Toast`, `ProgressGauge`, animations) where they are; the table above is the canonical rationale.
-
-Tooltip is not yet adopted; reach for an existing primitive first and add a row to the table above if a real Tooltip requirement appears.
+When adding new dashboard primitives, prefer Base UI components for accessibility (Dialog, AlertDialog, Popover, Tabs, Menu, Drawer, Tooltip) and keep the existing custom components (`SelectField`, `Toast`, `ProgressGauge`, animations) where they are; the table above is the canonical rationale.
 
 ## See also
 

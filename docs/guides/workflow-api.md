@@ -31,7 +31,7 @@ Endpoint paths in the diagram below omit the `/api/v1` prefix for readability; e
 flowchart LR
     Create[POST /workflows] --> Draft[WorkflowDefinition v1.0.0]
     Draft --> Validate[POST /workflows/:id/validate]
-    Draft --> Update[PUT /workflows/:id]
+    Draft --> Update[PATCH /workflows/:id]
     Update --> Version[new revision saved]
     Draft --> Activate[POST /workflow-executions/activate/:id]
     Activate --> Running[WorkflowExecution RUNNING]
@@ -98,7 +98,9 @@ curl -X POST "http://localhost:3001/api/v1/workflows/${WF_ID}/validate" \
   -H "Cookie: ${SESSION}" | jq
 ```
 
-A valid workflow returns `{"success": true, "data": {"is_valid": true}}`. Invalid workflows return `is_valid: false` with a list of `errors` (unreachable nodes, missing TRUE/FALSE edges on conditionals, etc.). Activation will reject invalid workflows, so validate first.
+A valid workflow returns `{"success": true, "data": {"errors": [], "valid": true}}`. An invalid one returns `valid: false` with the `errors` that made it so (unreachable nodes, missing TRUE/FALSE edges on conditionals, etc.); `valid` is derived from `errors` being empty, so the two cannot disagree. Activation rejects an invalid workflow with a `422`, so validate first.
+
+To validate a definition you have not saved yet, `POST /api/v1/workflows/validate-draft` takes the same body shape as create. `POST /api/v1/workflows/{id}/export` renders a saved definition back to YAML.
 
 ## 3. List versions
 
@@ -129,14 +131,16 @@ Rollback writes a new revision whose content hash equals the restored version; h
 
 ## 6. Activate into an execution
 
+`project` is required: it is the project every task the activation creates is filed against, and the request body forbids unknown fields, so omitting it is a `400`. `context` is optional and feeds condition-expression evaluation.
+
 ```bash
 curl -X POST "http://localhost:3001/api/v1/workflow-executions/activate/${WF_ID}" \
   -H "Content-Type: application/json" \
   -H "Cookie: ${SESSION}" \
-  -d '{"context": {"quarter": "Q2"}}' | jq
+  -d '{"project": "acme-q2-reporting", "context": {"quarter": "Q2"}}' | jq
 ```
 
-Response:
+Response (`201 Created`):
 
 ```json
 {
@@ -170,7 +174,7 @@ curl "http://localhost:3001/api/v1/workflow-executions/${WFE_ID}" \
   -H "Cookie: ${SESSION}" | jq '.data.node_executions[] | {node_id, status, task_id}'
 ```
 
-Node statuses progress through: `pending` -> `task_created` -> `task_completed` / `task_failed` / `skipped` (for conditional branches not taken).
+A task node progresses `pending` -> `task_created` -> `task_completed` or `task_failed`. A node on a conditional branch that was not taken is `skipped`. Control nodes (start, end, agent assignment, conditional, parallel split and join, verification) carry `completed`, since they produce no task, and a subworkflow node that finished carries `subworkflow_completed`.
 
 Real-time updates are also available via the WebSocket `tasks` channel; see [Notifications & Events](notifications-and-events.md).
 
@@ -196,7 +200,7 @@ To compose reusable fragments (e.g. a "review" step shared across workflows), pu
 
 ```bash
 # 1. Mark a workflow as publishable
-curl -X PUT "http://localhost:3001/api/v1/workflows/${WF_ID}" \
+curl -X PATCH "http://localhost:3001/api/v1/workflows/${WF_ID}" \
   -H "Content-Type: application/json" \
   -H "Cookie: ${SESSION}" \
   -d '{"is_subworkflow": true, "inputs": [{"name": "doc_id", "type": "string", "required": true}], "outputs": [{"name": "verdict", "type": "string", "required": true}]}'
@@ -211,9 +215,9 @@ curl -X PUT "http://localhost:3001/api/v1/workflows/${WF_ID}" \
 # }}
 ```
 
-See the [engine design](../design/engine.md#subworkflows) for the full subworkflow contract (typed I/O, static cycle detection, runtime depth limit).
+Every field on the update body is optional and only the ones present are applied, so a `PATCH` naming `is_subworkflow` leaves the graph alone. Pass `expected_revision` to have a concurrent edit surface a `409` instead of clobbering.
 
----
+See the [engine design](../design/engine.md#subworkflows) for the full subworkflow contract (typed I/O, static cycle detection, runtime depth limit).
 
 ---
 

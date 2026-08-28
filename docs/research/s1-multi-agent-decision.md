@@ -33,6 +33,12 @@ last_reviewed: 2026-05-05
     the framing the authors use for their own headline result, and S2 promotes it
     accordingly.
 
+    Separately, Section 4's "organisational simulation fidelity" value proposition
+    (point 2 below) states a product thesis that S2's evidence review has since closed:
+    see S2 [What closed](s2-agent-parallelism-evidence.md#what-closed), item 1
+    ("organisational simulation as an output-quality mechanism"). Read that paragraph as
+    the framing at the time, not as current product positioning.
+
 ## Bottom line
 
 SynthOrg keeps multi-agent as a foundational capability but treats it as **topology-per-task, not topology-per-company**, with single-agent as the default for all task types where multi-agent cannot demonstrate a per-task justification. The three S1 papers **confirm** this direction; they do not overturn it. Kim et al. 2025 (already integrated in the engine design) set up the heuristic; papers 2 and 3 formalise the math and empirics behind it; paper 1 supplies the emergent-risk catalog the existing guardrails do not yet fully cover.
@@ -108,7 +114,7 @@ For each risk: coverage status, SynthOrg design location, and action.
 Paper 3 challenges multi-agent's value claim by showing single-agent matches or beats it **on multi-hop reasoning under equal token budgets**. If SynthOrg's value proposition were "more agents = better reasoning", the paper would be a direct refutation. It is not. SynthOrg's value proposition is:
 
 1. **Role specialisation as work-stream parallelism, not reasoning parallelism.** An engineer writing code while a PM writes the spec while a QA writes tests is not competing for reasoning tokens on the same multi-hop question; it is three concurrent workstreams. Paper 3's equal-budget comparison does not apply because the budgets are not pooled on a single task.
-2. **Organisational simulation fidelity.** A synthetic "company" of one single-agent is not a company. The framework exists to simulate org dynamics (department budgets, hiring, performance tracking, meeting cadences, approval chains) that are inherently multi-entity. Paper 2's formal theorem about decision-theoretic dominance applies to *delegated decision networks solving a single decision*, not to *organisations running many concurrent workflows*.
+2. ~~**Organisational simulation fidelity.** A synthetic "company" of one single-agent is not a company. The framework exists to simulate org dynamics (department budgets, hiring, performance tracking, meeting cadences, approval chains) that are inherently multi-entity. Paper 2's formal theorem about decision-theoretic dominance applies to *delegated decision networks solving a single decision*, not to *organisations running many concurrent workflows*.~~ **Superseded.** S2's evidence review closed organisational simulation as an output-quality mechanism; the roles and the approval chain are the plumbing that carries the work, not the reason the output is any good.
 3. **File-level parallel execution via git worktrees.** `WorkspaceIsolationStrategy.planner_worktrees` enables true filesystem parallelism that a single agent cannot achieve without serialising edits. This is orthogonal to reasoning efficiency; it is execution-throughput efficiency.
 4. **Persistent institutional memory across role boundaries.** `OrgMemoryBackend`, `DissentRecord`, `DecisionRepository` accumulate knowledge that is structured by role. A single-agent cannot produce "engineering decided X over QA's objection" as a queryable audit artifact.
 5. **Audit-grade decision trails with role attribution.** `ReviewGateService` + `DecisionRecord` + `charter_version` identity versioning produce multi-party accountability that is meaningless in a single-agent system.
@@ -116,7 +122,7 @@ Paper 3 challenges multi-agent's value claim by showing single-agent matches or 
 
 **What SynthOrg should NOT claim**: that multi-agent reasoning beats single-agent reasoning on multi-hop questions under equal token budgets. That claim is now refuted.
 
-**What SynthOrg SHOULD claim**: that for work that decomposes into parallel role-specialised streams with shared institutional memory, multi-agent organisations produce outputs a single-agent cannot: namely parallel execution throughput, role-attributed decision artifacts, and simulation fidelity for org dynamics.
+**What SynthOrg SHOULD claim**: ~~that for work that decomposes into parallel role-specialised streams with shared institutional memory, multi-agent organisations produce outputs a single-agent cannot: namely parallel execution throughput, role-attributed decision artifacts, and simulation fidelity for org dynamics.~~ **Superseded on its last clause.** Parallel execution throughput and role-attributed decision artifacts stand; simulation fidelity for org dynamics does not, per S2.
 
 ---
 

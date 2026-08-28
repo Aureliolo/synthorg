@@ -21,10 +21,11 @@ class BrownfieldError(EngineError):
 class BrownfieldWorkspaceNotEmptyError(BrownfieldError):
     """Raised when import targets a workspace that already holds a codebase.
 
-    Importing onto an existing codebase is destructive; the operator must
-    use an explicit reset operation instead. Re-importing the *same* source
-    (matching ``source_ref`` and scan content hash) is idempotent and does
-    not raise.
+    Importing onto an existing codebase is destructive. There is no reset
+    operation and no endpoint that clears a workspace, so pointing at a
+    different codebase means a different project. Re-importing the *same*
+    source (matching ``source_ref`` and scan content hash) is idempotent
+    and does not raise.
     """
 
     status_code: ClassVar[int] = 409

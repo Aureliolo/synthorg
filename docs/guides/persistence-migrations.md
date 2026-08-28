@@ -9,16 +9,20 @@ editing anything under `src/synthorg/persistence/`.
 may import `aiosqlite`, `sqlite3`, `psycopg`, or `psycopg_pool`, or
 emit raw SQL DDL/DML keywords in string literals.
 
-A small set of files are sanctioned exceptions. The authoritative list is the
-`_ALLOWLIST` frozenset in `scripts/check_persistence_boundary.py`; the two primary
-agent-facing entries are:
+A small set of files are sanctioned exceptions, listed in the `_ALLOWLIST`
+frozenset in `scripts/check_persistence_boundary.py`: test fixtures and the
+gate scripts themselves, which need driver handles for bootstrap reasons
+unrelated to app code.
 
-- `src/synthorg/tools/database/schema_inspect.py`: agent-facing
-  introspection tool; returns arbitrary DB metadata the repository
-  abstraction does not expose.
-- `src/synthorg/tools/database/sql_query.py`: agent-facing
-  arbitrary-SQL tool; the SQL string itself is the payload, so it
-  cannot ride the repository pattern.
+The two agent-facing SQL tools are not on that list. `src/synthorg/tools/database/sql_query.py`
+(arbitrary-SQL execution) and `schema_inspect.py` (DB metadata introspection)
+operate against an operator-configured *external* SQLite database, not
+SynthOrg's own persistence backend, so their driver access lives in
+`src/synthorg/persistence/external_sql.py`: a module inside the boundary that
+owns the driver import, the raw SQL, and the transaction discipline, while
+the tools themselves hold only policy (statement classification, read-only
+enforcement, security gating) and presentation. That keeps the boundary
+holding with no allowlist exception for either tool.
 
 Enforced by `scripts/check_persistence_boundary.py` in pre-push and
 CI Lint. Opt-out on a single line with a trailing

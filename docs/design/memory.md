@@ -294,12 +294,16 @@ single except clause.
 | `MemoryError` | Base exception for all memory operations |
 | `MemoryConnectionError` | Backend connection cannot be established or is lost |
 | `MemoryStoreError` | A store or delete operation fails |
+| `MemoryEmbeddingError` | A text-embedding call fails on a wired, constructed embedder |
+| `MemoryDenseSearchUnavailableError` | Dense retrieval is required but the index (e.g. SQLite's `sqlite-vec` extension) cannot be loaded |
 | `MemoryRetrievalError` | A retrieve, search, or count operation fails |
 | `MemoryNotFoundError` | A specific memory ID is not found |
 | `MemoryConfigError` | Memory configuration is invalid |
 | `MemoryCapabilityError` | An unsupported operation is attempted for a backend |
 | `FineTuneDependencyError` | ML dependencies (torch, sentence-transformers[train], datasets, accelerate, transformers) are missing |
 | `FineTuneCancelledError` | A fine-tuning pipeline run is cancelled |
+| `FineTuneStageExecutionError` | A torch-bound pipeline stage fails, in-process or in its container |
+| `FineTuneDataSourceError` | Trajectory-mode training data was requested with no `TrainingDataSource` wired |
 | `FineTuneTrainingDataError` | Stage 2's triples file is empty or malformed |
 
 ### Configuration

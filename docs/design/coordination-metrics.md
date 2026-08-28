@@ -88,14 +88,11 @@ The **orchestration ratio** (`coordination / total`) is surfaced in metrics and 
     records would have evicted.
 
     **These metrics are diagnostic, and nothing in the loop routes on them.**
-    Capability selection used to raise a task's required rung when error
-    amplification or coordination overhead looked unhealthy. Every one of these
-    numbers exists only *after* a task has been assigned and run, so the nudge's
-    only reachable effect was to park work that selection had legitimately
-    approved, using evidence about earlier runs. Multi-agent quality is judged
-    after the fact instead, by the completion oracle and the red-team gate, and
-    these metrics are what an operator reads to tune a configuration
-    deliberately.
+    Every one of these numbers exists only *after* a task has been assigned and
+    run, so none of them can inform capability selection, which happens before
+    a task runs. Multi-agent quality is judged after the fact instead, by the
+    completion oracle and the red-team gate, and these metrics are what an
+    operator reads to tune a configuration deliberately.
 
 ???+ note "Full Analytics Layer Configuration"
 

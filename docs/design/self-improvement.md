@@ -1,12 +1,12 @@
-# Self-Improving Company
+# Self-Improvement
 
-The self-improvement meta-loop observes company-wide signals from 6 existing subsystems plus the offline golden-company benchmark, and produces deployment and product-level improvement proposals through a rule-first hybrid pipeline with mandatory human approval.
+The self-improvement meta-loop observes deployment-wide signals from 6 existing subsystems plus the offline golden-company benchmark, and produces deployment and product-level improvement proposals through a rule-first hybrid pipeline with mandatory human approval. Disabled by default; every proposal it can generate still requires human approval before anything applies.
 
-Company autonomy ships at `supervised` so most state-mutating agent actions queue for approval before execution; raise to `semi` or `full` via `company.autonomy_level` (or `config.autonomy.level` in the company YAML) once operators trust the organisation. Rank order: `full` > `semi` > `supervised` > `locked`.
+Autonomy ships at `supervised` so most state-mutating agent actions queue for approval before execution; raise to `semi` or `full` via the `company.autonomy_level` setting (or `config.autonomy.level` in the deployment's YAML config) once the operator trusts the deployment's output. Rank order: `full` > `semi` > `supervised` > `locked`.
 
 ## Architecture Overview
 
-The meta-loop operates at the **company altitude** (distinct from per-agent evolution in #243) and follows the pluggable protocol + strategy + factory + config discriminator pattern used throughout SynthOrg.
+The meta-loop operates at the **deployment altitude**, distinct from per-agent evolution, and follows the pluggable protocol + strategy + factory + config discriminator pattern used throughout SynthOrg.
 
 ```mermaid
 flowchart TD
@@ -199,7 +199,7 @@ src/synthorg/meta/
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Meta-analyst | Interactive Chief of Staff agent | Company metaphor, conversational UX, evolvable via #243 |
+| Meta-analyst | Interactive Chief of Staff agent | Conversational UX over the signal surface, evolvable independently of per-agent evolution |
 | Signal access | MCP tools | First slice of API-as-MCP; agents use native tool interface |
 | Proposal generation | Rule-first hybrid | Rules detect (cheap, auditable); LLM synthesises (creative, scoped) |
 | Altitudes | Config + Architecture + Prompt + Code + Tool Creation | All pluggable, config enabled by default, others opt-in |
@@ -207,7 +207,7 @@ src/synthorg/meta/
 | Rollout | Before/after default, canary + A/B test opt-in | Per-proposal choice; A/B uses group assignment + statistical comparison |
 | Regression | Tiered: threshold + statistical | Layer 1 for catastrophic, Layer 2 for subtle degradation |
 | Signals consumed | six live signal domains + offline benchmark | Performance, budget, coordination, errors, evolution, telemetry, plus the opt-in golden-benchmark curve |
-| Evolution boundary | Org-wide default; override + advisory alternatives | Clear separation from per-agent #243 |
+| Evolution boundary | Deployment-wide default; override + advisory alternatives | Clear separation from per-agent evolution |
 | Safe defaults | Disabled, opt-in, mandatory approval | Never auto-applies without human review |
 | Cross-deployment analytics | Dedicated protocol in `meta/telemetry/` | Domain events, not log records; follows meta/ pluggable pattern |
 | Analytics anonymisation | Strict allowlist (enums + numerics only) | Maximum privacy; free text dropped, UUIDs hashed, timestamps coarsened |
@@ -377,7 +377,13 @@ system's job, not the user's, so there is no mode picker.
   `chief_of_staff.*_enabled` flag, model setting, and downstream contract,
   re-checked per request via `ensure_feature_enabled` (`api/_feature_gate.py`):
   a closed gate 503s and the router never reinterprets a message to dodge a
-  gate. **`act` stays fail-closed** (503 when `direct_mcp_enabled` is off or
+  gate. The autonomous capabilities (alerts, narrative, learning, invite,
+  routing) are additionally gated on the off-by-default persona master switch
+  (`self_improvement.chief_of_staff_enabled`): both must be on, so `routing`
+  reads `enabled` in its own namespace yet stays inert until the master switch
+  is turned on. `explain-chat`, `propose`, and `group-chat` are not behind that
+  master switch and are live by their own default-on flag alone.
+  **`act` stays fail-closed** (503 when `direct_mcp_enabled` is off or
   security governance is inactive) **and buffered + idempotent, never
   streamed** (a streamed action that failed mid-run would re-run its tools on
   retry); a classified `act` naming no agent degrades to `explain` rather than
@@ -478,36 +484,38 @@ self_improvement:
   chief_of_staff:
     # Unified turn (POST /meta/chat/turn): intent classification in front.
     turn_router_enabled: true                # Classify each turn's intent (gated live per request)
-    turn_intent_model: example-provider:example-basic-001     # Intent classifier model ref (explicit provider,model)
+    turn_intent_model: ""                    # Intent classifier model ref: unset by default; explicit (provider, model) required
     act_intent_confidence_floor: 0.85        # Higher floor for act (a write): below it degrades to explain
     charter_intent_confidence_floor: 0.8     # Higher floor for the charter interview
     # Transparent multi-voice: specialists chime in on an answer (opt-out).
     multi_voice_enabled: true                # Let specialists add an attributed chime-in (gated live per request)
-    multi_voice_model: example-provider:example-basic-001     # Chime-in model ref (explicit provider,model)
+    multi_voice_model: ""                    # Chime-in model ref: unset by default; explicit (provider, model) required
     multi_voice_max_speakers: 2              # Cap on chime-ins per answer
     multi_voice_confidence_floor: 0.7        # Value bar a specialist must clear to chime in
     # Explain turns (the unified turn's read path).
     chat_snapshot_window_days: 7              # Trailing signal window, live-resolved per request
     chat_org_state_max_items_per_section: 10 # Per-section org-state sample cap (tasks/projects/approvals); full counts always reported; live-resolved per request
-    # Propose turns (clarify-and-draft-a-plan). All opt-in.
-    propose_enabled: false                   # Master switch
-    propose_model: example-provider:example-basic-001         # LLM model ref (explicit provider,model)
+    # Propose turns (clarify-and-draft-a-plan). Default on; gated by this flag alone, not the persona master switch.
+    propose_enabled: true                    # Master switch
+    propose_model: ""                        # LLM model ref: unset by default; explicit (provider, model) required
     propose_temperature: 0.3                 # Lower than chat: structured output
     propose_max_tokens: 2000                 # Per-turn token budget
     conversational_history_token_budget: 4000       # Windowed transcript budget (oldest turns dropped first); also bounds group-convene input
     propose_max_clarification_turns: 5       # Cap before force-closing the conversation
     propose_default_risk_level: medium       # Risk stamp on each parked steering ApprovalItem
-    # Concern routing (who answers, within explain/propose). All opt-in.
-    routing_enabled: false                   # Master switch
+    # Concern routing (who answers, within explain/propose). Default on, but also gated on the
+    # persona master switch (self_improvement.chief_of_staff_enabled, off by default), so routing
+    # stays effectively off until that master switch is turned on.
+    routing_enabled: true                    # Master switch (per-capability half of the gate)
     routing_strategy: llm                    # "llm" (classifier) or "keyword" (static map)
-    routing_model: example-provider:example-basic-001         # Classifier model ref (llm strategy; explicit provider,model)
+    routing_model: ""                        # Classifier model ref: unset by default; explicit (provider, model) required
     routing_temperature: 0.0                 # Deterministic classification
     routing_max_tokens: 200                  # Per-classification token budget
     routing_confidence_floor: 0.6            # Below this, fall back to the generic persona
     routing_default_role: CEO                # Role to try when the named role has no active agent
     routing_keyword_rules: []                # Operator override for the keyword map (bespoke roles)
-    # Group-convene turns (multi-agent). All opt-in.
-    group_chat_enabled: false                # Master switch
+    # Group-convene turns (multi-agent). Default on; gated by this flag alone, not the persona master switch.
+    group_chat_enabled: true                 # Master switch
     group_chat_max_participants: 5           # Per-conversation participant cap
     group_chat_round_token_budget: 12000     # Total token budget for one round
     group_chat_token_reserve_ratio: 0.2      # Reserve held back so the budget trips early
@@ -523,14 +531,14 @@ self_improvement:
     direct_mcp_max_turns: 6                  # Hard turn cap for one chat-driven action loop
     # Operator console (configure turns). All opt-in, fail-closed; independent of direct_mcp.
     operator_console_enabled: false          # Master switch (fail-closed without SecurityConfig)
-    operator_console_model: example-provider:example-basic-001  # Console model ref (explicit provider,model)
+    operator_console_model: ""               # Console model ref: unset by default; explicit (provider, model) required
     configure_intent_confidence_floor: 0.85  # Write-capable floor: below it degrades to explain
     operator_console_max_turns: 12           # Hard turn cap for one console action loop
     operator_console_cost_ceiling: 1.0   # Spend ceiling for one console session (budget_checker)
     operator_console_autonomy_level: semi    # Default tier: reads flow, risky writes escalate
     # Documentary mode: post-run run narrative. All opt-in.
     narrative_enabled: false                 # Master switch
-    narrative_model: example-provider:example-basic-001       # LLM model ref (connective prose only; explicit provider,model)
+    narrative_model: ""                      # LLM model ref: unset by default; explicit (provider, model) required
     narrative_temperature: 0.4               # Slightly above propose: readable prose
     narrative_max_tokens: 2000               # Per-call token budget
   schedule:
@@ -555,7 +563,7 @@ self_improvement:
   guards:
     proposal_rate_limit: 10
     rate_limit_window_hours: 24
-  # Cross-deployment analytics (#1341) -- opt-in, disabled by default.
+  # Cross-deployment analytics -- opt-in, disabled by default.
   cross_deployment_analytics:
     enabled: false                       # Master switch
     collector_url: null                  # HTTPS endpoint for event POST (required when enabled)
@@ -610,7 +618,7 @@ replayable stream and discarded on unmount, never persisted client-side).
 
 ## MCP Service Facades and Signal Stores
 
-Following META-MCP-2 (#1524), the signal aggregation surface is backed
+The signal aggregation surface is backed
 by three pluggable in-memory stores (each follows the protocol + strategy +
 factory pattern; durable backends ship behind the same protocol later):
 

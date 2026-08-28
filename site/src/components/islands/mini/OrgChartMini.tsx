@@ -6,13 +6,13 @@ interface Props {
 }
 
 const agents = [
-  { id: "ceo", name: "Sarah Chen", role: "CEO", seniority: "C-Suite", x: 250, y: 20, color: "#38bdf8" },
-  { id: "cto", name: "CTO", role: "tech_lead", seniority: "C-Suite", x: 100, y: 100, color: "#a78bfa" },
-  { id: "design", name: "Design Lead", role: "designer", seniority: "Lead", x: 370, y: 100, color: "#2dd4bf" },
-  { id: "eng1", name: "Engineer", role: "developer", seniority: "Senior", x: 60, y: 170, color: "#a78bfa" },
-  { id: "eng2", name: "Engineer 2", role: "developer", seniority: "Mid", x: 175, y: 170, color: "#a78bfa" },
-  { id: "qa", name: "QA", role: "reviewer", seniority: "Senior", x: 310, y: 170, color: "#2dd4bf" },
-  { id: "ux", name: "UX", role: "designer", seniority: "Mid", x: 430, y: 170, color: "#2dd4bf" },
+  { id: "ceo", name: "Sarah Chen", role: "CEO", x: 250, y: 20, color: "#38bdf8" },
+  { id: "cto", name: "CTO", role: "tech_lead", x: 100, y: 100, color: "#a78bfa" },
+  { id: "design", name: "Design Lead", role: "designer", x: 370, y: 100, color: "#2dd4bf" },
+  { id: "eng1", name: "Engineer", role: "developer", x: 60, y: 170, color: "#a78bfa" },
+  { id: "eng2", name: "Engineer 2", role: "developer", x: 175, y: 170, color: "#a78bfa" },
+  { id: "qa", name: "QA", role: "reviewer", x: 310, y: 170, color: "#2dd4bf" },
+  { id: "ux", name: "UX", role: "designer", x: 430, y: 170, color: "#2dd4bf" },
 ];
 
 // Hierarchy edges (always shown, faint)
@@ -112,11 +112,8 @@ export default function OrgChartMini({ tick }: Props) {
                 strokeWidth={isComm ? "1.2" : "0.8"}
                 strokeOpacity={isComm ? "0.8" : "0.4"}
               />
-              <text x={a.x} y={a.y + 12} textAnchor="middle" fill="var(--dp-text-primary)" fontSize="12" fontWeight="600" fontFamily="var(--dp-font-sans)">
+              <text x={a.x} y={a.y + 16} textAnchor="middle" fill="var(--dp-text-primary)" fontSize="12" fontWeight="600" fontFamily="var(--dp-font-sans)">
                 {a.name}
-              </text>
-              <text x={a.x} y={a.y + 24} textAnchor="middle" fill="var(--dp-text-secondary)" fontSize="10" fontFamily="var(--dp-font-sans)">
-                {a.seniority}
               </text>
             </g>
           );

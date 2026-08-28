@@ -1,17 +1,31 @@
 ---
-title: Framework Comparison
+title: Ecosystem Comparison
 description: >-
-  How SynthOrg compares to every notable agent orchestration
-  framework, platform, and research project.
+  Where SynthOrg sits among agent frameworks, platforms, workflow
+  engines, and developer tools, and what the table cannot show.
 ---
 
 <!-- Generated from data/competitors.yaml by scripts/generate_comparison.py -- do not edit directly -->
 
-# Framework Comparison
+# Ecosystem Comparison
 
-How SynthOrg compares to agent orchestration frameworks, platforms, and research projects.
+How SynthOrg compares to agent frameworks, platforms, workflow engines, and developer tools.
 
-Last updated: 2026-08-26
+Comparison data last changed: 2026-08-28
+
+Rows are compiled from each project's own documentation and repository. Only a row carrying `source_verified_at` has a recorded check date; the rest are point-in-time and may have drifted since.
+
+## What the rows cannot show
+
+A single agent in a loop cannot hold a whole application. That is why a system that does one thing at a time degrades as an application grows: the twentieth thing damages the first. SynthOrg decomposes the work into a tree of parts, builds the parts concurrently, each in its own workspace, and assembles them bottom-up. The dimensions below are shared axes across every project in the table, so that shape does not appear in them. Two of its properties are worth stating outright.
+
+**It runs on your hardware.** Self-hosted, provider-agnostic, any models including local ones. There is no SynthOrg service in the path, so on the model path what reaches a third party is whatever the provider you configured needs, and against local models nothing leaves at all. The two outbound integrations, product telemetry and cross-deployment analytics, both default to off, and each sends only what its own page documents once an operator turns it on. Every competitor surveyed for this table monetises hosted metered compute; the inference drawn from that, that a genuinely self-hostable equivalent cannibalises their margin and is unattractive for them to build, is analysis rather than something the table measures. The Self-Hosted column is the one axis where the observation itself shows.
+
+**The thing that checks a part is not the thing that produced it.** That separation is structural, enforced in the service layer, in the model binding, and by a database constraint, and it is rarely implemented. It does not make the output correct: an independent judge is a triage filter, so it does not mean nothing broken gets through and it does not replace human judgement. The two reviewers are also not bound to different model families, so a blind spot they share is one the pair cannot see.
+
+**SynthOrg is pre-alpha.** Nothing here promises an outcome. The rows describe how the system is built and how it behaves, never what it will deliver.
+
+## Reading the tables
 
 **Legend:**
 ✔ Full support | ~ Partial support | - Not supported | ⏲ Planned
@@ -19,61 +33,61 @@ Last updated: 2026-08-26
 !!! tip "Interactive Version"
     For a filterable, sortable version of this comparison, visit the [interactive comparison page](https://synthorg.io/compare/).
 
-## Organisation & Coordination
+## Coordination
 
-| Framework | Category | License | Pricing | Self-Hosted | Org Structure | Multi-Agent | Task Delegation | Human-in-the-Loop |
-|:----------|:---------|:--------|:--------|:-----------:|:---:|:---:|:---:|:---:|
-| [**SynthOrg**](https://synthorg.io) | Virtual Org Simulator | BUSL-1.1 | Depends | ✔ | ~ | ~ | ~ | ~ |
-| [CrewAI](https://crewai.com) | Multi-Agent Framework | MIT | Open-core | ~ | ~ | ✔ | ✔ | ✔ |
-| [AutoGen](https://microsoft.github.io/autogen/) | Multi-Agent Framework | MIT | Free | ✔ | - | ✔ | ✔ | ✔ |
-| [LangGraph](https://www.langchain.com/langgraph) | Multi-Agent Framework | MIT | Open-core | ~ | - | ✔ | ✔ | ✔ |
-| [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/) | Multi-Agent Framework | MIT | Free | ✔ | - | ✔ | ✔ | ✔ |
-| [Semantic Kernel](https://learn.microsoft.com/en-us/semantic-kernel/) | Multi-Agent Framework | MIT | Free | ✔ | - | ✔ | ✔ | ✔ |
-| [Google ADK](https://google.github.io/adk-docs/) | Multi-Agent Framework | Apache-2.0 | Open-core | ✔ | - | ✔ | ✔ | ✔ |
-| [PydanticAI](https://ai.pydantic.dev/) | Multi-Agent Framework | MIT | Open-core | ~ | - | ~ | ~ | ✔ |
-| [CAMEL](https://www.camel-ai.org) | Multi-Agent Framework | Apache-2.0 | Free | ✔ | ~ | ✔ | ✔ | ~ |
-| [smolagents](https://huggingface.co/docs/smolagents) | Multi-Agent Framework | Apache-2.0 | Free | ✔ | - | ~ | ~ | ~ |
-| [AG2](https://ag2.ai) | Multi-Agent Framework | Apache-2.0 | Free | ✔ | - | ✔ | ~ | ✔ |
-| [Agno](https://www.agno.com) | Multi-Agent Framework | Apache-2.0 | Open-core | ✔ | - | ✔ | ✔ | ✔ |
-| [Letta](https://www.letta.com) | Multi-Agent Framework | Apache-2.0 | Open-core | ✔ | - | ✔ | ✔ | ✔ |
-| [Agency Swarm](https://agency-swarm.ai/) | Multi-Agent Framework | MIT | Open-core | ✔ | ~ | ✔ | ✔ | ~ |
-| [Mastra](https://mastra.ai) | Multi-Agent Framework | Apache-2.0 | Open-core | ✔ | - | ✔ | ✔ | ✔ |
-| [Langroid](https://langroid.github.io/langroid/) | Multi-Agent Framework | MIT | Free | ✔ | - | ✔ | ✔ | ~ |
-| [Strands Agents](https://strandsagents.com/) | Multi-Agent Framework | Apache-2.0 | Free | ✔ | - | ✔ | ✔ | ✔ |
-| [BeeAI Framework](https://beeai.dev) | Multi-Agent Framework | Apache-2.0 | Free | ✔ | - | ✔ | ✔ | ~ |
-| [Haystack](https://haystack.deepset.ai/) | Multi-Agent Framework | Apache-2.0 | Open-core | ✔ | - | ~ | ~ | ✔ |
-| [ChatDev](https://chatdev.ai/) | Virtual Org Simulator | Apache-2.0 | Free | ✔ | ~ | ✔ | ~ | ~ |
-| [MetaGPT](https://docs.deepwisdom.ai/) | Virtual Org Simulator | MIT | Open-core | ✔ | ~ | ✔ | ✔ | ~ |
-| [Inngest AgentKit](https://www.inngest.com) | Multi-Agent Framework | Apache-2.0 | Open-core | ✔ | - | ✔ | ~ | ~ |
-| [Temporal](https://temporal.io) | Workflow Engine | MIT | Open-core | ✔ | - | ~ | ✔ | ✔ |
-| [n8n](https://n8n.io) | Workflow Engine | SUL-1.0 | Depends | ✔ | - | ~ | ~ | ✔ |
-| [Dify](https://dify.ai) | Workflow Engine | Apache-2.0 | Open-core | ✔ | - | ~ | ~ | ✔ |
-| [Restack](https://www.restack.io/) | Workflow Engine | Apache-2.0 | Open-core | ✔ | - | ~ | ~ | ~ |
-| [Flyte](https://flyte.org) | Workflow Engine | Apache-2.0 | Open-core | ✔ | - | ~ | ~ | ✔ |
-| [Flowise](https://flowiseai.com) | Workflow Engine | Apache-2.0 | Open-core | ✔ | - | ✔ | ✔ | ✔ |
-| [Langflow](https://www.langflow.org) | Workflow Engine | MIT | Open-core | ✔ | - | ~ | ~ | ~ |
-| [AutoGPT](https://agpt.co) | Workflow Engine | PolyForm-Shield-1.0.0 | Open-core | ✔ | - | ~ | ~ | ~ |
-| [Motia](https://motia.dev) | Workflow Engine | ELv2 | Depends | ✔ | - | ~ | ~ | ~ |
-| [LangSmith](https://smith.langchain.com) | Commercial Platform | Proprietary | Paid | ~ | - | ~ | ~ | ✔ |
-| [Amazon Bedrock Agents](https://aws.amazon.com/bedrock/agents/) | Commercial Platform | Proprietary | Paid | - | ~ | ✔ | ✔ | ✔ |
-| [Vertex AI Agent Builder](https://cloud.google.com/products/agent-builder) | Commercial Platform | Proprietary | Paid | - | - | ✔ | ✔ | ✔ |
-| [Agentforce](https://www.salesforce.com/agentforce/) | Commercial Platform | Proprietary | Paid | - | - | ✔ | ✔ | ✔ |
-| [Relevance AI](https://relevanceai.com) | Commercial Platform | Proprietary | Paid | - | ~ | ✔ | ✔ | ✔ |
-| [Julep](https://julep.ai) | Workflow Engine | Apache-2.0 | Free | ✔ | - | ~ | ~ | ~ |
-| [LlamaIndex Workflows](https://www.llamaindex.ai/) | Developer Tool | MIT | Open-core | ~ | - | ✔ | ~ | ✔ |
-| [Composio](https://composio.dev) | Developer Tool | MIT | Open-core | ✔ | - | - | - | - |
-| [E2B](https://e2b.dev) | Developer Tool | Apache-2.0 | Open-core | ✔ | - | - | - | - |
-| [OpenHands](https://openhands.dev) | Developer Tool | MIT | Open-core | ✔ | - | ✔ | ✔ | ✔ |
-| [Rivet](https://rivet.ironcladapp.com) | Developer Tool | MIT | Free | ✔ | - | ~ | ~ | ~ |
-| [Vercel AI SDK](https://ai-sdk.dev) | Developer Tool | Apache-2.0 | Open-core | ✔ | - | ~ | ~ | ~ |
-| [OGX](https://ogx-ai.github.io/) | Developer Tool | MIT | Free | ✔ | - | - | - | ~ |
-| [Atomic Agents](https://github.com/BrainBlend-AI/atomic-agents) | Developer Tool | MIT | Free | ✔ | - | ~ | ~ | ~ |
+| Project | Category | License | Pricing | Self-Hosted | Multi-Agent | Task Delegation | Human-in-the-Loop |
+|:----------|:---------|:--------|:--------|:-----------:|:---:|:---:|:---:|
+| [**SynthOrg**](https://synthorg.io) | Build Platform | BUSL-1.1 | Depends | ✔ | ~ | ~ | ✔ |
+| [CrewAI](https://crewai.com) | Multi-Agent Framework | MIT | Open-core | ~ | ✔ | ✔ | ✔ |
+| [AutoGen](https://microsoft.github.io/autogen/) | Multi-Agent Framework | MIT | Free | ✔ | ✔ | ✔ | ✔ |
+| [LangGraph](https://www.langchain.com/langgraph) | Multi-Agent Framework | MIT | Open-core | ~ | ✔ | ✔ | ✔ |
+| [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/) | Multi-Agent Framework | MIT | Free | ✔ | ✔ | ✔ | ✔ |
+| [Semantic Kernel](https://learn.microsoft.com/en-us/semantic-kernel/) | Multi-Agent Framework | MIT | Free | ✔ | ✔ | ✔ | ✔ |
+| [Google ADK](https://google.github.io/adk-docs/) | Multi-Agent Framework | Apache-2.0 | Open-core | ✔ | ✔ | ✔ | ✔ |
+| [PydanticAI](https://ai.pydantic.dev/) | Multi-Agent Framework | MIT | Open-core | ~ | ~ | ~ | ✔ |
+| [CAMEL](https://www.camel-ai.org) | Multi-Agent Framework | Apache-2.0 | Free | ✔ | ✔ | ✔ | ~ |
+| [smolagents](https://huggingface.co/docs/smolagents) | Multi-Agent Framework | Apache-2.0 | Free | ✔ | ~ | ~ | ~ |
+| [AG2](https://ag2.ai) | Multi-Agent Framework | Apache-2.0 | Free | ✔ | ✔ | ~ | ✔ |
+| [Agno](https://www.agno.com) | Multi-Agent Framework | Apache-2.0 | Open-core | ✔ | ✔ | ✔ | ✔ |
+| [Letta](https://www.letta.com) | Multi-Agent Framework | Apache-2.0 | Open-core | ✔ | ✔ | ✔ | ✔ |
+| [Agency Swarm](https://agency-swarm.ai/) | Multi-Agent Framework | MIT | Open-core | ✔ | ✔ | ✔ | ~ |
+| [Mastra](https://mastra.ai) | Multi-Agent Framework | Apache-2.0 | Open-core | ✔ | ✔ | ✔ | ✔ |
+| [Langroid](https://langroid.github.io/langroid/) | Multi-Agent Framework | MIT | Free | ✔ | ✔ | ✔ | ~ |
+| [Strands Agents](https://strandsagents.com/) | Multi-Agent Framework | Apache-2.0 | Free | ✔ | ✔ | ✔ | ✔ |
+| [BeeAI Framework](https://beeai.dev) | Multi-Agent Framework | Apache-2.0 | Free | ✔ | ✔ | ✔ | ~ |
+| [Haystack](https://haystack.deepset.ai/) | Multi-Agent Framework | Apache-2.0 | Open-core | ✔ | ~ | ~ | ✔ |
+| [ChatDev](https://chatdev.ai/) | Virtual Org Simulator | Apache-2.0 | Free | ✔ | ✔ | ~ | ~ |
+| [MetaGPT](https://docs.deepwisdom.ai/) | Virtual Org Simulator | MIT | Open-core | ✔ | ✔ | ✔ | ~ |
+| [Inngest AgentKit](https://www.inngest.com) | Multi-Agent Framework | Apache-2.0 | Open-core | ✔ | ✔ | ~ | ~ |
+| [Temporal](https://temporal.io) | Workflow Engine | MIT | Open-core | ✔ | ~ | ✔ | ✔ |
+| [n8n](https://n8n.io) | Workflow Engine | SUL-1.0 | Depends | ✔ | ~ | ~ | ✔ |
+| [Dify](https://dify.ai) | Workflow Engine | Apache-2.0 | Open-core | ✔ | ~ | ~ | ✔ |
+| [Restack](https://www.restack.io/) | Workflow Engine | Apache-2.0 | Open-core | ✔ | ~ | ~ | ~ |
+| [Flyte](https://flyte.org) | Workflow Engine | Apache-2.0 | Open-core | ✔ | ~ | ~ | ✔ |
+| [Flowise](https://flowiseai.com) | Workflow Engine | Apache-2.0 | Open-core | ✔ | ✔ | ✔ | ✔ |
+| [Langflow](https://www.langflow.org) | Workflow Engine | MIT | Open-core | ✔ | ~ | ~ | ~ |
+| [AutoGPT](https://agpt.co) | Workflow Engine | PolyForm-Shield-1.0.0 | Open-core | ✔ | ~ | ~ | ~ |
+| [Motia](https://motia.dev) | Workflow Engine | ELv2 | Depends | ✔ | ~ | ~ | ~ |
+| [LangSmith](https://smith.langchain.com) | Commercial Platform | Proprietary | Paid | ~ | ~ | ~ | ✔ |
+| [Amazon Bedrock Agents](https://aws.amazon.com/bedrock/agents/) | Commercial Platform | Proprietary | Paid | - | ✔ | ✔ | ✔ |
+| [Vertex AI Agent Builder](https://cloud.google.com/products/agent-builder) | Commercial Platform | Proprietary | Paid | - | ✔ | ✔ | ✔ |
+| [Agentforce](https://www.salesforce.com/agentforce/) | Commercial Platform | Proprietary | Paid | - | ✔ | ✔ | ✔ |
+| [Relevance AI](https://relevanceai.com) | Commercial Platform | Proprietary | Paid | - | ✔ | ✔ | ✔ |
+| [Julep](https://julep.ai) | Workflow Engine | Apache-2.0 | Free | ✔ | ~ | ~ | ~ |
+| [LlamaIndex Workflows](https://www.llamaindex.ai/) | Developer Tool | MIT | Open-core | ~ | ✔ | ~ | ✔ |
+| [Composio](https://composio.dev) | Developer Tool | MIT | Open-core | ✔ | - | - | - |
+| [E2B](https://e2b.dev) | Developer Tool | Apache-2.0 | Open-core | ✔ | - | - | - |
+| [OpenHands](https://openhands.dev) | Developer Tool | MIT | Open-core | ✔ | ✔ | ✔ | ✔ |
+| [Rivet](https://rivet.ironcladapp.com) | Developer Tool | MIT | Free | ✔ | ~ | ~ | ~ |
+| [Vercel AI SDK](https://ai-sdk.dev) | Developer Tool | Apache-2.0 | Open-core | ✔ | ~ | ~ | ~ |
+| [OGX](https://ogx-ai.github.io/) | Developer Tool | MIT | Free | ✔ | - | - | ~ |
+| [Atomic Agents](https://github.com/BrainBlend-AI/atomic-agents) | Developer Tool | MIT | Free | ✔ | ~ | ~ | ~ |
 
 ## Technical Capabilities
 
-| Framework | Category | License | Pricing | Self-Hosted | Memory | Tool Use | Security | Workflows |
+| Project | Category | License | Pricing | Self-Hosted | Memory | Tool Use | Security | Workflows |
 |:----------|:---------|:--------|:--------|:-----------:|:---:|:---:|:---:|:---:|
-| [**SynthOrg**](https://synthorg.io) | Virtual Org Simulator | BUSL-1.1 | Depends | ✔ | ~ | ~ | ~ | ~ |
+| [**SynthOrg**](https://synthorg.io) | Build Platform | BUSL-1.1 | Depends | ✔ | ~ | ~ | ✔ | ~ |
 | [CrewAI](https://crewai.com) | Multi-Agent Framework | MIT | Open-core | ~ | ✔ | ✔ | ~ | ~ |
 | [AutoGen](https://microsoft.github.io/autogen/) | Multi-Agent Framework | MIT | Free | ✔ | ✔ | ✔ | ~ | ✔ |
 | [LangGraph](https://www.langchain.com/langgraph) | Multi-Agent Framework | MIT | Open-core | ~ | ✔ | ✔ | - | ✔ |
@@ -121,9 +135,9 @@ Last updated: 2026-08-26
 
 ## Operations & Tooling
 
-| Framework | Category | License | Pricing | Self-Hosted | Budget / Cost | Observability | Dashboard | CLI |
+| Project | Category | License | Pricing | Self-Hosted | Budget / Cost | Observability | Dashboard | CLI |
 |:----------|:---------|:--------|:--------|:-----------:|:---:|:---:|:---:|:---:|
-| [**SynthOrg**](https://synthorg.io) | Virtual Org Simulator | BUSL-1.1 | Depends | ✔ | ~ | ✔ | ~ | ~ |
+| [**SynthOrg**](https://synthorg.io) | Build Platform | BUSL-1.1 | Depends | ✔ | ✔ | ✔ | ✔ | ✔ |
 | [CrewAI](https://crewai.com) | Multi-Agent Framework | MIT | Open-core | ~ | ~ | ~ | ~ | ✔ |
 | [AutoGen](https://microsoft.github.io/autogen/) | Multi-Agent Framework | MIT | Free | ✔ | - | ~ | ~ | - |
 | [LangGraph](https://www.langchain.com/langgraph) | Multi-Agent Framework | MIT | Open-core | ~ | - | ~ | ~ | ✔ |
@@ -171,9 +185,9 @@ Last updated: 2026-08-26
 
 ## Maturity
 
-| Framework | Category | License | Pricing | Self-Hosted | Production Ready | Templates |
+| Project | Category | License | Pricing | Self-Hosted | Production Ready | Templates |
 |:----------|:---------|:--------|:--------|:-----------:|:---:|:---:|
-| [**SynthOrg**](https://synthorg.io) | Virtual Org Simulator | BUSL-1.1 | Depends | ✔ | ~ | ✔ |
+| [**SynthOrg**](https://synthorg.io) | Build Platform | BUSL-1.1 | Depends | ✔ | ~ | ✔ |
 | [CrewAI](https://crewai.com) | Multi-Agent Framework | MIT | Open-core | ~ | ~ | ~ |
 | [AutoGen](https://microsoft.github.io/autogen/) | Multi-Agent Framework | MIT | Free | ✔ | ~ | ~ |
 | [LangGraph](https://www.langchain.com/langgraph) | Multi-Agent Framework | MIT | Open-core | ~ | ~ | ~ |

@@ -86,8 +86,9 @@ Response (`404 Not Found`):
 
 ## Error Categories
 
-Each error belongs to one of 8 categories. The `type` URI points to the
-category-specific section of this page.
+Each error belongs to one of eight categories. The `type` URI points to the
+category-specific section of this page. The HTTP status is carried by the
+raising error class, so a category spans every status its classes declare.
 
 | Category | Title | HTTP Status | Type URI |
 |----------|-------|-------------|----------|
@@ -96,8 +97,8 @@ category-specific section of this page.
 | `not_found` | Resource Not Found | 404 | `https://synthorg.io/docs/errors#not_found` |
 | `conflict` | Resource Conflict | 409 | `https://synthorg.io/docs/errors#conflict` |
 | `rate_limit` | Rate Limit Exceeded | 429 | `https://synthorg.io/docs/errors#rate_limit` |
-| `budget_exhausted` | Budget Exhausted | 402 (taxonomy defined; API handler pending) | `https://synthorg.io/docs/errors#budget_exhausted` |
-| `provider_error` | Provider Error | 502 (taxonomy defined; API handler pending) | `https://synthorg.io/docs/errors#provider_error` |
+| `budget_exhausted` | Budget Exhausted | 402 | `https://synthorg.io/docs/errors#budget_exhausted` |
+| `provider_error` | Provider Error | 502 by default; subclasses override | `https://synthorg.io/docs/errors#provider_error` |
 | `internal` | Internal Server Error | 500, 503 | `https://synthorg.io/docs/errors#internal` |
 
 ---
@@ -105,6 +106,9 @@ category-specific section of this page.
 ## Error Codes
 
 Error codes are 4-digit integers grouped by category (first digit = category).
+The tables below carry the codes an API consumer meets on the common paths. The
+complete set, including every domain-specific code, is in the
+[Error Code Reference](reference/errors.md).
 
 ### 1xxx: Authentication { #auth }
 
@@ -156,6 +160,10 @@ Error codes are 4-digit integers grouped by category (first digit = category).
 | Code | Name | Description |
 |------|------|-------------|
 | 7000 | `PROVIDER_ERROR` | Upstream LLM provider returned an error |
+| 7001 | `PROVIDER_TIMEOUT` | Provider did not answer within the request budget (504) |
+| 7002 | `PROVIDER_CONNECTION` | Network-level failure reaching the provider |
+| 7003 | `PROVIDER_INTERNAL` | Provider returned a server-side error |
+| 7004 | `PROVIDER_AUTHENTICATION_FAILED` | Provider rejected the brokered credential |
 
 ### 8xxx: Internal { #internal }
 
@@ -210,13 +218,18 @@ Agents should use `retryable` and `retry_after` for autonomous retry decisions:
 - **`retry_after`**: when set, wait this many seconds before retrying
 - **`retryable: false`**: do not retry; the request needs to be fixed
 
-Retryable error codes:
+Whether a request may be retried is a property of the raising error class, not
+of the code range, so read `retryable` off the response rather than inferring
+it from the code. The codes most often carrying `retryable: true`:
 
 | Code | Name | Typical Cause |
 |------|------|---------------|
 | 5000 | `RATE_LIMITED` | Too many requests to the API |
 | 5001 | `PER_OPERATION_RATE_LIMITED` | Per-operation sliding-window cap hit |
 | 5002 | `CONCURRENCY_LIMIT_EXCEEDED` | Per-operation inflight cap hit (long-running op still running) |
+| 7001 | `PROVIDER_TIMEOUT` | Upstream LLM provider did not answer in time |
+| 7002 | `PROVIDER_CONNECTION` | Network-level failure reaching the provider |
+| 7003 | `PROVIDER_INTERNAL` | Upstream provider returned a server-side error |
 | 8001 | `SERVICE_UNAVAILABLE` | Transient service outage |
 
 ### Recommended Retry Strategy
@@ -229,9 +242,14 @@ Retryable error codes:
 
 ---
 
-## 5xx Response Scrubbing
+## Secret Redaction
 
-For security, all 5xx error responses return a generic `detail` message
-(e.g. "Internal server error", "Service unavailable") regardless of the
-actual exception. Internal error details are logged server-side with the
-`instance` correlation ID for debugging.
+No response body is a generic placeholder. Both 4xx and 5xx responses surface
+the real error, secret-redacted: a 5xx `detail` is built by
+`safe_error_description` (`{ExceptionType}: {message}`, credential patterns
+stripped, length-bounded), and a 4xx `detail` runs the guard-authored or
+middleware-authored message through `scrub_secret_tokens`. An operator reading
+a failed action gets the actual condition rather than "contact support".
+
+The `instance` correlation ID is on every error body and in every log line for
+that request, so a response and its server-side context join on one value.

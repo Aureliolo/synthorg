@@ -50,13 +50,13 @@ The four resolution paths are:
 
 The Classification table above follows one shape: an audit finds the first instance of a category, and a standing gate catches every recurrence. The `complex_service` module-size tier inverts that shape, so it is documented here rather than as a table row.
 
-The #2052 cohesion audit reads each oversized file end-to-end and issues a verdict. A file confirmed as one cohesive responsibility that legitimately exceeds the standard `service` / `adapter` caps is tagged `# module-kind: complex_service` (cap 1100), and `scripts/check_module_size_budget.py` then enforces the 1100 ceiling against it like any other tier. The audit assigns the tier; the gate accepts the verdict. A table row would misrepresent this as a recurrence the gate discovers, when in fact the gate is honouring a judgment the audit already made.
+A cohesion audit reads each oversized file end-to-end and issues a verdict. A file confirmed as one cohesive responsibility that legitimately exceeds the standard `service` / `adapter` caps is tagged `# module-kind: complex_service` (cap 1100), and `scripts/check_module_size_budget.py` then enforces the 1100 ceiling against it like any other tier. The audit assigns the tier; the gate accepts the verdict. A table row would misrepresent this as a recurrence the gate discovers, when in fact the gate is honouring a judgment the audit already made.
 
 `complex_service` is reserved for audit verdicts. It is not a free opt-in for new code: new `service`, `adapter`, and `controller` files still hit their strict caps (600 / 700 / 400), and an over-cap new file is fixed by improving its cohesion or shrinking it, not by tagging it `complex_service`. See [ADR-0006](../decisions/0006-tiered-module-size-policy.md) ("Complex-service tier") for the full rule.
 
 ## Out of scope here
 
-- The full walk-all-31-waves audit-the-audit retrofit (Lever 5 of #1740 in its broadest reading) is deliberately deferred: this document captures the gate inventory as it stands. New gate additions land in their own PRs and update this document at the same time, per the Convention Rollout rule in `CLAUDE.md`.
+- A full audit-the-audit retrofit across every wave is deliberately deferred: this document captures the gate inventory as it stands. New gate additions land in their own PRs and update this document at the same time, per the Convention Rollout rule in `CLAUDE.md`.
 - Categories that are pure-judgment (e.g. "code is hard to read") are intentionally absent: there is no useful automation for them and the four resolution paths above are exhaustive for everything that has a mechanical signature.
 
 ## Maintenance

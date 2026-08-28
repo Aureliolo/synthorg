@@ -7,9 +7,32 @@ description: Verification stage, harness middleware layer, review pipeline, and 
 
 This page covers the quality-assurance pipeline attached to agent output: the verification stage that runs after an agent completes a task, the harness middleware that wraps every agent invocation, the review pipeline that validates produced artifacts, and the intake engine that ingests new work.
 
+## What these gates establish, and what they do not
+
+Every gate on this page answers one narrow question: was the work checked by
+something other than the agent that produced it, and did the check leave a
+record. That property is enforced structurally rather than by convention, at
+three independent layers described in
+[Review Gate Invariants](security.md#review-gate-invariants).
+
+It does not establish that the work is correct, and nothing on this page should
+be read as saying so. An independent reviewer is a filter, not an authority: it
+catches some defects, misses others, and its verdict is one agent's judgement of another
+agent's work. The two agents are distinct identities with their own bound
+`(provider, model)` pairs, but nothing binds them to different model
+*families*, so a blind spot shared by both is a blind spot the pair cannot
+see. Where the machinery cannot decide, it hands the question to a person
+rather than resolving it: an ESCALATE verdict parks the task at BLOCKED, and
+an unstaffed gate role parks rather than passing. Review narrows what can be
+recorded as done; it does not establish that what completed is right.
+
 ## Verification Stage
 
-Verification is a first-class stage in the workflow engine. Three converging research sources (Marco DeepResearch on verification-centric agent frameworks, GEMS on the five-stage agent loop with explicit Verifier, and the Anthropic three-agent harness with Planner/Generator/Evaluator and calibrated grading) all converge on verification as a **separate agent with its own context**, not a self-evaluation inside the generator step.
+Verification is a first-class stage in the workflow engine, and it runs as a
+**separate evaluator with its own context** rather than as a self-evaluation
+inside the generator step: a generator grading its own output reuses the
+reasoning that produced it, so the blind spot that caused a defect is the same
+one that hides it.
 
 ### Workflow Node and Edge Types
 
@@ -33,7 +56,7 @@ Built-in rubrics: `frontend-design` (four criteria: design/originality/craft/fun
 
 ### Atomic Criteria Decomposition
 
-Acceptance criteria are decomposed into atomic binary probes (`AtomicProbe`) via a pluggable `CriteriaDecomposer` protocol. The default `LLMCriteriaDecomposer` uses the medium-tier provider. An `IdentityCriteriaDecomposer` maps each criterion to one probe for deterministic testing.
+Acceptance criteria are decomposed into atomic binary probes (`AtomicProbe`) via a pluggable `CriteriaDecomposer` protocol. `simulations.verification_decomposer` selects the variant and defaults to `identity`: `IdentityCriteriaDecomposer` maps each criterion to one probe with no model call. `LLMCriteriaDecomposer` runs on the explicit `(provider, model)` pair in `simulations.verification_decomposer_model`, and with that pair unset it degrades to the identity decomposer rather than probing on a connection nobody chose.
 
 ### Structured Handoff Artifacts
 
@@ -41,7 +64,7 @@ Acceptance criteria are decomposed into atomic binary probes (`AtomicProbe`) via
 
 ### Self-Evaluation Rejection
 
-> Self-evaluation (where the generator also judges its own output) is explicitly rejected. Prior research documents that self-evaluation produces over-confidence and fails to catch the generator's own blind spots. `VerificationResult.evaluator_agent_id` MUST differ from the generator agent ID; enforced by model validator at construction.
+> Self-evaluation, where the generator also judges its own output, is rejected. `VerificationResult.evaluator_agent_id` MUST differ from the generator agent id, enforced by a model validator at construction. The invariant is about *who* judged; it says nothing about whether the judgement was right.
 
 ### Pluggable Grading
 
@@ -200,9 +223,15 @@ elided from the cassette's human-readable copy.
 
 ## Completion Oracle Gate
 
-The completion oracle makes "done" mean *the code compiles, its tests pass,
-and an independent reviewer approves* rather than "the run produced some
-artifacts". It is **on by default** (opt-out via
+The completion oracle sets what a task must show before it may be recorded as
+done: for code work, a recorded test run that actually happened and passed,
+plus a sign-off from an agent that is not the one that did the work. The
+alternative it replaces is "the run produced some artifacts", which is
+satisfied by an agent that wrote files and said it was finished. Both halves
+are mechanisms with known limits: the first proves a test command ran and
+exited zero, not that the tests are adequate; the second records that a
+second agent read the deliverable and formed a view, not that the view is
+correct. It is **on by default** (opt-out via
 `engine.completion_oracle_enabled`) and is two composed gates that run first in
 the completion chain, before the red-team and vision gates, on every path to
 COMPLETED (both the auto-review `run_pipeline` and the human-driven
@@ -295,22 +324,13 @@ roster is read: the reviewers ARE on the roster, so any rule that lists staffed
 roles without asking what a role CONFERS hands the planner a judge to assign
 work to.
 
-That is what shipped. `DecompositionContext.available_roles` became the enum of
-the `required_role` field, which is required on every subtask, and the gate role
-led the list:
-
-```json
-"required_role": {
-  "type": "string",
-  "enum": ["Completion Reviewer", "Developer"],
-  "description": "The role accountable for this item, selected from the roles this organisation staffs."
-}
-```
-
-A live run assigned `Completion Reviewer` to 19 of 102 subtasks, 7 of them
-atomic and due to execute, with titles like "Acceptance suite (verification
-gate)". Nothing rejected it: the no-self-review invariant is a `CHECK` on a
-verdict ROW, and this happens a layer earlier, while the plan is being written.
+The exposure is concrete. `DecompositionContext.available_roles` becomes the
+enum of the `required_role` field, which every subtask must carry, so a roster
+listing that includes a gate role offers the planner a judge to assign work to,
+and a planner offered one takes it. The no-self-review invariant does not cover
+this: it is a `CHECK` on a verdict ROW, and an assignment happens a layer
+earlier, while the plan is being written. What breaks is not only the
+assignment: the party that judges becomes the author of what it judges.
 
 `engine/decomposition/context.py::roster_from_agents` excludes gate roles from
 what a planner is OFFERED, and it is the only place that can: `_role_field` and
@@ -326,13 +346,11 @@ alone would wave through the very role it removed. Asking the question first
 also covers the paths no derivation reaches: an operator editing a plan item's
 owner by hand supplies the role directly.
 `scripts/check_gate_roles_not_assignable.py` holds the tree to one derivation of
-that roster, across `evals/` as well as `src/synthorg/`, because the rule first
-shipped enforced in the product and bypassed in the harness measuring it: the
-recursion-depth sweep's own `SweepRoster.roles` carried a second copy of the
-comprehension, over builders and reviewers alike, and fed it straight to the
-sweep's planner. The consequence there is worse than a mis-assigned item, since
-plan-level verification landing in both arms contaminates the gated-versus-
-ungated contrast at source.
+that roster, across `evals/` as well as `src/synthorg/`. The harness is in scope
+because a second derivation there is worse than a mis-assigned item: a benchmark
+arm meant to run without plan-level verification that quietly staffs a judge as
+a builder contaminates the contrast it exists to measure, and the contamination
+is invisible from inside the product.
 
 Selection lives in `hr/role_staffing.py`, shared with the red-team gate so the
 two cannot drift, and the rule is declared and logged on every call:
@@ -367,10 +385,48 @@ two cannot drift, and the rule is declared and logged on every call:
    every rung, so it never silently outranks a graded one. Ties break on the
    agent id, so the choice is reproducible.
 
-Capability decides WHO reviews and never what model anybody runs. There is no
-reviewer-model setting to inherit or fall back to: the selected agent's own
-bound `(provider, model)` pair IS the dispatch target, and nothing on this path
-rewrites it.
+Capability decides WHO reviews and never what model anybody runs. The selected
+agent's own bound `(provider, model)` pair IS the dispatch target, and nothing
+on this path rewrites it. There is no reviewer-model setting: the roster
+already names the pair, and a second setting deciding "which model reviews"
+would be a second owner for a decision that has one.
+
+#### The reviewing session is narrowed
+
+The gate dispatches under a narrowed COPY of the selected agent
+(`engine/review_session.py::as_review_session`), not the agent as the roster
+holds it. The reason is that the content a judge reads is attacker-controlled
+in the way any deliverable is: an injection planted in the work under review
+executes inside the reviewing session, and what it can reach is decided
+entirely by the identity the gate dispatched. A roster agent carries whatever
+its day job needs, which can be ELEVATED tool access, wildcard MCP
+capabilities and FULL autonomy. Judging needs none of that.
+
+The copy holds:
+
+- **`ToolAccessLevel.STANDARD`**, which covers reading the deliverable and
+  running the build and test commands a verdict rests on.
+- **No MCP capabilities** (`mcp_capabilities=()`). The internal MCP surface is
+  how an agent reaches the rest of the org, and judging one deliverable needs
+  no part of it.
+- **`REVIEW_DENIED_CATEGORIES`** (`ToolCategory.EXTERNAL_DATA`):
+  every governed connection tool (forge, chat, deploy, publish) plus the
+  external-API and research tools. Withheld by CATEGORY rather than by name,
+  because a name list re-opens the hole the day a tool joins the category.
+- **`AutonomyLevel.SUPERVISED`**, so anything the session attempts beyond
+  reading and testing meets the ordinary approval gate rather than an autonomy
+  grant written for the agent's other work.
+- **The verdict tool by name.** `submit_completion_oracle_verdict` is
+  `ToolCategory.OTHER`, which only ELEVATED admits, so the one thing a judging
+  session exists to do is allowed explicitly. Raising the level instead would
+  hand the reviewer every other category, which is what the narrowing exists
+  to prevent.
+
+Identity, role, department and bound model are untouched, so the verdict is
+still attributed to the real agent and still runs on the pair its operator
+chose. This narrows the SESSION and never the roster: the agent keeps its own
+grants everywhere else. The red-team gate dispatches through the same helper
+(`security/redteam/runner.py`), so the two cannot drift.
 
 #### What "the deliverable" is
 
@@ -388,10 +444,11 @@ The files travel typed as well as composed (`RedTeamReviewInput
 a per-file question cannot get the files back out of the composed JSON
 document without parsing the thing it was just handed.
 
-Reviewing only the closing prose meant an APPROVE said the agent wrote a
-convincing summary, not that the deliverable builds. This is the single most
+The reviewer reads the thing it is approving. A gate shown only the closing
+prose grades the summary rather than the deliverable, and an APPROVE then means
+the agent wrote a convincing account of its own work. This is the most
 load-bearing gate in the chain (fail-closed, on by default,
-`min_stakes=low`), so it reads the thing it is approving.
+`min_stakes=low`), so the files are what it reads.
 
 The closing message comes from the **run being judged**, passed in by the
 caller that is holding it (`attempt_deliverable`, bound onto the builder for
@@ -416,13 +473,30 @@ each produce an explicit note in the assembled text rather than silently
 shrinking the deliverable, because a reviewer that cannot tell "empty" from
 "not shown" cannot judge either.
 
-The reviewer-is-distinct invariant is enforced at three layers: a
-`CompletionOracleReport` model validator, the gate's structural resolution,
-and a row-level `CHECK (executor_agent_id != reviewer_agent_id)` on the
-`completion_oracle_reports` archive table (the twin of the `decision_records`
-CHECK). Drawing reviewers from a roster where any agent can hold any role makes
-the row-level check matter more, not less: it is the layer that still holds
-when something upstream lies. Each verdict is archived (failure-tolerant) in
+The reviewer-is-distinct invariant is enforced at three independent layers,
+which cover different paths rather than each covering all of them:
+
+1. **Type-level.** `_forbid_self_review` in
+   `engine/completion_oracle/review_models.py` rejects construction of a
+   `CompletionOracleReport`, its verdict payload, or the gate's
+   `runtime_context` when the reviewer and executor ids match. Any caller that
+   builds one of these objects meets the check, whatever route it took.
+2. **Gate-level.** `CompletionOracleGate._validate_verdict` compares all four
+   pinned identities on the filed report (execution, task, reviewer, executor)
+   against the trusted context the gate seeded. Without the reviewer and
+   executor comparisons, a filed report could carry forged ids that satisfy the
+   type-level check while the real executor reviewed its own work.
+3. **Row-level.** `completion_oracle_reports` carries
+   `CHECK (reviewer_agent_id IS NULL OR executor_agent_id IS NULL OR
+   executor_agent_id != reviewer_agent_id)` in both backends, the twin of the
+   `decision_records` CHECK. It guards every row that names both parties; a row
+   naming neither is admitted, because NULL there means "not recorded" rather
+   than "same agent".
+
+Drawing reviewers from a roster where any agent can hold any role makes the
+row-level check matter more, not less: it is the layer that still holds when
+something upstream lies. What all three establish is that the reviewer was a
+different agent, and nothing more. Each verdict is archived (failure-tolerant) in
 that append-only, dual-backend table so an operator can answer "why was this
 deliverable sent back?" long after the run; an archive-write failure is logged
 but never blocks or alters the verdict (fail-OPEN, the one fail-open path in an
@@ -438,9 +512,9 @@ Alongside the reviewer and executor ids, each row records the
 `(reviewer_provider, reviewer_model_id, reviewer_capability)` the review
 actually ran on. The reviewer's *current* roster binding is not evidence of
 what ran months ago, and without the pair on the row "verdict quality per
-model" has nothing to group by. All three are nullable: a row written before
-the columns existed genuinely does not know, and NULL is the honest value there
-rather than a fabricated attribution.
+model" has nothing to group by. All three are nullable, because a row can
+genuinely not know what ran: NULL is the honest value there rather than a
+fabricated attribution.
 
 `GET /completion-oracle/reports` reads the archive (filters: `execution_id`,
 `task_id`, `verdict`, `reviewer_agent_id`; cursor-paginated), and
@@ -479,12 +553,10 @@ without enforcing it, for an observation period before enforcement.
 
 ### Nobody holds the role
 
-There is no reviewer-model setting: `engine.completion_oracle_reviewer_model`
-is retired. A roster agent already names its own `(provider, model)` pair, so a
-second setting deciding "which model reviews" would be a second owner for a
-decision that has one. The only way peer review can be unavailable is
-"unstaffed because nobody holds the role", which is visible in the roster and
-fixable through the ordinary role-assignment surface.
+Peer review has exactly one way to be unavailable: nobody holds the role. That
+state is visible in the roster and fixable through the ordinary role-assignment
+surface, and it is the only such state because there is no reviewer-model
+setting to be left unset alongside it.
 
 Unstaffed is **fail-closed and says so**. The gate returns an ESCALATE verdict
 whose summary names the condition, logs
@@ -493,27 +565,26 @@ and candidate count, and parks the task at BLOCKED with
 `blocked_reason=reviewer_unstaffed`. That reason is load-bearing rather than
 decorative: the human-answered skip keys on `oracle_escalated` alone, so an
 unstaffed park is re-judged once the role is filled instead of being read as a
-decision somebody already made. The built-in identity fallback is the tempting
-answer here and is exactly the regression this design removed.
+decision somebody already made. Falling back to a built-in identity is the
+tempting alternative and is rejected: an identity nobody staffs is not a peer,
+so it would convert "no reviewer" into a verdict comparable with nothing.
 
 Two things then happen without an operator watching:
 
 - **A hire is requested**, once per unstaffed role org-wide and
   approval-gated. Nothing hires itself: the request opens an `ORG_HIRE`
-  approval item and a human decides. Approving it now genuinely instantiates
-  and registers the agent, which it did not before: the tail from "human
-  approves" to "agent exists" was unreachable, so auto-hire would have been
-  theatre.
+  approval item and a human decides. Approval is what instantiates and
+  registers the agent, so the tail from "human approves" to "agent exists" is
+  reachable; without that tail an auto-hire would be theatre.
 
     An approved hire can still be **unbindable**, and that is a third outcome
     rather than a failure to retry: the request names no `(provider, model)`
-    pair, or names one whose connection or model the operator has since
-    removed. No sweep changes that, and one such request re-failed on every
-    pass for seven days with nothing on any surface saying so. It is now
-    withdrawn and the operator told, which is the honest end state: the hire
-    the human authorised cannot happen as written, so the decision goes back
-    to them rather than being retried forever. A transient failure is still
-    just retried.
+    pair, or names one whose connection or model the operator no longer has.
+    No sweep changes that, so retrying it forever leaves the operator with a
+    request that fails every pass and says so on no surface. It is instead
+    withdrawn and the operator told, because the hire the human authorised
+    cannot happen as written and the decision belongs back with them. A
+    transient failure is still just retried.
 - **The park heals**, level-triggered. `engine/review_staffing/reconciler.py`
   sweeps tasks parked on either staffing reason and walks each one
   `BLOCKED -> IN_REVIEW` once an eligible holder exists, so the review runs

@@ -37,6 +37,7 @@ Every shared building block in `web/src/components/ui/`. Reuse before creating n
 | `ContentTypeBadge` | `@/components/ui/content-type-badge` | MIME content type pill badge with semantic colours (JSON, PDF, Image, Text, etc.). |
 | `StatPill` | `@/components/ui/stat-pill` | Compact inline label + value pair. |
 | `Avatar` | `@/components/ui/avatar` | Circular initials avatar with optional `borderColor?` prop. |
+| `InfoTooltip` | `@/components/ui/info-tooltip` | Hover / focus explanation next to an icon or compact control (Base UI Tooltip, `Portal` + `Positioner` + `Popup`, non-interactive content). |
 
 ### Cards, metrics, data visualization
 
@@ -75,7 +76,7 @@ Every shared building block in `web/src/components/ui/`. Reuse before creating n
 |-----------|--------|---------|
 | `Drawer` | `@/components/ui/drawer` | Slide-in panel (Base UI Drawer, `side`: left or right, default right) with overlay, CSS transitions, focus management + swipe-to-dismiss via Base UI, Escape-to-close, optional header (`title`), `ariaLabel` for accessible name (one of `title` or `ariaLabel` required), named width variant via `width?: 'compact' \| 'narrow' \| 'default' \| 'wide'` (default `'default'`, mapped to `--so-drawer-width-*` tokens; `compact` is the tightest variant tuned for content-light flows like single-field edits), and `contentClassName` override. |
 | `Breadcrumbs` | `@/components/ui/breadcrumbs` | Breadcrumb navigation for deep detail pages. `<nav aria-label="Breadcrumb">` + `<ol>` + `aria-current="page"` on terminal item. React Router 7 `<Link>` for ancestors. Collapses middle items with ellipsis when exceeding `maxItems` (default 4). |
-| `Pagination` | `@/components/ui/pagination` | List-page pagination control (client-side slice now; props-compatible for OPS-1 cursor mode). Keyboard shortcuts: Home / End / ArrowLeft / ArrowRight / PageUp / PageDown. `total=undefined` signals cursor mode (Next enabled, Last disabled). Pair with `useListPagination` hook for URL-persisted state. |
+| `Pagination` | `@/components/ui/pagination` | List-page pagination control (client-side slice). The API stays stable for cursor-based pagination: call sites can keep using `<Pagination>` and swap the underlying data fetch without changing the control surface. Keyboard shortcuts: Home / End / ArrowLeft / ArrowRight / PageUp / PageDown. `total=undefined` signals cursor mode (Next enabled, Last disabled). Pair with `useListPagination` hook for URL-persisted state. |
 | `ListHeader` | `@/components/ui/list-header` | Standardised list-page header: title + count (formatted via `formatNumber`) on the left, `primaryAction` on the right, optional `secondaryActions` wrap below. Replaces ad-hoc `<div>` headers on list pages. |
 | `SearchFilterSort` | `@/components/ui/search-filter-sort` | Layout wrapper for list-page controls (search + filters + sort). Named `search`, `filters`, `sort`, `trailing` slots. Pairs with `SearchInput` for the search slot. |
 | `BulkActionBar` | `@/components/ui/bulk-action-bar` | Sticky bottom action bar for multi-select list pages. `selectedCount` renders "N selected" on the left, `children` slot takes caller-supplied action buttons (e.g. destructive `Delete N`), `onClear` wires the built-in Clear button. Motion-animated entrance / exit via the approvals-originated spring preset. Used by Workflows and Projects bulk-delete flows; pair with row-level `selected` / `onToggleSelect` props on your grid / table view. |
@@ -124,7 +125,7 @@ Every shared building block in `web/src/components/ui/`. Reuse before creating n
 
 | Component | Import | Use for |
 |-----------|--------|---------|
-| `PostSetupGuidanceCard` | `@/components/setup/PostSetupGuidanceCard` | One-time guidance banner shown on the dashboard after setup completes. Visibility flag in localStorage under `synthorg.firstRun`; dismissible across reloads. |
+| `PostSetupGuidanceCard` | `@/components/setup/PostSetupGuidanceCard` | One-time guidance banner shown on the dashboard after setup completes. Dismissal is a backend-persisted `dashboard` setting (`useDashboardPrefs`, `postSetupGuidanceDismissed`), not client storage, so it survives across devices and reloads. |
 
 ### Provider picker (shared between wizard and Settings)
 
@@ -156,7 +157,7 @@ For both layouts:
 1. Export props as a TypeScript interface named `<ComponentName>Props` from the same file.
 2. Use design tokens exclusively; no hardcoded colours, fonts, or spacing.
 3. Import `cn` from `@/lib/utils` for conditional class merging.
-4. **For primitives backed by Base UI** (Dialog, AlertDialog, Popover, Menu, Tabs, Drawer; see `web-base-ui-decisions.md` for the canonical list; `Select`, `Toast`, `Meter`, `Combobox`, `Tooltip` are intentionally **not** adopted):
+4. **For primitives backed by Base UI** (Dialog, AlertDialog, Popover, Menu, Tabs, Drawer, Tooltip; see `web-base-ui-decisions.md` for the canonical list; `Select`, `Toast`, `Meter`, `Combobox` are intentionally **not** adopted):
    - Import from the specific subpath: `import { Dialog } from '@base-ui/react/dialog'`
    - Use the component's `render` prop for polymorphism: `<Dialog.Trigger render={<Button>Open</Button>} />`. Never spread props manually.
    - For Dialog / AlertDialog / Popover / Drawer: compose with `Portal` + `Backdrop` + `Popup`. Popover and Menu additionally require a `Positioner` wrapper that owns `side` / `align` / `sideOffset`. Drawer additionally supports `swipeDirection` on `Root` and `SwipeArea` for swipe-to-dismiss.

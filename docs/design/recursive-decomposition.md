@@ -1,14 +1,18 @@
 # Recursive decomposition and the depth experiment
 
-A plan used to be one level deep. `DecompositionService` produced a list of
-subtasks, every one of them was dispatched whole, and nothing anywhere asked
-whether a given subtask was one agent's worth of work.
-`DecompositionContext.current_depth` was declared, read in six places, and
-written nowhere.
+One agent in a loop cannot hold a whole application. That is the constraint the
+mechanism on this page answers: the binding limit on building software with
+agents is decomposition quality rather than agent supply, so work is split
+until each unit is one agent's worth, the leaves are built concurrently, each
+in its own workspace, and each level is assembled from the level below it. The
+fan-out is not there to make a run finish sooner.
 
-This page covers three things: decomposition became a tree, the tree became
-durable and dispatchable, and a harness exists to answer the question the tree
-raises.
+A decomposition is therefore a tree rather than a list. `DecompositionService`
+assesses every subtask it plans and decomposes again any that is more than one
+agent's work, against a child context one level deeper. This page covers three
+things: the recursion mechanism, the durable form the tree takes so an operator
+can review it and a dispatcher can run it, and the harness that measures what
+happens to the work as the tree deepens.
 
 Recursion ships ON, and the sweep below is weaker evidence than it looks: its
 depth-1 cells scored 0 of 42 in both arms against 36 of 42 at depth 2, but that
@@ -19,12 +23,12 @@ replication is what will. What still stands from it is narrower and does not
 depend on the ranking: the harness planned and assembled a tree of 58 units
 with no replanning at all.
 
-That is also the thing to keep in view. A static hundred-item tree planned in
-one pass, at the moment of maximum ignorance, is waterfall applied recursively.
-The numbers below are therefore demoted to runaway backstops and the size
-signal is the only controller, with a feedback loop that closes without an
-operator. Just-in-time replanning is the execution-side half and is tracked
-separately.
+That last point is the thing to keep in view. A static hundred-item tree
+planned in one pass, at the moment of maximum ignorance, is waterfall applied
+recursively. The bounds below are runaway backstops rather than controllers:
+the size signal is the controller, and its feedback loop closes without an
+operator. Just-in-time replanning would be the execution-side half of that, and
+it is not built.
 
 ## The question
 
@@ -34,10 +38,12 @@ with no verification at the joins. The Six Sigma multi-agent verification model
 argues that gating each join arrests exactly that decay, and measures nothing.
 No paper connects them.
 
-The answer decides how large a synthetic organisation can usefully be. If
-verifying at every merge holds the survival rate flat as recursion deepens, the
-11-to-25 coherent-unit ceiling is **per level** and depth buys scale. If it does
-not, the ceiling is global and this is a twenty-agent product.
+What hangs on the answer is whether decomposition capacity is a property of one
+LEVEL or of the whole tree: whether verifying at every merge holds the survival
+rate flat as recursion deepens, so depth buys scale, or whether it does not, so
+the limit binds however deep the tree goes. That is what the sweep below exists
+to measure, and it is not settled. No figure for that limit is stated anywhere
+on this page in either direction, because none has been established.
 
 ## Depth is counted in levels, on both sides
 
@@ -63,10 +69,16 @@ N.** The S2 review's "depth four" is `max_depth=4`.
 
 `DecompositionResult` is a tree node. It carries its own `depth` and the
 `children` of whichever of its subtasks were split again; both default to the
-flat shape, so every reader that predates recursion gets the result it always
-got.
-`leaf_tasks` is what gets dispatched: a task that was split is a container for
-the work below it, and running it as well would do that work twice.
+flat shape, so a tree that never recursed reads exactly like a flat plan.
+
+Three derived views read the tree, and which one a caller wants is decided by
+what it is asking. `all_tasks` and `all_subtasks` answer what the plan CONTAINS
+(routing, the rollup, the park that needs a unit's declared role).
+`dispatch_subtasks` answers what waits on what, and is the DAG a dispatcher
+runs; a container appears in it, because a container that split is dispatched
+as [its own assembly task](#a-container-is-its-own-assembly-task) rather than
+as the work below it, which would do that work twice. `leaf_tasks` names the
+tasks nothing below them replaced, which is the leaf count the tree reports.
 
 `_do_decompose` is the recursion point. After the DAG is validated and the
 tasks exist, each subtask is assessed, and one that is oversized with budget
@@ -175,16 +187,16 @@ work nobody asked for.
 ## When a split is refused rather than made
 
 While a level below is still available, an oversized unit is simply decomposed
-again. That is the measured behaviour and it is untouched.
+again. That is the measured behaviour.
 
-At the LAST permitted level there is nowhere to delegate to, and what used to
-happen there was a log line and the oversized unit dispatched whole: a live run
-left twenty-one units carrying five to twelve objective criteria each against a
-limit of one, and nothing told the plan it had guessed wrong.
+At the LAST permitted level there is nowhere to delegate to. Dispatching the
+oversized unit whole behind a log line is what that costs when nobody asks: a
+live run left twenty-one units carrying five to twelve objective criteria each
+against a limit of one, and nothing told the plan it had guessed wrong.
 
-The level is now handed back instead. `DecompositionService` is the single
-owner of "is there anywhere left to split into" and stamps the size signal onto
-the context it plans the last level under (`_held_to_size`);
+The level is handed back instead. `DecompositionService` is the single owner of
+"is there anywhere left to split into" and stamps the size signal onto the
+context it plans the last level under (`_held_to_size`);
 `_atomicity_gate.describe_unsplittable` then refuses the submitted plan at
 parse time, on the same correction channel a graph violation already takes.
 Both strategies answer it the way they already answer a malformed plan: the
@@ -197,17 +209,21 @@ Breadth spent where depth ran out, without an operator being asked.
 `strategy.plans_any_task()`, and an operator-supplied plan has no session to
 correct.
 
-**The correction is withheld at the width cap**, because asking for breadth
-there is asking for the one thing the level will then be refused for. The gate
-names only per-unit limits and has no access to `max_subtasks`, so a level
-already at the cap that complies produces one unit too many and
-`DecompositionSubtaskLimitError` fails the whole tree: a live run did exactly
-that, complying with an instruction into a refusal, where compliance was fatal
-and non-compliance was rejected and no amount of retrying could resolve it.
-`describe_unsplittable` therefore returns no correction once the plan is at the
-width cap, and the units dispatch under the depth backstop instead. Two owners
-sized the level and the quieter one won fatally; the fix is that only one of
-them now speaks.
+**The correction carries the width cap, and is withheld at exactly it.** A
+correction that asks for breadth without naming how much room is left is asking
+for the one thing the level can then be refused for: a level complying with it
+produces one unit too many and `DecompositionSubtaskLimitError` fails the whole
+tree. A live run did exactly that, widening to eleven against a limit of ten
+precisely as instructed, where compliance was fatal, non-compliance was
+rejected, and no amount of retrying could resolve it. So
+`describe_unsplittable` takes `width_limit` from the same budget the strategy
+enforces after the session, states it in the correction, and asks a level that
+is already OVER the cap to merge or drop rather than to widen. A level sitting
+exactly AT the cap is the one silent case: there is no depth below it and no
+width beside it, so it draws no correction at all and its units dispatch under
+the depth backstop instead. Equality rather than "at or above", because a level
+over the cap can still be saved by merging and is exactly the one that needs to
+hear the cap named.
 
 Only when the retries are spent does the condition reach the plan, as
 `PlanItem.unsplit_reason`, and it gets there through a typed error rather than
@@ -218,14 +234,14 @@ ASKED for that session catches exactly that class, files
 and its sibling units are dispatchable, so discarding the tree above it would
 throw away every level already paid for to report one unit's size.
 
-The type is what keeps that from becoming a swallow. Every other decomposition
-failure still propagates: a transport that kept mangling replies is a fault an
-operator fixes at the provider, and filing it as a note on one plan item would
-put a systemic outage somewhere nobody looks for one.
+The type is what keeps that from becoming a swallow. It is one member of a
+declared set of child failures a level may absorb, and everything outside that
+set propagates; the set and its reasoning are in
+[the backstops](#the-backstops-and-what-a-bind-reports) below.
 
 ## The backstops, and what a bind reports
 
-Three bounds, none of them a target. Depth and width are runaway guards: what
+Five bounds, none of them a target. Depth and width are runaway guards: what
 decides a split is the size signal above, so a small objective stops on its own
 well short of either.
 
@@ -252,34 +268,42 @@ beside the wall-clock ceilings rather than instead of one. Past it no further
 child session is opened, the tree returns what it has, and the units it could
 not split say so.
 
-**A per-session ceiling bounds one node, so it ends one node.** The ceiling
-exists so a level waiting on a provider that never answers cannot hold the
-tree. Letting its breach propagate does the opposite: it hands every node in a
-deep tree an independent chance to destroy every other node's work. A live run
-spent 39 planning sessions and 1h 48m, reached `sessions_remaining=2` of 40,
-and discarded every level because session 39 ran 599.7s against the 600s
-ceiling while it was in the last-level correction loop.
+**A bound on ONE NODE ends one node.** A per-session ceiling exists so a level
+waiting on a provider that never answers cannot hold the tree. Letting its
+breach propagate does the opposite: it hands every node in a deep tree an
+independent chance to destroy every other node's work. A live run spent 39
+planning sessions and 1h 48m, reached `sessions_remaining=2` of 40, and
+discarded every level because session 39 ran 599.7s against the 600s ceiling
+while it was in the last-level correction loop.
 
-So a child whose session outruns the ceiling is absorbed by the level that
+So a child whose session ends on its own terms is ABSORBED by the level that
 asked for it, exactly as a child the planner could not split is: that level
-already holds a valid plan, the unit dispatches carrying
-`SESSION_CEILING_BACKSTOP` as its reason, and the tree survives. The two
-remaining bounds are what stop this buying unbounded time, and neither is
-weakened: the session budget still caps how many ceilings a tree can pay, and
-the whole-tree ceiling still fires as a bare `TimeoutError` that no handler
-absorbs. At the ROOT there is no plan above to carry the unit, so the same
-breach still fails the decomposition and says so.
+already holds a valid plan, the unit dispatches carrying the reason, and the
+tree survives. `_child_failure.py` is where the set is declared rather than
+counted, keyed on the error type because that is what carries the remedy: the
+wall-clock ceiling (`DecompositionTimeoutError`), the turn budget
+(`DecompositionTurnBudgetError`), the token budget
+(`DecompositionSessionBudgetError`), a session that stopped making progress
+(`DecompositionStagnationError`), and a planner that declined to divide the
+unit (`DecompositionUnsplittableError`). Everything else propagates: a
+transport that keeps mangling replies is fixed at the provider, and filing it
+as a note on one plan item hides an outage.
 
-The whole-tree ceiling remains the one that raises and discards every level
-already paid for, which is why it is set well above a real tree rather than
-at it.
+Absorbing those buys no unbounded time, because the two TREE-scoped bounds are
+untouched: the session budget still caps how many such nodes one tree can pay
+for, and the whole-tree ceiling still fires as a bare `TimeoutError` that no
+handler absorbs, because that bound covers every level and no level holds a
+plan that outlived it. At the ROOT there is no plan above to carry the unit, so
+the same breach fails the decomposition and says so.
 
-The tree ceiling is not a multiple of the per-session one and cannot be derived
+The whole-tree ceiling is therefore the one that raises and discards every
+level already paid for, which is why it is set well above a real tree rather
+than at it. It is not a multiple of the per-session one and cannot be derived
 from the depth cap: sessions scale with the NODE COUNT, which is the branching
 factor to the power of the depth, so any multiple of the per-session number is
-a guess that kills a legitimate deep tree. It is now a catastrophic backstop
-rather than an operating bound, because the session budget is what actually
-bounds a tree's cost. Two of the four callers are request handlers.
+a guess that kills a legitimate deep tree. It is a catastrophic backstop rather
+than an operating bound, because the session budget is what bounds a tree's
+cost. Two of the four callers are request handlers.
 
 ### The reported condition
 
@@ -323,7 +347,7 @@ real number, and the depth, width, and session backstops mirror their
 definitions in code (`context.py`, `_recursion.py`, `_ceilings.py`) so a
 harness running with no settings backend at all is still bounded.
 
-### What the sweep arms, and why the product default is wrong for it
+### What the sweep arms, and why it differs from the product defaults
 
 The recursion-depth sweep writes its settings through the real service, so what
 it measured is only interpretable against what it armed
@@ -350,16 +374,14 @@ copying the number, so a product bound that changes carries the sweep with it
 instead of surfacing as a write the settings service refuses partway through a
 paid run.
 
-The `decomposition_max_retries` row is the one where the sweep's arming turned
-out to be measuring the product default rather than compensating for it. A
-subtree in a live run was
-refused four times and converged on the fifth, surviving only because the sweep
-arms six. The setting counts RETRIES and the first ask is not one, so a value of
-N allows N+1 attempts: the shipped default of two allowed three, and that
-subtree would have failed two attempts short of the plan it went on to produce.
-An earlier round records exactly that as "the replan then
-exhausted its decomposition retries". The product default is now five, so the
-gap the sweep opens is a margin rather than the difference between planning and
+The `decomposition_max_retries` row is a margin rather than a manipulation, and
+what makes it worth reading twice is how narrow the margin turns out to be. The
+setting counts RETRIES, and the first ask is not one, so a value of N allows N+1
+attempts. A subtree in a live run was refused four times and converged on the
+fifth: at any default below four it would have failed a couple of attempts short
+of the plan it went on to produce, and a live round records exactly that outcome
+as "the replan then exhausted its decomposition retries". At the shipped five,
+the sweep's six is a cushion rather than the difference between planning and
 not.
 
 Arming the per-session ceiling ALONE is worse than arming neither, and is the
@@ -833,14 +855,15 @@ the root id that the root merge later reuses. A repair that places no call at
 all is refused rather than reported, because the caveat it would add is a
 provenance claim.
 
-The figure is derived from the TREE each cap admits, and this is the second
-attempt at it. The first counted one session per cell plus its merge attempts
-and then said "and one per leaf and per node on top of that", leaving the entire
-tree out of the arithmetic: for the recorded matrix it printed 42 against a real cost of
-roughly 158 sessions PER CELL, so a ceiling chosen from it was about four times
-too small. Launched at 30, that run planned an 85-leaf tree, built six units and
-stopped with **zero cells measured**, which is the whole failure mode
-`max_sessions` exists to make survivable and instead was the thing that fired.
+The figure is derived from the TREE each cap admits, and it has to be, because
+the arithmetic is unforgiving in exactly one direction. A projection that counts
+one session per cell plus its merge attempts, and then adds "one per leaf and
+per node on top of that", leaves the entire tree out: for the recorded matrix
+that shape prints 42 against a real cost of roughly 158 sessions PER CELL, so a
+ceiling chosen from it is about four times too small. A run launched at a
+ceiling of 30 planned an 85-leaf tree, built six units, and stopped with **zero
+cells measured**, which is the whole failure mode `max_sessions` exists to make
+survivable and was instead the thing that fired.
 
 `RecursionDepthManifest.projected_sessions` states the model instead: at a
 declared `projected_branching` of `b`, a cap of `d` holds `b ** d` leaves and
@@ -1036,9 +1059,11 @@ fatal.
 tree draw are confounded everywhere and there is not one controlled comparison
 in the run.
 
-The depth finding survives that on effect size (36 requirements, against a
-largest arm difference of 3) and on cap 1 having failed totally twice with the
-same logged mechanism. Call it strongly supported, not proven.
+The depth finding survives that on effect size alone, 36 requirements against a
+largest arm difference of 3. It no longer draws support from cap 1 having failed
+twice with the same logged mechanism: that mechanism is the declared-path rule
+described above, so the repetition evidences a defect in how delivery was judged
+rather than anything about depth. Call it supported, not proven.
 
 **The arm difference does not survive it.** 36 against 35 at depth 3, with the
 arms on different trees (58 leaves against 43), is inside the noise. The effect
@@ -1060,9 +1085,12 @@ specification the merged tree satisfies rather than the share of leaf work
 surviving the merge. This recording has a survival curve too, re-scored from
 its own journal, but it reads `n/a` for the ungated arm at depths 2 and 3:
 every claim that arm's planner made below the root named a criterion it had
-invented one level up, so 143 of them attributed to nothing. That is the defect
-[The metric](#the-metric) above describes and the recording predates its fix, so
-the figures here are read on the specification curve throughout.
+invented one level up, so 143 of them attributed to nothing. That is the
+per-level vocabulary defect [The metric](#the-metric) above describes, which
+this recording ran under, so the figures here are read on the specification
+curve throughout. A claim naming no requirement is refused where the planner
+writes it and ends its cell before any leaf is paid for, so a later recording
+carrying that caveat is reporting a regression rather than a known gap.
 
 ### Reading the verdicts, which are easy to read wrongly
 
@@ -1091,9 +1119,7 @@ chart's right end is absent rather than flat.
 
 That is what the committed matrix now records: caps 1 to 4 at three, three, two
 and two repetitions, one arm. It answers the two things this recording could
-not support, and
-takes the arm comparison off the table to pay for them. What it will not answer
-is the arm question, which stands where this recording left it.
+not support, and takes the arm comparison off the table to pay for them.
 
 ### What the run keeps
 

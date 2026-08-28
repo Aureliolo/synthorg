@@ -1,103 +1,162 @@
 ---
 title: Design Overview
-description: Core vision, design principles, and foundational concepts of SynthOrg, a synthetic organisation that reports to its operator.
+description: What SynthOrg is built to do, the design principles behind it, and the vocabulary the other design pages use.
 ---
 
 # Design Overview
 
-## Core Vision
+**Describe a piece of software, and the work is split into parts that stand alone, built in
+parallel, and each part checked by something that did not write it. On your hardware,
+against any models you choose.**
 
-SynthOrg is a **configurable AI company framework** where AI agents operate within a virtual
-organisation. Each agent has a defined role, skills, memory, and model backend.
-The company can be configured from a 2-person startup to a 50+ enterprise, handling software
-development, business operations, creative work, or any domain.
+## Why decomposition, not speed
 
-## Design Principles
+A single agent working alone cannot hold a whole application: it does one thing at a time,
+and the twentieth thing damages the first. Adding agents does not fix that by itself,
+because the binding constraint is not agent supply, it is **decomposition quality**. So the
+objective is decomposed recursively into a tree of independently buildable units, the leaves
+are built concurrently, each in its own workspace, and the tree is assembled bottom-up, with
+every piece checked by something that did not write it. The [documentation home](../index.md)
+covers the full mechanism; the cards below link straight to it.
+
+!!! warning "Pre-alpha: heavy development, not yet usable"
+
+    SynthOrg is in active pre-alpha development. The loop has been driven live against a
+    real deployment twelve times and has never reached the assembly stage: no run has
+    produced an assembled deliverable, and no completion has been recorded. Expect bugs,
+    rough edges, missing polish, and breaking changes between releases.
+
+    These pages describe the **designed** behaviour of SynthOrg and are the source of truth
+    for that design. Protocol interfaces and pluggable strategies are designed upfront to
+    inform architecture; individual subsystems may still have a gap between the spec and the
+    code. Treat any such gap as the work, not the spec. Nothing here promises working
+    software: every claim is about how the system is built and how it behaves, never about
+    what a run will deliver. For what is wired versus what is intent, see the
+    [Roadmap](../roadmap/index.md).
+
+## The mechanism
 
 <div class="grid cards" markdown>
 
--   **Configuration over Code**
+-   [**Recursive Decomposition**](recursive-decomposition.md)
 
     ---
 
-    Company structures, roles, and workflows are defined via config, not hardcoded.
+    How an objective becomes a tree of independently buildable units, the atomicity gate,
+    and the recursion bounds.
 
--   **Provider Agnostic**
-
-    ---
-
-    Any LLM backend: cloud APIs, OpenRouter, Ollama, custom endpoints.
-
--   **Composable**
+-   [**Coordination**](coordination.md)
 
     ---
 
-    Mix and match roles, teams, and workflows. Build any type of company.
+    Dependency-gated waves, parallel dispatch, parking, and run recovery.
+
+-   [**Agent Execution**](agent-execution.md)
+
+    ---
+
+    The execution loop: brain/hands/session model, sandboxed tool use, context budget, and
+    termination.
+
+-   [**Verification & Quality**](verification-quality.md)
+
+    ---
+
+    Who reviews, why the reviewer cannot be the author, and what a verdict does and does
+    not mean.
+
+-   [**Initiative Tail**](initiative-tail.md)
+
+    ---
+
+    Assembly and evaluation: the only path by which a plan reaches completion.
+
+-   [**Providers**](providers.md) / [**Budget**](budget.md) / [**Security**](security.md)
+
+    ---
+
+    Explicit provider binding, cost recording and spending controls, autonomy levels, and
+    the approval gate.
+
+</div>
+
+## Design principles
+
+<div class="grid cards" markdown>
+
+-   **Config over code**
+
+    ---
+
+    Roles, workflows, and org structure are defined via configuration, not hardcoded.
+
+-   **Provider agnostic**
+
+    ---
+
+    Every LLM dispatch names its own explicit `(provider, model)` pair, including local
+    models. No default provider to fall back on.
+
+-   **Pluggable**
+
+    ---
+
+    Strategies, backends, and policies are swappable behind protocol interfaces without
+    modifying existing code.
 
 -   **Observable**
 
     ---
 
-    Every agent action, communication, and decision is logged and visible.
+    Every action, decision, and state transition is logged, correlated, and auditable.
 
--   **Autonomy Spectrum**
-
-    ---
-
-    From full human oversight to fully autonomous operation.
-
--   **Cost Aware**
+-   **Supervised by design**
 
     ---
 
-    Built-in budget tracking, model routing optimisation, and spending controls.
+    An operator sets the oversight mode; destructive or high-risk actions are gated for
+    human approval. See [Security](security.md).
 
--   **Extensible**
-
-    ---
-
-    Plugin architecture for new roles, tools, providers, and workflows.
-
--   **Local First**
+-   **Cost-aware**
 
     ---
 
-    Runs locally with the option to expose on network or host remotely later.
+    Budgets, per-agent limits, and spend attribution are built in.
+
+-   **Self-hosted**
+
+    ---
+
+    Runs on your hardware, provider-agnostic including local models, with no SynthOrg
+    service in the path.
 
 </div>
 
-## What This Is NOT
+## What this is not
 
-- Not a chatbot or conversational AI product
-- Not locked to software development only (though that is a primary use case)
-- Not a wrapper around a single model or provider
-- Not a toy/demo: designed for real, production-quality output
-- Not a reasoning parallelizer. Single-agent reasoning is typically more token-efficient on isolated multi-hop questions, and SynthOrg's [auto topology selector](coordination.md#task-decomposability-coordination-topology) defaults to single-agent for such tasks. SynthOrg's value is role-specialised work-stream parallelism, organisational simulation fidelity, and audit-grade decision trails, not reasoning parallelism. See [S1 Multi-Agent Architecture Decision](../research/s1-multi-agent-decision.md) for the full reconciliation.
-
-!!! warning "Pre-alpha: heavy development, not yet usable"
-
-    SynthOrg is in active pre-alpha development. The framework is not yet
-    production-ready: expect bugs, rough edges, missing polish, and
-    breaking changes between releases. Operator-facing onboarding (real
-    provider, real workloads, dashboard polish) has not been exercised end
-    to end. Use it for research and contribution, not for real workloads.
-
-    These pages describe the **designed** behaviour of SynthOrg and are the
-    source of truth for that design. Protocol interfaces and pluggable
-    strategies are designed upfront to inform architecture; individual
-    subsystems may still have a gap between the spec and the code. Treat
-    any such gap as the work, not the spec. For what is shipped now versus
-    on the roadmap, see the [Roadmap](../roadmap/index.md).
+- Not a chatbot or a conversational product on its own; the conversational front door is one
+  entry point onto the same build pipeline, not the product itself.
+- Not a wrapper around a single model or provider.
+- Not a toy or a demo: it targets real, production-quality output, though no run has
+  delivered one yet (see the pre-alpha warning above).
+- Not a reasoning parallelizer for isolated multi-hop questions. Single-agent reasoning is
+  typically more token-efficient there, and SynthOrg's
+  [auto topology selector](coordination.md#task-decomposability-coordination-topology)
+  defaults to single-agent for such tasks. SynthOrg's value is splitting a whole application
+  into genuinely independent, independently reviewed parts. See
+  [S2: agent-parallelism evidence](../research/s2-agent-parallelism-evidence.md) for what the
+  research does and does not support; it also closed organisational simulation as an
+  output-quality mechanism, which earlier design documentation had asserted.
 
 ## Configuration Philosophy
 
 The framework follows **progressive disclosure**: users only configure what they need.
 
-1. **Templates** handle 90% of users: pick a template, override 2-3 values, go
+1. **Templates** handle most users: pick a template, override a few values, go
 2. **Minimal config** for custom setups: everything has sensible defaults
 3. **Full config** for power users: every knob exposed but none required
 
-**Minimal custom company** (all other settings use defaults):
+**Minimal custom deployment** (all other settings use defaults):
 
 ```yaml
 company:
@@ -206,13 +265,6 @@ Queue: Hiring Queue
 
     Task lifecycle, decomposition, routing, workflow types, and the task engine.
 
--   [**Agent Execution**](agent-execution.md)
-
-    ---
-
-    The agent execution loop: brain/hands/session model, context budget and
-    compaction, and termination conditions.
-
 -   [**Memory**](memory.md)
 
     ---
@@ -232,8 +284,8 @@ Queue: Hiring Queue
     ---
 
     The operator injects a hint or redirect into a running project; in-flight and
-    newly-spawned agents adopt it at safe boundaries, redirects force a re-plan,
-    and obsolete work is superseded, recorded in the brain with its rationale.
+    newly-spawned agents adopt it at safe boundaries, and obsolete work is cleanly
+    superseded, recorded in the brain with its rationale.
 
 -   [**The Org Asks**](org-questions.md)
 
@@ -250,11 +302,11 @@ Queue: Hiring Queue
     Shared entity vocabulary, versioned definitions, drift detection, and context
     injection for inter-agent semantic alignment.
 
--   [**Providers**](providers.md) / [**Budget**](budget.md) / [**Tools**](tools.md) / [**Security**](security.md)
+-   [**Tools**](tools.md)
 
     ---
 
-    LLM provider abstraction, budget enforcement, tool sandboxing, autonomy levels, and approval workflows.
+    Tool sandboxing, MCP surface, and the governed connection catalog.
 
 -   [**Observability**](observability.md) / [**Notifications**](notifications.md) / [**Backup**](backup.md) / [**Deployment**](deployment.md)
 

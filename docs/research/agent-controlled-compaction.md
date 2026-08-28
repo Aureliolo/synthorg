@@ -13,6 +13,14 @@ related_research_log: 24
 
 # Agent-Controlled Context Compaction Evaluation
 
+!!! note "Dated snapshot"
+
+    This evaluation is a point-in-time record. The OpenHands loop it references
+    throughout (as the loop that "compacts inside its own harness") has since been
+    removed; one loop ships today, so the ReactLoop-versus-OpenHands distinction no
+    longer applies. The Phase 3 personality-aware marker preservation idea references
+    `PersonalityConfig`, which has also since been removed.
+
 ## Context
 
 LangChain's Autonomous Context Compression proposes exposing compaction as an **agent tool**
@@ -40,6 +48,7 @@ class CompactionConfig(BaseModel):
     fill_threshold_percent: float = 80.0  # trigger at 80% fill
     min_messages_to_compact: int = 4      # minimum messages before eligible
     preserve_recent_turns: int = 3        # recent turn pairs to keep verbatim
+    preserve_epistemic_markers: bool = True  # keep marker sentences whole
 ```
 
 **Trigger mechanism** (`src/synthorg/engine/compaction/summarizer.py`):
@@ -53,8 +62,7 @@ def _do_compaction(ctx, config, estimator):
 
 Trigger checked at turn boundaries by ReactLoop, the one loop that manages its context
 in-process, via `invoke_compaction()` in
-`src/synthorg/engine/loop_control_helpers.py`. OpenHands compacts inside its own
-harness, so it never reaches this helper. Errors are caught, logged as
+`src/synthorg/engine/loop_control_helpers.py`. Errors are caught, logged as
 `CONTEXT_BUDGET_COMPACTION_FAILED`, and never propagated. `MemoryError`/`RecursionError`
 are re-raised.
 
@@ -123,10 +131,14 @@ The resulting summary is a list of sentence fragments with no structure.
 - Whether the current turn boundary is semantically significant
 - The complexity of the task (SIMPLE vs. COMPLEX/EPIC tasks need different strategies)
 
-**No epistemic marker awareness.** Research (arXiv:2603.24472) shows that removing
-markers like "wait", "hmm", "actually", "let me reconsider" from reasoning traces degrades
-AIME24 accuracy by up to 63%. The current `_build_summary()` truncates these markers
-indiscriminately via the 100-char snippet cap and sanitization.
+**Epistemic marker awareness is a flag, not a strategy.** Research (arXiv:2603.24472) shows
+that suppressing markers like "wait", "hmm", "actually", "maybe" during self-distillation
+degrades AIME24 accuracy by up to 40%. That is a training-time result rather than a
+summarisation one. `preserve_epistemic_markers` defaults on, and under it `_build_summary()`
+routes each assistant message through `should_preserve_message()` and keeps the sentences
+`extract_marker_sentences()` finds at their own length rather than the 100-char snippet cap.
+What it does not do is decide when preserving them is worth the tokens: the flag is read the
+same way on every message no matter the task or the fill pressure.
 
 **Fixed threshold regardless of model capacity.** `fill_threshold_percent=80.0` applies
 uniformly. A model with a 200k token context window starts compacting at 160k tokens. A
@@ -161,10 +173,12 @@ SynthOrg's threshold is appropriately conservative.
 
 ### Why It Matters
 
-Self-Distillation & Epistemic Verbalization (arXiv:2603.24472) shows that "thinking tokens"
-(hedging, self-correction, uncertainty markers) are functionally important for
-out-of-distribution reasoning. In experiments, models that had these markers removed from
-their compressed traces degraded by up to 63% on AIME24 benchmarks.
+"Why Does Self-Distillation (Sometimes) Degrade the Reasoning Capability of LLMs?"
+(arXiv:2603.24472) shows that epistemic verbalization, a model's expressed uncertainty
+during reasoning, is functionally important. Self-distillation that shortens traces by
+suppressing it dropped AIME24 accuracy by up to 40%, and AMC23 by around 15%, even though
+the training traces carried correct answers. The paper measures training, not summarisation;
+the argument below carries it across by analogy.
 
 The current `_build_summary()` function provides no protection for these markers. A 500-char
 concatenation of message snippets will strip "wait, I think I made an error, let me
@@ -346,7 +360,9 @@ This is consistent with the existing architecture where the loop, not tools, man
 3. System prompt guidance: Add to context budget indicator: "Consider using `compress_context`
    before large tool results or at task boundaries."
 4. Expose in `ReactLoop`, the one loop that manages its own context in-process;
-   OpenHands compacts inside its own harness.
+   OpenHands compacts inside its own harness. *(Historical: the OpenHands loop
+   has since been removed, so `ReactLoop` is the only loop and the contrast no
+   longer names anything.)*
 
 ### Dual-Threshold Safety Net
 
@@ -423,9 +439,10 @@ Target files: New `src/synthorg/engine/compaction/tool.py`, `src/synthorg/engine
    by 1. This implements the beta-parameter concept from arXiv:2603.08462 using existing
    degradation infrastructure.
 
-3. **Per-agent personality-aware marker preservation**: Agents with `verbosity=VERBOSE` or
+3. ~~**Per-agent personality-aware marker preservation**: Agents with `verbosity=VERBOSE` or
    `decision_making=DELIBERATIVE` in `PersonalityConfig` use COMPLEX-level marker preservation
-   thresholds regardless of task complexity.
+   thresholds regardless of task complexity.~~ *(Historical: `PersonalityConfig` has since
+   been removed, so this phase has no surface to key on.)*
 
 ---
 

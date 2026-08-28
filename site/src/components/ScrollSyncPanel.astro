@@ -7,8 +7,8 @@
     <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">How It Is Designed To Work</h2>
     <p class="text-gray-400 text-center max-w-2xl mx-auto mb-16">
       Steps 1-2 (pick a template, configure via wizard or REST API) work today.
-      Steps 3-4 show agents collaborating and the operations view, both
-      exercised by deterministic harnesses rather than a real provider.
+      Steps 3-4 show the decomposition and review machinery, driven live
+      against real models.
     </p>
 
     <div class="md:grid md:grid-cols-[1fr_auto_1fr] md:gap-8">
@@ -26,17 +26,17 @@
               </div>
               <pre class="text-sm font-mono text-gray-300 overflow-x-auto"><code><span class="text-violet-400">Choose a template</span>
 
-<span class="text-gray-500">  Solo Builder</span>       <span class="text-teal-400">2 agents</span>   2 depts
-<span class="text-gray-500">  Tech Startup</span>       <span class="text-teal-400">5 agents</span>   3 depts
-<span class="text-gray-500">  Engineering Squad</span>  <span class="text-teal-400">8 agents</span>   3 depts
-<span class="text-gray-500">  Product Studio</span>     <span class="text-teal-400">10 agents</span>  5 depts
-<span class="text-white bg-violet-600/30 px-1 rounded">&#9654; Agency</span>             <span class="text-teal-400">12 agents</span>  5 depts
-<span class="text-gray-500">  Research Lab</span>       <span class="text-teal-400">7 agents</span>   3 depts
-<span class="text-gray-500">  Enterprise Org</span>     <span class="text-teal-400">30+ agents</span> 9 depts
+<span class="text-gray-500">  Solo Builder</span>       <span class="text-teal-400">3 agents</span>   3 depts
+<span class="text-gray-500">  Tech Startup</span>       <span class="text-teal-400">6 agents</span>   4 depts
+<span class="text-gray-500">  Engineering Squad</span>  <span class="text-teal-400">9 agents</span>   3 depts
+<span class="text-gray-500">  Product Studio</span>     <span class="text-teal-400">13 agents</span>  6 depts
+<span class="text-white bg-violet-600/30 px-1 rounded">&#9654; Agency</span>             <span class="text-teal-400">13 agents</span>  5 depts
+<span class="text-gray-500">  Research Lab</span>       <span class="text-teal-400">8 agents</span>   4 depts
+<span class="text-gray-500">  Enterprise Org</span>     <span class="text-teal-400">29 agents</span>  9 depts
 
 <span class="text-gray-500 text-xs">Or define your own with YAML config.</span></code></pre>
             </div>
-            <p class="mt-4 text-sm text-gray-500 italic">Built-in templates from 2 to 30+ agents. Fully customisable roles, models, budgets, and tools.</p>
+            <p class="mt-4 text-sm text-gray-500 italic">Built-in templates from 3 to 29 agents. Fully customisable roles, models, budgets, and tools.</p>
           </div>
         </div>
 
@@ -55,12 +55,12 @@
   <span class="text-teal-400">company_name</span>: "Acme AI Lab"
 
 <span class="text-green-400">201 Created</span>
-  <span class="text-teal-400">agents_created</span>: 12
+  <span class="text-teal-400">agents_created</span>: 13
   <span class="text-teal-400">departments</span>:
-    - Operations    <span class="text-gray-500">(PM, Scrum Master)</span>
-    - Engineering   <span class="text-gray-500">(3 developers)</span>
+    - Operations    <span class="text-gray-500">(PM, Product Mgr, Scrum Master)</span>
+    - Engineering   <span class="text-gray-500">(4 developers)</span>
     - Design        <span class="text-gray-500">(UX, UI)</span>
-    - QA            <span class="text-gray-500">(QA Engineer)</span>
+    - QA            <span class="text-gray-500">(QA Engineer, Reviewer)</span>
     - Creative      <span class="text-gray-500">(Writer, Strategist)</span></code></pre>
             </div>
             <p class="mt-4 text-sm text-gray-500 italic">Setup wizard or REST API. Auto-assigns LLM models, generates agent names, configures tool access.</p>
@@ -78,16 +78,16 @@
                 <span class="ml-3 text-sm text-gray-400 font-mono">activity log</span>
               </div>
               <pre class="text-sm font-mono text-gray-300 overflow-x-auto"><code><span class="text-violet-400">[TASK]</span>  #12 created: "Redesign checkout flow"
-<span class="text-teal-400">[ENGINE]</span> PM decomposed #12 into 4 subtasks
-<span class="text-teal-400">[ENGINE]</span> #12a -> UX Designer (role-based)
+<span class="text-teal-400">[ENGINE]</span> PM decomposed #12 into 4 leaves
+<span class="text-teal-400">[ENGINE]</span> #12a -> UX Designer (manual)
 <span class="text-teal-400">[ENGINE]</span> #12b -> Backend Dev (cost-aware)
-<span class="text-teal-400">[ENGINE]</span> #12c -> Frontend Dev (role-based)
-<span class="text-teal-400">[ENGINE]</span> #12d -> QA Engineer (role-based)
+<span class="text-teal-400">[ENGINE]</span> #12c -> Frontend Dev (smart)
+<span class="text-teal-400">[ENGINE]</span> #12d -> QA Engineer (fastest)
 <span class="text-teal-400">[COMMS]</span>  UX Designer -> PM: "Wireframes ready"
-<span class="text-green-400">[DONE]</span>  #12a approved by PM (quality: 94%)
-<span class="text-teal-400">[COMMS]</span>  Meeting: sprint review (round-robin)</code></pre>
+<span class="text-green-400">[DONE]</span>  #12a checked by an agent that did not write it
+<span class="text-teal-400">[COMMS]</span>  Backend Dev -> QA Engineer: "Ready for review"</code></pre>
             </div>
-            <p class="mt-4 text-sm text-gray-500 italic">Runtime behaviour under a scripted provider: DAG-based decomposition, routing strategies, meetings, delegation, and conflict resolution.</p>
+            <p class="mt-4 text-sm text-gray-500 italic">Runtime behaviour: recursive decomposition, routing strategies, and delegation. Driven live against real models; no run has yet reached the assembly stage.</p>
           </div>
         </div>
 
@@ -101,7 +101,7 @@
                 <span class="w-3 h-3 rounded-full bg-green-500/80"></span>
                 <span class="ml-3 text-sm text-gray-400 font-mono">dashboard</span>
               </div>
-              <pre class="text-sm font-mono text-gray-300 overflow-x-auto"><code><span class="text-violet-400">Agents active</span>:       12 across 5 departments
+              <pre class="text-sm font-mono text-gray-300 overflow-x-auto"><code><span class="text-violet-400">Agents active</span>:       13 across 5 departments
 <span class="text-violet-400">Tasks completed</span>:     47
 <span class="text-violet-400">Total cost</span>:          EUR 18.92
 <span class="text-violet-400">Coordination overhead</span>: 14% <span class="text-green-400">(healthy)</span>
@@ -260,7 +260,7 @@
               <!-- Metrics panel (step 4) -->
               <g id="metrics-group" opacity="0" class="transition-all duration-700">
                 <rect x="40" y="325" width="340" height="45" rx="6" fill="#1a1f2e" stroke="#2dd4bf" stroke-width="0.5" stroke-opacity="0.3" />
-                <text x="60" y="344" fill="#a78bfa" font-size="8" font-family="'JetBrains Mono', monospace">12 agents</text>
+                <text x="60" y="344" fill="#a78bfa" font-size="8" font-family="'JetBrains Mono', monospace">13 agents</text>
                 <text x="140" y="344" fill="#10b981" font-size="8" font-family="'JetBrains Mono', monospace">47 tasks</text>
                 <text x="210" y="344" fill="#2dd4bf" font-size="8" font-family="'JetBrains Mono', monospace">EUR 18.92</text>
                 <text x="300" y="344" fill="#f59e0b" font-size="8" font-family="'JetBrains Mono', monospace">14% coord</text>

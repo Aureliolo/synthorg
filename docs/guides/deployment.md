@@ -18,20 +18,26 @@ graph LR
     Backend["backend<br/><small>uvicorn:3001</small><br/><small>UID 65532</small>"]
     Volume["synthorg-data<br/><small>Files + Memory (+ SQLite)</small>"]
     Postgres["postgres<br/><small>:5432</small><br/><small>synthorg-pgdata</small>"]
+    Nats["nats<br/><small>:4222</small><br/><small>synthorg-nats-data</small>"]
 
     User -->|":3000"| Web
     Web -->|"/api/* proxy"| Backend
     Web -->|"/api/v1/ws proxy"| Backend
     Backend --> Volume
     Backend -->|"bundled default"| Postgres
+    Backend -->|"distributed queue + bus"| Nats
 ```
 
-The `synthorg-data` volume holds logs, artifacts, and agent memory (and the SQLite database file when SQLite is the backend). The bundled `docker/compose.yml` ships Postgres on a separate `synthorg-pgdata` volume; SQLite deployments omit the Postgres service.
+The `synthorg-data` volume holds logs, artifacts, and agent memory (and the SQLite database file when SQLite is the backend). A one-shot `data-init` container chowns the named volumes to each service's non-root UID on first start; it is not shown above.
+
+The two toggles differ by deploy path. The compose the CLI generates (`synthorg init`) makes both Postgres and the NATS-backed distributed queue optional: a SQLite install omits the `postgres` service, and a standalone install omits `nats`. The hand-maintained `docker/compose.yml` used by the manual Docker Compose path below has neither toggle: it always runs Postgres (on the `synthorg-pgdata` volume) and always runs NATS (on `synthorg-nats-data`), and it builds the backend image from this checkout rather than pulling a published one, so it doubles as the compose CI and local dev build against.
 
 | Container | Image | Purpose |
 |-----------|-------|---------|
-| **backend** | `ghcr.io/aureliolo/synthorg-backend` | Litestar API server (Wolfi apko-composed distroless, non-root) |
+| **backend** | `ghcr.io/aureliolo/synthorg-backend` (CLI-generated compose) / built from source (`docker/compose.yml`) | Litestar API server (Wolfi apko-composed distroless, non-root) |
 | **web** | `ghcr.io/aureliolo/synthorg-web` | Caddy + React 19 SPA (proxies API and WebSocket) |
+| **postgres** | `dhi.io/pgvector` | Bundled Postgres, when the Postgres backend is selected |
+| **nats** | `dhi.io/nats` | JetStream message bus / distributed task queue, when enabled |
 
 ---
 
@@ -47,12 +53,19 @@ The `synthorg-data` volume holds logs, artifacts, and agent memory (and the SQLi
 
 === "Docker Compose (manual)"
 
+    `docker/compose.yml` builds the backend image from the checkout rather than pulling a published one, and always runs the bundled Postgres and NATS services; it has no SQLite or standalone-queue toggle (those exist only in the compose the CLI generates). Prefer the CLI above for a production install.
+
     ```bash
     git clone https://github.com/Aureliolo/synthorg
     cd synthorg
     cp docker/.env.example docker/.env
-    # Edit docker/.env with your secrets (see Environment Variables below)
-    docker compose -f docker/compose.yml up -d
+    # Edit docker/.env with your secrets (see Environment Variables below):
+    # SYNTHORG_JWT_SECRET, SYNTHORG_SETTINGS_KEY,
+    # SYNTHORG_PAGINATION_CURSOR_SECRET, and POSTGRES_PASSWORD are all
+    # required -- the backend and the bundled Postgres service both refuse
+    # to start without theirs.
+    BASE_IMAGE=ghcr.io/aureliolo/synthorg-backend-base:main \
+      docker compose -f docker/compose.yml up -d
     ```
 
 See the [Quickstart Tutorial](quickstart.md) for a complete walkthrough and the [User Guide](../user_guide.md) for all CLI commands.
@@ -67,8 +80,12 @@ All environment variables are configured in `docker/.env` (copy from `docker/.en
 
 | Variable | Description |
 |----------|-------------|
-| `SYNTHORG_JWT_SECRET` | JWT signing secret. Must be >= 32 characters of URL-safe base64. Never commit to version control. Generate: `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
+| `SYNTHORG_JWT_SECRET` | JWT signing secret. Must be at least 32 characters; selecting `HS384` or `HS512` raises that floor to 48 and 64, since RFC 7518 wants an HMAC key at least as long as the hash output. Any character set: only the length is enforced. Never commit to version control. Generate: `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
 | `SYNTHORG_SETTINGS_KEY` | Fernet encryption key for sensitive settings at rest. Must be a valid Fernet key. Generate: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+| `SYNTHORG_PAGINATION_CURSOR_SECRET` | HMAC signing key for opaque pagination cursor tokens, >= 16 bytes. The backend refuses to start without a stable value, in every channel: an ephemeral per-process key would silently invalidate every outstanding cursor across a restart. Generate: `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `POSTGRES_PASSWORD` | Superuser password for the bundled Postgres service. Required whenever that service runs (the default for both the CLI-generated and the hand-maintained compose); the container refuses to start without it. Generate: `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
+
+`synthorg init` generates and stores all four; a manual Docker Compose install must set them in `docker/.env` itself. Set `SYNTHORG_MASTER_KEY` alongside them: it is not on this list because the stack starts without it, but the connection-secret backend then downgrades to storing those secrets unencrypted rather than refusing. The downgrade is logged once during startup, at ERROR, naming the variable and stating that at-rest encryption is off. That log line is the whole of the notice, so an install that does not read startup logs runs unencrypted without anything later saying so.
 
 ### Optional
 
@@ -83,6 +100,7 @@ All environment variables are configured in `docker/.env` (copy from `docker/.en
 | `BACKEND_PORT` | `3001` | Host port for the backend API |
 | `WEB_PORT` | `3000` | Host port for the web dashboard |
 | `DOCKER_HOST` | *(unset)* | Docker socket for agent code execution sandbox (optional) |
+| `SYNTHORG_MASTER_KEY` | *(unset)* | Fernet master key for the encrypted-at-rest connection-secret backend (`encrypted_sqlite` / `encrypted_postgres`, auto-selected to match the persistence backend). Generated by `synthorg init` and preserved across re-init. Left unset, stored connection secrets fall back to the plain `env_var` backend (no at-rest encryption). Rotation is not supported: changing the key makes every stored connection secret unreadable. |
 | `SYNTHORG_TELEMETRY_ENABLED` | `false` | Enable opt-in anonymous product telemetry. Set to `true` / `1` / `yes` to enable; values like `false` / `0` / `no` keep it off. The Logfire project token is **embedded in the release wheel** at build time -- operators do not configure it. |
 | `SYNTHORG_TELEMETRY_ENV` | *(unset)* | Explicit deployment-environment tag (`dev` / `pre-release` / `prod` / `ci` / `staging-east` / ...). Always wins the resolution chain if set. |
 | `SYNTHORG_TELEMETRY_ENV_BAKED` | set by image | Image-baked fallback tag for the deployment environment. Release-tag CI builds bake `prod`; every pre-release tag form (`-dev.N`, `-rc.*`, `-alpha.*`, `-beta.*`) bakes `pre-release`; everything else bakes `dev`. Consulted only when `SYNTHORG_TELEMETRY_ENV` is unset *and* no CI markers are present; operators normally override via `SYNTHORG_TELEMETRY_ENV`. |
@@ -94,7 +112,7 @@ These environment variables are read by the code but were previously undocumente
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SYNTHORG_DATABASE_URL` | *(unset)* | Postgres connection URL (e.g. `postgres://user:pass@host:5432/synthorg`). Setting this switches the persistence backend from SQLite to Postgres regardless of `SYNTHORG_PERSISTENCE_BACKEND`. Query parameters are **not** supported in this URL; `_postgres_config_from_url()` rejects them up front; route `sslmode` overrides through `SYNTHORG_POSTGRES_SSL_MODE` instead. |
-| `SYNTHORG_POSTGRES_SSL_MODE` | `require` | Override Postgres SSL mode (`disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full`). When unset, the default comes from `PostgresConfig.ssl_mode` (`"require"`), which rejects plaintext connections. |
+| `SYNTHORG_POSTGRES_SSL_MODE` | `verify-full` | Override Postgres SSL mode (`disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full`). When unset, the default comes from `PostgresConfig.ssl_mode` (`"verify-full"`), which encrypts the wire **and** verifies the server certificate against a CA and hostname, so a deployment using it must supply compatible certificates. The generated compose files deliberately override it to `disable` for the plaintext local Postgres they start. |
 | `SYNTHORG_NATS_URL` | `nats://nats:4222` | NATS server URL for the distributed task queue. Required when `queue.enabled=true`. Must use `nats://`, `tls://`, or `nats+tls://`. |
 | `SYNTHORG_NATS_STREAM_PREFIX` | `SYNTHORG` | JetStream stream name prefix. The bus stream is `<prefix>_BUS`; the KV bucket is `<prefix>_BUS_CHANNELS`. |
 | `SYNTHORG_ARTIFACT_DIR` | `/data` (Postgres) or DB path directory (SQLite) | Filesystem path for artifact storage. Container deployments usually bind-mount this. |
@@ -119,6 +137,7 @@ Every registered setting automatically accepts an env-var override of the form `
 
 | Build arg | Default | Description |
 |-----------|---------|-------------|
+| `BASE_IMAGE` | *(none, required)* | The apko-composed Wolfi base to layer the venv and application source onto. `docker/backend/Dockerfile` treats a blank value as a hard build error rather than resolving a floating tag. Both CI and a manual build pass a digest-pinned ref (`ghcr.io/aureliolo/synthorg-backend-base@sha256:<digest>`), so two builds of the same commit layer on the same base; the [User Guide](../user_guide.md#quick-start-manual-docker-compose) shows how to resolve the digest once and reuse it. Only relevant when building the backend from source (`docker/compose.yml`); the CLI-generated compose pulls a published `synthorg-backend` image and never builds. |
 | `DEPLOYMENT_ENV` | `dev` | Baked deployment-environment tag (`dev` / `pre-release` / `prod`). CI computes and passes this automatically; local `docker build` without `--build-arg` inherits `dev`. |
 
 ---
@@ -211,7 +230,7 @@ synthorg backup list                     # list available backups
 synthorg backup restore <id> --confirm   # restore from a backup
 ```
 
-For manual Docker Compose deployments, back up the `synthorg-data` volume directly.
+`synthorg backup` follows the connected persistence backend, so it dispatches to a `pg_dump`-based handler when the bundled Postgres service is in use and to a SQLite handler otherwise; the Postgres path additionally requires the `pg_dump` / `pg_restore` binaries on the backend's `PATH`. For manual Docker Compose deployments, back up the `synthorg-data` volume directly, and the separate `synthorg-pgdata` volume when Postgres is running. Back up `synthorg-nats-data` alongside them: `docker/nats.conf` points JetStream's `store_dir` at `/data`, which is exactly where that volume mounts, and both streams are file-backed. The task queue holds unacknowledged claims and the dead-letter subject under work-queue retention, and the agent communication bus holds per-channel message history under limits retention, which the product reads back. Restoring without it drops that history and resets every durable consumer's position, so redelivery afterwards does not match what it replaced.
 
 ### Wipe & Reset
 

@@ -63,7 +63,7 @@ This list is non-exhaustive; treat it as a navigational starting point for new S
 - `SuccessMemoryProposer._build_user_message` and module `_SYSTEM_PROMPT` (`memory/procedural/success_proposer.py`): execution context is fenced under `TAG_TASK_DATA`.
 - `SafetyClassifier._build_messages` (`security/safety_classifier.py`): the action `description` (only attacker-controllable field) is fenced under `TAG_TASK_DATA`; bounded label fields (tool name, action type, risk level) stay `html.escape`d. The system prompt is computed lazily via `_system_prompt()` to avoid a circular import through `synthorg.engine.__init__`.
 - Group-conversation prompt builders (peer-contribution wrapping):
-  - `build_group_turn_prompt` (`meta/chief_of_staff/group_prompt.py`): fences the conversation history and the human message under `TAG_TASK_DATA` and this round's peer contributions under `TAG_PEER_CONTRIBUTION`
+  - `build_group_prompt` (`meta/chief_of_staff/group_prompt.py`): fences the conversation history and the human message under `TAG_TASK_DATA` and this round's peer contributions under `TAG_PEER_CONTRIBUTION`
   - `render_agent_system_prompt` (`engine/agent_persona.py`) appends the directive listing both `TAG_TASK_DATA` and `TAG_PEER_CONTRIBUTION`; it is the system prompt every multi-agent caller dispatch uses (`communication/multi_agent/agent_caller.py`)
 
 ### Completion config pinning

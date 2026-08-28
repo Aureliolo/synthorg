@@ -15,6 +15,17 @@ last_reviewed: 2026-05-05
 
     This audit is a point-in-time record. References to `TrustService` / progressive-trust promotion describe a design that has since been removed; authority now derives from the role reporting graph (see [HR & Agent Lifecycle](../design/hr-lifecycle.md)).
 
+    The entire "Meeting Protocol Audit" and "Conflict Resolution Termination Audit"
+    sections below describe subsystems that have since been deleted whole: the meeting
+    task type, its protocols (`StructuredPhasesProtocol`, `RoundRobinProtocol`,
+    `PositionPapersProtocol`), the scheduler, and the `conflict_resolution` package
+    (`AuthorityResolver`, `DebateResolver`, `HumanEscalationResolver`, `HybridResolver`,
+    the `escalation` sub-package) no longer exist in `src/synthorg/`. Read those two
+    sections as a record of what was analysed at the time, not as a description of
+    current machinery. The remaining sections (microservices anti-pattern cross-check,
+    delegation guard, stagnation detection, topology locking) describe mechanisms that
+    are still shipped.
+
 ## Context
 
 Two independent sources converge on a warning relevant to SynthOrg's architecture:

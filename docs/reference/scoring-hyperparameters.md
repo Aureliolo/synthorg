@@ -10,8 +10,8 @@ relevant scoring path is in place.
 
 This document is **tracking-only**. Hyperparameter improvements come
 from manual bug fixes, architectural changes, and prompt engineering;
-not from auto-tuning sweeps. See issue #1739 for the convention rule
-that lifted these values from bare numeric literals into settings.
+not from auto-tuning sweeps. Every value below lives in a setting rather
+than a bare numeric literal, per the No Hardcoded Values rule.
 
 ## Routing scorer (`AgentTaskScorer`)
 

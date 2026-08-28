@@ -11,6 +11,14 @@ date: 2026-04-07
 
     This audit is a point-in-time record. References to `TrustService` / the progressive-trust subsystem describe a design that has since been removed; authority now derives from the role reporting graph (see [HR & Agent Lifecycle](../design/hr-lifecycle.md)).
 
+    The "Positioning Implications" and "Recommended Framing" sections below propose
+    "governance and agent execution as a standalone product" as the product thesis. The
+    project's own evidence review has since closed that thesis (see
+    [S2 Agent Parallelism Evidence Review, What closed](s2-agent-parallelism-evidence.md#what-closed),
+    item 2). The gap analysis (API surface, telemetry export, policy-as-code) remains a
+    useful engineering record; the positioning conclusion built on top of it does not
+    reflect current direction.
+
 ## Context
 
 The New Stack article "Agentic AI Control Plane: What It Needs in Production" argues that

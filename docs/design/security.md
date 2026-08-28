@@ -158,9 +158,12 @@ transition to `full` (gate-off pass-through) is a CEO-only deliberate opt-in
 promotion via REST API (no agent, including CEO, can escalate privileges). The
 agent-level change flows through the `AutonomyChangeStrategy` / approval queue; the
 per-initiative mode is a direct, version-guarded write on the project row (409 on a
-concurrent-write conflict). Automatic downgrade on: high error rate (one level down),
-budget exhausted (supervised), security incident (locked). Recovery from
-auto-downgrade is human-only.
+concurrent-write conflict). Every strategy's `auto_downgrade` maps a `DowngradeReason`
+to a target level (high error rate: one level down; budget exhausted: `supervised`;
+security incident: `locked`) and recovery from a downgrade is always human-only; the
+method is a lever any caller can pull with a reason, not a monitor that fires on its
+own, since nothing in the runtime watches error rate, budget, or incidents
+to invoke it.
 
 ### Autonomy change strategy plugin surface
 
@@ -414,9 +417,8 @@ level and per action risk tier.
 During any wait (regardless of policy) the agent **parks** the blocked task (saving its
 full serialised `AgentContext` state: conversation, progress, accumulated cost, turn count)
 and picks up other available tasks from its queue. When approval arrives, the agent **resumes**
-the original context exactly where it left off. This mirrors real company behaviour: a developer
-starts another task while waiting for a code review, then returns to the original work when
-feedback arrives.
+the original context exactly where it left off, so a human bottleneck on one action never
+idles the agent entirely.
 
 Approval parking is distinct from the checkpoint-based `SUSPENDED` state produced by
 graceful shutdown: the former is an in-process, voluntary pause initiated by the agent
@@ -497,8 +499,8 @@ shutdown-time mechanism.
       on_chain_exhausted: "deny"         # deny if entire chain times out
     ```
 
-    Mirrors real organisations: if one approver is unavailable, the next in line covers.
-    Requires configuring an escalation chain.
+    Keeps a stalled approval moving when one approver is unavailable, at the cost of
+    requiring an escalation chain to be configured up front.
 
 !!! info "Approval API Response Enrichment"
     The approval REST API enriches every `ApprovalItem` response with computed

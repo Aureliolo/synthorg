@@ -1,15 +1,23 @@
 ---
 title: Client Simulation
-description: Synthetic client framework for generating task requirements, reviewing deliverables, and evaluating agent organisation performance.
+description: Synthetic-workload harness for exercising the task lifecycle end to end, plus the reusable intake and review-pipeline machinery it shares with the real work-entry paths.
 ---
 
 # Client Simulation
 
-The client simulation subsystem generates synthetic workloads that exercise the full
-task lifecycle end-to-end. Simulated clients (AI-driven, human, or hybrid) submit task
-requirements through an intake pipeline and review completed deliverables via a
-configurable review pipeline. This enables systematic evaluation of agent performance,
-organisational throughput, and quality metrics without real external clients.
+The client simulation subsystem generates synthetic workloads that exercise the full task
+lifecycle end-to-end, without a real external client. Simulated clients (AI-driven, human,
+or hybrid) submit task requirements through an intake pipeline and review completed
+deliverables via a configurable review pipeline. This is a benchmarking and load-testing
+harness, not a mechanism the product relies on for delivered quality: the review that
+actually gates a task's completion is the independent, reviewer-cannot-be-author check
+described in [Verification & Quality](verification-quality.md); a `ClientReviewStage` here
+is an optional pipeline stage a deployment can enable on top of that, not a replacement for
+it.
+
+The `ReviewPipeline` and `IntakeEngine` machinery documented below is reused outside
+simulation: the client-intake work-entry path (below) and the review-stage chain both run in
+production, gated off by default.
 
 ---
 

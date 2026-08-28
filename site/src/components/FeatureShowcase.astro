@@ -3,9 +3,9 @@ const heroFeatures = [
   {
     icon: "\u2699",
     title: "Orchestration Engine",
-    headline: "Routing strategies and execution loops, designed as one engine.",
+    headline: "A build split into a tree, driven by one engine.",
     description:
-      "Manual, role-based, cost-aware, fastest, and smart model routing, DAG decomposition, conflict resolution, and crash recovery. Exercised end to end by deterministic harnesses; real-provider acceptance is in active development.",
+      "Recursive decomposition into independently buildable units, four model-routing strategies, and crash recovery. Tested end to end against a deterministic harness with a scripted provider.",
     differentiator:
       "Sequential, parallel, Kanban, and Agile sprint workflows in the design.",
     href: "/docs/design/engine/",
@@ -16,7 +16,7 @@ const heroFeatures = [
     title: "Governance & Security",
     headline: "Every action classified, audited, and gated, by design.",
     description:
-      "A hybrid SecOps model: a fail-closed rule-engine fast-path plus an LLM evaluator for uncertain cases, four operator-set oversight modes (full, semi, supervised, locked), and budget enforcement. Wired and exercised by deterministic harnesses; not yet run against a real provider.",
+      "A fail-closed rule engine with an LLM evaluator for the uncertain cases, four operator-set oversight modes, and budget enforcement. Wired and driven live against real models.",
     differentiator:
       "Autonomy is not trust: privileges are never auto-granted, and widening is a human act.",
     href: "/docs/security/",
@@ -25,11 +25,11 @@ const heroFeatures = [
   {
     icon: "\uD83E\uDDE0",
     title: "Agent Identity",
-    headline: "Agents designed with roles, careers, and reviews.",
+    headline: "Agents designed with a role, an authority, and a review.",
     description:
-      "A bound (role, model) pair per agent, skills and authority, seniority levels from Junior to C-Suite, quality scoring, and hiring/promotion/offboarding with memory archival. Modelled and tested as components.",
+      "A bound (role, model) pair per agent, authority derived from the role's place in the reporting graph, quality scoring, and hiring through offboarding with memory archival. Modelled and tested as components.",
     differentiator:
-      "Not interchangeable workers; agents are designed with identity and growth.",
+      "Not interchangeable workers; the reviewer cannot be the agent that wrote the work.",
     href: "/docs/design/agents/",
     color: "violet",
   },
@@ -38,7 +38,7 @@ const heroFeatures = [
     title: "Memory & Knowledge",
     headline: "Multiple memory types. Knowledge designed to outlast any agent.",
     description:
-      "Working, episodic, semantic, procedural, and social memory with hybrid prompt and retrieval injection, built to survive offboarding and transfer to successors. Wired into the working loop on a durable substrate; the embedding model is the operator's explicit choice and memory stays off until it resolves.",
+      "Working, episodic, semantic, procedural, and social memory with hybrid prompt and retrieval injection, built to survive offboarding and transfer to successors. Wired and durable; memory stays off until you choose an embedding model.",
     differentiator:
       "Organisational knowledge designed to persist across the agent lifecycle.",
     href: "/docs/design/memory/",

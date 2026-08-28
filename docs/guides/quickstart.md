@@ -20,21 +20,24 @@ and configuring your first company, in about 5 minutes.
 
 ## What You Will Configure
 
-You will configure a **Solo Builder** organisation: a lean two-agent team
-designed for rapid prototyping.
+You will configure a **Solo Builder** organisation: a lean three-agent team
+designed for full autonomy and fast iteration.
 
 ```mermaid
 graph TD
-    CEO["CEO<br/><small>visionary_leader</small>"]
-    DEV["Full-Stack Developer<br/><small>rapid_prototyper</small>"]
+    CEO["CEO"]
+    DEV["Full-Stack Developer"]
     CEO --> DEV
 ```
 
-The CEO handles strategy and task decomposition by design, while the
-Full-Stack Developer writes code and builds features. With a configured
-provider the runtime drives that execution (exercised today under
-deterministic e2e harnesses with a scripted provider); the steps below set up
-the company that runs it.
+The CEO handles strategy, and the Full-Stack Developer writes code and builds
+features. A third agent, the **Completion Reviewer**, is not shown above
+because it is not part of the reporting line: it holds a gate role that signs
+off every finished task across the organisation, and it is required precisely
+because a two-agent org would otherwise have nobody to review its own work.
+With a configured provider the runtime drives execution (exercised today
+under deterministic e2e harnesses with a scripted provider); the steps below
+set up the company that runs it.
 
 ---
 
@@ -116,7 +119,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 On a fresh install with no admin user yet, the **setup wizard** first asks you to **create an admin account** (email and password). After the admin account exists, you **choose a setup mode**: pick **Guided Setup** (the **Quick Setup** path is described below). Guided Setup then steps through:
 
-1. **Select a template**: choose **Solo Builder** (the minimal 2-agent template).
+1. **Select a template**: choose **Solo Builder** (the minimal 3-agent template).
 2. **Add an LLM provider**: enter your provider's API key. Local providers like Ollama are auto-detected.
 3. **Name your company**: pick any name (e.g. "My First Org").
 4. **Review agents**: the template populates the roster; tweak names and models if you want, or accept defaults.
@@ -127,7 +130,7 @@ On a fresh install with no admin user yet, the **setup wizard** first asks you t
 
 Once the wizard completes, the dashboard loads and you will see:
 
-- **Agents**: the CEO and Full-Stack Developer; each has its own role and model assignment
+- **Agents**: the CEO, Full-Stack Developer, and Completion Reviewer; each has its own role and model assignment
 - **Organisation status**: health indicators for the platform
 - **Task board**: empty, ready to accept tasks
 
@@ -141,20 +144,37 @@ Once the wizard completes, the dashboard loads and you will see:
 
 === "API"
 
+    Log in first; the API authenticates by cookie, not a bearer token:
+
+    ```bash
+    curl -s -c cookies.txt -X POST http://localhost:3001/api/v1/auth/login \
+      -H "Content-Type: application/json" \
+      --data '{"username": "<your-admin-email>", "password": "<your-password>"}'
+    ```
+
+    A task must belong to an existing project, so create one first:
+
+    ```bash
+    curl -s -b cookies.txt -X POST http://localhost:3001/api/v1/projects \
+      -H "Content-Type: application/json" \
+      -d '{"name": "My First Project"}'
+    ```
+
+    Then file the task, using the project id from the response above:
+
     ```bash
     curl -X POST http://localhost:3001/api/v1/tasks \
       -H "Content-Type: application/json" \
-      -H "Authorization: Bearer <your-jwt-token>" \
+      -b cookies.txt \
       -d '{
         "title": "Write a hello world script",
         "description": "Create a simple Python script that prints hello world",
         "type": "development",
-        "project": "<project-id>",
-        "created_by": "<agent-name>"
+        "project": "<project-id>"
       }'
     ```
 
-    `type`, `project`, and `created_by` are required; the request returns a 422 validation error without them. Fill `project` with an existing project ID and `created_by` with an existing agent name. Replace `<your-jwt-token>` with the JWT from your admin session. See the [REST API Reference](../openapi/index.md) for authentication details.
+    `type` and `project` are required; the request returns a 422 validation error without them. Who filed the task is taken from the authenticated session, not from the request body. See the [REST API Reference](../openapi/index.md) for the full endpoint surface.
 
 With a configured provider the agent runtime picks the task up and executes it
 (LLM + sandboxed tools under the safety spine), exercised today by deterministic
@@ -195,6 +215,10 @@ sequenceDiagram
 2. **Task routed**: a routing strategy matches the task to the most suitable agent.
 3. **Agent executes**: the assigned agent uses its configured LLM in a ReAct loop.
 4. **Result returned**: the completed task and its artifacts appear in the dashboard and API.
+
+The diagram simplifies one step: a finished task does not go straight from the executor to
+done. It is checked by the Completion Reviewer first, since a gate role always excludes
+the agent that did the work; only after that review does the task settle.
 
 With a scripted provider this runs under the e2e harness today; with a real
 provider configured it runs against your chosen LLM.

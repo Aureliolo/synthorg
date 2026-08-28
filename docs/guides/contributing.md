@@ -72,7 +72,7 @@ fix: prevent race condition in task assignment
 refactor: extract budget enforcer into separate module
 docs: add deployment guide
 test: add property tests for routing strategy
-chore: bump litellm to 1.83.0
+chore: bump the litellm pin
 ```
 
 Breaking changes use `!` after the type:
@@ -152,13 +152,35 @@ uv run python -m pytest tests/ --ignore=tests/benchmarks/ --cov=synthorg --cov-f
 
 ## Pre-commit Hooks
 
-Hooks run automatically on `git commit` and `git push`. To run all hooks manually:
+Hooks are split across three stages, and which stage a hook runs at is the whole
+difference between a fast commit and a slow one.
+
+At `pre-commit`, on the files you staged: **ruff** (lint and format), large-file
+prevention (over 1 MB), and the fast convention gates.
+
+At `commit-msg`: **commitizen**, enforcing the conventional-commit format.
+
+At `pre-push`, where the expensive work lives: **gitleaks** (secret detection),
+**hadolint** (Dockerfile lint), **vale** (prose style on the top-level
+`README.md` files, the CLAUDE.md tiers, and `docs/`), **mypy** and the **unit tests** (both scoped to
+what the push changed), and the rest of the convention gates.
+
+A push has a 300-second budget; the hook runner prints each run's elapsed time
+and an OVER BUDGET banner past the ceiling. Going over is treated as a defect in
+a gate's scope rather than a cost to absorb.
+
+To run the hooks manually, one stage at a time. `pre-commit run` defaults to the
+`pre-commit` stage, so the plain form below runs neither `commitizen` (which is a
+`commit-msg` hook) nor the pre-push tier (`gitleaks`, `mypy`, `pytest-unit`, and
+the convention gates):
 
 ```bash
-uv run pre-commit run --all-files
+uv run pre-commit run --all-files                        # pre-commit stage
+uv run pre-commit run --hook-stage pre-push --all-files  # pre-push stage
+uv run pre-commit run --hook-stage commit-msg --commit-msg-filename .git/COMMIT_EDITMSG
 ```
 
-Key hooks include: ruff (lint + format), gitleaks (secret detection), commitizen (commit message format), mypy (affected modules, pre-push), and unit tests (affected modules, pre-push). See [Developer Setup](../getting_started.md#pre-commit-hooks) for the full hook table.
+See [Developer Setup](../getting_started.md#pre-commit-hooks) for the full hook table.
 
 If a hook fails:
 
@@ -224,9 +246,13 @@ The CLA grants a perpetual, non-exclusive license to the project; you retain ful
 ### Preview Locally
 
 ```bash
-uv sync --group docs                      # install docs toolchain (first time)
-uv run zensical serve                      # preview at http://127.0.0.1:8000
+uv sync --group docs                             # install docs toolchain (first time)
+PYTHONPATH=. uv run zensical serve               # preview at http://127.0.0.1:8000
 ```
+
+`PYTHONPATH=.` is load-bearing: `mkdocs.yml` names `d2_fence.validator` and
+`d2_fence.formatter` by Python path, and they live in `d2_fence.py` at the
+repository root. CI sets the same variable for its build.
 
 ### Writing Conventions
 

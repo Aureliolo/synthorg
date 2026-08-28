@@ -1,9 +1,14 @@
 ---
 title: Agents
-description: Agent identity system. The bound (role, model) unit, structured skill model, tool namespaces, runtime state, and identity versioning with audit trail.
+description: Agent identity. The bound (role, model) unit, structured skill model, tool namespaces, runtime state, and identity versioning with audit trail.
 ---
 
 # Agents
+
+An agent is the unit the build dispatches to. Its **role** decides who is offered
+a piece of work and who is available to check one; its bound `(provider, model)`
+pair decides what runs it, and the pair is fixed for as long as the agent exists,
+so "which model produced this" has an answer after the fact.
 
 Every agent is a composition of **immutable config** (identity, skills, model, tool permissions, authority) and **mutable runtime state** (execution status, active task, cost accumulation). This page covers the identity layer. The HR lifecycle (hiring, firing, performance, evolution) lives on a dedicated [HR & Agent Lifecycle](hr-lifecycle.md) page.
 
@@ -188,7 +193,7 @@ field marked below belongs to one layer and is rejected by the other.
 ???+ example "Full agent record across both layers"
 
     ```yaml
-    # --- Config layer -- AgentConfig, plus the identity-only fields ---
+    # --- Config layer: AgentConfig, plus the identity-only fields ---
     agent:
       # id is derived deterministically from name (uuid5); not user-set.
       id: "<derived-from-name>"
@@ -208,7 +213,7 @@ field marked below belongs to one layer and is rejected by the other.
             tags: [backend, api, async]
           - id: postgresql
             name: PostgreSQL
-            description: "Relational database design and optimization"
+            description: "Relational database design and optimisation"
             tags: [database, sql]
           - id: system-design
             name: System Design
@@ -295,8 +300,7 @@ entries to cite the exact charter version that was active during execution.
 ### Generic Infrastructure
 
 The versioning system lives in `src/synthorg/versioning/` and is intentionally
-entity-agnostic so it can be reused for other versioned entity types (tracked
-in issue #1113):
+entity-agnostic so it can be reused for other versioned entity types:
 
 - **`VersionSnapshot[T]`** (`versioning/models.py`): Generic frozen Pydantic model
   with fields `entity_id`, `version`, `content_hash`, `snapshot: T`, `saved_by`,
@@ -395,22 +399,19 @@ Engineer, etc.) is a role definition only; it becomes a real
 not by being special-cased but by what they do: they **judge** finished
 work rather than performing it, and both live in Quality Assurance.
 
-- **Red Team** (`name="Red Team"`, department: Quality Assurance).
-  The adversarial skeptic. A holder is selected per evaluation when
-  `CompanyConfig.security.red_team.enabled` is true; the framework runs
-  it as a gate before IN_REVIEW -> COMPLETED for deliverables whose
-  `stakes` meet the configured `engine.red_team_min_stakes`
-  threshold (default `HIGH`).
-  See [Security: Adversarial Red-Team Gate](security.md#adversarial-red-team-gate)
-  for the full design.
 - **Completion Reviewer** (`name="Completion Reviewer"`, department:
   Quality Assurance). The independent peer reviewer of the completion
   oracle. A holder is selected per review when
-  `engine.completion_oracle_enabled` is true (on by default); it reviews
-  every completing deliverable's acceptance criteria and build/test
-  evidence, and is distinct-by-construction from any executor (enforced
-  at the model validator, the gate, and a DB CHECK). See
+  `engine.completion_oracle_enabled` is true (on by default); it reads a
+  completing deliverable's acceptance criteria and its build and test
+  evidence, and files a verdict. See
   [Verification & Quality: Completion Oracle Gate](verification-quality.md#completion-oracle-gate).
+- **Red Team** (`name="Red Team"`, department: Quality Assurance).
+  The adversarial sceptic. A holder is selected per evaluation when
+  `CompanyConfig.security.red_team.enabled` is true, and runs as a gate
+  before IN_REVIEW -> COMPLETED for deliverables whose `stakes` meet
+  `engine.red_team_min_stakes` (default `high`). See
+  [Security: Adversarial Red-Team Gate](security.md#adversarial-red-team-gate).
 
 Both are ordinary staffable roles: an operator gives one to an agent
 through the same role-assignment surface as any other, the holder appears
@@ -420,16 +421,46 @@ boot-instantiated; a synthetic identity for either is rejected by
 `check_no_synthetic_agent_identity.py`, because a role nobody can be given
 is authority nobody can see.
 
-They differ from a working role in exactly one declared way, and
-`core/role_catalog.py::role_is_gate_role` is what says so: **a gate role
-judges work across the whole organisation**, so staffing prefers a holder
-who already worked the reviewed initiative but widens org-wide rather than
-refusing, and the reviewer's session is narrowed for the dispatch
-(`engine/review_session.py`) because an injection planted in the reviewed
-artefact runs inside the reviewing session. That declaration replaced an
-undeclared `AgentIdentity.is_system` flag that no operator could see or set.
+`core/role_catalog.py::role_is_gate_role` is the one declaration that a role
+judges rather than performs, and three properties hang off it.
 
-An org that staffs neither does not silently skip review: the gate parks
+**The judge is selected per review, and is never the author.**
+`hr/role_staffing.py` answers "who holds this role, and which of them fits this
+work" for both gates, so there is one selection rule rather than two that drift.
+Three independent things keep the judge off its own work: selection drops the
+executor from the candidate pool before anything else happens; the gate refuses
+a reviewer identity equal to the executor and escalates instead of reviewing,
+which catches an identity it did not itself choose; and a row-level `CHECK` on
+each verdict archive refuses any row naming one agent as both executor and
+judge, so a self-review cannot be recorded even if both earlier layers were
+bypassed.
+
+Within the remaining pool, holders who already worked the reviewed initiative
+are preferred, and widening org-wide is logged rather than silent. Capability
+fit then decides: an exact rung, else the nearest higher, else the nearest
+lower, logged as under-capability. The requirement is floored at the executor's
+own rung, because the stakes and complexity that set the bar are proposed by the
+agent that decomposed the work, and a bar with no floor lets the thing under
+review bid its own judge down.
+
+**The judging session is narrowed.** A roster agent carries whatever grants its
+day job needs, and an injection planted in the artefact under review runs inside
+the session reading it. `engine/review_session.py::as_review_session` therefore
+dispatches a copy: STANDARD tool access, the verdict tool allowed by name, no
+MCP capabilities, `EXTERNAL_DATA` withheld by category, SUPERVISED autonomy.
+Identity, role, department and bound model are untouched, so the verdict is
+still attributed to the real agent and still runs on the pair its operator
+chose. This narrows the session for the duration of the dispatch, never the
+roster.
+
+**A gate role cannot own plan work.** A gate role is staffed, so it appears in
+every roster read; but it judges rather than performs, so it is not something a
+plan item can be owned by. `engine/decomposition/context.py::roster_from_agents`
+is the single owner of "which roles may own a plan item" and filters gate roles
+out of the list the planner is offered, because a planner offered one takes it,
+and the party that judges then becomes the author of what it judges.
+
+An org that staffs neither role does not silently skip review: the gate parks
 the task and says which role is missing (see
 [Nobody holds the role](verification-quality.md#nobody-holds-the-role)).
 Every shipped company template staffs a Completion Reviewer for that

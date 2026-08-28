@@ -5,32 +5,47 @@ description: Security architecture, hardening measures, and compliance posture o
 
 # Security
 
-SynthOrg agents act with real tools and real consequences, under an oversight mode you set.
-Security is not an afterthought; it is a core architectural concern woven through
-every layer of the framework, from the application runtime to the CI/CD pipeline
-and container infrastructure.
+SynthOrg agents act with real tools and real consequences, under an oversight
+mode the operator sets. This page describes what the product does about that at
+each layer: the application runtime, the containers it executes in, the supply
+chain the images come from, and the CI/CD pipeline that publishes them.
+
+Two properties shape the rest of the page. Agent work runs on the operator's own
+hardware, so code and prompts do not leave the machine except through a provider
+connection the operator configured. And an agent is a fixed `(provider, model)`
+pair with a declared tool surface, so what a compromised or prompt-injected
+agent can reach is bounded by that surface rather than by what it can persuade
+the system to grant it.
 
 ---
 
 ## Application Security
 
-### SecOps Agent & Rule Engine
+### SecOps Service & Rule Engine
 
 Every tool invocation passes through a centralised security evaluation pipeline
 before execution. The **SecOps service** coordinates a fail-closed rule engine
-with five built-in detectors:
+whose built-in rules are the policy validator plus five detectors, each behind
+its own `security.rule_engine` flag:
 
-| Detector | What It Catches |
-|----------|----------------|
-| **Policy Validator** | Action type policies (soft-allow / hard-deny / escalate) |
-| **Credential Detector** | API keys, passwords, tokens, and private keys in arguments or output |
-| **Path Traversal Detector** | `../`, absolute paths, symlink escape attempts |
-| **Destructive Operation Detector** | `rm -rf`, `git reset --hard`, destructive shell commands |
-| **Data Leak Detector** | PII patterns: emails, SSNs, credit card numbers, phone numbers |
+| Rule | Config flag | What It Catches |
+|------|-------------|----------------|
+| **Policy Validator** | always on | Action type policies (soft-allow / hard-deny / escalate) |
+| **Credential Detector** | `credential_patterns_enabled` | API keys, passwords, tokens, and private keys in arguments or output |
+| **Path Traversal Detector** | `path_traversal_detection_enabled` | `../`, absolute paths, symlink escape attempts |
+| **Destructive Operation Detector** | `destructive_op_detection_enabled` | `rm -rf`, `git reset --hard`, destructive shell commands |
+| **MCP Destructive Operation Detector** | `mcp_destructive_op_detection_enabled` | Delete, purge and revoke operations on a third-party MCP server, which the shell and SQL detector cannot see |
+| **Data Leak Detector** | `data_leak_detection_enabled` | PII patterns: emails, SSNs, credit card numbers, phone numbers |
 
 Rules are evaluated sequentially by priority. The first `DENY` or `ESCALATE`
 verdict wins. If a rule raises an exception, the engine defaults to **DENY**
 (fail-closed). Every decision is recorded in a persistent audit log.
+
+Custom policies are appended after every detector, so security scanning always
+runs first. The one way to change that order is
+`security.rule_engine.custom_allow_bypasses_detectors`, and when it is set only
+`deny` verdicts are accepted in custom policies: an `allow` or `escalate` placed
+ahead of the detectors would skip them, and is rejected at validation time.
 
 ### Output Scanning
 
@@ -99,26 +114,29 @@ on resolution.
   ``Retry-After`` header. Pluggable behind a
   ``SlidingWindowStore`` protocol (default: in-memory; Redis reserved
   for cross-worker fairness). Operators tune individual operations
-  via ``api.per_op_rate_limit.overrides`` without restart; the
-  guard reads the live config on every request. Covers 85+ endpoints
-  across memory, providers, agents, tasks, approvals, workflows,
-  requests, users, webhooks, custom_rules, ontology,
-  departments, connections, reviews,
-  artifacts, backup, oauth, settings, setup, simulations, training,
-  a2a, and auth ws-ticket.
+  via ``api.per_op_rate_limit_overrides`` without restart; the
+  guard reads the live config on every request, and
+  ``api.per_op_rate_limit_enabled`` turns the whole tier into a no-op.
+  The covered operations and their default windows are declared in
+  ``_POLICIES`` in ``src/synthorg/api/rate_limits/policies.py``, which
+  is the list rather than a summary of it: it spans the agent, task,
+  plan, approval, workflow, provider, memory, knowledge, integration,
+  setup and auth surfaces among others.
 - **Per-operation inflight concurrency**: a companion middleware
   (``PerOpConcurrencyMiddleware``) caps simultaneous long-running
-  requests per ``(operation, subject)`` for six HIGH-tier endpoints
-  (``memory.fine_tune`` shared with ``fine_tune_resume``,
-  ``memory.checkpoint_deploy``, ``memory.checkpoint_rollback``,
-  ``providers.pull_model``, ``providers.discover_models``). The
+  requests per ``(operation, subject)`` for the HIGH-tier operations
+  declared in ``_INFLIGHT_POLICIES`` in the same module (the
+  fine-tune, checkpoint deploy, checkpoint rollback, model pull,
+  model discovery, provider health recheck, brownfield import,
+  activity listing, event stream, and metrics scrape paths). The
   sliding-window guard caps burst rate across time; the inflight
   cap separately enforces "one fine-tune per user at a time" even
   when the window would let a burst through. Denials raise
   ``ConcurrencyLimitExceededError`` (HTTP 429, ``error_code=5002``,
   same envelope shape as ``PerOperationRateLimitError``). Pluggable
   behind an ``InflightStore`` protocol with the same default/Redis
-  roadmap. Tuned via ``api.per_op_concurrency.overrides``.
+  roadmap. Tuned via ``api.per_op_concurrency_overrides``, and
+  disabled wholesale via ``api.per_op_concurrency_enabled``.
 
 ### Provider credential resolution fails closed
 

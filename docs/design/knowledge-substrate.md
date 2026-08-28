@@ -76,7 +76,7 @@ src/synthorg/knowledge/
     pdf.py           PdfLoader (pdfplumber, per-page; thread-offloaded)
     web.py           WebLoader (injected HtmlFetcher + HTMLParseGuard sanitise)
     repo.py          RepoLoader (deterministic local tree walk)
-    ticket.py        TicketLoader (staged on the #1991 governed connection)
+    ticket.py        TicketLoader (staged on a governed ticket connection)
     factory.py       build_source_loader
   chunking/
     protocol.py      StructureAwareChunker + ChunkPiece

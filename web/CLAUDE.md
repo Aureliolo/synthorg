@@ -8,7 +8,7 @@ The dashboard is **only an API consumer** and persists **no application state cl
 
 - **No `localStorage` / `sessionStorage` / IndexedDB and no `zustand` `persist`** holding domain/app state (setup-wizard state, theme/appearance, any user/org preference): each needs a backend settings key + GET/PUT, hydrated from it, never carried across reloads.
 - **Step/progress is derived from backend state, not a persisted client flag.** Stale client state is the bug class to avoid (flag-says-done-but-data-empty, and data loss on re-apply); move any client persistence of domain state backend-side.
-- **The only sanctioned client storage** is non-domain transport/UX: the auth-token cookie shim and the active CSRF token.
+- **The only sanctioned client storage** is non-domain transport/UX, and the authoritative list is the `ALLOWLIST` in `scripts/check_no_client_state_persistence.py`, not this line: the auth-token cookie shim, the active CSRF token, the build-version check, the canvas pan/zoom viewport, and in-progress form drafts. Each is per-device by nature; a preference an operator would expect on their other machine is domain state and belongs in the backend. Adding an entry means adding it to that allowlist with a reason.
 - Enforced by `scripts/check_no_client_state_persistence.py` (PreToolUse + pre-push): flags client storage / `zustand persist(` in `web/src/` outside the auth/CSRF allowlist.
 
 ## Quick Commands

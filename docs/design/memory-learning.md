@@ -50,7 +50,9 @@ analyses the failure.
 `ProceduralMemoryConfig` (nested in `CompanyMemoryConfig.procedural`) controls:
 
 - `enabled`: Toggle auto-generation on/off (default: `True`).
-- `model`: Model identifier for the proposer LLM call (default: `"example-basic-001"`).
+- `model`: Model identifier for the proposer LLM call. Unset (`None`) until an
+  operator or setup chooses one; never a placeholder default. The proposer
+  skips (makes no LLM call) while it is unset.
 - `temperature`: Sampling temperature (default: `0.3`).
 - `max_tokens`: Token budget for the proposer response (default: `1500`).
 - `min_confidence`: Discard proposals below this threshold (default: `0.5`).
@@ -407,9 +409,10 @@ the agent during execution.
     ``archival_memory_search``, ``archival_memory_write``, ``recall_memory_read``,
     ``recall_memory_write``.
 
-    Implemented via ``SelfEditingMemoryStrategy``. Token overhead is ~250--650 tokens per session
-    (2--10 writes + 5--15 searches). Best suited for long-running, high-autonomy agents (>20 turns)
-    where explicit memory management reduces "forgotten context" errors. ``SelfEditingMemoryConfig``
+    Implemented via ``SelfEditingMemoryStrategy``, the MemGPT-style self-editing pattern. Best
+    suited for long-running, high-autonomy agents where explicit memory management reduces
+    "forgotten context" errors, at the cost of the extra tool-call turns writing and searching
+    the three blocks takes. ``SelfEditingMemoryConfig``
     controls core token budget, archival search limit, per-category write access, and a safety
     valve (``allow_core_writes: bool``) for restricting core memory edits on locked-down agents.
 
@@ -509,8 +512,8 @@ A fine-tuned checkpoint replaces the active embedder **only on a measured win**.
 
 The `FineTuneOrchestrator` is wired on startup by `_wire_fine_tune_orchestrator` (`src/synthorg/api/lifecycle_helpers/finetune_wiring.py`) once a persistence backend that exposes the fine-tune repositories is connected; a backend without fine-tune support leaves the controllers at 501. When a memory backend is also present the orchestrator receives a `TrajectoryTrainingDataSource` so trajectory-mode runs can harvest real history; without one, trajectory mode is unavailable and directory mode still works. On wiring the orchestrator recovers any run interrupted by a prior crash (marking it `FAILED`). The wire is failure-tolerant and idempotent: a failure degrades the controllers to 501 rather than poisoning startup.
 
-### BackendUnsupportedError routing
+### MemoryBackendUnsupportedError routing
 
-Fine-tune orchestration is SQLite-backed. On a persistence backend that does not expose `fine_tune_runs` / `fine_tune_checkpoints`, the service raises a typed `BackendUnsupportedError` (`domain_code = "not_supported"`, frozen with `__slots__ = ("reason",)`) instead of a generic `NotImplementedError`. MCP handlers catch it and forward through the standard `not_supported()` envelope, which emits `MCP_HANDLER_NOT_IMPLEMENTED` at WARNING; distinct from `MCP_HANDLER_CAPABILITY_GAP` (handler wired, primitive method missing) and `MCP_HANDLER_SERVICE_FALLBACK` (legacy helper, zero call sites). REST controllers map it to HTTP 501 with the same domain code.
+Fine-tune orchestration is SQLite-backed. On a persistence backend that does not expose `fine_tune_runs` / `fine_tune_checkpoints`, the service raises a typed `MemoryBackendUnsupportedError` (`domain_code = "not_supported"`, frozen with `__slots__ = ("reason",)`) instead of a generic `NotImplementedError`. MCP handlers catch it and forward through the standard `not_supported()` envelope, which emits `MCP_HANDLER_NOT_IMPLEMENTED` at WARNING; distinct from `MCP_HANDLER_CAPABILITY_GAP` (handler wired, primitive method missing) and `MCP_HANDLER_SERVICE_FALLBACK` (legacy helper, zero call sites). REST controllers map it to HTTP 501 with the same domain code.
 
 The typed error keeps the "which gap" question resolvable without string-matching exception messages: backend-unsupported is always exactly one error class and one emitted event.
