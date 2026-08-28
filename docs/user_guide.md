@@ -131,7 +131,7 @@ Configuration is in `docker/.env` (copy from `docker/.env.example`):
 The block at the end of `docker/.env.example` holds the compose-set settings: values the
 backend reads once when it starts and that nothing inside the running system can change, so
 the dashboard shows them read-only and rejects a write. The rest of this file is deployment
-wiring: secrets, container paths, host ports and the persistence and memory selectors. Those
+wiring: secrets, container paths, host ports, and the persistence and memory selectors. Those
 are read at startup too, so changing one takes effect on the next `docker compose up`.
 Configuration that applies while the system runs lives in the dashboard, not here.
 
