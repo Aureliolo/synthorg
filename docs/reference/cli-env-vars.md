@@ -17,6 +17,10 @@ The "Used by" column distinguishes three relationships to the CLI:
 
 | Env Var | Used by | Description |
 |---------|---------|-------------|
+| `SYNTHORG_DATA_DIR` | CLI | Override the CLI data directory (below the `--data-dir` flag, above the platform default: `%LOCALAPPDATA%\synthorg` on Windows, `$XDG_DATA_HOME/synthorg` or `~/.local/share/synthorg` on Linux, `~/Library/Application Support/synthorg` on macOS) |
+| `SYNTHORG_SKIP_VERIFY` | CLI | Env equivalent of the `--skip-verify` flag; skips image signature verification (truthy: `1` / `true` / `yes`, case-insensitive) |
+| `SYNTHORG_QUIET` | CLI | Env equivalent of the `--quiet` / `-q` flag (truthy: `1` / `true` / `yes`) |
+| `SYNTHORG_YES` | CLI | Env equivalent of the `--yes` / `-y` flag; suppresses all interactive confirmation prompts (truthy: `1` / `true` / `yes`) |
 | `SYNTHORG_LOG_LEVEL` | CLI | Override backend log level |
 | `SYNTHORG_BACKEND_PORT` | CLI | Override backend API port |
 | `SYNTHORG_WEB_PORT` | CLI | Override web dashboard port |
@@ -61,10 +65,11 @@ The "Used by" column distinguishes three relationships to the CLI:
 
 The CLI contains several `localhost` / service-DNS / port literals that look non-configurable but are correct by design:
 
-- **`localhost` in `doctor.go` / `start.go` / `status.go` / `wipe.go` / `update.go`**: these print URLs pointing at the operator's own host (e.g. `http://localhost:<BackendPort>/api/v1/readyz`). The port is flag / env-driven (`SYNTHORG_BACKEND_PORT`, `SYNTHORG_WEB_PORT`); the hostname is literally the host the CLI is running on.
+- **`localhost` in `doctor.go` / `start.go` / `status_render.go` / `status_snapshot.go` / `wipe.go` / `update_restart.go` / `update_compose.go` / `backup.go`**: these print or construct URLs pointing at the operator's own host (e.g. `http://localhost:<BackendPort>/api/v1/readyz`). The port is flag / env-driven (`SYNTHORG_BACKEND_PORT`, `SYNTHORG_WEB_PORT`); the hostname is literally the host the CLI is running on.
+- **`localhost` / `127.0.0.1` in `helpers.go::openBrowser`**: not a printed URL but a host allowlist. The function refuses to hand any URL whose host isn't `localhost` or `127.0.0.1` to the OS browser launcher, so it cannot be made to open an arbitrary URL.
 - **`postgres:5432` in `compose/generate.go::pgDSN`**: docker-compose internal DNS, container-to-container. The host-side Postgres port is a separate `Params.PostgresPort` tunable rendered in `compose.yml.tmpl`.
-- **`nats:4222` / `nats:8222` in `compose.yml.tmpl`**: NATS client and HTTP monitoring ports inside the compose network. `nats` is the compose service name. `8222` is the NATS-standard monitoring port, not exposed to the host.
-- **`nats://nats:4222` in `worker_start.go`**: compiled-in default for the `--nats-url` flag, already overridable via `SYNTHORG_NATS_URL`.
+- **NATS client/monitoring ports**: `NATSClientPort = 4222` and `NATSHTTPPort = 8222` are Go constants in `compose/nats_config.go`, consumed both to render the generated `nats.conf` (`port: 4222`, `http_port: 8222`) and as the in-container side of the port mapping in `compose.yml.tmpl` (`"{{.NATSClientPort}}:4222"`; the host-side port is the `Params.NATSClientPort` tunable). `8222` is the NATS-standard monitoring port and its host-side mapping ships commented out in the template, so it is not exposed to the host by default.
+- **`nats://nats:4222` (`DefaultNATSURLValue` in `internal/config/state.go`)**: compiled-in default consumed by the `worker start --nats-url` flag in `worker_start.go`, already overridable via `SYNTHORG_NATS_URL`.
 
 ## See also
 

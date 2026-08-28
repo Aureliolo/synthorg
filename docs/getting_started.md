@@ -1,6 +1,18 @@
 # Getting Started
 
-Step-by-step guide to set up a development environment for SynthOrg.
+Set up a development environment for SynthOrg.
+
+SynthOrg takes a description of a piece of software and builds it in one pass: the work is
+split into a tree of parts, the parts are built in parallel in isolated containers, and each
+one is checked by something that did not write it, on your hardware against models you
+choose. This page is about the repository and the toolchain, not about running the platform.
+To run it, see the [User Guide](user_guide.md).
+
+!!! warning "Pre-alpha"
+
+    SynthOrg is pre-alpha. The loop has been driven live against a real deployment twelve
+    times and has never reached the assembly stage: no run has produced an assembled
+    deliverable. Set this up to research and contribute, not to get software built.
 
 ## Prerequisites
 
@@ -34,15 +46,15 @@ uv sync
 
 ## Install external CLI tools (one-time per machine)
 
-Some gates and the docs build rely on external binaries that are not Python packages: `golangci-lint` (Go linter, used by the CLI), `lychee` (Markdown link-checker), and `d2` (architecture diagram renderer).
+Some gates and the docs build rely on external binaries that are not Python packages: `golangci-lint` (Go linter, used by the CLI), `lychee` (Markdown link-checker), `vale` (prose linter) and `d2` (architecture diagram renderer).
 
-Install `golangci-lint` and `lychee` once per machine:
+Install the first three once per machine:
 
 ```bash
 bash scripts/install_cli_tools.sh
 ```
 
-The script downloads the pinned `golangci-lint` version that matches CI (`.github/workflows/verify-cli.yml`) and the pinned `lychee` version that matches CI (`.github/workflows/verify-links.yml`). Re-run only after bumping a pinned version; subsequent `uv sync` invocations do NOT re-run the script. CI uses its own action-based install steps, so this is strictly a local-developer convenience. The `lychee` binary lands in `~/.local/bin/`; if that directory is not already on `PATH`, the script will print the export line you need to add to `~/.bashrc` / `~/.zshrc`.
+Pass a single tool name (`lychee`, `golangci-lint`, `vale`) to install just that one. The script downloads the pinned `golangci-lint` version that matches CI (`.github/workflows/verify-cli.yml`) and the pinned `lychee` version that matches CI (`.github/workflows/verify-links.yml`), and runs `vale sync` after installing vale. Re-run only after bumping a pinned version; subsequent `uv sync` invocations do NOT re-run the script. CI uses its own action-based install steps, so this is strictly a local-developer convenience. The `lychee` binary lands in `~/.local/bin/`; if that directory is not already on `PATH`, the script will print the export line you need to add to `~/.bashrc` / `~/.zshrc`.
 
 To run the link-checker locally:
 
@@ -60,13 +72,13 @@ On Windows, install via `winget install Terrastruct.d2` or download the release 
 
 ## Verify Installation
 
-Run the smoke tests to confirm everything is working:
+Run the unit tier to confirm everything is working:
 
 ```bash
-uv run python -m pytest tests/ -m unit -n 8
+uv run python -m pytest tests/ -m unit
 ```
 
-You should see all tests passing.
+Parallelism (`-n 8 --dist=loadfile`) is applied automatically from `pyproject.toml`, so there is no flag to pass. You should see all tests passing.
 
 ## Pre-commit Hooks
 
@@ -90,11 +102,13 @@ uv run pre-commit run --all-files
 | end-of-file-fixer | Ensure files end with a newline |
 | check-yaml / check-toml / check-json | Validate config file syntax |
 | check-merge-conflict | Prevent committing merge conflict markers |
-| check-added-large-files | Block files > 1 MB |
+| check-added-large-files | Block files over 1 MB (`--maxkb=1024`) |
 | no-commit-to-branch | Block direct commits to `main` |
 | ruff (check + format) | Lint and format Python code |
 | gitleaks | Detect hardcoded secrets |
 | commitizen | Enforce conventional commit message format |
+| consolidated-python-gates | Run the repository's convention gates in one bounded pool |
+| vale (pre-push) | Prose linter over the Markdown you changed |
 | mypy (pre-push) | Type-check affected modules |
 | pytest (pre-push) | Run unit tests for affected modules |
 | golangci-lint + go vet + go test (pre-push) | Lint, vet and test each Go module, scoped to its own tree (conditional on `cli/**/*.go` and `docker/sidecar/**/*.go`) |
@@ -126,6 +140,9 @@ uv run ruff check . --fix
 uv run ruff format .
 ```
 
+The integration, e2e and conformance tiers provision real services and are run by CI on the
+pushed branch rather than locally.
+
 ## Project Layout
 
 ```text
@@ -136,26 +153,32 @@ synthorg/
     cli/                # Python CLI module (see top-level cli/ for Go CLI)
     communication/      # Inter-agent message bus
     config/             # YAML config loading and validation
+    coordination/       # Multi-agent coordination service and state
     core/               # Shared domain models
-    engine/             # Agent execution engine
+    engine/             # Decomposition, dispatch, execution, review
+    hr/                 # Roster: hiring, firing, role staffing, performance
+    knowledge/          # Ingested external corpus and provenance
     llm/                # Prompt-purpose registry, model-pin metadata
     memory/             # Persistent agent memory
-    providers/          # LLM provider abstraction
-    security/           # SecOps, approval gates, sandboxing
-    templates/          # Pre-built company templates
-    tools/              # Tool registry, MCP integration
-    hr/                 # HR engine (hiring, firing, performance)
     observability/      # Structured logging, correlation tracking
     persistence/        # Pluggable persistence backends
+    providers/          # LLM provider abstraction
+    security/           # Approval gates, rule engine, sandboxing
     settings/           # Runtime-editable settings
+    templates/          # Pre-built company templates
+    tools/              # Tool registry, MCP integration
+    workers/            # Distributed task-queue workers
     backup/             # Backup/restore orchestrator
   tests/
     unit/               # Fast, isolated tests (no I/O)
     integration/        # Tests with I/O, databases, APIs
+    conformance/        # Dual-backend (SQLite + Postgres) parity suite
     e2e/                # Full system tests
+  evals/                # Golden-company benchmark (out-of-package)
   docs/                 # Developer documentation
   docker/               # Dockerfiles, Compose, .env.example
   web/                  # React 19 web dashboard (shadcn/ui + Tailwind CSS)
+  cli/                  # Go CLI (Docker orchestrator)
   .github/              # CI workflows, renovate, actions
   pyproject.toml        # Project config (deps, tools, linters)
   docs/DESIGN_SPEC.md   # Pointer to design specification pages
@@ -164,7 +187,7 @@ synthorg/
 
 ## Web Dashboard Development
 
-The React dashboard lives in `web/`. Prerequisites: **Node.js 22+**.
+The React dashboard lives in `web/`. Prerequisites: **Node.js 24** (CI pins `24.19.0`).
 
 ```bash
 npm --prefix web install        # install frontend deps
@@ -174,6 +197,9 @@ npm --prefix web run type-check  # TypeScript type checking
 npm --prefix web run test        # Vitest unit tests
 npm --prefix web run build       # production build
 ```
+
+The dashboard is a pure API consumer: it persists no application state client-side, so every
+feature it offers is reachable over the REST API alone.
 
 ## IDE Setup
 

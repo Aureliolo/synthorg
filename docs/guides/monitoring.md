@@ -45,9 +45,11 @@ Bounded-label values are enforced at record time in `src/synthorg/observability/
 | Metric | Type | Labels | Description | Dashboard |
 |--------|------|--------|-------------|-----------|
 | `synthorg_cost_total` | Gauge | - | Total accumulated cost. | `Cost & Budget` |
-| `synthorg_budget_used_percent` | Gauge | - | Monthly budget utilisation. | `Health & SLO` |
+| `synthorg_budget_used_percent` | Gauge | - | Monthly budget utilisation. Published only when the period's spend is fully metered; a period mixing metered and flat-rate (subscription) connections, or one where nothing is metered, reads `0.0` here, with the verdict carried on `synthorg_budget_spend_measurability` instead of folded into this number. | `Health & SLO` |
 | `synthorg_budget_monthly_cost` | Gauge | - | Monthly budget in configured currency. | `Cost & Budget` |
-| `synthorg_budget_daily_used_percent` | Gauge | - | Daily utilisation (prorated). | `Cost & Budget` |
+| `synthorg_budget_spend_measurability` | Gauge | `state` | What the monthly percentage above actually measures: exactly one of `measured` / `mixed` / `unmeasurable` reads `1`, the other two `0` (`state` bounded to `SpendMeasurability`). | n/a (scrape-only) |
+| `synthorg_budget_daily_used_percent` | Gauge | - | Daily utilisation (prorated). Same measurability caveat as `synthorg_budget_used_percent`, against the day's spend rather than the period's. | `Cost & Budget` |
+| `synthorg_budget_daily_spend_measurability` | Gauge | `state` | The daily counterpart of `synthorg_budget_spend_measurability`, against the current day's spend. | n/a (scrape-only) |
 | `synthorg_budget_query_duration_seconds` | Histogram | `query_type` | Budget read-path query duration (`query_type` bounded to `balance` / `available_spend` / `burn_rate` / `daily_spend` / `cost_summary` / `total_cost` / `agent_cost` / `project_cost`; buckets 1ms-1s). | `Audit & Performance` |
 
 ### Agents & tasks
@@ -180,12 +182,14 @@ histogram_quantile(0.95, sum by (le) (rate(synthorg_workflow_execution_seconds_b
 ### Cost / budget
 
 ```promql
-# Burned 80% of the monthly budget
-synthorg_budget_used_percent > 80
+# Burned 80% of the monthly budget (gate on full measurability -- see below)
+synthorg_budget_used_percent > 80 and synthorg_budget_spend_measurability{state="measured"} == 1
 
 # Total accumulated cost (per-agent breakdown lives in the REST cost API / logs)
 synthorg_cost_total
 ```
+
+`synthorg_budget_used_percent` reads `0` whenever the period's spend is not fully metered (any flat-rate connection in the mix, or nothing metered at all), so an unqualified `> N` alert can silently never fire on such a deployment. Gate it on `synthorg_budget_spend_measurability{state="measured"} == 1` as above, or watch that gauge directly to catch a deployment where the percentage has gone structurally unmeasurable.
 
 ### Coordination health
 
@@ -230,7 +234,7 @@ sum by (category) (rate(synthorg_api_error_classification_total{status_class="5x
 # Provider error rate per class (hot loop: rate_limit + timeout + connection)
 sum by (provider, error_class) (rate(synthorg_provider_errors_total[5m]))
 
-# Token-normalized provider error rate (error events per token volume)
+# Token-normalised provider error rate (error events per token volume)
 sum by (provider) (rate(synthorg_provider_errors_total[5m]))
   / clamp_min(sum by (provider) (rate(synthorg_provider_tokens_total[5m])), 1)
 

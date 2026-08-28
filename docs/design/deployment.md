@@ -26,7 +26,7 @@ Each published image is signed with **cosign keyless** via GitHub OIDC and attes
 
 | Image | Purpose | Base |
 |-------|---------|------|
-| `desktop` | Headless virtual-desktop sandbox the agent drives via the desktop tool (Xvfb + fluxbox + xdotool + scrot, plus Python/Tk for GUI deliverables). Spawned on demand by the backend; the `desktop_image_pin` setting defaults to `ghcr.io/aureliolo/synthorg-desktop:latest` | `debian:trixie-slim` pinned by digest in `docker/desktop/Dockerfile`. Debian rather than apko/Wolfi because the X11/GUI toolchain (Xvfb, fluxbox, Tk) is packaged for glibc Debian, not Wolfi |
+| `desktop` | Headless virtual-desktop sandbox the agent drives via the desktop tool (Xvfb + fluxbox + xdotool + scrot, plus Python/Tk for GUI deliverables). Spawned on demand by the backend; the `desktop_image_pin` setting defaults to `ghcr.io/aureliolo/synthorg-desktop:v<version>` | `debian:trixie-slim` pinned by digest in `docker/desktop/Dockerfile`. Debian rather than apko/Wolfi because the X11/GUI toolchain (Xvfb, fluxbox, Tk) is packaged for glibc Debian, not Wolfi |
 
 Unlike the published images above, `desktop` is **not built or published by `.github/workflows/build-images.yml`**, so it is neither cosign-signed nor SLSA-attested. Its literal `FROM` digest is kept fresh by Renovate (the `dockerfile` manager scans it). Because it is absent from the publish + signing matrix, the desktop tool's `desktop_image_pin` default does not resolve to a published image (tracked in #2033).
 
@@ -189,7 +189,7 @@ flowchart LR
   J --> K[Wait for backend healthy]
 ```
 
-`synthorg start` runs `cli/internal/verify/verify.go` which resolves each tag to a digest, verifies the cosign signature and SLSA provenance, and writes the verified digest into `state.VerifiedDigests`. The digest-pinned references are then rendered into `compose.yml` so the started containers run exactly the image the CLI verified. `--skip-verify` bypasses this for air-gapped environments.
+`synthorg start` runs `cli/internal/verify/verify.go` which resolves each tag to a digest and verifies the cosign signature and SLSA provenance; the caller then writes the verified digest into `state.VerifiedDigests`. The digest-pinned references are rendered into `compose.yml` so the started containers run exactly the image the CLI verified. `--skip-verify` bypasses this for air-gapped environments.
 
 ## Sandbox image resolution
 
@@ -255,7 +255,7 @@ The drain emits observability log events from `observability/events/api.py`:
 
 ## Web server
 
-The web image runs **Caddy** inside a pure-apko Wolfi image. Caddy serves the React SPA at `/`, the built documentation at `/docs`, proxies REST requests at `/api/` and WebSocket connections at `/api/v1/ws` to the backend, and emits a per-request CSP nonce via the `templates` directive + `{http.request.uuid}` placeholder. The full security-header set (CSP, HSTS, X-Frame-Options, Referrer-Policy, Permissions-Policy) is configured in `web/Caddyfile`. Pre-compressed `.gz` siblings built by melange are served via Caddy's `precompressed gzip` file_server option.
+The web image runs **Caddy** inside a pure-apko Wolfi image. Caddy serves the React SPA at `/`, the built documentation at `/docs`, proxies REST requests at `/api/` and WebSocket connections at `/api/v1/ws` to the backend, and emits a per-request CSP nonce via the `templates` directive + `{http.request.uuid}` placeholder. The full security-header set (CSP, HSTS, X-Frame-Options, Referrer-Policy, Permissions-Policy) is configured in `web/Caddyfile`. Pre-compressed `.br` and `.gz` siblings built by melange are served via Caddy's `precompressed br gzip` file_server option.
 
 ---
 

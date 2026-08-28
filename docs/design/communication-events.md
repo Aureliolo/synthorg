@@ -136,7 +136,7 @@ hidden (the live surface owns interrupts when connected).
 `EvidencePackage` (in `core/evidence.py`, re-exported from
 `communication/event_stream/evidence.py`) is the structured HITL approval
 payload. It extends `StructuredArtifact` (shared base with
-`HandoffArtifact` from R2 #1262):
+`HandoffArtifact`):
 
 - `id`, `title`, `narrative`: human-readable summary
 - `reasoning_trace`: compressed reasoning steps
@@ -193,8 +193,8 @@ and gated by `ToolPermission.DELEGATION`.
 
 `AgentContext.async_task_state` is a dedicated `AsyncTaskStateChannel`
 that holds `AsyncTaskRecord` entries. It is structurally separate from
-`AgentContext.conversation`; compaction strategies and
-`ContextResetMiddleware` (R1 #1260) do not touch it. The state channel
+`AgentContext.conversation`; compaction and context reset do not touch
+it. The state channel
 is projected into the agent's system prompt on each turn via
 `_inject_async_task_section()`, appended after trimming so it is never
 trimmed away.

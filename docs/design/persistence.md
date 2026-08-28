@@ -31,7 +31,8 @@ by a caller that reached past the abstraction.
   `scripts/check_schema_drift_revisions.py`); and (3) test fixtures and
   conformance harnesses that hold driver primitives for cross-subsystem
   setup. The agent-facing DB introspection tools
-  (`tools/database/schema_inspect.py`, `tools/database/sql_query.py`) are
+  (`src/synthorg/tools/database/schema_inspect.py`,
+  `src/synthorg/tools/database/sql_query.py`) are
   **not** on the allowlist: they route through
   `persistence/external_sql.py` and import no driver, so the boundary holds
   with no exception. The authoritative list lives in `_ALLOWLIST` inside
@@ -77,7 +78,7 @@ one level up in `src/synthorg/persistence/`:
 | Protocol module                        | Concerns |
 |----------------------------------------|-----------|
 | `protocol.py` (`PersistenceBackend`)   | Backend aggregate: connect / disconnect, migrate, and accessors for every repository below |
-| `_generics.py`                         | Six generic categories (`SingletonRepository`, `IdKeyedRepository`, `FilteredQueryRepository`, `AppendOnlyRepository`, `StatefulRepository`, `MVCCRepository`) that concrete protocols compose via Protocol inheritance. See [ADR-0001](../decisions/0001-repository-protocol-consolidation.md) for the consolidation rationale and the per-entity migration inventory. |
+| `_generics.py`                         | Seven generic categories (`SingletonRepository`, `IdKeyedRepository`, `FilteredQueryRepository`, `BatchWriteRepository`, `AppendOnlyRepository`, `StatefulRepository`, `MVCCRepository`) that concrete protocols compose via Protocol inheritance. `BatchWriteRepository` adds an atomic all-or-nothing `save_many` for bulk enrolment. See [ADR-0001](../decisions/0001-repository-protocol-consolidation.md) for the consolidation rationale and the per-entity migration inventory. |
 | `approval_protocol.py`                 | `ApprovalRepository`: human-in-the-loop approval queue |
 | `auth_protocol.py`                     | `SessionRepository`, `RefreshTokenRepository`, `LockoutRepository` |
 | `codebase_structure_map_protocol.py`   | `CodebaseStructureMapRepository`: brownfield-intake structure map (modules, entry points, tests, build files, deps) for an imported codebase (1:1 per project) |
@@ -89,7 +90,7 @@ one level up in `src/synthorg/persistence/`:
 | `project_environment_protocol.py`      | `ProjectEnvironmentRepository`: per-project reproducible-environment provisioning cache (1:1 per project; declaration hash + type + built image ref) |
 | `sprint_protocol.py`                    | `SprintRepository`: agile sprint records with atomic linear-lifecycle transitions, project / status / org-wide filtered queries, and the two guarded backlog writes (`add_task_if_planning`, `complete_task_if`) whose story-point totals are re-derived in the statement rather than accumulated |
 | `tracked_container_protocol.py`        | `TrackedContainerRepository`: Docker sandbox container registry so a restart can reconcile orphans on both the daemon and DB sides |
-| `version_repo.py`                      | Generic version-snapshot repository reused by ontology + future versioned entities |
+| `version_protocol.py`                  | `VersionRepository`: generic version-snapshot protocol, implemented per backend by `sqlite/version_repo.py` / `postgres/version_repo.py` and reused by ontology + future versioned entities |
 | `secret_backends/protocol.py`          | `SecretBackend` protocol used by the secret-backend factory |
 
 The table above is representative, not exhaustive; the authoritative
@@ -213,26 +214,26 @@ repository layer itself stays cursor-agnostic.
 `TaskEngine` exposes two read methods composed over the repository's canonical
 `list_items` / `query` (which follow the no-`limit=None` shape above):
 
-- `list_tasks(*, status=None, assigned_to=None, project=None, limit=None, offset=0)`
-  returns a `tuple[Task, ...]` ordered by primary key `id` (ascending, stable
-  across calls).  When `limit` is set it is pushed down to the repository so
-  the result set is bounded.  `limit=None` is an engine-level fetch-all
-  convenience -- NOT a repository sentinel (the repository layer has no
-  `limit=None`; it bounds every read and callers needing the whole set drain
-  pages via `collect_all`) -- drained under the in-memory `_MAX_LIST_RESULTS`
-  (10,000) safety cap.  `offset > 0` requires a paired explicit `limit`
-  (rejected with `ValueError` otherwise) so the returned total stays accurate.
+- `list_tasks(*, status=None, assigned_to=None, project=None, limit=None, offset=0, include_total=True)`
+  returns `(tasks, total)` where `tasks` is a `tuple[Task, ...]` ordered by
+  primary key `id` (ascending, stable across calls) and `total` is `None`
+  when `include_total=False`.  When `limit` is set it is pushed down to the
+  repository so the result set is bounded.  `limit=None` is an engine-level
+  fetch-all convenience -- NOT a repository sentinel (the repository layer
+  has no `limit=None`; it bounds every read and callers needing the whole
+  set drain pages via `collect_all`) -- drained under the in-memory
+  `_MAX_LIST_RESULTS` (10,000) safety cap.  `offset > 0` requires a paired
+  explicit `limit` (rejected with `ValueError` otherwise) so the returned
+  total stays accurate.
 - `count_tasks(*, status=None, assigned_to=None, project=None)` issues a
-  dedicated `SELECT COUNT(*)` with the same filter semantics and is used
-  when callers need an authoritative total alongside the windowed result
-  set.
+  dedicated `SELECT COUNT(*)` with the same filter semantics; `list_tasks`
+  calls it internally when `include_total=True` rather than truncating
+  the paginated result set to compute a count.
 
-`TaskEngine.list_tasks(..., include_total=True)` composes both methods: the
-page comes from `list_tasks` and (when `include_total=True`) the cardinality
-comes from a separate `count_tasks` call.  `include_total=False` skips the
-second round trip entirely, meant for callers that only need `has_more`
-semantics via an extra page, not an exact total. Negative `limit` or
-`offset` is rejected at the engine boundary with `ValueError`.
+`include_total=False` skips the `count_tasks` round trip entirely, meant
+for callers that only need `has_more` semantics via an extra page, not an
+exact total. Negative `limit` or `offset` is rejected at the engine
+boundary with `ValueError`.
 
 ### Cursor-paginated list endpoints
 
@@ -242,7 +243,7 @@ the wire envelope documented in `web/CLAUDE.md`
 (``PaginationMeta { limit, next_cursor, has_more }``).
 Cursors are HMAC-signed offsets bound to a per-deployment secret
 (`SYNTHORG_PAGINATION_CURSOR_SECRET`), so a tampered cursor surfaces as
-HTTP 400 `InvalidCursorError` without leaking internal IDs or counts.
+HTTP 422 `InvalidCursorError` without leaking internal IDs or counts.
 
 The contract requires every paginated endpoint to feed `paginate_cursor`
 a **deterministically-sorted** sequence so cursor offsets remain stable
@@ -280,8 +281,8 @@ between backends (e.g. ontology versioning that wraps an
 ``aiosqlite.Connection`` for SQLite but an ``AsyncConnectionPool`` for
 Postgres) the pattern is a ``build_*()`` method on ``PersistenceBackend``
 instead of an ``isinstance(persistence, ConcreteBackend)`` branch at the
-call site. Current examples include ``build_lockouts(auth_config)``,
-``build_escalations(notify_channel)``, and ``build_ontology_versioning()``.
+call site. Current examples include ``build_lockouts(auth_config)`` and
+``build_ontology_versioning()``.
 Callers always type against the protocol; the factory hides the dialect
 choice. This matches the "no ``isinstance`` against concrete persistence
 backends outside ``persistence/`` or its factory" rule enforced by the

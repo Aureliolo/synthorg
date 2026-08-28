@@ -32,7 +32,7 @@ whether the backend is a cloud API, OpenRouter, Ollama, or a custom endpoint.
     ```yaml
     providers:
       example-provider:
-        litellm_provider: "anthropic"  # LiteLLM routing identifier (optional, defaults to provider name)
+        litellm_provider: "example-vendor"  # LiteLLM routing identifier (optional, defaults to provider name)
         family: "example-family"       # cross-validation grouping (optional)
         auth_type: api_key             # api_key | oauth | custom_header | subscription | none
         connection_name: "provider-example-provider"  # catalog connection holding the secret (api_key / custom_header auth)
@@ -291,7 +291,7 @@ Providers can be managed at runtime through the API without restarting:
 - **Preset auto-probe (batch)**: `POST /api/v1/providers/probe-local` -- probes every `LocalPreset` with non-empty `candidate_urls` in parallel (server-side `asyncio.TaskGroup`) using a 5-second timeout per URL and one rate-limit slot per call. Returns `{ results: { <preset_name>: ProbePresetResponse }, errors: { <preset_name>: <message> } }`. Used by the setup wizard and the Settings → Providers page on mount and on user-triggered re-scan. Per-preset failures land in `errors` without aborting the batch (cloud presets and vLLM are excluded by construction). SSRF validation is intentionally skipped because only hardcoded preset URLs are probed, never user input. The legacy single-preset `POST /api/v1/providers/probe-preset` endpoint has been removed; no replacement is offered for one-off single probes (the batch endpoint covers every wizard / settings call site).
 - **Hot-reload**: On mutation, `ProviderManagementService` rebuilds `ProviderRegistry` + `ModelRouter` and atomically swaps both into `AppState` in a single field-level slice update -- no downtime, no partial swap. The persist-then-swap sequence is itself atomic with the DB write: a swap failure rolls the persisted `providers.configs` blob back to its prior value (re-serialised from the parsed snapshot, since the sensitive setting's stored blob is unrecoverable through the masked entry) and raises `ProviderPersistenceError` with an ERROR alert, so the database and the running registry never diverge. The validate / serialise / persist / swap stages each raise a distinct error (`ProviderValidationError` / `ProviderSerializationError` / `ProviderPersistenceError`) so the failing stage is unambiguous.
 - **Auth types**: `api_key` (default), `subscription` (token-based auth for provider subscription plans, passed to LiteLLM as `api_key`, requires ToS acceptance), `oauth` (stores credentials, MVP uses pre-fetched token), `custom_header`, `none` (local providers)
-- **Routing key**: Optional `litellm_provider` field decouples the provider display name from LiteLLM routing (e.g. a provider named "my-claude" can route to `anthropic` via `litellm_provider: anthropic`). Falls back to provider name when unset.
+- **Routing key**: Optional `litellm_provider` field decouples the provider display name from LiteLLM routing (e.g. a provider named "my-connection" can route to "example-vendor" via `litellm_provider: example-vendor`). Falls back to provider name when unset.
 - **Credential safety**: Secrets are Fernet-encrypted at rest via the `providers.configs` sensitive setting; API responses use `ProviderResponse` DTO that strips all secrets and provides `has_api_key`/`has_oauth_credentials`/`has_custom_header`/`has_subscription_token` boolean indicators
 - **Persisted-config envelope**: the `providers.configs` JSON value is wrapped in a versioned `ProvidersConfigEnvelope` (`{ "schema_version", "providers" }`). On read, the resolver validates the envelope and its `schema_version`, then each entry on its own; see [Reading the persisted blob](#reading-the-persisted-blob) above for what a rejected entry costs and how an unreadable blob is told apart from an unconfigured one. A one-time boot migration upgrades a pre-envelope bare provider dict into envelope form on the same pass that moves any embedded `api_key` into the connection catalog.
 - **Health**: `GET /api/v1/providers/{name}/health` -- returns the health status (up/degraded/down/unknown), average response time, error rate percentage, call count, total tokens, and total cost. In-memory tracking via `ProviderHealthTracker` (concurrency-safe, append-only with periodic pruning). Token/cost totals are enriched from `CostTracker` at query time.
@@ -429,7 +429,7 @@ Model routing determines which LLM handles a given request. Four strategies are
 registered in `STRATEGY_MAP` (`providers/routing/strategies.py`), selectable via
 configuration. Role is a step inside `smart`'s cascade rather than a strategy of
 its own; `role_based` names an *assignment* strategy, which is a different
-subsystem (`engine/assignment/strategies.py`).
+subsystem (`engine/assignment/registry.py`).
 
 | Strategy | Behaviour |
 |----------|----------|

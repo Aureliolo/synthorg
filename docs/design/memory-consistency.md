@@ -96,14 +96,23 @@ application's responsibility:
 
 ## Time-Travel Queries
 
-The append-only log enables point-in-time queries:
+The append-only log enables point-in-time queries. Both methods are paginated: each call
+returns one `limit`-sized page, ordered for a stable cursor walk, never the whole set. A
+caller wanting the complete point-in-time snapshot or full audit trail drains every page via
+`persistence._shared.collect_all`:
 
 ```python
 # What did organizational memory look like before a given timestamp?
-snapshot = await store.snapshot_at(timestamp=datetime(2026, 3, 1, tzinfo=UTC))
+snapshot = await collect_all(
+    lambda limit, offset: store.snapshot_at(
+        timestamp=datetime(2026, 3, 1, tzinfo=UTC), limit=limit, offset=offset
+    )
+)
 
 # Full audit trail for a specific fact
-log = await store.get_operation_log("policy-jwt-auth")
+log = await collect_all(
+    lambda limit, offset: store.get_operation_log("policy-jwt-auth", limit=limit, offset=offset)
+)
 ```
 
 These methods are defined on the `OrgFactRepository` protocol (the organisational fact persistence

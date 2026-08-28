@@ -120,6 +120,7 @@ All backends implement the `OrgMemoryBackend` protocol:
 - `query(OrgMemoryQuery) -> tuple[OrgFact, ...]`
 - `write(OrgFactWriteRequest, *, author: OrgFactAuthor) -> NotBlankStr`
 - `list_policies() -> tuple[OrgFact, ...]`
+- `count_policies() -> int`
 - Lifecycle methods: `connect`, `disconnect`, `health_check`, `is_connected`, `backend_name`
 
 The default backend is the Hybrid Prompt + Retrieval implementation.

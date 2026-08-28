@@ -215,26 +215,34 @@ summaries (aggregated from **all** matching records, not just the current page):
 - **`period_summary`**: overall stats including `avg_cost` (computed), `total_cost`,
   `total_input_tokens`, `total_output_tokens`, and `record_count`.
 
-## CFO Agent Responsibilities
+## Cost Enforcement And Optimisation
 
-The CFO agent (when enabled) acts as a cost management system. Budget tracking, per-task cost
-recording, and cost controls are enforced by `BudgetEnforcer` (a service the engine composes).
-CFO cost optimisation is implemented via `CostOptimizer`.
+Budget tracking, per-task cost recording, and cost controls are enforced by
+`BudgetEnforcer` (a service the engine composes): it blocks a task whose
+estimated cost would exceed the remaining budget and evaluates every
+operation against the live alert ladder before it runs.
 
-- Monitor real-time spending across all agents
-- Alert when departments approach budget limits
-- Suggest model downgrades when budget is tight
-- Report daily/weekly spending summaries
-- Recommend hiring/firing based on cost efficiency
-- Block tasks that would exceed remaining budget
-- Optimise model routing for cost/quality balance
+`CostOptimizer` is the read-only analytical complement, exposed at
+`GET /budget/cfo/anomalies` and `GET /budget/cfo/efficiency`:
 
-`CostOptimizer` implements anomaly detection (sigma + spike factor), per-agent efficiency
-analysis, advisory model recommendations (a cheaper model on the agent's OWN provider,
-since a model reached through a different connection is a different decision with its
-own credentials, quota and bill), routing optimisation suggestions, and operation
-approval evaluation. `ReportGenerator` produces multi-dimensional spending reports with
-task/provider/model breakdowns and period-over-period comparison.
+- Spending anomaly detection (sigma threshold + spike factor) over a
+  configurable lookback window.
+- Per-agent cost efficiency analysis.
+- Advisory model-downgrade recommendations (a cheaper model on the agent's
+  OWN provider, since a model reached through a different connection is a
+  different decision with its own credentials, quota and bill; see the
+  Cost / quality Pareto view below).
+- Routing optimisation suggestions.
+- Operation approval evaluation, the same criteria `BudgetEnforcer`'s
+  pre-flight check applies.
+
+`ReportGenerator` produces multi-dimensional spending reports with
+task/provider/model breakdowns and period-over-period comparison (see
+[Automated Reporting](#automated-reporting) below).
+
+Both services run as ordinary budget-subsystem plumbing, independent of the
+roster: a company template may include a named `CFO` role, but the
+enforcement and analysis run whether or not that role is staffed.
 
 ## Cost Controls
 

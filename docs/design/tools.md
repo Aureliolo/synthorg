@@ -78,7 +78,7 @@ isolation for high-risk tools.
         workspace_only: true               # restrict filesystem access to project dir
         restricted_path: true              # strip dangerous binaries from PATH
       docker:
-        image: "synthorg-sandbox:latest" # pre-built image with common runtimes
+        image: "ghcr.io/aureliolo/synthorg-sandbox:v<release>" # version-pinned, resolved at startup
         network: "none"                    # no network by default
         network_overrides:                 # category-specific network policies
           database: "bridge"               # database tools need TCP access to DB host
@@ -91,10 +91,8 @@ isolation for high-risk tools.
         timeout_seconds: 120
         pids_limit: 64                     # PID cap (main container) -- guards against fork-bomb runaways
         tmpfs_size: "64m"                  # tmpfs mounted at /tmp in the main container
-        sidecar_pids_limit: 32             # PID cap for the stdio sidecar helper
-        sidecar_tmpfs_size: "8m"           # tmpfs for the stdio sidecar helper
+        sidecar_tmpfs_size: "8m"           # tmpfs for the network sidecar container
         mount_mode: "ro"                   # read-only by default
-        auto_remove: true                  # remove the container once its lifecycle strategy tears it down
       k8s:                                 # planned -- per-agent pod isolation
         namespace: "synthorg-agents"
         resource_requests:
@@ -105,6 +103,11 @@ isolation for high-risk tools.
           memory: "1Gi"
         network_policy: "deny-all"         # default deny, allowlist per tool
     ```
+
+The network sidecar's PID cap, memory/CPU limits, and health-check timing are separate,
+live-reloadable `tools.docker_sidecar_*` settings rather than part of this file. Container
+removal is not a setting: `AutoRemove` is always off, so the boot reconciliation pass can find
+and reclaim a container a hard kill left running.
 
 Per-category backend selection is implemented in `tools/sandbox/factory.py` via three functions:
 `build_sandbox_backends` (instantiates only the backends referenced by config),
@@ -207,11 +210,11 @@ tools are enabled. File system and git tools work out of the box with subprocess
 This keeps the local-first experience lightweight while providing strong isolation where it
 matters.
 
-Docker MVP uses `aiodocker` (async-native) with a pre-built image
-(Python 3.14 + Node.js LTS + basic utils, <500MB). If Docker is unavailable, the framework
-fails with a clear error for any tool category whose configured backend is Docker;
-low-risk categories (file_system, git) continue to run via subprocess
-([Decision Log](../architecture/decisions.md) D16).
+The Docker backend talks to the daemon over `aiodocker` (async-native) against a
+Wolfi-based, apko-composed sandbox image (Python, Node.js, and basic utilities; see
+`docker/sandbox/apko.yaml`). If Docker is unavailable, the framework fails with a clear
+error for any tool category whose configured backend is Docker; low-risk categories
+(file_system, git) continue to run via subprocess ([Decision Log](../architecture/decisions.md) D16).
 
 ### Container Log Shipping
 
@@ -617,7 +620,7 @@ Action types classify agent actions for use by autonomy presets (see [Security &
 SecOps validation, and tiered timeout policies
 ([Decision Log](../architecture/decisions.md) D1).
 
-**Registry:** `StrEnum` for 45 built-in action types (type safety, autocomplete, typos caught
+**Registry:** `StrEnum` for 47 built-in action types (type safety, autocomplete, typos caught
 by static type checking and config-load-time validation) + `ActionTypeRegistry` for custom
 types via explicit registration. Unknown strings are rejected at config load time; a typo
 in `human_approval` list silently meaning "skip approval" is a critical safety concern.
@@ -626,12 +629,13 @@ in `human_approval` list silently meaning "skip approval" is a critical safety c
 actions in that category (e.g., `auto_approve: ["code"]` expands to all `code:*` actions).
 Fine-grained overrides are supported (e.g., `human_approval: ["code:create"]`).
 
-**Taxonomy (45 leaf types):**
+**Taxonomy (47 leaf types):**
 
 ```text
 code:read, code:write, code:create, code:delete, code:refactor
 test:write, test:run
 docs:write
+design:generate, design:delete
 vcs:read, vcs:commit, vcs:push, vcs:branch
 deploy:staging, deploy:production
 publish:staging, publish:production

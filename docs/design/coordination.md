@@ -203,13 +203,13 @@ crashed process back, and nothing inside the product asks for that.
 
 ### Resuming what a stop interrupted
 
-Shutting down cleanly is half the promise. The other half is that the work
-comes back, and until run recovery existed it did not: a plan's waves are
-driven by a background task created when an operator approves the plan, so
-once that task was gone nothing anywhere asked again whether the plan still
-needed driving. A restart left subtasks at `in_progress`, the plan at
-`executing`, and the board showing work in flight with nothing behind it,
-permanently.
+Shutting down cleanly is half of it. The other half is that the work comes
+back. A plan's waves are driven by a background task created when an operator
+approves the plan, and that task does not outlive its process, so edge-triggered
+dispatch alone leaves nothing anywhere asking again whether the plan still needs
+driving: a restart leaves subtasks at `in_progress`, the plan at `executing`,
+and the board showing work in flight with nothing behind it, permanently. That
+is the shape run recovery exists to close.
 
 `RunRecoveryReconciler` (`engine/run_recovery/`) answers that on the same
 shape the subsystem reconciler uses for wiring: boot is the first pass, the
@@ -222,7 +222,7 @@ question, and every plan status gets an answer.
 | `COMPLETED` / `REJECTED` / `SUPERSEDED` / `FAILED` | nothing; the plan is finished |
 | `DRAFT` / `PENDING_REVIEW` | nothing; it is parked on a person, correctly |
 | `PLANNING` | fails it with a reason: its items were being written by the intake pipeline, and the brief they were written from is not recoverable |
-| `APPROVED` / `EXECUTING` | requeues the orphaned rows, re-judges any task left `IN_REVIEW` that no open human decision is waiting on, then hands the remaining waves back to the coordinator |
+| `APPROVED` / `EXECUTING` | requeues the orphaned rows, re-judges any task left `IN_REVIEW` that no open human decision is waiting on, then hands the remaining waves back to the coordinator. A plan with nothing left awaiting dispatch is recomputed instead: its rows are finished, dead, or parked on somebody, so driving it would gate every wave out and change nothing, every cadence |
 | `INTEGRATING` / `EVALUATING` | one rollup pass; the tail stages key on an id derived from the plan and read their own state, so they re-drive themselves |
 
 Every pass also retires **orphaned approvals**, which the table above cannot
@@ -448,7 +448,9 @@ flowchart TD
     ```
 
 - True filesystem isolation; agents cannot overwrite each other's work
-- Maximum parallelism during execution; conflicts deferred to merge time
+- Agents that were given independent units work at the same time, and a
+  conflict between two of them is resolved at merge rather than prevented by
+  serialising the work
 - Leverages mature git infrastructure for merge, diff, and history
 
 ### Semantic Conflict Detection
@@ -650,11 +652,18 @@ Events emitted: `ENVIRONMENT_PROVISION_START`, `ENVIRONMENT_PROVISIONED`,
 
 ## Task Decomposability & Coordination Topology
 
-A subtask that is more than one agent's worth of work is decomposed again
-rather than dispatched whole, which makes a decomposition a tree rather than a
-list. The recursion point, the size signal that drives it, and the experiment
-measuring whether verifying at every merge holds off aggregation collapse as
-that tree deepens are in
+One agent in a loop cannot hold a whole application, so the binding constraint
+on building software with agents is **decomposition quality, not agent
+supply**. Everything below follows from that. The tree is not a device for
+finishing sooner: it exists because a unit small enough for one agent to hold
+is a unit that agent can get right, and the topology machinery exists to keep
+work that is genuinely independent from being sequenced as though it were not.
+
+A subtask that is more than one agent's worth of work is therefore decomposed
+again rather than dispatched whole, which makes a decomposition a tree rather
+than a list. The recursion point, the size signal that drives it, and the
+experiment measuring whether verifying at every merge holds off aggregation
+collapse as that tree deepens are in
 [Recursive Decomposition](recursive-decomposition.md), which owns what bounds
 the tree and what a bound reports when it binds.
 
@@ -718,7 +727,7 @@ coordination:
     parallel_default: "centralized"
     mixed_default: "context_dependent"
     parallel_artifact_threshold: 4      # parallel tasks above this use decentralized topology
-  max_concurrency_per_wave: null        # None = unlimited
+  max_concurrency_per_wave: 5           # null disables the cap
   max_delegation_rounds: 3             # soft cap; hard abort at 2x (6)
   fail_fast: false
   enable_workspace_isolation: true
@@ -735,16 +744,16 @@ across held-out configurations.
 
 ### Coordination Group Size Bounds
 
-Per-task coordination-group size is **not** the same as per-company size. An
-Enterprise Org template with 20-50 agents does not run 20-50-agent coordination
-waves; it runs small coordination groups drawn from the roster.
+Per-task coordination-group size is **not** the same as roster size. A roster
+is how many agents exist; a coordination group is how many are reasoning about
+one wave at once, and a large roster runs small groups drawn from it.
 
-| Scope | Bound | Enforcement |
-|-------|-------|-------------|
-| Per-coordination-group (agents in a single `coordination_topology` wave) | **3-4 agents** (recommended) | `CoordinationConfig.max_concurrency_per_wave` |
-| Per plan-review panel (stakeholder leads reviewing a gated plan) | **4 default, 8 hard cap** | `coordination.plan_review_panel_size` |
-| Per-task total team (orchestrator + sub-agents + verifiers) | **~7 agents** | Soft cap; logged warning above threshold |
-| Per-company / org roster | **No hard bound** | Organisational-simulation fidelity, not per-task reasoning efficiency |
+| Scope | Bound | Where it comes from |
+|-------|-------|---------------------|
+| Per-coordination-group (agents in a single `coordination_topology` wave) | `max_concurrency_per_wave`, 5 by default; `null` disables the cap | `CoordinationConfig.max_concurrency_per_wave` |
+| Per plan-review panel (stakeholder leads reviewing a gated plan) | 4 default, 8 hard cap | `coordination.plan_review_panel_size` |
+| Per-task total team (orchestrator + sub-agents + verifiers) | Not bounded in code | `team_size` is recorded on the coordination metrics record, so a group that grew is visible after the fact rather than refused during it |
+| Per-roster | No bound | The roster is a staffing question, not a per-task reasoning-capacity one |
 
 ### Multi-Agent Coordination Pipeline
 
@@ -821,10 +830,10 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
    assignment before the wave runs**: `AssignmentWriter.persist` moves each
    subtask to `ASSIGNED` with its `assigned_to` through the `TaskEngine` and
    rebuilds the group from what the engine returned, so the local context can
-   never lead the central row. Without it the coordinator dispatched on an
-   in-memory `ASSIGNED` while the row was still `created`, the engine's
-   `ASSIGNED -> IN_PROGRESS` entry sync was refused, and the agent ran work the
-   central engine had no record of starting.
+   never lead the central row. Without it a coordinator dispatches on an
+   in-memory `ASSIGNED` while the row is still `created`, the engine refuses the
+   `ASSIGNED -> IN_PROGRESS` entry sync, and the agent runs work the central
+   engine has no record of starting.
    A wave assigns its subtasks one at a time, so a refusal partway leaves the
    ones before it owned by an agent the dispatcher has already given up on.
    Those are released back to `BLOCKED` with the reason before the wave failure
@@ -839,10 +848,18 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
    dependencies are augmented with its children's ids, so it lands in a
    strictly later topological level than the subtree it assembles while
    independent subtrees stay in the same wave. A per-subtree loop walked
-   deepest-first would have serialised those. The augmentation exists only in
-   that derived view: `PlanItem.dependencies` and `Task.dependencies` keep sole
-   ownership of the order the plan DECLARED, and containment is a decision
-   neither of them makes.
+   deepest-first would serialise those.
+
+   The same view carries a container's own prerequisites DOWN to its subtree's
+   entry nodes. A container is only the assembly: the work moved into its
+   children, so a child that inherited nothing would be ready immediately and a
+   unit declared to run after another would have its actual work scheduled
+   alongside it. Only the entry nodes inherit, because anything carrying a
+   declared edge of its own already waits on an entry node transitively.
+
+   The augmentation exists only in that derived view: `PlanItem.dependencies`
+   and `Task.dependencies` keep sole ownership of the order the plan DECLARED,
+   and containment is a decision neither of them makes.
 
    The DAG decides **when** a subtask runs; whether it **should**, given that
    its declared inputs may have died, is a separate decision with one owner
@@ -876,10 +893,11 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
    lives where something reads it: the count on `GatedWave.awaiting` and the
    `awaiting` field of `COORDINATION_WAVE_STARTED`, and the rows themselves,
    which are `CREATED` rather than `COMPLETED` and are what the recovery
-   sweep re-drives once the answer lands. A phase list that omits
-   the level entirely lets the rollup read the run as still working. Without this, a plan whose first real wave died end to
-   end still marched through every later wave, paying for each one, with
-   every task failing on its own against inputs nobody wrote.
+   sweep re-drives once the answer lands. A phase list that omits the level
+   entirely lets the rollup read the run as still working. Without the gate a
+   plan whose first real wave dies end to end marches through every later wave,
+   paying for each one, with every task failing on its own against inputs
+   nobody wrote.
 
    Stopping has the same owner, in two shapes. `abandon_after` parks the
    waves the run never reached, because a row left at `created` has no exit
@@ -898,10 +916,10 @@ decompose -> route -> resolve topology -> validate -> dispatch -> rollup -> upda
    `abandon_unreachable` parks them under `dependency_failed`, deriving the
    set as the plan's own subtask ids minus the ids the built groups carry, so
    nothing new is reported out of the builder and no second list can disagree
-   with what was actually built. Without it a live run left two rows at
-   `created` while the recovery reconciler re-drove the plan every cadence and
-   changed nothing, for ever: the plan could not conclude, and its project
-   could not be deleted.
+   with what was actually built. Without it those rows sit at `created` while
+   the recovery reconciler re-drives the plan every cadence and changes
+   nothing, for ever: the plan cannot conclude, and its project cannot be
+   deleted. A live run left two.
 
    Parking is level-triggered, not edge-triggered, and that matters because
    routing re-runs over every subtask on every pass. A row that already

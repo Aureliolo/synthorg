@@ -98,8 +98,7 @@ Postgres implementations are conformance-tested in lockstep.
   `ResearchService`), 503-ing when the service is not wired.
 
 A REST controller and dashboard surface for operator-driven research are a
-follow-up; the agent tool, MCP surface, and eval lane cover the #1989
-acceptance.
+follow-up; the agent tool, MCP surface, and eval lane are what ships today.
 
 ## Security (SEC-1)
 

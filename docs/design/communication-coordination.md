@@ -70,14 +70,15 @@ same model the REST controller uses, so the wire contracts cannot drift.
 
 ## Multi-Agent Failure Pattern Guardrails
 
-*Research findings from #690 and #1254. See also:
-[`docs/research/multi-agent-failure-audit.md`](../research/multi-agent-failure-audit.md)
-and [S1 Multi-Agent Architecture Decision](../research/s1-multi-agent-decision.md).*
+See also: [Multi-Agent Failure Audit](../research/multi-agent-failure-audit.md) and
+[S1 Multi-Agent Architecture Decision](../research/s1-multi-agent-decision.md).
 
-Empirical data (CIO, 2026) shows swarm topologies fail at 68% vs. 36% for hierarchical
-orchestration. SynthOrg's orchestrated approach is validated, but the same failure modes
-emerge if agent boundaries are poorly managed. This section documents current guardrails
-and known risks.
+External research on multi-agent failure modes reports swarm topologies (agents
+coordinating with no fixed structure) failing markedly more often than orchestrated
+ones with defined agent boundaries. The guardrails below exist because the same
+drift can appear inside an orchestrated system too if those boundaries are left
+unmanaged: they are a mitigation, not a guarantee. This section documents current
+guardrails and known risks.
 
 ### Group Conversation Safety
 
@@ -102,7 +103,7 @@ Five mechanisms protect against swarm drift (`communication/loop_prevention/guar
 Circuit breaker uses exponential backoff: `cooldown = base * 2^(trip_count - 1)`,
 capped at `max_cooldown_seconds` (default 3600s). On cooldown expiry, the bounce count
 resets but the trip count is preserved, so successive trips produce progressively longer
-cooldowns (#1116). Circuit breaker state (trip count, bounce count) is persisted to SQLite
+cooldowns. Circuit breaker state (trip count, bounce count) is persisted to SQLite
 via `CircuitBreakerStateRepository` so guardrails survive restarts. Dedup window and rate
 limiter remain in-memory (short-lived by design).
 

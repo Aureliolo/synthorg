@@ -102,7 +102,7 @@ At-rest protection of the *rest* of the database (non-secret rows, full-text bac
 
 The operator can stand up a connection-bound integration by talking to the
 unified chat's operator console (`configure` intent, see
-[Self-Improving Company: the operator console](self-improvement.md#interactive-endpoint-one-unified-turn)).
+[Self-Improvement: the operator console](self-improvement.md#interactive-endpoint-one-unified-turn)).
 Three backend pieces make this vendor-generic and secret-safe.
 
 ### Connection-type metadata registry
@@ -469,21 +469,25 @@ rather than silently producing an unauthenticated server.
 
 A stdio MCP server is arbitrary third-party code (`npx -y <package>@<version>`).
 D16 requires the high-risk execution categories to run inside Docker, and an
-MCP server executes untrusted code, so it sits in that set. The policy lives in
-`tools/mcp/sandbox.py` and the transport that applies it is
-`tools/mcp/container_stdio.py`, which creates the container over the Docker API
-and attaches stdin+stdout before starting it, under `--cap-drop=ALL`,
-`--security-opt=no-new-privileges`, a read-only rootfs, `NPM_CONFIG_IGNORE_SCRIPTS`,
-and cpu/memory/pid limits, controlled by the `tools.mcp_sandbox_*` settings
-(sandboxing is on by default, and fails secure to on if the settings cannot be
-resolved). It runs parallel to, not through, the per-category `SandboxBackend`
-selection the other tool categories use, because the MCP protocol must flow
-over the container's stdio. The npm package is version-pinned so a reconnect
-never resolves an unexpected `latest`. Resolved secrets are forwarded to the
-container by name (`--env KEY`) so they never appear in host `argv`, and
-credentials are forwarded only by environment variable (never as a CLI flag).
-A failed server connect is isolated so one broken server never blanks the
-tools of the others.
+MCP server executes untrusted code, so it sits in that set. There is exactly
+one image in the product that runs untrusted code, the resolved
+`tools.sandbox_image` (the same image the agent sandbox uses, verified by the
+CLI); the MCP transport runs in a container built from it rather than from a
+separate image. The policy lives in `tools/mcp/sandbox.py` and the transport
+that applies it is `tools/mcp/container_stdio.py`, which creates the container
+over the Docker API and attaches stdin+stdout before starting it, under
+`--cap-drop=ALL`, `--security-opt=no-new-privileges`, a read-only rootfs,
+`NPM_CONFIG_IGNORE_SCRIPTS`, and cpu/memory/pid limits, controlled by the
+`tools.mcp_sandbox_*` settings (`enabled`, `memory_limit`, `pids_limit`,
+`cpus`, `network`; sandboxing is on by default, and fails secure to on if the
+settings cannot be resolved). It runs parallel to, not through, the
+per-category `SandboxBackend` selection the other tool categories use, because
+the MCP protocol must flow over the container's stdio. The npm package is
+version-pinned so a reconnect never resolves an unexpected `latest`. Resolved
+secrets are forwarded to the container by name (`--env KEY`) so they never
+appear in host `argv`, and credentials are forwarded only by environment
+variable (never as a CLI flag). A failed server connect is isolated so one
+broken server never blanks the tools of the others.
 
 ### API Endpoints
 
@@ -574,9 +578,9 @@ integrations:
 
 ---
 
-## Provider Migration
+## Provider Credential Resolution
 
-`ProviderConfig` now supports a `connection_name` field that references a
+`ProviderConfig` carries a `connection_name` field that references a
 connection in the catalog. When set, credentials are resolved from the
 catalog at runtime instead of using embedded `api_key` / OAuth fields.
 

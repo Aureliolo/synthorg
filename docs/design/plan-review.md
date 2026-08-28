@@ -371,6 +371,33 @@ every other status requires a non-empty, validated item DAG. A `failure_reason` 
 present iff the status is `FAILED` (a cross-field model validator enforces both
 directions).
 
+### Automatic replan
+
+A dispatched initiative that can no longer advance on its own re-plans itself.
+`ReplanTriggerService` is the driver, fired best-effort off the initiative
+rollup whenever it derives a stall: every outstanding item is dead (failed,
+rejected, cancelled, blocked, suspended, or interrupted, with none able to
+move on its own) or a tail stage returned a verdict the plan cannot get past
+(`INTEGRATING` failing to assemble, `EVALUATING` finding the whole unmet).
+Work still waiting on a human is never read as a stall.
+
+Re-planning is a fresh decomposition of the whole objective, never a patch to
+the item that died: the objective task is briefed with the stall's reason and
+detail appended to its description, decomposed afresh through the same
+planner, and the result opens a successor plan through the same
+retire-and-open-successor path a hand-authored `/plans/{id}/replan` uses. The
+successor lands in `PENDING_REVIEW` exactly as a first plan does, so the
+operator sees and approves whatever the org proposed to fix it.
+
+Two settings bound an unattended chain: `engine.auto_replan_enabled` (default
+on) is the master switch, and `engine.auto_replan_max_generations` (default
+`2`) caps how many times one lineage may replan itself before the initiative
+is left for a human rather than tried again. A successor opened automatically
+carries its predecessor's `replan_generation` plus one; an operator-granted
+replan is exempt from both the switch and the cap and always resets the
+generation to zero, because a human decision asking for another attempt is
+not the runaway either guard exists to stop.
+
 An edit or request-changes is accepted only from a reworkable status.
 
 `DRAFT` and `PENDING_REVIEW` are the reworkable statuses; `PLANNING` is a transient
