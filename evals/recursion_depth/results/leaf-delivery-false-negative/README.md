@@ -21,8 +21,8 @@ having produced nothing.
 ## What was actually happening
 
 The leaf's delivery check asked whether any path the PLANNER had declared for
-that unit existed and had changed. Those paths are guessed before the tree
-exists, from a title and a sentence. A leaf briefed to build the CSV reader was
+that unit existed and had changed. Those paths are guessed from a title and a
+sentence, before the tree exists. A leaf briefed to build the CSV reader was
 expected at `sqlcsv/csv_reader.py` and wrote `sqlcsv/reader.py`, so nothing it
 did counted.
 
@@ -59,5 +59,5 @@ measure planner behaviour. It is recorded here because it bounds what the
 survival curve can say: when one residual bucket carries most of the
 specification, survival is measured over whatever is left.
 
-The same leaf is the case that `#2863` addresses. It had turns remaining and
-nothing told it that its workspace was still empty.
+The same leaf is the case for telling a run what its workspace holds: it had
+turns remaining, and nothing told it that workspace was still empty.

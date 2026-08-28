@@ -45,8 +45,8 @@ async def delivered_nothing(turns: Iterable[TurnRecord]) -> bool:
 
     The workspace answers it whenever a baseline was taken, and a baseline is
     taken for exactly the runs that declare deliverables. Falling back to the
-    tool-call proxy is the unwired case only: it is what shipped before, and
-    missing evidence must not change what a run is told.
+    tool-call proxy is the unwired case only: it is the weaker evidence, and
+    an absent baseline must not change what a run is told.
 
     Returns:
         ``True`` when nothing has been produced.

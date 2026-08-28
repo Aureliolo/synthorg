@@ -119,11 +119,11 @@ ORACLE_SUITE_DIR: Final[str] = "oracle"
 #: Everything the staged oracle may still hold once its expectations are gone,
 #: as an ALLOWLIST rather than a list of things to remove.
 #:
-#: A denylist is one file extension away from being wrong, and was: the first
-#: version of this swept ``test_*.py`` and left ``__pycache__`` behind, so the
-#: compiled expectations sat beside the graded tree with the queries and their
-#: expected rows readable out of ``co_consts``. Nobody had thought of the
-#: extension; an allowlist does not require anybody to.
+#: A denylist is one file extension away from being wrong, and the extension
+#: it misses is one nobody thinks of: sweeping ``test_*.py`` leaves
+#: ``__pycache__``, so the compiled expectations sit beside the graded tree
+#: with the queries and their expected rows readable out of ``co_consts``. An
+#: allowlist does not require anybody to think of it.
 #:
 #: ``conftest.py`` and ``__init__.py`` stay because pytest re-reads both while
 #: setting a test up and the run dies without them, and neither holds an

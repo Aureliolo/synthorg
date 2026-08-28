@@ -23,7 +23,7 @@ python -m pytest -c .synthorg-grade.ini -p no:cacheprovider -q \
     --junit-xml=.synthorg-grade.xml .
 ```
 
-A merge's inputs are mounted at `.children/<slug>/`. That directory is
+The inputs to a merge are mounted at `.children/<slug>/`. That directory is
 dot-prefixed, and pytest's default `norecursedirs` includes `.*`, so pytest
 never descends into it. A merge that assembles the package to the workspace
 root and leaves the pieces' tests where it found them therefore collects **no
@@ -31,7 +31,7 @@ tests at all**, whatever it built.
 
 The correlation across the cap-2 cell's seven merges is exact:
 
-| tests at the merge's own root | tests still under `.children/` | verdict |
+| tests at the root of the merge | tests still under `.children/` | verdict |
 | ---: | ---: | --- |
 | 9 | 10 | delivered |
 | 1 | 10 | delivered |
@@ -50,7 +50,7 @@ anything, and does what it assembled stand up. `merge_brief` rendered the
 single flag as `[DID NOT DELIVER]` in the parent's brief.
 
 So the root merge was told four of its seven pieces had delivered nothing.
-Those four held **46, 46, 41 and 36 Python modules**. In total it was handed
+Those four held **46, 46, 41, and 36 Python modules**. In total it was handed
 277 modules and 61 test files across seven subtrees, and told most of it had
 failed.
 
@@ -72,7 +72,7 @@ for two unrelated reasons, and both times the number would have looked clean.
 ## What the cap-1 cells still say
 
 They stand on their own terms: three independently planned trees at the same
-cap, scoring 37, 37 and 23. The spread is what three repetitions were bought
+cap, scoring 37, 37, and 23. The spread is what three repetitions were bought
 for, and the 23 is a real draw rather than an artefact.
 
 ## The fix
