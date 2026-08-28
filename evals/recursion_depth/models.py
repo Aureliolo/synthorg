@@ -215,6 +215,14 @@ class UnitRecord(BaseModel):
             survival denominator: work that never worked cannot be work the
             merge lost. The declared list does not decide this; see
             ``undeclared_paths``.
+        produced: Whether its own tree changed at all. Recorded beside
+            ``delivered`` rather than derived from it because the two answer
+            different questions and a resume has to reconstruct both: this is
+            the half a parent's brief renders, and collapsing them told a live
+            root merge that four subtrees holding 169 modules had delivered
+            nothing. A journal written before this field existed reads it as
+            false, which is why a resume of one re-runs rather than replaying
+            a merge whose inputs it cannot describe.
         attempts: How many sessions this unit consumed, repair and review
             included, which is the figure the equal-budget check reads.
         turns: Agent turns across the sessions that BUILT. A review's turns are
@@ -264,6 +272,7 @@ class UnitRecord(BaseModel):
     claimed: tuple[RequirementId, ...] = ()
     unresolved_claims: int = Field(default=0, ge=0)
     delivered: bool = False
+    produced: bool = False
     attempts: int = Field(default=0, ge=0)
     turns: int = Field(default=0, ge=0)
     cost: float = Field(default=0.0, ge=0.0)

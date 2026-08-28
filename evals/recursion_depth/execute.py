@@ -31,6 +31,7 @@ from evals.recursion_depth.session import (
     SessionLimits,
     SessionOutcome,
     SweepDeps,
+    UnitDelivery,
     graded,
     probe_artifacts,
     produced_tree,
@@ -88,6 +89,11 @@ class LeafOutcome:
         cost: What it spent.
         tokens: What it spent in tokens.
         executor: The pair it actually ran on.
+        produced: Whether its own tree changed. Separate from ``delivered``
+            because this is the half its parent's brief renders: a leaf that
+            built modules and failed a check is a different input from one
+            that built nothing, and one word for both is what told a live
+            root merge that four subtrees holding 169 modules had failed.
         undeclared_paths: Declared paths absent from the finished tree.
             Diagnosis, never a verdict: the declaration is the planner's guess,
             written per node at whatever granularity it chose, so an
@@ -101,6 +107,7 @@ class LeafOutcome:
     attempts: int
     turns: int
     cost: float
+    produced: bool = False
     tokens: int = 0
     executor: ModelPair | None = None
     undeclared_paths: tuple[str, ...] = ()
@@ -264,20 +271,21 @@ async def run_leaf(
         )
         attempts = 2
         spent = spent.plus(outcome)
-    detail = await _undelivered_reason(
+    delivery = await _delivery(
         deps, task, workspace, outcome, baseline, turns=spent.turns
     )
     final = await asyncio.to_thread(probe_artifacts, task, workspace)
     return LeafOutcome(
         workspace=workspace,
-        delivered=not detail,
+        delivered=delivery.delivered,
+        produced=delivery.produced,
         attempts=attempts,
         turns=spent.turns,
         cost=spent.cost,
         tokens=spent.tokens,
         executor=ModelPair.of(owner, deps.declared_pairs),
         undeclared_paths=final.missing,
-        detail=detail,
+        detail=delivery.reason,
     )
 
 
@@ -347,7 +355,7 @@ def _died_in_flight(outcome: SessionOutcome) -> bool:
     return outcome.termination == TerminationReason.ERROR.value
 
 
-async def _undelivered_reason(
+async def _delivery(
     deps: SweepDeps,
     task: Task,
     workspace: CellWorkspace,
@@ -355,8 +363,8 @@ async def _undelivered_reason(
     baseline: frozenset[tuple[str, int]],
     *,
     turns: int,
-) -> str:
-    """Say why *task*'s tree is not a delivery, or nothing when it is.
+) -> UnitDelivery:
+    """Say what *task* produced, and separately whether it stands up.
 
     The no-turn case is separated because it is a different fact about a
     different subsystem. A session that took no turn at all was refused before
@@ -381,20 +389,31 @@ async def _undelivered_reason(
             that decide whether it delivered.
 
     Returns:
-        The reason, empty when the leaf delivered.
+        What it produced and why that is or is not a clean delivery. The two
+        are separate because the parent's brief renders the first: a leaf that
+        wrote modules and failed its own suite is an input a merge can still
+        assemble from, and telling the merge it received nothing is a lie it
+        acts on.
     """
     if turns == 0:
-        return (
-            f"the unit ran no turns, so nothing was built and this is not a "
-            f"delivery failure: it terminated {outcome.termination}"
+        return UnitDelivery(
+            produced=False,
+            reason=(
+                f"the unit ran no turns, so nothing was built and this is not "
+                f"a delivery failure: it terminated {outcome.termination}"
+            ),
         )
     if await asyncio.to_thread(produced_tree, workspace) == baseline:
-        return "the session left its tree exactly as it found it"
+        return UnitDelivery(
+            produced=False, reason="the session left its tree exactly as it found it"
+        )
     async with graded(deps, workspace, owner=f"grade:{task.id}") as grader:
         passed, report = await grader.own_tests_pass(workspace.project_dir)
     if not passed:
-        return f"the unit's own tests did not pass: {report}"
-    return ""
+        return UnitDelivery(
+            produced=True, reason=f"the unit's own tests did not pass: {report}"
+        )
+    return UnitDelivery(produced=True, reason="")
 
 
 __all__ = [

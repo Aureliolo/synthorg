@@ -524,6 +524,53 @@ _NOT_PRODUCED: Final[frozenset[str]] = frozenset(
 )
 
 
+@dataclass(frozen=True, slots=True)
+class UnitDelivery:
+    """What a unit produced, kept apart from whether what it produced stands up.
+
+    Two questions with one answer between them is what this separates. A merge
+    that assembles the whole package and does not copy its children's tests up
+    to the workspace root collects no tests, because the grader runs pytest at
+    that root and ``.children/`` is dot-prefixed, so pytest's own
+    ``norecursedirs`` never descends into it. The unit had therefore built
+    something and failed a check, and both facts arrived at its parent as the
+    single word ``[DID NOT DELIVER]``.
+
+    Measured on a live cap-2 cell, that is not a labelling nicety. Four of the
+    root's seven pieces were marked that way while holding 46, 46, 41 and 36
+    Python modules between them; the root was told most of its inputs had
+    failed, and across six attempts and 119 turns it wrote nothing at all. The
+    cell scored 0 of 42. Correlation between the mark and whether the merge
+    happened to copy a test file up a directory was exact, six of six.
+
+    So the parent is told what it can act on. ``produced`` decides whether
+    there is anything there to assemble; ``reason`` says what is wrong with it,
+    which is a different sentence and reads as one.
+
+    Attributes:
+        produced: Whether the unit's own tree changed. The only fact that
+            answers "is there something here".
+        reason: Why this is not a clean delivery, empty when it is. Set with
+            ``produced`` false when nothing was built, and with ``produced``
+            true when something was built that does not stand up.
+    """
+
+    produced: bool
+    reason: str
+
+    @property
+    def delivered(self) -> bool:
+        """Did this unit both produce something and pass its own checks?
+
+        Returns:
+            True only when both hold. This is the scoring flag; it is
+            deliberately NOT what the parent's brief renders, because a
+            subtree that built a package and failed a check is not the same
+            input as one that built nothing.
+        """
+        return self.produced and not self.reason
+
+
 def produced_tree(workspace: CellWorkspace) -> frozenset[tuple[str, int]]:
     """Fingerprint what a unit has produced, ignoring what it was handed.
 
@@ -1021,6 +1068,7 @@ __all__ = [
     "SweepDeps",
     "ToolRegistryFactory",
     "ToolReleaseHook",
+    "UnitDelivery",
     "graded",
     "ledger_scope",
     "open_session",

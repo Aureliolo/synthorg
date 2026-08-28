@@ -94,6 +94,7 @@ from evals.recursion_depth.session import (
     SessionLimits,
     SessionOutcome,
     SweepDeps,
+    UnitDelivery,
     leaf_unit_key,
     probe_artifacts,
     produced_nothing,
@@ -321,7 +322,7 @@ class TestTheMergeWorkspace:
             title="Parser / lexer",
             slug=piece_slug("Parser / lexer", index=0),
             tree=source,
-            delivered=True,
+            delivery=UnitDelivery(produced=True, reason=""),
         )
 
         mount_children(workspace, (piece,))
@@ -359,10 +360,18 @@ class TestTheMergeWorkspace:
         assert count_amendments(_workspace(tmp_path, "empty")) == 0
 
 
+#: A piece that arrived built and signed off.
+_CLEAN = UnitDelivery(produced=True, reason="")
+
+#: A piece that built nothing at all, which is the only state that leaves its
+#: parent with a gap to cover itself.
+_EMPTY = UnitDelivery(produced=False, reason="it ran no turns")
+
+
 class TestTheMergeBrief:
     """Renegotiation is ordinary, and a broken input is named as one."""
 
-    def _plan(self, tmp_path: Path, *, delivered: bool) -> MergePlan:
+    def _plan(self, tmp_path: Path, *, delivered: UnitDelivery) -> MergePlan:
         """Build a merge plan with one piece.
 
         Returns:
@@ -377,7 +386,7 @@ class TestTheMergeBrief:
                     title="Parser",
                     slug="00-parser",
                     tree=tmp_path / "child",
-                    delivered=delivered,
+                    delivery=delivered,
                 ),
             ),
             criteria=(NotBlankStr("It runs end to end"),),
@@ -387,20 +396,20 @@ class TestTheMergeBrief:
         )
 
     def test_it_permits_and_asks_for_recorded_amendments(self, tmp_path: Path) -> None:
-        brief = merge_brief(self._plan(tmp_path, delivered=True), ())
+        brief = merge_brief(self._plan(tmp_path, delivered=_CLEAN), ())
 
         assert "You may change a child's interface" in brief
         assert AMENDMENT_MARKER in brief
 
-    def test_it_names_a_piece_that_did_not_deliver(self, tmp_path: Path) -> None:
+    def test_it_names_a_piece_that_built_nothing(self, tmp_path: Path) -> None:
         # Hiding it would brief the agent for a situation it is not in.
-        brief = merge_brief(self._plan(tmp_path, delivered=False), ())
+        brief = merge_brief(self._plan(tmp_path, delivered=_EMPTY), ())
 
-        assert "[DID NOT DELIVER]" in brief
+        assert "[BUILT NOTHING]" in brief
 
     def test_a_rejection_reaches_the_repair_attempt(self, tmp_path: Path) -> None:
         brief = merge_brief(
-            self._plan(tmp_path, delivered=True), ("[high] the CLI exits 1 on R02",)
+            self._plan(tmp_path, delivered=_CLEAN), ("[high] the CLI exits 1 on R02",)
         )
 
         assert "the CLI exits 1 on R02" in brief

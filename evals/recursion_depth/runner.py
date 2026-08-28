@@ -92,6 +92,7 @@ from evals.recursion_depth.planner import PlanningSpend, TreePlanner
 from evals.recursion_depth.session import (
     SessionLimits,
     SweepDeps,
+    UnitDelivery,
     built_unit_workspace,
     leaf_unit_key,
     merge_unit_key,
@@ -749,7 +750,7 @@ class _ContinuedCell:
     root: Task
     tree: DecompositionResult
     produced: dict[str, CellWorkspace]
-    delivered: dict[str, bool]
+    delivered: dict[str, UnitDelivery]
 
 
 def _continue_cell(
@@ -778,7 +779,7 @@ def _continue_cell(
     if resumed.plan is None:
         return None
     produced: dict[str, CellWorkspace] = {}
-    delivered: dict[str, bool] = {}
+    delivered: dict[str, UnitDelivery] = {}
     for unit in resumed.units:
         if unit.kind == PLAN:
             continue
@@ -796,7 +797,7 @@ def _continue_cell(
             )
             return None
         produced[key] = workspace
-        delivered[key] = unit.delivered
+        delivered[key] = UnitDelivery(produced=unit.produced, reason=unit.detail)
     for unit in resumed.units:
         units.replay(unit)
     logger.info(
@@ -996,7 +997,7 @@ async def _build_tree_units(
     units: CellUnits,
     *,
     produced: dict[str, CellWorkspace],
-    delivered: dict[str, bool],
+    delivered: dict[str, UnitDelivery],
 ) -> CellWorkspace:
     """Build every leaf and assemble every node, children before their parent.
 
@@ -1057,7 +1058,9 @@ async def _build_tree_units(
             reviewer=reviewer,
         )
         produced[str(parent.id)] = outcome.workspace
-        delivered[str(parent.id)] = outcome.delivered
+        delivered[str(parent.id)] = UnitDelivery(
+            produced=outcome.produced, reason=outcome.detail
+        )
         units.append(_merge_record(parent, node, outcome))
         context.budget.spend(outcome.attempts)
     return produced[str(root.id)]
@@ -1070,7 +1073,7 @@ async def _leaf_pieces(
     *,
     definitions: Mapping[str, SubtaskDefinition],
     produced: dict[str, CellWorkspace],
-    delivered: dict[str, bool],
+    delivered: dict[str, UnitDelivery],
     units: CellUnits,
 ) -> tuple[MergePiece, ...]:
     """Build each of *node*'s children, and name what the merge assembles.
@@ -1111,7 +1114,7 @@ async def _leaf_pieces(
                 title=str(task.title),
                 slug=piece_slug(str(task.title), index=index),
                 tree=produced[key].project_dir,
-                delivered=delivered[key],
+                delivery=delivered[key],
             )
         )
     return tuple(pieces)
@@ -1124,7 +1127,7 @@ async def _build_missing_leaves(
     *,
     definitions: Mapping[str, SubtaskDefinition],
     produced: dict[str, CellWorkspace],
-    delivered: dict[str, bool],
+    delivered: dict[str, UnitDelivery],
     units: CellUnits,
 ) -> None:
     """Build every child of *node* that is not already on disk.
@@ -1175,7 +1178,7 @@ async def _build_missing_leaves(
             )
         key = str(task.id)
         produced[key] = leaf.workspace
-        delivered[key] = leaf.delivered
+        delivered[key] = UnitDelivery(produced=leaf.produced, reason=leaf.detail)
         units.append(_leaf_record(task, definitions[key], node, leaf, context.spec))
         context.budget.spend(leaf.attempts)
 
@@ -1367,6 +1370,7 @@ def _leaf_record(
             unit=str(task.title),
         ),
         delivered=leaf.delivered,
+        produced=leaf.produced,
         attempts=leaf.attempts,
         turns=leaf.turns,
         cost=leaf.cost,
@@ -1391,6 +1395,7 @@ def _merge_record(
         kind=MERGE,
         depth=node.depth,
         delivered=outcome.delivered,
+        produced=outcome.produced,
         attempts=outcome.attempts,
         turns=outcome.turns,
         cost=outcome.cost,

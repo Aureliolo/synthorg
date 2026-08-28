@@ -32,7 +32,11 @@ from evals.recursion_depth.merge import (
     MergePlan,
     merge_brief,
 )
-from evals.recursion_depth.session import SessionLimits, produced_tree
+from evals.recursion_depth.session import (
+    SessionLimits,
+    UnitDelivery,
+    produced_tree,
+)
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType
@@ -156,20 +160,74 @@ class TestALeafThatNamedItsFilesDifferently:
 class TestWhatTheParentIsTold:
     """The delivery verdict travels upward, so it has to be right."""
 
-    def test_a_delivering_child_is_not_marked(self) -> None:
-        piece = MergePiece(
-            title="SQL lexer", slug="00-lexer", tree=Path("tree"), delivered=True
-        )
+    def test_a_clean_child_is_not_marked(self) -> None:
+        piece = _piece(UnitDelivery(produced=True, reason=""))
 
-        assert "[DID NOT DELIVER]" not in merge_brief(_plan_with(piece), ())
+        assert "[" not in merge_brief(_plan_with(piece), ()).split("The whole")[0]
 
-    def test_a_child_that_delivered_nothing_is_marked(self) -> None:
+    def test_a_child_that_built_nothing_says_so(self) -> None:
         """The signal is worth keeping; it just has to be true."""
-        piece = MergePiece(
-            title="SQL lexer", slug="00-lexer", tree=Path("tree"), delivered=False
+        piece = _piece(UnitDelivery(produced=False, reason="it ran no turns"))
+
+        assert "[BUILT NOTHING]" in merge_brief(_plan_with(piece), ())
+
+    def test_a_child_that_built_but_failed_a_check_is_not_called_empty(self) -> None:
+        """The defect, stated as a test.
+
+        A sub-merge that assembled its whole package and left its children's
+        tests under ``.children/`` collects no tests, because the grader runs
+        pytest at the workspace root and pytest never descends into a
+        dot-prefixed directory. Both facts used to arrive at the parent as
+        ``[DID NOT DELIVER]``.
+
+        Measured on a live cap-2 cell: four of the root's seven pieces were
+        marked that way while holding 46, 46, 41 and 36 modules. The root was
+        told most of its inputs had failed, wrote nothing across six attempts
+        and 119 turns, and the cell scored 0 of 42.
+        """
+        piece = _piece(
+            UnitDelivery(
+                produced=True,
+                reason="the merged tree's own tests did not pass: "
+                "the suite collected no tests",
+            )
         )
 
-        assert "[DID NOT DELIVER]" in merge_brief(_plan_with(piece), ())
+        brief = merge_brief(_plan_with(piece), ())
+
+        assert "[BUILT NOTHING]" not in brief
+        assert "BUILT, BUT NOT SIGNED OFF" in brief
+        assert "the suite collected no tests" in brief
+
+    def test_the_prose_does_not_contradict_the_marks(self) -> None:
+        """One brief cannot say both things and be acted on.
+
+        The prose asserted every piece had passed its own tests while the list
+        beneath it marked four of seven as failures.
+        """
+        piece = _piece(UnitDelivery(produced=False, reason="it ran no turns"))
+
+        brief = merge_brief(_plan_with(piece), ())
+
+        assert "has passed its own tests" not in brief
+
+    def test_the_merge_is_told_where_its_tests_have_to_live(self) -> None:
+        """Its verdict depends on this and nothing used to say it."""
+        brief = merge_brief(_plan_with(_piece(UnitDelivery(True, ""))), ())
+
+        assert ".children" in brief
+        assert "not searched" in brief
+
+
+def _piece(delivery: UnitDelivery) -> MergePiece:
+    """Build a piece carrying *delivery*.
+
+    Returns:
+        The piece.
+    """
+    return MergePiece(
+        title="SQL lexer", slug="00-lexer", tree=Path("tree"), delivery=delivery
+    )
 
 
 def _plan_with(piece: MergePiece) -> MergePlan:
