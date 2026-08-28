@@ -797,8 +797,8 @@ Enforced by `scripts/check_long_running_loops_have_kill_switch.py`
 (`_ticket_cleanup_loop`, `ProviderHealthProber._run_loop`,
 `_webhook_receipt_cleanup_loop`) are lint-enforced. Per-call
 non-loop surfaces such as `NotificationDispatcher.dispatch` are
-covered by project convention and reviewed by CodeRabbit / human
-review, but they sit outside the AST gate's loop-shaped detection.
+covered by project convention and caught in review, but they sit
+outside the AST gate's loop-shaped detection.
 
 ## Sandbox image cache
 

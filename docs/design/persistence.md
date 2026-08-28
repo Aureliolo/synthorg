@@ -285,8 +285,7 @@ call site. Current examples include ``build_lockouts(auth_config)`` and
 ``build_ontology_versioning()``.
 Callers always type against the protocol; the factory hides the dialect
 choice. This matches the "no ``isinstance`` against concrete persistence
-backends outside ``persistence/`` or its factory" rule enforced by the
-code audit (ARC-1, #1491).
+backends outside ``persistence/`` or its factory" rule.
 
 ## Schema patterns
 

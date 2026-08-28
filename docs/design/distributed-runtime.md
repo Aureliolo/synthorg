@@ -77,7 +77,7 @@ Five candidates were evaluated against the constraints of the existing `MessageB
 
 **Kafka (KRaft).** Strongest replay story in the list and unmatched for per-partition ordering at scale. Overkill for a first distributed backend in a pre-alpha project: ~400 MB JVM image, ~512 MB RAM idle, partition planning, consumer group rebalancing, and a work-queue story that awkwardly reuses partitions as worker slots. Good fit later if SynthOrg's analytics side ever needs Kafka; not a good first step.
 
-**ZeroMQ brokerless.** The ClawTeam research note referenced in Issue #236 uses this pattern. Zero extra containers, pure Python library. But ZMQ gives us sockets, not a bus: no durability, no replay, no dead-letter, no built-in per-subscriber queues, and delivery is at-most-once unless we layer on a DIY sqlite sidecar. Attractive for zero-container deployment, rejected because "first distributed backend" should be a real distributed system, not a partially-rebuilt one.
+**ZeroMQ brokerless.** An internal research note on brokerless designs surveyed this pattern. Zero extra containers, pure Python library. But ZMQ gives us sockets, not a bus: no durability, no replay, no dead-letter, no built-in per-subscriber queues, and delivery is at-most-once unless we layer on a DIY sqlite sidecar. Attractive for zero-container deployment, rejected because "first distributed backend" should be a real distributed system, not a partially-rebuilt one.
 
 ### Why NATS JetStream
 
@@ -401,5 +401,4 @@ one carried, so a later adapter can be argued against the same reasoning.
 - [Notifications](notifications.md): notification dispatcher and sinks
 - [Architecture: Tech Stack](../architecture/tech-stack.md): Message Bus row in the stack table
 - [Roadmap: Scaling Path](../roadmap/future-vision.md#scaling-path): Phase 2 Local Multi-Process constraints
-- [Issue #236](https://github.com/Aureliolo/synthorg/issues/236): distributed/persistent message bus backend
-- [Issue #237](https://github.com/Aureliolo/synthorg/issues/237): distributed task queue
+- [Roadmap](../roadmap/index.md): the distributed message bus and task queue remain planned work

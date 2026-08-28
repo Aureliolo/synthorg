@@ -1,9 +1,9 @@
 /** Pure helper for clamping WebSocket-supplied strings.
  *
  * Lives outside `@/stores/notifications` so that benchmark + unit
- * test imports can pull in the helper without dragging the Zustand
- * store module's side effects (toast queue, persistence subscription,
- * `localStorage` hydration) into the import graph. The store
+ * test imports can pull in the helper without dragging the store
+ * module's side effects (the toast queue, and the backend hydration
+ * its preferences perform) into the import graph. The store
  * re-exports `sanitizeWsString` from this module so existing
  * call sites keep working unchanged.
  */

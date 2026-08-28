@@ -1059,9 +1059,11 @@ fatal.
 tree draw are confounded everywhere and there is not one controlled comparison
 in the run.
 
-The depth finding survives that on effect size (36 requirements, against a
-largest arm difference of 3) and on cap 1 having failed totally twice with the
-same logged mechanism. Call it strongly supported, not proven.
+The depth finding survives that on effect size alone, 36 requirements against a
+largest arm difference of 3. It no longer draws support from cap 1 having failed
+twice with the same logged mechanism: that mechanism is the declared-path rule
+described above, so the repetition evidences a defect in how delivery was judged
+rather than anything about depth. Call it supported, not proven.
 
 **The arm difference does not survive it.** 36 against 35 at depth 3, with the
 arms on different trees (58 leaves against 43), is inside the noise. The effect

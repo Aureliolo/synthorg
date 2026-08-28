@@ -421,7 +421,7 @@ calling agent identity through the invoker so destructive-op guardrails can
 enforce attribution; handlers that don't care about identity accept it and
 ignore it.
 
-**Typed args (#1611 Phase 4).** Each MCP tool registration optionally carries
+**Typed args.** Each MCP tool registration optionally carries
 an `args_model: type[BaseModel]` (see `MCPToolDef.args_model`). When set, the
 invoker validates the raw `arguments` dict against the Pydantic model **before**
 dispatching to the handler; validation failures short-circuit to a typed

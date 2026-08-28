@@ -232,8 +232,8 @@ TLS verifies the certificate against the hostname, so it pins the transport
 instead. Without that, the connection performs a second DNS lookup after the
 check, and a short-TTL record can answer public for the verdict and private for
 the connect. Certificate verification makes that attack self-limiting rather
-than free, which is why it was a gap rather than a hole, but the pinning
-transport already existed and the guarded read now uses it.
+than free, which is why it is a gap rather than a hole; the guarded read is
+pinned through the same transport plain-HTTP pinning uses.
 
 A per-operation timeout bounds one read, not a sequence of them, so the guarded
 read also carries a wall-clock deadline. A server dripping one byte just inside

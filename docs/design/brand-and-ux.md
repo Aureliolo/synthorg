@@ -38,11 +38,14 @@ yet, and nothing you write may depend on which way it lands.
 
 **Each part is checked by something that did not write it.** The reviewer is
 structurally prevented from being the author, in the service layer, in the model
-binding, and by a database constraint, and the independence that matters is by
-model family, which is what is bound. The claim stops exactly there. It does not
+binding, and by a database constraint. The claim stops exactly there. It does not
 mean the work is correct, it does not mean nothing broken gets through, and it
-does not replace human judgement: an independent judge is a triage filter. The
-narrow version is the true one and it is worth more than the broad one.
+does not replace human judgement: an independent judge is a triage filter. Nor
+does it mean the two are independent in the way that would matter most: they are
+distinct identities with separately bound pairs, but nothing binds them to
+different model families, so a blind spot shared by both is a blind spot the pair
+cannot see. The narrow version is the true one and it is worth more than the
+broad one.
 
 **It runs on your hardware.** Self-hosted, provider-agnostic, any models
 including local ones, and the code does not leave the machine. State it as a
@@ -66,7 +69,7 @@ off-tone.
 | Never promise an outcome | No page says the reader will get working software. Every claim is about how the system is built and how it behaves. The loop has been driven live twelve times against a real deployment and has never once reached the assembly stage; no run has produced an assembled deliverable and no completion has been recorded |
 | Pre-alpha, stated plainly | Not softened, not implied, not left below the fold |
 | No autonomy claims | Supervision is a property of the design, not a stage the product has graduated from |
-| Bound the checking claim | The thing that checks the work is not the thing that produced it, and it is bound to a different model family. That is the whole claim; anything broader says more than the code supports |
+| Bound the checking claim | The thing that checks the work is not the thing that produced it. That is the whole claim; anything broader says more than the code supports, and model-family independence in particular is a recommendation the code does not implement |
 | Quote no build size | The decomposition ceiling is being measured and has no answer, so a figure invented for it is a claim about an open question |
 | Qualify or delete | If a sentence needs a qualifier to be true, write the qualifier |
 | Mark intent as intent | Never write a thing that is not built in the present tense, and never hedge one that genuinely ships |

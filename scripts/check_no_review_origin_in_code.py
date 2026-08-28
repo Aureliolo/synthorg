@@ -64,8 +64,16 @@ _REVIEWER_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
 
 # In-code issue / PR back-refs.
 _BACKREF_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
-    # Paren-form (#NNNN) where N is at least 3 digits to skip placeholders.
-    ("(#NNNN)", re.compile(r"\(#\d{3,}\b")),
+    # Paren-form (#NNNN) where N is at least 3 digits to skip
+    # placeholders. The leading guard rejects a parenthesised CSS hex
+    # colour, which is exactly three or six hex characters before the
+    # closing paren: ``(#181828)`` and ``(#abc)`` are colours,
+    # ``(#1234)`` is an issue. Without it a design page quoting a
+    # palette reads as a back-reference.
+    (
+        "(#NNNN)",
+        re.compile(r"\(#(?![0-9a-fA-F]{6}\)|[0-9a-fA-F]{3}\))\d{3,}\b"),
+    ),
     # Narrative back-refs that name an issue / PR by number.
     (
         "narrative #N",
@@ -109,8 +117,14 @@ _REPO_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 # canonical home or the gate's own self-test fixtures). The gate
 # does not read their contents at all.
 _PATH_ALLOWLIST_PREFIXES: Final[tuple[str, ...]] = (
-    "docs/design/",
-    "docs/reference/",
+    # Historical genres. An architecture decision record, a research
+    # record and a dated audit trail all exist to say what was decided
+    # or observed at a point in time, so a citation is their content
+    # rather than rot. Prose that describes CURRENT state is not
+    # exempt, which is why docs/design/ and docs/reference/ are not
+    # listed wholesale.
+    "docs/decisions/",
+    "docs/research/",
     "_audit/",
     ".claude/",
     ".github/",
@@ -132,6 +146,16 @@ _PATH_ALLOWLIST_FILES: Final[frozenset[str]] = frozenset(
     {
         "CHANGELOG.md",
         ".github/CHANGELOG.md",
+        # An unflinching log of live runs and a dated cleanup trail:
+        # the same historical genre as docs/decisions/, reached by file
+        # rather than by directory because they sit among current-state
+        # reference pages.
+        "docs/reference/loop-round-log.md",
+        "docs/reference/protocols-audit.md",
+        "docs/reference/protocols-audit-log.md",
+        # Documents the rule and the gates that enforce it, so it
+        # quotes the tokens it forbids.
+        "docs/reference/convention-gates.md",
         "scripts/check_no_review_origin_in_code.py",
         "scripts/check_no_migration_framing.py",
         "tests/unit/scripts/test_check_no_review_origin_in_code.py",
@@ -142,11 +166,16 @@ _PATH_ALLOWLIST_FILES: Final[frozenset[str]] = frozenset(
 # In-scope file suffixes. SQL is included so persistence-revision
 # header comments get caught; YAML so the deployment files do, which are
 # hand-written prose with the same failure mode and were invisible here.
-_SCANNED_SUFFIXES: Final[frozenset[str]] = frozenset({".py", ".sql", ".yml", ".yaml"})
+_SCANNED_SUFFIXES: Final[frozenset[str]] = frozenset(
+    {".py", ".sql", ".yml", ".yaml", ".md"}
+)
 
 # Roots whose tree is in scope. Anything outside is silently skipped
-# -- the gate is opt-in by directory.
-_DEFAULT_ROOTS: Final[tuple[str, ...]] = ("src/synthorg", "tests", "docker")
+# -- the gate is opt-in by directory. ``docs`` is in scope because a
+# reader meets a stale issue citation there sooner than in a module,
+# and the historical genres are exempted by path above rather than by
+# leaving the whole tree unscanned.
+_DEFAULT_ROOTS: Final[tuple[str, ...]] = ("src/synthorg", "tests", "docker", "docs")
 
 
 # ── Suppression-marker detection ───────────────────────────────────
@@ -271,13 +300,22 @@ def _path_in_scope(rel: str) -> bool:
 # ── Scanning ───────────────────────────────────────────────────────
 
 
-def _all_patterns() -> tuple[tuple[str, re.Pattern[str]], ...]:
-    """Return every (label, regex) pair the gate enforces."""
-    return (
+def _all_patterns(rel: str = "") -> tuple[tuple[str, re.Pattern[str]], ...]:
+    """Return every (label, regex) pair the gate enforces for *rel*.
+
+    ``SEC-N`` is the one rule that varies by location. Under ``docs/``
+    the taxonomy is decodable, because that is where the cluster it
+    names is written down, so a bare ``SEC-1`` there is a reference
+    rather than shorthand a reader cannot resolve. Everywhere else it
+    is opaque and stays forbidden.
+    """
+    patterns: tuple[tuple[str, re.Pattern[str]], ...] = (
         *_REVIEWER_PATTERNS,
         *_BACKREF_PATTERNS,
-        ("SEC-N taxonomy", _SEC_PATTERN),
     )
+    if not rel.startswith("docs/"):
+        patterns = (*patterns, ("SEC-N taxonomy", _SEC_PATTERN))
+    return patterns
 
 
 def _scan_file(file_path: Path, rel: str) -> list[str]:
@@ -308,7 +346,7 @@ def _scan_file(file_path: Path, rel: str) -> list[str]:
     trailing_marker = (
         _line_has_trailing_marker_sql if is_sql else _line_has_trailing_marker_python
     )
-    patterns = _all_patterns()
+    patterns = _all_patterns(rel)
     for idx, line in enumerate(file_lines, start=1):
         # Cheap regex first: only lines that actually match a forbidden
         # pattern pay the tokenize-based suppression checks below, which

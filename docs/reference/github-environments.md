@@ -175,8 +175,7 @@ installation token (valid ≤1 hour) via the
   workflow_dispatch nudge, produced a check_run on the SHA but
   the dispatched run's `check_suite.pull_requests` was empty, so
   the check did not appear in the rollup; the merge UI stayed
-  stuck on `CI Pass: Expected, waiting`. See PR #1615 for the
-  full root cause.) `verify-backend.yml`'s `is_release_please` skip remains
+  stuck on `CI Pass: Expected, waiting`.) `verify-backend.yml`'s `is_release_please` skip remains
   in place as defence-in-depth so a future change in
   release-please's identity does not accidentally run a full CI
   suite on a release PR.

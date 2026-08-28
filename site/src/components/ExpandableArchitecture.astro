@@ -63,7 +63,7 @@ const architecture = [
       },
       {
         name: "Independent Review",
-        description: "A reviewer bound to a different model family than the one that wrote the work, enforced structurally, never merely by agent identity.",
+        description: "A reviewer that cannot be the agent that wrote the work, enforced in the service layer, the model binding, and a database constraint, never merely by convention.",
         href: "/docs/design/engine/",
       },
     ],
@@ -111,7 +111,7 @@ const architecture = [
     submodules: [
       {
         name: "LLM Providers",
-        description: "90+ via LiteLLM, curated built-in presets, hot-reload management, periodic background health probing.",
+        description: "95+ via LiteLLM, curated built-in presets, hot-reload management, periodic background health probing.",
         href: "/docs/design/providers/",
       },
       {

@@ -151,8 +151,6 @@ The meeting / ceremony / conflict-resolution stack this section originally audit
 | engine/strategy/lens_assignment.py | 17 | `LensAssigner` | 1 | 0 | 4 | KEEP | Plug-in `Assigner`. |
 | engine/strategy/premortem.py | 84 | `PremortemExecutor` | 1 | 0 | 4 | KEEP | Plug-in `Executor`. |
 | engine/token_estimation.py | 15 | `PromptTokenEstimator` | 1 | 0 | 4 | KEEP | Plug-in `Estimator`. |
-| engine/workflow/ceremony_strategy.py | 34 | `CeremonySchedulingStrategy` | 1 | 0 | 20 | KEEP | Plug-in `Strategy`. |
-| engine/workflow/velocity_calculator.py | 24 | `VelocityCalculator` | 1 | 0 | 9 | KEEP | Plug-in `Calculator`. |
 | engine/workspace/protocol.py | 14 | `WorkspaceIsolationStrategy` | 1 | 0 | 9 | KEEP | Plug-in `Strategy`. |
 | engine/workspace/semantic_analyzer.py | 35 | `SemanticAnalyzer` | 1 | 0 | 14 | KEEP | Plug-in `Analyzer`. |
 

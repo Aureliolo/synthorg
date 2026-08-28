@@ -99,9 +99,11 @@ family, modality or evidence source**, not more gates. Cooperative second review
 worse than no second review through false consensus, so disagreement has to be forced and
 evidence-grounded.
 
-Two consequences are implemented rather than asserted: the reviewer is structurally
-prevented from being the author, and review binds a different model family. Neither makes
-the output correct, and no page may say otherwise.
+One consequence is implemented rather than asserted: the reviewer is structurally
+prevented from being the author. It does not make the output correct, and no page may say
+otherwise. The other, binding review to a different model family, remains a
+recommendation: reviewer selection weighs capability, not lineage, so two agents can share
+a family and therefore a blind spot.
 
 ### Contracts do not survive implementation
 
@@ -169,8 +171,8 @@ observation of 2026-08-20 over the products it names, not an enumeration of the 
 and it does not reach unshipped systems.
 
 Forking a role-based or graph-based framework would mean fighting its execution model to
-add recursive splitting, per-part isolation and a reviewer bound away from the author's
-model family. None of that is a small addition to an existing loop.
+add recursive splitting, per-part isolation and a reviewer structurally barred from being
+the author. None of that is a small addition to an existing loop.
 
 For a feature-by-feature comparison against other frameworks, see
 [Framework Comparison](comparison.md).

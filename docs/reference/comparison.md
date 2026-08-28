@@ -19,7 +19,7 @@ A single agent in a loop cannot hold a whole application. That is why a system t
 
 **It runs on your hardware.** Self-hosted, provider-agnostic, any models including local ones. Your code does not leave your machine. Hosted competitors monetise metered compute, so a genuinely self-hostable equivalent cannibalises their margin and is unattractive for them to build. The Self-Hosted column is the one axis where this shows.
 
-**The thing that checks a part is not the thing that produced it**, and it is bound to a different model family. That is a structural property and it is rarely implemented. It does not make the output correct: an independent judge is a triage filter, so it does not mean nothing broken gets through and it does not replace human judgement.
+**The thing that checks a part is not the thing that produced it.** That separation is structural, enforced in the service layer, in the model binding, and by a database constraint, and it is rarely implemented. It does not make the output correct: an independent judge is a triage filter, so it does not mean nothing broken gets through and it does not replace human judgement. The two reviewers are also not bound to different model families, so a blind spot they share is one the pair cannot see.
 
 **SynthOrg is pre-alpha.** Nothing here promises an outcome. The rows describe how the system is built and how it behaves, never what it will deliver.
 

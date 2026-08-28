@@ -15,7 +15,7 @@ Autonomy levels control which actions require human approval. Set the company-wi
 
 | Level | Value | Behaviour |
 |-------|-------|----------|
-| Full | `full` | Agents execute all actions without approval |
+| Full | `full` | Approval routing is off; the deny list and the built-in detectors still run |
 | Semi | `semi` | Risky actions (deploy, db:admin, org:fire) require approval |
 | Supervised | `supervised` | Most actions require approval |
 | Locked | `locked` | All actions require approval |

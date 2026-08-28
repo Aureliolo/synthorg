@@ -346,11 +346,14 @@ def _frontmatter_and_intro(last_updated: str) -> list[str]:
         "",
         (
             "**The thing that checks a part is not the thing that produced"
-            " it**, and it is bound to a different model family. That is a"
-            " structural property and it is rarely implemented. It does not"
-            " make the output correct: an independent judge is a triage"
-            " filter, so it does not mean nothing broken gets through and it"
-            " does not replace human judgement."
+            " it.** That separation is structural, enforced in the service"
+            " layer, in the model binding, and by a database constraint, and"
+            " it is rarely implemented. It does not make the output correct:"
+            " an independent judge is a triage filter, so it does not mean"
+            " nothing broken gets through and it does not replace human"
+            " judgement. The two reviewers are also not bound to different"
+            " model families, so a blind spot they share is one the pair"
+            " cannot see."
         ),
         "",
         (

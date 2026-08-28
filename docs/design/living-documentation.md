@@ -116,7 +116,7 @@ Two paths, both first-class:
 
 ## Versioning
 
-Each doc write goes through the existing per-project push queue (#1974)
+Each doc write goes through the existing per-project push queue
 to commit on a dedicated `synthorg/docs` branch. History equals
 `git log`. Persistence stores only the newest commit pointer + the SHA
 last seen by the indexer:
@@ -172,7 +172,7 @@ kind, all using design tokens (no hardcoded hex / pixel spacing).
 Untrusted-content wrap (SEC-1) is applied at the agent retrieval
 boundary, not on storage.
 
-## Acceptance (#1976)
+## Acceptance
 
 The org produces a status report and a deliverable doc; both are
 browsable in the dashboard AND retrievable by an agent via memory on
