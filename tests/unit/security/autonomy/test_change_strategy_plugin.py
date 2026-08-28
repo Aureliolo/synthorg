@@ -29,7 +29,6 @@ from synthorg.security.autonomy.change_strategy_config import (
 from synthorg.security.autonomy.change_strategy_factory import (
     build_autonomy_change_strategy,
 )
-from synthorg.security.autonomy.enums import DowngradeReason
 from synthorg.security.autonomy.errors import AutonomyStrategyConfigError
 from synthorg.security.autonomy.models import AutonomyConfig
 from synthorg.security.autonomy.protocol import AutonomyChangeStrategy
@@ -72,7 +71,6 @@ class TestHumanOnlyDefault:
         assert isinstance(strategy, HumanOnlyPromotionStrategy)
         assert isinstance(strategy, AutonomyChangeStrategy)
         assert strategy.request_promotion(_AGENT, AutonomyLevel.FULL) is False
-        assert strategy.request_recovery(_AGENT) is False
 
 
 class TestBudgetAware:
@@ -117,7 +115,13 @@ class TestEscalationChain:
         )
         assert strategy.request_promotion(_AGENT, AutonomyLevel.FULL) is False
 
-    def test_recovery_and_override_delegate(self) -> None:
+    def test_the_wrapper_holds_the_base_it_was_given(self) -> None:
+        """The one thing a wrapper still delegates is the promotion decision.
+
+        Asserted on the held base rather than through a call, because this
+        chain strategy answers pending itself and never reaches the base;
+        ``TestBudgetAware`` covers the wrapper that does.
+        """
         base = HumanOnlyPromotionStrategy()
         strategy = build_autonomy_change_strategy(
             AutonomyStrategyConfig(
@@ -125,17 +129,10 @@ class TestEscalationChain:
             ),
             AutonomyStrategyDeps(base=base),
         )
-        # Downgrade via the wrapper records the override on the base.
-        strategy.auto_downgrade(
-            _AGENT,
-            DowngradeReason.HIGH_ERROR_RATE,
-            AutonomyLevel.FULL,
-        )
-        assert base.get_override(_AGENT) is not None
-        # The wrapper exposes the delegated override-store ops too.
+
         wrapper = cast("BaseDelegatingStrategy", strategy)
-        assert wrapper.get_override(_AGENT) is not None
-        assert wrapper.clear_override(_AGENT) is True
+
+        assert wrapper._base is base
 
 
 class TestBootSeamSuppliesTheSignal:

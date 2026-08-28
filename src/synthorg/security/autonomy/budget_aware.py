@@ -3,8 +3,7 @@
 Denies promotion while risk-unit budget headroom is below a warn
 fraction (granting more autonomy under budget stress would let an
 agent burn the remaining risk budget unattended); otherwise delegates
-the promotion decision to the wrapped base strategy. Downgrade /
-recovery / override-store ops delegate to the base.
+the promotion decision to the wrapped base strategy.
 """
 
 from synthorg.core.autonomy_enums import AutonomyLevel
@@ -25,9 +24,7 @@ class BudgetAwarePromotionStrategy(BaseDelegatingStrategy):
     """Deny promotion while risk-budget headroom is below the warn line.
 
     Args:
-        base: Override-store-bearing strategy that downgrade /
-            recovery / override-store ops (and the in-budget promotion
-            decision) delegate to.
+        base: Strategy the in-budget promotion decision delegates to.
         risk_budget_signal: Supplies remaining risk-budget headroom.
         warn_fraction: Promotion is denied while headroom is strictly
             below this fraction.

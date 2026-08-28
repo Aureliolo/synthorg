@@ -1,16 +1,15 @@
-"""Autonomy data models -- presets, config, effective resolution, overrides."""
+"""Autonomy data models -- presets, config, effective resolution."""
 
 from types import MappingProxyType
 from typing import ClassVar, Final, Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.autonomy_enums import AutonomyLevel, compare_autonomy
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.security.autonomy.change_strategy_config import (
     AutonomyStrategyConfig,
 )
-from synthorg.security.autonomy.enums import DowngradeReason
 from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.mirrors import MirrorField, apply_settings_mirrors
 
@@ -373,48 +372,3 @@ class AutonomyUpdateResult(BaseModel):
         default=None,
         description="Approval-item identifier when an approval was enqueued",
     )
-
-
-class AutonomyOverride(BaseModel):
-    """Record of a runtime autonomy downgrade for an agent.
-
-    Attributes:
-        agent_id: The agent whose autonomy was changed.
-        original_level: Level before the downgrade.
-        current_level: Level after the downgrade.
-        reason: Why the downgrade occurred.
-        downgraded_at: When the downgrade happened.
-        requires_human_recovery: Whether a human must restore the level.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    agent_id: NotBlankStr = Field(description="Agent identifier")
-    original_level: AutonomyLevel = Field(description="Level before downgrade")
-    current_level: AutonomyLevel = Field(description="Level after downgrade")
-    reason: DowngradeReason = Field(description="Reason for downgrade")
-    downgraded_at: AwareDatetime = Field(description="Timestamp of downgrade")
-    requires_human_recovery: bool = Field(
-        default=True,
-        description="Whether human approval is needed to restore level",
-    )
-
-    @model_validator(mode="after")
-    def _validate_downgrade(self) -> Self:
-        """Ensure current_level is not higher than original_level.
-
-        Returns:
-            The validated override record.
-
-        Raises:
-            ValueError: If ``current_level`` is higher than
-                ``original_level`` (a downgrade must not raise autonomy).
-        """
-        if compare_autonomy(self.current_level, self.original_level) > 0:
-            msg = (
-                f"current_level {self.current_level.value!r} is higher than "
-                f"original_level {self.original_level.value!r} -- "
-                f"downgrades must not increase autonomy"
-            )
-            raise ValueError(msg)
-        return self

@@ -1,15 +1,10 @@
 """Tests for HumanOnlyPromotionStrategy."""
 
 import pytest
-from structlog.testing import capture_logs
 
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.observability.events.security import (
-    SECURITY_AUTONOMY_DOWNGRADE_TRIGGERED,
-    SECURITY_AUTONOMY_OVERRIDE_CLEARED,
-)
 from synthorg.security.autonomy.change_strategy import HumanOnlyPromotionStrategy
-from synthorg.security.autonomy.enums import DowngradeReason
+from synthorg.security.autonomy.protocol import AutonomyChangeStrategy
 
 
 class TestPromotion:
@@ -28,163 +23,28 @@ class TestPromotion:
         assert strategy.request_promotion("agent-x", target) is False
 
 
-class TestAutoDowngrade:
-    """Auto-downgrade maps reasons to specific levels."""
+class TestNothingLowersAGrant:
+    """An operator owns the autonomy level, so the runtime never moves it down.
+
+    Pinned rather than left to the absence of a caller, because that absence
+    is what the machinery had before: a downgrade path existed, read as a
+    control to anyone auditing the tree, and ran for nobody. A future
+    reintroduction has to answer who is permitted to lower an operator's grant
+    unasked, and deleting these assertions is where that answer gets written.
+    """
 
     @pytest.mark.unit
-    def test_high_error_rate_to_supervised(self) -> None:
+    def test_the_strategy_offers_no_way_down(self) -> None:
         strategy = HumanOnlyPromotionStrategy()
-        result = strategy.auto_downgrade("agent-1", DowngradeReason.HIGH_ERROR_RATE)
-        assert result == AutonomyLevel.SUPERVISED
+
+        assert not hasattr(strategy, "auto_downgrade")
+        assert not hasattr(strategy, "request_recovery")
 
     @pytest.mark.unit
-    def test_budget_exhausted_to_supervised(self) -> None:
-        strategy = HumanOnlyPromotionStrategy()
-        result = strategy.auto_downgrade("agent-1", DowngradeReason.BUDGET_EXHAUSTED)
-        assert result == AutonomyLevel.SUPERVISED
+    def test_the_seam_asks_only_about_promotion(self) -> None:
+        """The protocol is the shape an alternative strategy is written to."""
+        declared = {
+            name for name in vars(AutonomyChangeStrategy) if not name.startswith("_")
+        }
 
-    @pytest.mark.unit
-    def test_risk_budget_exhausted_to_supervised(self) -> None:
-        strategy = HumanOnlyPromotionStrategy()
-        result = strategy.auto_downgrade(
-            "agent-1",
-            DowngradeReason.RISK_BUDGET_EXHAUSTED,
-        )
-        assert result == AutonomyLevel.SUPERVISED
-
-    @pytest.mark.unit
-    def test_security_incident_to_locked(self) -> None:
-        strategy = HumanOnlyPromotionStrategy()
-        result = strategy.auto_downgrade("agent-1", DowngradeReason.SECURITY_INCIDENT)
-        assert result == AutonomyLevel.LOCKED
-
-    @pytest.mark.unit
-    def test_override_tracked(self) -> None:
-        strategy = HumanOnlyPromotionStrategy()
-        strategy.auto_downgrade("agent-1", DowngradeReason.HIGH_ERROR_RATE)
-        override = strategy.get_override("agent-1")
-        assert override is not None
-        assert override.current_level == AutonomyLevel.SUPERVISED
-        assert override.reason == DowngradeReason.HIGH_ERROR_RATE
-        assert override.requires_human_recovery is True
-
-    @pytest.mark.unit
-    def test_no_override_when_not_downgraded(self) -> None:
-        strategy = HumanOnlyPromotionStrategy()
-        assert strategy.get_override("agent-1") is None
-
-    @pytest.mark.unit
-    def test_double_downgrade_preserves_original(self) -> None:
-        strategy = HumanOnlyPromotionStrategy()
-        strategy.auto_downgrade("agent-1", DowngradeReason.HIGH_ERROR_RATE)
-        strategy.auto_downgrade("agent-1", DowngradeReason.SECURITY_INCIDENT)
-        override = strategy.get_override("agent-1")
-        assert override is not None
-        # Second downgrade replaces the first
-        assert override.current_level == AutonomyLevel.LOCKED
-        assert override.reason == DowngradeReason.SECURITY_INCIDENT
-        # Original level is preserved from the FIRST downgrade
-        assert override.original_level == AutonomyLevel.SEMI
-
-    @pytest.mark.unit
-    def test_downgrade_never_increases_autonomy(self) -> None:
-        """LOCKED agent + HIGH_ERROR_RATE should stay LOCKED, not go to SUPERVISED."""
-        strategy = HumanOnlyPromotionStrategy()
-        strategy.auto_downgrade(
-            "agent-1",
-            DowngradeReason.SECURITY_INCIDENT,
-            current_level=AutonomyLevel.SEMI,
-        )
-        # Now agent is LOCKED. HIGH_ERROR_RATE steps one level down, but
-        # LOCKED is the floor, so the agent stays LOCKED.
-        result = strategy.auto_downgrade("agent-1", DowngradeReason.HIGH_ERROR_RATE)
-        assert result == AutonomyLevel.LOCKED
-        override = strategy.get_override("agent-1")
-        assert override is not None
-        assert override.current_level == AutonomyLevel.LOCKED
-
-    @pytest.mark.unit
-    def test_high_error_rate_steps_down_one_level_from_full(self) -> None:
-        """HIGH_ERROR_RATE drops FULL one level to SEMI, not straight to SUPERVISED."""
-        strategy = HumanOnlyPromotionStrategy()
-        result = strategy.auto_downgrade(
-            "agent-1",
-            DowngradeReason.HIGH_ERROR_RATE,
-            current_level=AutonomyLevel.FULL,
-        )
-        assert result == AutonomyLevel.SEMI
-
-    @pytest.mark.unit
-    def test_high_error_rate_steps_semi_to_supervised(self) -> None:
-        """A second HIGH_ERROR_RATE steps SEMI down to SUPERVISED."""
-        strategy = HumanOnlyPromotionStrategy()
-        strategy.auto_downgrade(
-            "agent-1",
-            DowngradeReason.HIGH_ERROR_RATE,
-            current_level=AutonomyLevel.FULL,
-        )
-        result = strategy.auto_downgrade("agent-1", DowngradeReason.HIGH_ERROR_RATE)
-        assert result == AutonomyLevel.SUPERVISED
-
-
-class TestRecovery:
-    """Recovery is always denied in human-only strategy."""
-
-    @pytest.mark.unit
-    def test_recovery_denied(self) -> None:
-        strategy = HumanOnlyPromotionStrategy()
-        result = strategy.request_recovery("agent-1")
-        assert result is False
-
-
-class TestOverrideManagement:
-    """Override clear/get operations."""
-
-    @pytest.mark.unit
-    def test_clear_existing_override(self) -> None:
-        strategy = HumanOnlyPromotionStrategy()
-        strategy.auto_downgrade("agent-1", DowngradeReason.HIGH_ERROR_RATE)
-        assert strategy.clear_override("agent-1") is True
-        assert strategy.get_override("agent-1") is None
-
-    @pytest.mark.unit
-    def test_clear_nonexistent_override(self) -> None:
-        strategy = HumanOnlyPromotionStrategy()
-        assert strategy.clear_override("agent-1") is False
-
-    @pytest.mark.unit
-    def test_clear_override_emits_audit_log(self) -> None:
-        """Clearing an override (regaining autonomy) emits an INFO audit log."""
-        strategy = HumanOnlyPromotionStrategy()
-        strategy.auto_downgrade("agent-1", DowngradeReason.SECURITY_INCIDENT)
-        with capture_logs() as logs:
-            strategy.clear_override("agent-1")
-        cleared = [
-            e for e in logs if e.get("event") == SECURITY_AUTONOMY_OVERRIDE_CLEARED
-        ]
-        assert len(cleared) == 1
-        assert cleared[0]["log_level"] == "info"
-        assert cleared[0]["agent_id"] == "agent-1"
-        assert cleared[0]["reason"] == DowngradeReason.SECURITY_INCIDENT.value
-
-    @pytest.mark.unit
-    def test_clear_nonexistent_override_is_silent(self) -> None:
-        """No audit log fires when there was no override to clear."""
-        strategy = HumanOnlyPromotionStrategy()
-        with capture_logs() as logs:
-            strategy.clear_override("ghost")
-        assert not [
-            e for e in logs if e.get("event") == SECURITY_AUTONOMY_OVERRIDE_CLEARED
-        ]
-
-    @pytest.mark.unit
-    def test_auto_downgrade_logs_transition_at_info(self) -> None:
-        """The applied-downgrade state transition logs at INFO, not WARNING."""
-        strategy = HumanOnlyPromotionStrategy()
-        with capture_logs() as logs:
-            strategy.auto_downgrade("agent-1", DowngradeReason.BUDGET_EXHAUSTED)
-        triggered = [
-            e for e in logs if e.get("event") == SECURITY_AUTONOMY_DOWNGRADE_TRIGGERED
-        ]
-        assert len(triggered) == 1
-        assert triggered[0]["log_level"] == "info"
+        assert declared == {"request_promotion"}

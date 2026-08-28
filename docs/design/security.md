@@ -158,27 +158,24 @@ transition to `full` (gate-off pass-through) is a CEO-only deliberate opt-in
 promotion via REST API (no agent, including CEO, can escalate privileges). The
 agent-level change flows through the `AutonomyChangeStrategy` / approval queue; the
 per-initiative mode is a direct, version-guarded write on the project row (409 on a
-concurrent-write conflict). Every strategy's `auto_downgrade` maps a `DowngradeReason`
-to a target level (high error rate: one level down; budget exhausted: `supervised`;
-security incident: `locked`) and recovery from a downgrade is always human-only; the
-method is a lever any caller can pull with a reason, not a monitor that fires on its
-own, since nothing in the runtime watches error rate, budget, or incidents
-to invoke it.
+concurrent-write conflict). Nothing in the runtime lowers a level either: an operator
+owns the grant, so a mechanism that quietly narrowed it would be a second owner for
+that decision, and the events that might once have triggered one already have their
+own controls, since a run that reaches its cost ceiling parks itself and an action the
+gate refuses is refused at the gate.
 
 ### Autonomy change strategy plugin surface
 
 The `AutonomyChangeStrategy` protocol (`security/autonomy/protocol.py`:
-`request_promotion` / `auto_downgrade` / `request_recovery`) is a
-pluggable subsystem following the risk-tier-classifier pattern: a
-`StrEnum` discriminator + frozen config + safe default +
-`StrategyRegistry` factory. The wrapping strategies delegate
-downgrade, recovery, and the override store to a base
-`HumanOnlyPromotionStrategy` (where the override store lives) and
-override only the promotion decision.
+`request_promotion`) is a pluggable subsystem following the
+risk-tier-classifier pattern: a `StrEnum` discriminator + frozen config
++ safe default + `StrategyRegistry` factory. Promotion is the only
+direction on the seam, so a wrapping strategy decides that one question
+and holds a base to delegate it to.
 
 | `AutonomyStrategyType` | Implementation | Behaviour |
 |---|---|---|
-| `HUMAN_ONLY` | `HumanOnlyPromotionStrategy` | Promotions + recovery always require human approval. Byte-identical with the pre-plugin default. |
+| `HUMAN_ONLY` | `HumanOnlyPromotionStrategy` | Promotion always requires human approval. |
 | `BUDGET_AWARE` | `BudgetAwarePromotionStrategy` | Denies promotion while risk-budget headroom (injected `RiskBudgetSignalProvider`) is below `budget_warn_fraction`; otherwise delegates the decision to the base. |
 | `ESCALATION_CHAIN` | `EscalationChainPromotionStrategy` | Records the configured approver-role `escalation_chain` and returns pending (`False`); per-role approvals arrive out-of-band. |
 

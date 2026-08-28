@@ -40,7 +40,7 @@ enums under [Engine](engine.md); the conversation turn, status, and proposal
 enums under [Communication](communication.md); the charter status enum under
 [Meta](meta.md); approval status, risk level, and source in
 `synthorg.approval.enums` (below); and the security action-type taxonomy,
-tool category, autonomy-downgrade reason, and timeout-action type under
+tool category, and timeout-action type under
 [Security](security.md).
 
 ## Task Enums

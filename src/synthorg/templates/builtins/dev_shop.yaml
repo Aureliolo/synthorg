@@ -4,8 +4,8 @@ template:
     A lean engineering team built for throughput on a tight budget. No
     C-suite overhead; a Software Architect leads directly. Three backend
     developers, a frontend specialist, a QA pipeline, and a DevOps engineer.
-    Cost-disciplined: auto-downgrade keeps spend in check while quality
-    gates hold the line.
+    Cost-disciplined: the budget ceiling parks a run rather than spending
+    through it, while quality gates hold the line.
   version: "1.1.0"
   min_agents: 6
   max_agents: 10

@@ -89,12 +89,3 @@ class ActionType(StrEnum):
     DESKTOP_KEY = "desktop:key"
     DESKTOP_SCREENSHOT = "desktop:screenshot"
     DESKTOP_SCROLL = "desktop:scroll"
-
-
-class DowngradeReason(StrEnum):
-    """Reason an agent's autonomy was downgraded at runtime."""
-
-    HIGH_ERROR_RATE = "high_error_rate"
-    BUDGET_EXHAUSTED = "budget_exhausted"
-    RISK_BUDGET_EXHAUSTED = "risk_budget_exhausted"
-    SECURITY_INCIDENT = "security_incident"

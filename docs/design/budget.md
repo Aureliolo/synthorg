@@ -624,9 +624,9 @@ per-agent/per-task/total aggregation queries.
    and total daily risk limits. Raises `RiskBudgetExhaustedError` on breach.
 2. **Recording**: `record_risk()` scores and records each action via
    the `RiskScorer` and `RiskTracker`.
-3. **Autonomy downgrade**: `RISK_BUDGET_EXHAUSTED` is a `DowngradeReason`, so
-   exhausting the risk budget drops the agent to `SUPERVISED`. This narrows what
-   the agent may do unattended; it never touches which model it runs.
+Exhausting the risk budget refuses the action at the pre-flight check above. It
+does not narrow the agent's autonomy level: that grant is the operator's, and the
+refusal here is already the control.
 
 ### Shadow Mode
 
