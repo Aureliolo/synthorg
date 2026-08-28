@@ -162,7 +162,7 @@ concurrent-write conflict). Every strategy's `auto_downgrade` maps a `DowngradeR
 to a target level (high error rate: one level down; budget exhausted: `supervised`;
 security incident: `locked`) and recovery from a downgrade is always human-only; the
 method is a lever any caller can pull with a reason, not a monitor that fires on its
-own, since nothing in the runtime currently watches error rate, budget or incidents
+own, since nothing in the runtime watches error rate, budget, or incidents
 to invoke it.
 
 ### Autonomy change strategy plugin surface

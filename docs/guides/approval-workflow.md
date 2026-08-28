@@ -92,7 +92,7 @@ up automatically by the audit-chain sink and signed into the hash chain; see
 The approvals page surfaces pending requests with:
 
 - Action type, agent, task, requested change.
-- Time-since-raised urgency badge, thresholded by risk level.
+- Time-since-raised urgency badge, with thresholds set by risk level.
 - One-click `Approve` / `Reject` actions, plus an option picker when the escalation
   offered a structured choice; rejection requires a reason.
 - Filters on `status`, `risk_level`, `action_type`, and `source`.
