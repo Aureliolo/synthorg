@@ -303,8 +303,8 @@ def _frontmatter_and_intro(last_updated: str) -> list[str]:
         "---",
         "title: Framework Comparison",
         "description: >-",
-        "  Where SynthOrg sits among agent orchestration frameworks,",
-        "  platforms, and research projects, and what the table cannot show.",
+        "  Where SynthOrg sits among agent frameworks, platforms, workflow",
+        "  engines, and developer tools, and what the table cannot show.",
         "---",
         "",
         (
@@ -316,8 +316,8 @@ def _frontmatter_and_intro(last_updated: str) -> list[str]:
         "# Framework Comparison",
         "",
         (
-            "How SynthOrg compares to agent orchestration frameworks,"
-            " platforms, and research projects."
+            "How SynthOrg compares to agent frameworks, platforms,"
+            " workflow engines, and developer tools."
         ),
         "",
         f"Comparison data last changed: {last_updated}",

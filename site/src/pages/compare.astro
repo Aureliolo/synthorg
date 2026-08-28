@@ -55,7 +55,7 @@ const { dimensions, categories, competitors } = data;
 const competitorCount = competitors.filter((c) => !c.is_synthorg).length;
 
 const title = `SynthOrg vs ${competitorCount} Agent Projects | Feature Comparison`;
-const description = `Interactive comparison of SynthOrg against ${competitorCount} agent frameworks, platforms, workflow engines and developer tools. Self-hosted, operator-chosen models, and a reviewer that did not write the work.`;
+const description = `Interactive comparison of SynthOrg against ${competitorCount} agent frameworks, platforms, workflow engines, and developer tools. Self-hosted, operator-chosen models, and a reviewer that did not write the work.`;
 
 const siteUrl = Astro.site;
 const pageUrl = new URL("/compare/", Astro.site).href;
