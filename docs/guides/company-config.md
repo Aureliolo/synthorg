@@ -66,18 +66,18 @@ The `company_type` field selects a pre-defined organisational template:
 
 | Type | Description | Agents |
 |------|-------------|--------|
-| `solo_founder` | Solo builder with full autonomy | 3--4 |
-| `startup` | CEO + small engineering team | 4--7 |
-| `dev_shop` | Engineering squad with quality gates | 6--10 |
-| `product_team` | Product-focused studio with design | 9--14 |
-| `agency` | Project manager + specialists | 10--15 |
-| `full_company` | Enterprise org with all departments | 20--50 |
-| `research_lab` | Lead researcher + assistants | 5--10 |
-| `consultancy` | Client-facing advisory and delivery | 4--6 |
-| `data_team` | Analytics and ML-focused team | 5--8 |
-| `growth_marketing` | Campaign-driven marketing team | 5--8 |
-| `support_desk` | Ticket-driven customer support team | 5--7 |
-| `security_team` | Security review and audit team | 6--8 |
+| `solo_founder` | Solo builder with full autonomy | 3-4 |
+| `startup` | CEO + small engineering team | 4-7 |
+| `dev_shop` | Engineering squad with quality gates | 6-10 |
+| `product_team` | Product-focused studio with design | 9-14 |
+| `agency` | Project manager + specialists | 10-15 |
+| `full_company` | Enterprise org with all departments | 20-50 |
+| `research_lab` | Lead researcher + assistants | 5-10 |
+| `consultancy` | Client-facing advisory and delivery | 4-6 |
+| `data_team` | Analytics and ML-focused team | 5-8 |
+| `growth_marketing` | Campaign-driven marketing team | 5-8 |
+| `support_desk` | Ticket-driven customer support team | 5-7 |
+| `security_team` | Security review and audit team | 6-8 |
 | `custom` | Build from scratch | Any |
 
 ### Autonomy Levels

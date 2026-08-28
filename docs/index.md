@@ -1,8 +1,8 @@
 # SynthOrg Documentation
 
-**Describe a piece of software. It gets built in one pass: split into parts, built in
-parallel, each part checked by something that did not write it. On your hardware, against
-the models you choose.**
+**Describe a piece of software, and the work is split into parts that stand alone, built in
+parallel, and each part checked by something that did not write it. On your hardware,
+against the models you choose.**
 
 !!! warning "Pre-alpha, and not yet fully working"
 

@@ -2,9 +2,9 @@
 
 How to run SynthOrg.
 
-SynthOrg splits a build into a tree of parts, builds them in parallel in isolated
-containers, and has each part checked by something that did not write it. It runs on your
-own hardware. You choose the providers and models it dispatches to.
+SynthOrg splits a build into a tree of parts, builds them in parallel, each in its own
+isolated workspace, and has each part checked by something that did not write it. It runs
+on your own hardware. You choose the providers and models it dispatches to.
 
 !!! warning "Pre-alpha, and not yet fully working"
 

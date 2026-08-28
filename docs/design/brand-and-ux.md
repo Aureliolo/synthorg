@@ -18,9 +18,10 @@ about the product.
 > had no hand in it. On your hardware, against models you choose.
 
 The order is load-bearing: problem, then mechanism, then where it runs. Never
-lead with the mechanism. The product name carries the problem, so the opening
-line says what a synthetic organisation is rather than leaving a reader to infer
-it from a name they have just met.
+lead with the mechanism. The product name carries the answer rather than the
+problem, so the opening line has to supply what that answer is an answer to, and
+the line after it says what a synthetic organisation does rather than leaving a
+reader to infer it from a name they have just met.
 
 **The binding constraint is decomposition quality, not agent supply.** The
 parallel tree is not a speed feature and must never be sold as one. A single

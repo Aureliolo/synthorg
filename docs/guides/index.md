@@ -5,9 +5,9 @@ description: Practical how-to guides for configuring and operating SynthOrg.
 
 # Guides
 
-**Describe a piece of software. It gets built in one pass: split into parts, built in
-parallel, each part checked by something that did not write it. On your hardware, against
-the models you choose.**
+**Describe a piece of software, and the work is split into parts that stand alone, built in
+parallel, and each part checked by something that did not write it. On your hardware,
+against the models you choose.**
 
 These guides cover the machinery that runs that process: standing up the platform, and
 configuring the agents, roles, and approval gate that carry out and check the work. Each
