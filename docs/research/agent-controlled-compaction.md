@@ -48,6 +48,7 @@ class CompactionConfig(BaseModel):
     fill_threshold_percent: float = 80.0  # trigger at 80% fill
     min_messages_to_compact: int = 4      # minimum messages before eligible
     preserve_recent_turns: int = 3        # recent turn pairs to keep verbatim
+    preserve_epistemic_markers: bool = True  # keep marker sentences whole
 ```
 
 **Trigger mechanism** (`src/synthorg/engine/compaction/summarizer.py`):
@@ -61,8 +62,7 @@ def _do_compaction(ctx, config, estimator):
 
 Trigger checked at turn boundaries by ReactLoop, the one loop that manages its context
 in-process, via `invoke_compaction()` in
-`src/synthorg/engine/loop_control_helpers.py`. OpenHands compacts inside its own
-harness, so it never reaches this helper. Errors are caught, logged as
+`src/synthorg/engine/loop_control_helpers.py`. Errors are caught, logged as
 `CONTEXT_BUDGET_COMPACTION_FAILED`, and never propagated. `MemoryError`/`RecursionError`
 are re-raised.
 

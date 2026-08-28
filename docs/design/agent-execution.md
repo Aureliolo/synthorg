@@ -893,7 +893,7 @@ the shared entry point for any loop that manages its own context in-process.
 
 ### Text summary (default path)
 
-With neither the summariser nor the memory offload wired, `_build_summary()` performs snippet-join
+With the LLM summariser disabled, `_build_summary()` performs snippet-join
 concatenation: assistant message snippets capped at 100 characters each, total summary
 capped at 500 characters. Epistemic markers ("wait", "hmm", "actually", and the wider
 hedging / reconsideration / uncertainty / verification / correction families in

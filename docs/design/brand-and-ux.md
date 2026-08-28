@@ -53,9 +53,13 @@ a boast.
 
 ### What Is Not Sold
 
-The organisation metaphor. Roles, departments, staffing, and the approval gate are
-shipped, working machinery, and pages documenting them must stay accurate. They
-are plumbing, described as plumbing, never the headline.
+Organisational realism as the reason the output is good. That position is closed
+(see [Research and Prior Art](../reference/research.md)). Roles, departments,
+staffing and the approval gate are shipped, working machinery, pages documenting
+them must stay accurate, and the vocabulary is the product's own, so a headline
+may use it. What no page may do is argue that simulating an organisation is why
+the work comes out well, or describe the org as something to watch rather than
+something that decides who builds and who checks.
 
 ## Voice Rules
 
@@ -209,7 +213,7 @@ Notification badges render in every mode that shows labels, not only persistent.
 
 ### Persistence
 
-Every appearance preference is backend-owned. The five theme axes live in the `appearance` settings namespace and the sidebar collapse state in `dashboard.sidebar_collapsed`; the stores hydrate from the API on mount and write each change straight back. There is no client-side copy, because the dashboard is a pure API consumer and a preference held only in the browser is a preference no other client can see.
+Every appearance preference is backend-owned. The five theme axes live in the `appearance` settings namespace and the sidebar collapse state in `dashboard.sidebar_collapsed`; the stores hydrate from the API on mount and write each change straight back. The stores hold the hydrated values in memory for the session and nothing else keeps a copy, because the dashboard is a pure API consumer and a preference persisted only in the browser is a preference no other client can see.
 
 ## Theme Architecture
 
