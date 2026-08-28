@@ -183,6 +183,11 @@ def _content_key(path: Path) -> str:
     except builtins.MemoryError, RecursionError:
         raise
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised above
+        # lint-allow: swallow-ok -- one entry's failure must not decide the
+        # tree's answer, and the marker returned below is not a silent drop:
+        # it keeps the path in the fingerprint, so the file still counts as
+        # produced and only its content goes unread. Raising here would let a
+        # single unreadable entry fail a run that delivered everything else.
         logger.warning(
             EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,
             phase="fingerprint",
