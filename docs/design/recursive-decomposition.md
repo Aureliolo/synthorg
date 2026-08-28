@@ -632,8 +632,11 @@ without one and which its own passing suite proved it did not need. At a
 delivered rate near a half that term dominated the curve rather than sitting in
 its tail.
 
-The declared list is still recorded, as `UnitRecord.undeclared_paths`, because a
-planner over-declaring is worth seeing. What it measures is the planner.
+The declared list is still recorded, as `UnitRecord.missing_declared_paths`,
+because a planner over-declaring is worth seeing. It holds the paths the planner
+named that the finished tree does not contain, so what it measures is the
+planner rather than the work. The direction is stated here because the field's
+previous name read the other way and was cited backwards on this very page.
 
 ### Achieved depth, not the cap
 

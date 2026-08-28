@@ -468,6 +468,44 @@ def _measured_cell(arm: Arm) -> CellRecord:
     )
 
 
+class TestTheRecordedJournalsStayReadable:
+    """A rename must not strand the recordings that were paid for.
+
+    ``missing_declared_paths`` was called ``undeclared_paths`` when every
+    recording under ``results/`` was written, and those recordings are the
+    project's only measurement of the loop. They stay re-scorable in place,
+    so the old key is still accepted on the way in.
+    """
+
+    def test_the_old_key_still_populates_the_field(self) -> None:
+        record = UnitRecord.model_validate(
+            {
+                "unit_id": "u1",
+                "title": "Assemble: a thing",
+                "kind": MERGE,
+                "depth": 0,
+                "undeclared_paths": ["src/a.py", "tests/test_a.py"],
+            }
+        )
+
+        assert record.missing_declared_paths == ("src/a.py", "tests/test_a.py")
+
+    def test_the_field_is_written_under_its_own_name(self) -> None:
+        """A new recording carries the name that says which way it points."""
+        record = UnitRecord(
+            unit_id=NotBlankStr("u1"),
+            title=NotBlankStr("Assemble: a thing"),
+            kind=MERGE,
+            depth=0,
+            missing_declared_paths=("src/a.py",),
+        )
+
+        dumped = record.model_dump(mode="json")
+
+        assert dumped["missing_declared_paths"] == ["src/a.py"]
+        assert "undeclared_paths" not in dumped
+
+
 class TestTheReportRefusesASilentGap:
     """A cell is measured or unavailable, never neither."""
 
