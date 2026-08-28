@@ -190,12 +190,11 @@ async def _declared_verdict(
         return None
     if presence.nothing_delivered:
         return MISSING_ARTIFACTS_REASON.format(paths=", ".join(presence.missing))
-    # The two workspace questions read different evidence and legitimately
-    # disagree: the tree is compared by size, a declaration by digest. An edit
-    # that keeps a file's length (a flipped constant, a corrected identifier)
-    # leaves the tree fingerprint identical while the digest proves the run
-    # rewrote exactly what it promised. The finer evidence decides, or this
-    # guard fails a delivered run over a coincidence of byte counts.
+    # Both questions compare content, so they agree about every path both can
+    # see. What they do not share is scope: the tree fingerprint prunes the
+    # directories a tool writes and the names its caller mounted, so a
+    # declaration that lives inside one of those is invisible to it and this
+    # per-declaration digest is the only evidence there is for that path.
     if presence.delivered_something_since(declared_baseline):
         return None
     # Presence answers a task that creates. A task that edits found its

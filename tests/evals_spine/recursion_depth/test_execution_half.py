@@ -563,7 +563,7 @@ def scripted_sessions(monkeypatch: pytest.MonkeyPatch) -> list[_Attempt]:
     monkeypatch.setattr(
         merge_module,
         "produced_tree",
-        lambda _ws: frozenset({("sqlcsv/lexer.py", next(assemblies))}),
+        lambda _ws: frozenset({("sqlcsv/lexer.py", str(next(assemblies)))}),
     )
     return ran
 

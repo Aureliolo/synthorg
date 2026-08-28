@@ -140,6 +140,15 @@ def _read_one(
         return {"path": label, "status": _STATUS_ABSENT}
     if resolved.is_dir():
         return {"path": label, "status": _STATUS_DIRECTORY}
+    if not resolved.is_file():
+        # A named pipe or a device is not a deliverable, and opening one
+        # blocks until somebody writes to it, which nobody here will. The
+        # workspace is a tree an agent can write, so it can hold one.
+        return {
+            "path": label,
+            "status": _STATUS_UNREADABLE,
+            "reason": "not a regular file",
+        }
     try:
         with resolved.open(encoding="utf-8", errors="replace") as handle:
             text = handle.read(limit + 1)

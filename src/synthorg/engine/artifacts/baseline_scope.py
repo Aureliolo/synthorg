@@ -228,7 +228,7 @@ async def produced_nothing_since(baseline: RunBaseline | None) -> bool | None:
 
     Returns:
         ``True`` when every file is exactly as the run found it, ``False``
-        when something appeared, changed length or was removed, and ``None``
+        when something appeared, was rewritten or was removed, and ``None``
         when there is no baseline to compare against. ``None`` is not "the
         run produced nothing": it is the absence of evidence, and each caller
         falls back to what it had before.

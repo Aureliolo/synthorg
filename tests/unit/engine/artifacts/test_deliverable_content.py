@@ -22,7 +22,7 @@ from synthorg.engine.artifacts.deliverable_content import (
     workspace_deliverable_reader,
 )
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
-from tests._shared import mock_of
+from tests._shared import make_named_pipe, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -119,6 +119,18 @@ class TestReadDeclaredArtifacts:
         entries = _entries(_read(_expected("dist"), tmp_path))
 
         assert entries[0]["status"] == "directory"
+
+    def test_a_named_pipe_is_never_opened(self, tmp_path: Path) -> None:
+        """Opening one blocks until somebody writes, which nobody here will.
+
+        The workspace is a tree an agent can write, so it can hold one, and
+        this reader is what a reviewer waits on. It passes by finishing.
+        """
+        make_named_pipe(tmp_path / "pipe")
+
+        entries = _entries(_read(_expected("pipe"), tmp_path))
+
+        assert entries[0]["status"] == "unreadable"
 
     def test_a_prose_declaration_is_reported_not_probed(self, tmp_path: Path) -> None:
         """A deliverable name is not a filename, and saying so is the point."""

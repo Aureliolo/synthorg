@@ -114,9 +114,10 @@ class TestWhatCountsAsAssembly:
     ) -> None:
         """A size is blind to the edit that flips a constant.
 
-        This harness has ONE delivery check where the product has two, so
-        nothing else here would see it: the product compares the tree by size
-        AND each declared path by digest, and the second is what catches this.
+        This harness has ONE delivery check where the product has a
+        per-declaration digest beside its tree question, so nothing else here
+        would see it: a merge round that only rewrites what it already
+        assembled would read as having produced nothing at all.
         """
         workspace = _workspace(tmp_path)
         target = workspace.project_dir / "sqlcsv" / "config.py"
@@ -126,6 +127,20 @@ class TestWhatCountsAsAssembly:
         target.write_text("RETRIES = 5\n", encoding="utf-8")
 
         assert produced_tree(workspace) != before
+
+    def test_running_the_suite_is_not_an_assembly(self, tmp_path: Path) -> None:
+        """A merge that only ran pytest produced a cache and nothing else.
+
+        Inherited from the product's own fingerprint, which this delegates to
+        rather than re-implementing: one answer to "what does this tree hold"
+        is one place for a link to be followed or a rewrite to be missed.
+        """
+        workspace = _workspace(tmp_path)
+        cache = workspace.project_dir / "sqlcsv" / "__pycache__"
+        cache.mkdir(parents=True)
+        (cache / "lexer.cpython-314.pyc").write_bytes(b"\x00compiled")
+
+        assert produced_tree(workspace) == frozenset()
 
     def test_assembling_without_the_report_still_counts(self, tmp_path: Path) -> None:
         """The defect this exists for, stated as a test.

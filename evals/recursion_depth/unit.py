@@ -13,7 +13,6 @@ because a declaration is a guess made before the tree existed and paperwork is
 what a unit writes about itself.
 """
 
-import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
@@ -24,18 +23,16 @@ from synthorg.engine.artifacts.expected_artifact_check import (
     ArtifactPresence,
     missing_expected_artifacts,
 )
+from synthorg.engine.artifacts.workspace_fingerprint import (
+    WorkspaceFingerprint,
+    fingerprint_tree,
+)
 
-#: Every file a unit produced, as ``(posix relative path, content digest)``.
-#: Deliberately NOT the product's ``WorkspaceFingerprint``, which pairs a path
-#: with a SIZE: the product asks the tree only whether work moved and has a
-#: per-declaration digest check beside it, while this is the harness's only
-#: delivery evidence and has to see an edit that keeps a file's length.
-type UnitFingerprint = frozenset[tuple[str, str]]
-
-#: Recorded for a file that is there but cannot be read, so the path stays in
-#: the fingerprint: a file the filesystem refuses is still one the unit
-#: produced, and dropping it would read as an absence.
-_UNREADABLE: Final[str] = "<unreadable>"
+#: Every file a unit produced, as ``(posix relative path, content key)``. The
+#: product's own fingerprint under the harness's name, because "what does this
+#: tree hold" has one answer and a second implementation of it is a second
+#: place for a link to be followed or a rewrite to be missed.
+type UnitFingerprint = WorkspaceFingerprint
 
 #: What sits in a unit's tree without being anything that unit produced: the
 #: pieces a merge was handed, the unit's own paperwork, and the brief it
@@ -202,41 +199,12 @@ def produced_tree(workspace: CellWorkspace) -> UnitFingerprint:
         workspace: The unit's tree.
 
     Returns:
-        Each produced file as ``(relative path, content digest)``. A digest
-        rather than a size because a size is blind to the edit that keeps a
-        file's length, and this harness has only ONE delivery check where the
-        product has two: the product compares the tree by size and each
-        declared path by digest, so a flipped constant still shows up there
-        and would vanish here. Hashing a few hundred small files is
-        milliseconds against units that run for minutes.
+        Each produced file as ``(relative path, content key)``. What the unit
+        was HANDED is excluded by name among the root's own children, which is
+        the one thing this knows and the product's fingerprint cannot: the
+        harness mounted those itself.
     """
-    root = workspace.project_dir
-    if not root.is_dir():
-        return frozenset()
-    return frozenset(
-        (path.relative_to(root).as_posix(), _digest_of(path))
-        for entry in root.iterdir()
-        if entry.name not in _NOT_PRODUCED
-        for path in (entry.rglob("*") if entry.is_dir() else (entry,))
-        if path.is_file()
-    )
-
-
-def _digest_of(path: Path) -> str:
-    """Digest *path*'s content, degrading rather than losing the whole answer.
-
-    Returns:
-        A hex digest, or a marker for a file the filesystem refuses. The
-        marker keeps the path in the fingerprint, because a file that cannot
-        be read is still a file the unit produced and dropping it would read
-        as an absence.
-    """
-    try:
-        with path.open("rb") as handle:
-            digest = hashlib.file_digest(handle, "sha256")
-    except OSError:
-        return _UNREADABLE
-    return digest.hexdigest()
+    return fingerprint_tree(workspace.project_dir, exclude=_NOT_PRODUCED)
 
 
 __all__ = [

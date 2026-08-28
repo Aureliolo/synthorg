@@ -399,8 +399,14 @@ and wrapped in an `AgentRunResult` with `TerminationReason.ERROR`.
 ### Did this run do anything?
 
 Asked of the workspace, and asked once. `engine/artifacts/workspace_fingerprint.py`
-takes every file under the project's workspace with its size; a run that
-leaves that set identical produced nothing. `AgentEngine.run` takes the
+takes every file under the project's workspace with a key for its content; a
+run that leaves that set identical produced nothing. Content rather than
+length, because the verdict this drives is whether to FAIL the task and an
+edit that keeps a file's size (a flipped constant, a rewritten line) is
+ordinary work a byte count cannot see. Nothing is read through a link: a
+workspace an agent can write can hold a symlink to `/dev/zero`, which never
+reaches EOF, so a link is keyed by its own text and anything else that is
+not a regular file by its kind. `AgentEngine.run` takes the
 answer before the loop starts and publishes it on
 `engine/artifacts/baseline_scope.py`, where the loop's own correction, its
 no-op classification and the post-execution guard all read it, so the three

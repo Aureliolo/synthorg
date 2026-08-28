@@ -10,11 +10,23 @@ that writes ``sqlcsv/reader.py`` where ``sqlcsv/csv_reader.py`` was declared
 has produced eight modules and satisfies no declaration.
 
 So this asks the workspace instead of the plan. A fingerprint is every file
-under the root with its size, and a run that leaves that set identical
-produced nothing: no file appeared, none was removed, and none changed
-length. Length rather than content because this decides whether to spend one
-more turn, not whether work is correct, and hashing a whole tree twice a run
-buys nothing that decision can use.
+under the root with a key for its content, and a run that leaves that set
+identical produced nothing: no file appeared, none was removed, and none was
+rewritten. Content rather than length because the verdict this drives is
+whether to FAIL the task, and an edit that keeps a file's size (a flipped
+constant, a corrected identifier, a rewritten line) is ordinary work that a
+byte count cannot see. The tree walked here is pruned of everything a tool
+writes, so what remains is authored source and hashing it is milliseconds
+against a run that took minutes.
+
+Nothing is ever opened through a link. ``Path.is_file`` follows one, so a
+workspace an agent can write is a workspace that can hold a symlink to a
+character device, and hashing ``/dev/zero`` never reaches EOF: the thread
+this runs on would never return. A link is keyed by its own text, which is
+also the honest answer, since what the run authored is the link rather than
+whatever it points at. Anything else that is not a regular file is keyed by
+its kind for the same reason, because opening a FIFO blocks until somebody
+writes to it.
 
 A tree a tool writes is pruned wherever it appears, because an agent that
 ran the suite it was given produced a ``__pycache__`` and nothing else, and
@@ -29,6 +41,8 @@ children: a harness mounting inputs into the tree it grades knows which of
 them it put there, and this module does not.
 """
 
+import hashlib
+import stat
 from collections.abc import Collection
 from pathlib import Path
 from typing import Final
@@ -40,8 +54,10 @@ from synthorg.observability.events.execution import (
 
 logger = get_logger(__name__)
 
-#: Every file under a workspace root, as ``(posix relative path, size)``.
-type WorkspaceFingerprint = frozenset[tuple[str, int]]
+#: Every file under a workspace root, as ``(posix relative path, content
+#: key)``. A key is a hex digest for a regular file and a marker for
+#: everything else, so no two of them can collide.
+type WorkspaceFingerprint = frozenset[tuple[str, str]]
 
 #: Directories written by a tool rather than by an author, at any depth. None
 #: of them is ever evidence that a run delivered.
@@ -57,11 +73,18 @@ _GENERATED_DIRS: Final[frozenset[str]] = frozenset(
     }
 )
 
-#: Size recorded for a file that is there but cannot be measured. It keeps
-#: the path in the fingerprint, because a file the filesystem refuses to
-#: answer for is still a file the run produced, and dropping it would read as
-#: an absence.
-_UNREADABLE: Final[int] = -1
+#: Recorded for a file that is there but cannot be read. It keeps the path in
+#: the fingerprint, because a file the filesystem refuses to answer for is
+#: still a file the run produced, and dropping it would read as an absence.
+_UNREADABLE: Final[str] = "<unreadable>"
+
+#: Marks a symlink, whose key is its link text rather than its target's
+#: content. Prefixed so link text cannot be mistaken for a digest.
+_SYMLINK_PREFIX: Final[str] = "<symlink>"
+
+#: Marks anything else that is not a regular file, keyed by its kind because
+#: its contents cannot be read without blocking.
+_SPECIAL_PREFIX: Final[str] = "<special>"
 
 
 def fingerprint_tree(
@@ -77,13 +100,13 @@ def fingerprint_tree(
             one a run wrote inside a package it created.
 
     Returns:
-        The set of ``(relative path, size)`` pairs, empty when *root* is not
-        a directory.
+        The set of ``(relative path, content key)`` pairs, empty when *root*
+        is not a directory.
     """
     if not root.is_dir():
         return frozenset()
     excluded = frozenset(exclude)
-    entries: list[tuple[str, int]] = []
+    entries: list[tuple[str, str]] = []
     for parent, directories, files in root.walk(on_error=_walk_failed):
         at_root = parent == root
         # Assigning through the slice is what prunes the walk: ``Path.walk``
@@ -95,10 +118,18 @@ def fingerprint_tree(
             if name not in _GENERATED_DIRS and not (at_root and name in excluded)
         ]
         relative = parent.relative_to(root)
+        # A symlinked directory is listed here and never descended into,
+        # because the walk does not follow links. Recorded anyway, or a run
+        # whose whole output was a link would read as having produced nothing.
+        entries.extend(
+            ((relative / name).as_posix(), _content_key(parent / name))
+            for name in directories
+            if (parent / name).is_symlink()
+        )
         for name in files:
             if at_root and name in excluded:
                 continue
-            entries.append(((relative / name).as_posix(), _size_of(parent / name)))
+            entries.append(((relative / name).as_posix(), _content_key(parent / name)))
     return frozenset(entries)
 
 
@@ -110,8 +141,8 @@ def _walk_failed(exc: OSError) -> None:
     verdict this fingerprint drives is that a run produced nothing anywhere,
     so a silently shrunk walk can fail delivered work with nothing in the log
     to say the tree was never fully read. Reported rather than raised, on the
-    same rule as :func:`_size_of`: one unreadable subtree must not cost the
-    answer for everything beside it.
+    same rule as :func:`_content_key`: one unreadable subtree must not cost
+    the answer for everything beside it.
     """
     logger.warning(
         EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,
@@ -122,16 +153,25 @@ def _walk_failed(exc: OSError) -> None:
     )
 
 
-def _size_of(path: Path) -> int:
-    """Measure *path*, degrading rather than losing the whole answer.
+def _content_key(path: Path) -> str:
+    """Identify *path*'s content, without ever reading through a link.
 
     Returns:
-        The file's size, or :data:`_UNREADABLE` when the filesystem refuses.
-        One unreadable file must not cost the fingerprint every other file
-        beside it, which is what an escaping ``OSError`` would do.
+        A hex digest for a regular file, the link text for a symlink, the
+        kind for anything else, or :data:`_UNREADABLE` when the filesystem
+        refuses. One unreadable file must not cost the fingerprint every
+        other file beside it, which is what an escaping ``OSError`` would do.
     """
     try:
-        return path.stat().st_size
+        mode = path.lstat().st_mode
+        if stat.S_ISLNK(mode):
+            # Rendered posix-style so a key means the same thing whichever
+            # platform took the fingerprint, as every path in it already does.
+            return f"{_SYMLINK_PREFIX}{path.readlink().as_posix()}"
+        if not stat.S_ISREG(mode):
+            return f"{_SPECIAL_PREFIX}{stat.S_IFMT(mode)}"
+        with path.open("rb") as handle:
+            return hashlib.file_digest(handle, "sha256").hexdigest()
     except OSError as exc:
         logger.warning(
             EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,

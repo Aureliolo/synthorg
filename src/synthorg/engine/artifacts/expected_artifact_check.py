@@ -89,11 +89,11 @@ class ArtifactPresence(BaseModel):
     def delivered_something_since(self, baseline: ArtifactPresence | None) -> bool:
         """Did at least one declaration demonstrably change?
 
-        A digest is the finest evidence this module holds, and the only
-        evidence that can assert a run delivered rather than merely fail to
-        rule it out. A coarser signal taken elsewhere (a size, a modification
-        time) legitimately disagrees with it on an equal-length edit, so a
-        caller holding both needs to know which of them saw the content.
+        The only evidence in this module that can assert a run delivered
+        rather than merely fail to rule it out. It is asked per declaration,
+        so it reaches a path the whole-tree question cannot: that walk prunes
+        the directories a tool writes and the names its caller mounted, and a
+        declaration inside one of those has no other evidence.
 
         Deliberately NOT the negation of :meth:`delivered_nothing_since`, and
         the gap between them is :data:`_UNHASHABLE`. A directory declared and
