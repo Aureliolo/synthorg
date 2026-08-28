@@ -6,6 +6,7 @@ and the attempt accounting are what a regression would break and neither needs
 a model to answer.
 """
 
+import itertools
 import shutil
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -529,13 +530,17 @@ def scripted_sessions(monkeypatch: pytest.MonkeyPatch) -> list[_Attempt]:
         return SessionOutcome(cost=0.5, tokens=1200, turns=3, termination="completed")
 
     monkeypatch.setattr(merge_module, "run_session", _fake_session)
-    # Stubbed to "it produced something", because these tests are about the
-    # loop's accounting rather than about what an offline tree holds. The
-    # delivery wiring this hides, including that the baseline is probed before
-    # the session, is covered against the real function in
-    # TestDeliveryIsAboutWorkNotTheDeclaration.
+    # Stubbed to "it assembled something", because these tests are about the
+    # loop's accounting rather than about what an offline tree holds. Each call
+    # answers a different fingerprint, so the before-and-after comparison the
+    # loop makes reads as a change. What this hides, including that the
+    # baseline is taken before the first attempt, is covered against the real
+    # function in tests/evals_spine/recursion_depth/test_merge_delivery.py.
+    assemblies = itertools.count()
     monkeypatch.setattr(
-        merge_module, "produced_nothing", lambda _task, _ws, _baseline: False
+        merge_module,
+        "assembled_tree",
+        lambda _ws: frozenset({("sqlcsv/lexer.py", next(assemblies))}),
     )
     return ran
 

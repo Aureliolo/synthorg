@@ -35,7 +35,6 @@ from evals.recursion_depth.session import (
     SweepDeps,
     graded,
     probe_artifacts,
-    produced_nothing,
     run_session,
 )
 from synthorg.core.agent import AgentIdentity
@@ -43,7 +42,6 @@ from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.artifacts.expected_artifact_check import ArtifactPresence
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
@@ -57,6 +55,13 @@ logger = get_logger(__name__)
 #: workspace root, and a child package left where the root package should be
 #: would grade as though the merge had happened.
 CHILDREN_DIR: Final[str] = ".children"
+
+#: What sits in a merge's tree without being anything the merge assembled: the
+#: children it was handed, its own paperwork, and the brief it started from.
+#: Everything else at the root IS the assembly.
+_NOT_ASSEMBLY: Final[frozenset[str]] = frozenset(
+    {CHILDREN_DIR, ".synthorg", "README.md"}
+)
 
 #: What a merge must produce. Both, because the stage only means something if
 #: both land: the assembled thing, and the end-to-end run showing it works.
@@ -133,8 +138,11 @@ class MergeOutcome:
     Attributes:
         workspace: The assembled tree, which its own parent assembles next and
             which, at the root, is what the held-out oracle grades.
-        delivered: Whether an attempt changed something the node declared and
-            the merged tree's own tests pass.
+        delivered: Whether an attempt changed the assembled tree and the merged
+            tree's own tests pass. Judged on the tree, never on the merge's own
+            paperwork: this verdict is briefed to the PARENT as
+            ``[DID NOT DELIVER]``, so a false negative here misleads every
+            assembly above it.
         attempts: Sessions the merge consumed, repair rounds included.
         turns: Agent turns across the assembling sessions. A review's turns
             are not observable through the gate's dispatch seam, which answers
@@ -302,9 +310,9 @@ async def run_merge(
     await asyncio.to_thread(mount_children, plan.workspace, plan.pieces)
     # After the children are mounted and before the first attempt, so what a
     # child already delivered is not credited to the assembly that received it.
-    baseline = await asyncio.to_thread(
-        probe_artifacts, _attempt_task(plan, ()), plan.workspace
-    )
+    # The declared paths are still probed at the end, because a planner
+    # over-declaring is worth seeing; they just do not decide delivery.
+    assembled_before = await asyncio.to_thread(assembled_tree, plan.workspace)
     findings: tuple[str, ...] = ()
     review = MergeReview(approved=None)
     sessions = 0
@@ -339,7 +347,9 @@ async def run_merge(
         if review.approved is True or review.parked:
             break
         findings = _trim(review.findings)
-    detail = await _undelivered_reason(deps, plan, turns=turns, baseline=baseline)
+    detail = await _undelivered_reason(
+        deps, plan, turns=turns, baseline=assembled_before
+    )
     amendments = await asyncio.to_thread(count_amendments, plan.workspace)
     final = await asyncio.to_thread(
         probe_artifacts, _attempt_task(plan, ()), plan.workspace
@@ -442,7 +452,11 @@ def _deliverable_summary(plan: MergePlan) -> str:
 
 
 async def _undelivered_reason(
-    deps: SweepDeps, plan: MergePlan, *, turns: int, baseline: ArtifactPresence
+    deps: SweepDeps,
+    plan: MergePlan,
+    *,
+    turns: int,
+    baseline: frozenset[tuple[str, int]],
 ) -> str:
     """Say why the merged tree is not a delivery, or nothing when it is.
 
@@ -454,8 +468,8 @@ async def _undelivered_reason(
         deps: The sweep's injected collaborators.
         plan: The node being assembled.
         turns: Turns across every attempt.
-        baseline: What the workspace said before the first attempt, so the
-            question stays what THIS assembly produced.
+        baseline: The assembled tree before the first attempt, so the question
+            stays what THIS assembly produced rather than what it was handed.
 
     Returns:
         The reason, empty when the merge delivered.
@@ -465,10 +479,8 @@ async def _undelivered_reason(
             "no assembly attempt ran a single turn, so nothing was assembled "
             "and this is not an assembly failure"
         )
-    if await asyncio.to_thread(
-        produced_nothing, _attempt_task(plan, ()), plan.workspace, baseline
-    ):
-        return "no assembly attempt changed anything the node declared"
+    if await asyncio.to_thread(assembled_tree, plan.workspace) == baseline:
+        return "no assembly attempt changed the tree outside the pieces it was given"
     async with graded(
         deps, plan.workspace, owner=f"grade:{plan.execution_prefix}"
     ) as grader:
@@ -476,6 +488,43 @@ async def _undelivered_reason(
     if not passed:
         return f"the merged tree's own tests did not pass: {report}"
     return ""
+
+
+def assembled_tree(workspace: CellWorkspace) -> frozenset[tuple[str, int]]:
+    """Fingerprint what the merge has assembled, ignoring what it was handed.
+
+    A merge is judged on the tree it produces, never on its own paperwork. The
+    first version declared the report and the end-to-end output as the merge's
+    expected artifacts and asked the shared artifact probe about those, so a
+    merge that assembled the whole package and skipped one markdown file was
+    recorded as having changed nothing.
+
+    That verdict does not stay local: :func:`merge_brief` marks a child
+    ``[DID NOT DELIVER]`` for its parent, so the false negative is briefed
+    upward. Measured on a live cap-2 cell, the root merge was told four of its
+    seven subtrees had failed when every one of them had assembled a package,
+    and it scored zero against an oracle that passed 35 to 38 at cap 1, where
+    the tree has no intermediate merges to mislabel. A defect that only fires
+    below the root is one that reads exactly like depth not working.
+
+    Args:
+        workspace: The merge's tree.
+
+    Returns:
+        Each assembled file as ``(relative path, size)``. Size rather than a
+        digest because this only has to answer whether the assembly MOVED, and
+        it runs over trees holding hundreds of files.
+    """
+    root = workspace.project_dir
+    if not root.is_dir():
+        return frozenset()
+    return frozenset(
+        (str(path.relative_to(root).as_posix()), path.stat().st_size)
+        for entry in root.iterdir()
+        if entry.name not in _NOT_ASSEMBLY
+        for path in (entry.rglob("*") if entry.is_dir() else (entry,))
+        if path.is_file()
+    )
 
 
 def _trim(findings: tuple[str, ...]) -> tuple[str, ...]:
