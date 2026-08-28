@@ -1,6 +1,6 @@
 <p align="center">
   <strong>SynthOrg</strong><br>
-  <em>A single agent cannot hold a whole application. SynthOrg splits it.</em>
+  <em>Real software takes a whole organisation. SynthOrg is a synthetic one.</em>
 </p>
 
 <p align="center">

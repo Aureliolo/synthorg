@@ -12,13 +12,15 @@ about the product.
 
 ## What SynthOrg Is
 
-> One agent in a loop cannot hold a whole application. SynthOrg splits the work
-> into a tree of parts that can be built independently, builds the leaves in
-> parallel in isolated containers, and has each part checked by something that
-> did not write it. On your hardware, against models you choose.
+> Real software takes a whole organisation. SynthOrg is a synthetic one: it
+> splits the work into a tree of parts that can be built independently, builds
+> the leaves in parallel in isolated containers, and has each part checked by
+> something that did not write it. On your hardware, against models you choose.
 
 The order is load-bearing: problem, then mechanism, then where it runs. Never
-lead with the mechanism.
+lead with the mechanism. The product name carries the problem, so the opening
+line says what a synthetic organisation is rather than leaving a reader to infer
+it from a name they have just met.
 
 **The binding constraint is decomposition quality, not agent supply.** The
 parallel tree is not a speed feature and must never be sold as one. A single
