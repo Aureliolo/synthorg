@@ -13,7 +13,13 @@ from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import TerminationReason, TurnProgress
-from synthorg.engine.loop_silent_turn import SILENT_TURN_NUDGE
+from synthorg.engine.loop_silent_turn import (
+    MAX_CONSECUTIVE_CORRECTIONS as SILENT_MAX_CORRECTIONS,
+)
+from synthorg.engine.loop_silent_turn import (
+    SILENT_TURN_NUDGE,
+    silent_turn_error,
+)
 from synthorg.engine.loop_unusable_turn import (
     DROPPED_CALL_NUDGE,
     MAX_CONSECUTIVE_CORRECTIONS,
@@ -1890,28 +1896,98 @@ class TestReactLoopNoOpFailLoud:
         assert result.termination_reason == TerminationReason.ERROR
         assert "upstream refused the request" in (result.error_message or "")
 
-    async def test_two_silent_turns_in_a_row_stop_correcting(
+    async def test_a_second_silent_turn_in_a_row_is_still_corrected(
         self,
         sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """The correction is its own bound, so a mute model cannot loop."""
+        """A model that stumbles twice can still recover.
+
+        Correcting only once in a row ended a merge agent on turn 8 of a
+        budget of 40, after it had read its inputs and before it had written
+        anything, and the run was reported as having delivered nothing.
+        """
         ctx = self._work_context(sample_agent, sample_task_with_criteria)
         provider = mock_provider_factory(
-            [_reasoning_only_response(), _reasoning_only_response()]
+            [
+                _reasoning_only_response(),
+                _reasoning_only_response(),
+                _stop_response("Written."),
+            ]
         )
         loop = ReactLoop()
 
         result = await loop.execute(context=ctx, provider=provider)
 
-        assert result.termination_reason == TerminationReason.NO_OP
         corrections = [
             m
             for m in result.context.conversation
             if m.role == MessageRole.USER and m.content == SILENT_TURN_NUDGE
         ]
-        assert len(corrections) == 1
+        assert len(corrections) == 2
+
+    async def test_silence_past_the_bound_ends_the_run_by_name(
+        self,
+        sample_agent: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A mute model cannot loop, and its run is not called a no-op.
+
+        The completion path would report a work run that wrote nothing as
+        having finished leaving its workspace as it found it, which reads
+        back as work that produced nothing rather than as a run ended on the
+        model's output shape.
+        """
+        ctx = self._work_context(sample_agent, sample_task_with_criteria)
+        provider = mock_provider_factory(
+            [_reasoning_only_response()] * (SILENT_MAX_CORRECTIONS + 1)
+        )
+        loop = ReactLoop()
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.ERROR
+        assert result.error_message == silent_turn_error(SILENT_MAX_CORRECTIONS + 1)
+        corrections = [
+            m
+            for m in result.context.conversation
+            if m.role == MessageRole.USER and m.content == SILENT_TURN_NUDGE
+        ]
+        assert len(corrections) == SILENT_MAX_CORRECTIONS
+
+    async def test_a_productive_turn_resets_the_silence_bound(
+        self,
+        sample_agent: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """The bound covers one stuck stretch, not the whole run."""
+        ctx = self._work_context(sample_agent, sample_task_with_criteria)
+        provider = mock_provider_factory(
+            [
+                *[_reasoning_only_response()] * SILENT_MAX_CORRECTIONS,
+                _tool_use_response("echo", "tc-1"),
+                _reasoning_only_response(),
+                _stop_response("Written."),
+            ]
+        )
+        loop = ReactLoop()
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=_make_invoker("echo"),
+        )
+
+        assert result.termination_reason != TerminationReason.ERROR
+        corrections = [
+            m
+            for m in result.context.conversation
+            if m.role == MessageRole.USER and m.content == SILENT_TURN_NUDGE
+        ]
+        assert len(corrections) == SILENT_MAX_CORRECTIONS + 1
 
     async def test_work_run_with_tool_call_completes(
         self,
