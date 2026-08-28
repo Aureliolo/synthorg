@@ -177,7 +177,7 @@ the author. None of that is a small addition to an existing loop.
 For a feature-by-feature comparison against other frameworks, see
 [Framework Comparison](comparison.md).
 
-### Libraries leveraged
+### Libraries used
 
 | Library | Role |
 |---------|------|
