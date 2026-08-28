@@ -13,7 +13,7 @@ On-demand reference. The short rule in `CLAUDE.md` is: no default may privilege 
 |---|---|
 | Currency (backend) | `budget.currency` runtime setting > `DEFAULT_CURRENCY` from `synthorg.budget.currency` |
 | Currency (frontend) | `useSettingsStore().currency` > `DEFAULT_CURRENCY` from `@/utils/currencies` |
-| Locale (backend) | `Intl` with the system locale; no operator-tunable backend locale setting (the company `name_locales` list controls procedural-name generation, not number / date formatting) |
+| Locale (backend) | None: the backend does no locale-aware number/date formatting. It stores and returns raw UTC ISO 8601 timestamps and unformatted numeric values; all locale-aware rendering happens in the frontend. No operator-tunable backend locale setting exists (the company `name_locales` list controls procedural-name generation, not number / date formatting). |
 | Locale (frontend) | `getLocale()` from `@/utils/locale` > browser default > `'en'` |
 | Timezone | UTC stored everywhere; render via `Intl` without passing a `timeZone` option (browser tz wins) |
 | Number / date format | `Intl` with the resolved locale; never hand-rolled templates |
@@ -77,13 +77,9 @@ These files contain the canonical literals and are exempted from currency / loca
 
 ## Monetary models invariant
 
-Every cost-bearing Pydantic model carries `currency: CurrencyCode` (ISO 4217, validated against the allowlist in `synthorg.budget.currency`). The current models are:
+Every cost-bearing Pydantic model carries `currency: CurrencyCode` (ISO 4217, validated against the allowlist in `synthorg.budget.currency`), including `CostRecord`, `TaskMetricRecord`, `AgentRuntimeState`, `ProjectCostAggregate`, and `DeliverableReceipt`; several derived report/response models also carry it for display (`grep -rn "currency: CurrencyCode" src/synthorg/` is the authoritative full list).
 
-- `CostRecord`
-- `TaskMetricRecord`
-- `AgentRuntimeState`
-
-Every aggregation site enforces a same-currency invariant; mixing currencies raises `MixedCurrencyAggregationError` (HTTP 409, error code `4007`). The aggregation sites are `CostTracker`, `ReportGenerator`, `CostOptimizer`, and HR `WindowMetrics`.
+Every aggregation site enforces a same-currency invariant via `assert_currencies_match`; mixing currencies raises `MixedCurrencyAggregationError` (HTTP 409, error code `4007`). The aggregation sites span the `budget` package (the cost tracker, report generation, forecasting, the optimiser, call and category analytics, trend analysis) and HR `WindowMetrics`.
 
 ## See also
 

@@ -12,6 +12,15 @@ local invariants (e.g. "react when the org success rate drops below a threshold"
 without forking the core. Rules only PROPOSE; every adaptation still passes through
 the proposal guards and human approval.
 
+!!! warning "Off by default, and nothing here runs unattended"
+
+    `self_improvement.enabled` ships `false`, so no snapshot is aggregated and no
+    rule is evaluated until an operator turns the loop on. Every strategy toggle
+    beneath it is off too, apart from config tuning, which has no effect while the
+    master switch is off. The approval gate is not a phase the loop graduates from:
+    a proposal reaches a human whether or not a rule fired, and no live end-to-end
+    run of this loop has happened.
+
 ## Concepts
 
 - **`SignalRule`**: a class implementing the `SignalRule` protocol. It inspects an
@@ -69,20 +78,23 @@ is `@runtime_checkable`.
 
 ## Built-in rules
 
-The ten shipped rules live in `src/synthorg/meta/rules/builtin.py` and are wired by
-`default_rules()` (e.g. `QualityDecliningRule`, `SuccessRateDropRule`,
-`BudgetOverrunRule`, `CoordinationOverheadRule`, `BenchmarkRegressionRule`). Add a new
-code-level rule by implementing the protocol and including it in `default_rules()`.
+`default_rules()` in `src/synthorg/meta/rules/builtin.py` wires the shipped set:
+`QualityDecliningRule`, `SuccessRateDropRule`, `BudgetOverrunRule`,
+`CoordinationCostRatioRule`, `CoordinationOverheadRule`, `StragglerBottleneckRule`,
+`RedundancyRule`, `ErrorSpikeRule`, and `BenchmarkRegressionRule` (the last defined
+in the sibling `benchmark_rule.py`). Add a new code-level rule by implementing the
+protocol and including it in `default_rules()`.
 
 ## Custom declarative rules (dashboard)
 
 Operators author rules at runtime without code through the dashboard rather than via
-YAML. A `CustomRuleDefinition` is stored through the `CustomRuleController` (CRUD +
-preview) and compiled into a `DeclarativeRule` (`src/synthorg/meta/rules/custom.py`)
-that implements the same `SignalRule` protocol. Each definition carries a `name`, a
-`metric_path` (a dot-notation path into `OrgSignalSnapshot`, validated against
-`METRIC_REGISTRY`), a `Comparator`, a numeric `threshold`, a `RuleSeverity`, and the
-`target_altitudes`:
+YAML. A `CustomRuleDefinition` is stored through the `CustomRuleController` at
+`/api/v1/meta/custom-rules` (list, get, create, update, delete, toggle, plus
+`/metrics` for the available metric paths and `/preview` for a dry run) and compiled
+into a `DeclarativeRule` (`src/synthorg/meta/rules/custom.py`) that implements the
+same `SignalRule` protocol. Each definition carries a `name`, a `metric_path` (a
+dot-notation path into `OrgSignalSnapshot`, validated against `METRIC_REGISTRY`), a
+`Comparator`, a numeric `threshold`, a `RuleSeverity`, and the `target_altitudes`:
 
 ```python
 from synthorg.meta.rules.custom import DeclarativeRule
@@ -92,8 +104,10 @@ rule: DeclarativeRule = DeclarativeRule(definition)
 match = rule.evaluate(snapshot)  # RuleMatch | None, same protocol as built-in rules
 ```
 
-A `critical` match blocks the meta-loop step from emitting an evolution proposal; the
-violation surfaces on the operator dashboard.
+Severity orders the fan-out and nothing else: `RuleEngine` returns matched rules
+sorted critical-first, so the most serious signal leads the context handed to the
+improvement strategies. It is not a veto. A `critical` match does not block a
+proposal, because every proposal is already blocked on the approval gate.
 
 ## Worked example: unit-test a rule
 

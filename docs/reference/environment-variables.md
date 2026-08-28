@@ -24,8 +24,8 @@ into three categories:
 | Variable | Default | Purpose |
 |---|---|---|
 | `SYNTHORG_DATABASE_URL` | unset | Postgres connection URL. Format `postgresql://user:pass@host:port/db`.  No query parameters allowed; use `SYNTHORG_POSTGRES_SSL_MODE` for ssl overrides. |
-| `SYNTHORG_DB_PATH` | unset | SQLite database file path. Mutually exclusive with `SYNTHORG_DATABASE_URL` -- if both are set, Postgres wins. Consumed by `synthorg.api.app:create_app`. |
-| `SYNTHORG_POSTGRES_SSL_MODE` | `require` | Override for the Postgres SSL mode (`disable` / `allow` / `prefer` / `require` / `verify-ca` / `verify-full`).  Validated at startup; the `require` default refuses an unencrypted connection. |
+| `SYNTHORG_DB_PATH` | unset | SQLite database file path. Mutually exclusive with `SYNTHORG_DATABASE_URL` -- if both are set, Postgres wins. Consumed by `synthorg.api.boot_persistence.resolve_boot_persistence` (called from `create_app`); see also `api/app_helpers.py`, `api/integrations_wiring.py`. |
+| `SYNTHORG_POSTGRES_SSL_MODE` | `verify-full` | Override for the Postgres SSL mode (`disable` / `allow` / `prefer` / `require` / `verify-ca` / `verify-full`).  Validated at startup; the `verify-full` default encrypts the connection and validates the server certificate and hostname. |
 
 ## Bootstrap secrets (init-time only)
 
@@ -120,7 +120,7 @@ name is consulted. Examples of the auto-derived shape:
 |---|---|
 | `api/sse_keepalive_seconds` | `SYNTHORG_API_SSE_KEEPALIVE_SECONDS` |
 | `engine/evolution_enabled` | `SYNTHORG_ENGINE_EVOLUTION_ENABLED` |
-| `coordination/department_policy_cas_retry_attempts` | `SYNTHORG_COORDINATION_DEPARTMENT_POLICY_CAS_RETRY_ATTEMPTS` |
+| `coordination/company_departments_cas_retry_attempts` | `SYNTHORG_COORDINATION_COMPANY_DEPARTMENTS_CAS_RETRY_ATTEMPTS` |
 
 The override sits below the DB and above the registered default in
 the precedence chain (see

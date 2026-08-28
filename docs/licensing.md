@@ -111,12 +111,16 @@ This means:
 
 ## Third-Party Dependency Licences
 
-SynthOrg's default install (SQLite-only) carries only permissive licences (MIT, Apache-2.0, BSD, ISC). The optional `[postgres]` extra adds two LGPL-3.0-or-later components:
+No AGPL or non-LGPL GPL component ships, and a gate (`scripts/check_license_compat.py`) keeps them out. Every weak-copyleft component that does ship is attributed in [NOTICE](https://github.com/Aureliolo/synthorg/blob/main/NOTICE) at the top of the repository, which is the authoritative list. There are two.
+
+**In the default install**, `tld` arrives transitively through `trafilatura` and `courlan`. It is offered under a choice of three licences (`MPL-1.1 OR GPL-2.0-only OR LGPL-2.1-or-later`); SynthOrg elects the LGPL-2.1-or-later arm and records that election in NOTICE, and the GPL-2.0-only arm is expressly not elected. Because a disjunction is an offer of alternatives rather than a stack of obligations, the gate re-checks on every run that the offer still reaches the elected arm: a version bump can drop an arm while the package name never moves.
+
+**In the optional `[postgres]` extra**, and in the published Docker image, two LGPL-3.0-only components:
 
 - `psycopg[binary]`: PostgreSQL adapter
 - `psycopg-pool`: connection pool for psycopg
 
-These are linked dynamically (separate `pip`-installable packages) and the LGPL anti-circumvention clause is satisfied by the standard `pip` replacement workflow. Operators who redistribute combined binaries that include the `postgres` extra must publish a NOTICE listing the LGPL components and preserve replacement-version flexibility. Operators using SQLite (the default) carry no LGPL obligations.
+Both are linked dynamically (separate `pip`-installable packages) and the LGPL anti-circumvention clause is satisfied by the standard `pip` replacement workflow. Operators who redistribute combined binaries that include the `postgres` extra, or the published image, must carry the NOTICE listing the LGPL components and preserve replacement-version flexibility. NOTICE also records how to relink a modified psycopg.
 
 The retention of LGPL drivers in the optional extra was evaluated explicitly: the [LGPL Postgres Driver Decision](research/lgpl-postgres-driver-decision.md) compares the trade-offs (asyncpg swap, vendor / fork, accept-with-ADR) and documents why dynamic linkage in an opt-in extra is acceptable under BUSL-1.1's narrowed Additional Use Grant.
 

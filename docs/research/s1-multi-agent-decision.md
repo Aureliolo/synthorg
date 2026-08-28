@@ -33,6 +33,12 @@ last_reviewed: 2026-05-05
     the framing the authors use for their own headline result, and S2 promotes it
     accordingly.
 
+    Separately, Section 4's "organisational simulation fidelity" value proposition
+    (point 2 below) states a product thesis that S2's evidence review has since closed:
+    see S2 [What closed](s2-agent-parallelism-evidence.md#what-closed), item 1
+    ("organisational simulation as an output-quality mechanism"). Read that paragraph as
+    the framing at the time, not as current product positioning.
+
 ## Bottom line
 
 SynthOrg keeps multi-agent as a foundational capability but treats it as **topology-per-task, not topology-per-company**, with single-agent as the default for all task types where multi-agent cannot demonstrate a per-task justification. The three S1 papers **confirm** this direction; they do not overturn it. Kim et al. 2025 (already integrated in the engine design) set up the heuristic; papers 2 and 3 formalise the math and empirics behind it; paper 1 supplies the emergent-risk catalog the existing guardrails do not yet fully cover.

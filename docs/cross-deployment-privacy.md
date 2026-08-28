@@ -74,10 +74,11 @@ logging:
     synthorg.meta.telemetry: DEBUG
 ```
 
-Events are visible in the structured log output with event metadata (event type, queue depth, batch size, HTTP status). Note: the full serialised event payload is not logged; only operational metadata is emitted for diagnostics. Event names:
+Event names:
 
 - `cross_deployment.event.queued`: event buffered (logs event_type and pending count)
 - `cross_deployment.batch.flushed`: batch sent to collector (logs event_count and HTTP status)
+- `cross_deployment.batch.flush_failed` / `.flush_retrying` / `.dropped`: delivery failure paths
 
 ## Data Retention
 
@@ -85,7 +86,7 @@ The default collector (`InMemoryAnalyticsCollector`) stores events **in memory o
 
 ## Access Control
 
-The collector endpoint (`POST /api/meta/analytics/events`) requires **write access** and is protected by the standard API authentication and authorization middleware. Pattern and recommendation queries (`GET`) require read access.
+The collector endpoint (`POST /api/v1/meta/analytics/events`) requires **write access**, is protected by the standard API authentication and authorisation middleware, and answers at all only on a deployment that set `collector_enabled: true`. It is a backend-to-backend ingestion path with no dashboard surface. Pattern and recommendation queries (`GET /api/v1/meta/analytics/patterns` and `/recommendations`) require read access.
 
 ## Collector Role
 
@@ -100,4 +101,4 @@ self_improvement:
     collector_enabled: true  # enable collector role
 ```
 
-The collector never receives unanonymized data; it only receives the anonymised events described above.
+The collector never receives raw data; it receives only the anonymised events described above.

@@ -5,7 +5,7 @@ On-demand reference for product telemetry. The short rule in `CLAUDE.md` is: tel
 ## Enabling
 
 - Off by default. Enable with `SYNTHORG_TELEMETRY_ENABLED=true` or the `telemetry.enabled` setting (or via the dashboard / DB).
-- Delivery backend is Logfire. The write-only project token is **embedded in the release wheel** at build time (`src/synthorg/telemetry/reporters/_embedded_token.py` is rewritten by `.github/workflows/release-cut.yml` before `uv build`); operators never configure or paste it. Local source installs ship the sentinel and run telemetry-disabled by build.
+- Delivery backend is Logfire. The write-only project token is **embedded in the published backend Docker image** at build time: `docker/backend/Dockerfile`'s builder stage runs `scripts/embed_logfire_token.py`, rewriting `src/synthorg/telemetry/reporters/_embedded_token.py` in place before `uv sync` packages the venv, gated on the optional `LOGFIRE_PROJECT_TOKEN` build-arg that `.github/workflows/build-images.yml` supplies from the GHA repo secret (pull-request builds deliberately receive an empty token, so unreviewed PR code never gets the write-only secret). Operators never configure or paste it. Local source installs and any build where the build-arg is unset ship the sentinel and run telemetry-disabled by build.
 
 ## Lifecycle log signals
 

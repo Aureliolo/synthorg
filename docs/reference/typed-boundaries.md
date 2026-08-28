@@ -112,13 +112,15 @@ variants:
   ...]}`.
 - `WsPingMessage{action: "ping"}`.
 
-The shape mirrors the typed contract in
-`web/src/api/types/websocket.ts` (PR #1718); bump
-`WS_PROTOCOL_VERSION` on both sides together for breaking payload
-changes. Malformed control frames return the generic `Invalid control
-message` envelope and the connection stays open; the legacy
-per-error strings (`Unknown action`, `filters must be an object`)
-are gone.
+The outbound literals (`web/src/stores/websocket/transport.ts`,
+`web/src/stores/websocket/subscriptions.ts`) are hand-constructed
+rather than typed against a shared contract; `web/src/api/types/websocket.ts`
+covers the inbound event-payload shapes only. Bump `WS_PROTOCOL_VERSION`
+(`src/synthorg/api/ws_models.py`, `web/src/utils/ws-constants.ts`) on
+both sides together for breaking payload changes. Malformed control
+frames return the generic `Invalid control message` envelope and the
+connection stays open; the legacy per-error strings (`Unknown action`,
+`filters must be an object`) are gone.
 
 ### Audit-chain payload (`audit_chain`)
 
@@ -218,7 +220,7 @@ shapes: some completions parse to plain dicts, others surface objects
 with attribute access (`item.function.arguments`). The provider layer
 has no control over the upstream payload shape, so this boundary is
 deliberately **lenient**: it does NOT run `parse_typed`. Instead,
-`extract_tool_calls` (`src/synthorg/providers/drivers/mappers.py:131`)
+`extract_tool_calls` (`src/synthorg/providers/drivers/mappers.py:261`)
 walks the raw list and rescues whatever it can.
 
 - Wire shape: `list[dict] | list[object]` (or `None` for completions
@@ -259,7 +261,7 @@ class WebhookEventPayload(BaseModel):
     model_config = ConfigDict(frozen=True, extra="allow")
 ```
 
-(`src/synthorg/api/controllers/_webhooks_wiring.py:39`).
+(`src/synthorg/api/controllers/_webhooks_wiring.py:29`).
 
 - Wire shape: any JSON object. Arrays, scalars, and non-JSON bodies
   are rejected at `parse_typed("webhook.payload", ...)` time and
@@ -279,7 +281,7 @@ single-key dict.
 
 ### MCP tool-execution dual paths (`mcp.tool.dual_path`)
 
-The MCP invoker (`src/synthorg/meta/mcp/invoker.py:149`) routes tool
+The MCP invoker (`src/synthorg/meta/mcp/invoker.py:128`) routes tool
 arguments through one of two validation paths depending on whether
 the tool declares an `args_model`:
 

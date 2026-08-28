@@ -13,6 +13,14 @@ related_research_log: 24
 
 # Agent-Controlled Context Compaction Evaluation
 
+!!! note "Dated snapshot"
+
+    This evaluation is a point-in-time record. The OpenHands loop it references
+    throughout (as the loop that "compacts inside its own harness") has since been
+    removed; one loop ships today, so the ReactLoop-versus-OpenHands distinction no
+    longer applies. The Phase 3 personality-aware marker preservation idea references
+    `PersonalityConfig`, which has also since been removed.
+
 ## Context
 
 LangChain's Autonomous Context Compression proposes exposing compaction as an **agent tool**

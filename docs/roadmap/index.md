@@ -1,22 +1,47 @@
 # Roadmap
 
-## Current status
+## Status
 
-SynthOrg is **pre-alpha**. The platform, infrastructure, and runtime are built
-and tested (<!--RS:tests-->46,000+<!--/RS--> tests in the most recent run) and
-integrated through a REST + WebSocket API, a React 19 dashboard,
-and a Go CLI. The agent runtime, multi-agent coordinator, work pipeline spine,
-intake engine, sandbox lifecycle dispatch, and distributed-path consumers are
-all wired and exercised by deterministic e2e harnesses with a scripted provider
-(no real LLM spend). What remains in flight is the operator-facing maturity that
-turns a wired runtime into something you would leave running, plus real-provider
-acceptance against a live LLM. Progress is tracked openly on the
-[issue tracker](https://github.com/Aureliolo/synthorg/issues).
+SynthOrg is **pre-alpha**, and the plain summary is that the loop does not yet
+complete.
 
-## Available now
+The platform underneath it is built and tested: <!--RS:tests-->46,000+<!--/RS-->
+tests in the most recent run, a REST + WebSocket API, a React 19 dashboard, a Go
+CLI, and deterministic end-to-end harnesses that drive the agent runtime, the
+multi-agent coordinator, the work pipeline spine, the intake engine, sandbox
+lifecycle dispatch, and the distributed-path consumers against a scripted
+provider with no LLM spend. Those harnesses establish that the wiring holds.
+They do not establish that the loop delivers, because a scripted provider does
+no decomposition.
 
-Shipped and exercised today (by deterministic e2e harnesses with a scripted
-provider, zero LLM spend, unless noted):
+Against a real deployment with real models, the loop has been driven end to end
+twelve times and has never reached the assembly stage. No run has produced an
+assembled deliverable, and no completion has been recorded. Rounds stopped on
+authentication; a Windows event-loop split that left the runtime with no agent
+tools; a reasoning model answering on a channel the loop did not read; a
+provider outage; a completion review reading its deliverable from a store
+written after the review had already ruled; a replan generation cap with no
+exit; a plan repair that could not converge; and three separate decomposition
+bounds that each discarded a tree which had already converged.
+
+The stop point has moved downstream. The early rounds died on the deployment,
+the middle rounds died in planning and review, and the most recent died inside
+recursive decomposition, having built a tree to depth four with subtrees of 20,
+15, 12, and 11 leaves, and having absorbed live the two bounds that had been
+fatal one round earlier. It stopped because the two caps that size a level
+contradict each other: the planner was ordered to widen, then failed for
+widening.
+
+That is the state to plan against. The machinery runs, the tree builds, and
+nothing has yet come out of the far end. Every round is recorded in the
+[loop round log](../reference/loop-round-log.md), and work is tracked openly on
+the [issue tracker](https://github.com/Aureliolo/synthorg/issues).
+
+## Built and exercised
+
+Present in the product and covered by deterministic end-to-end harnesses with a
+scripted provider (no LLM spend) unless noted. Coverage under harness is not
+evidence that the loop completes; see [Status](#status).
 
 - **API, dashboard, CLI**: REST + WebSocket API, the React 19 dashboard, and
   the Go CLI for Docker orchestration and supply-chain verification.
@@ -47,7 +72,11 @@ provider, zero LLM spend, unless noted):
   standing up its own per-initiative project; the task board (`POST /tasks`)
   files against a caller-named project; the synthetic-client intake door
   (`POST /requests/{id}/approve`) is a benchmark surface, off by default
-  behind `simulations.client_intake_enabled`.
+  behind `simulations.client_intake_enabled`. Standing up a full initiative
+  (a brief the spine must decompose into a plan) has exactly one path, and it
+  ends at an operator approving a charter: `WorkItem.charter_id` is refused at
+  the type level unless the approval that authorised the commitment is
+  attached.
 - **Sandbox lifecycle dispatch**: `DockerSandbox.execute()` honours `owner_id`
   and dispatches to the configured per-call / per-agent / per-task lifecycle
   strategy, with grace-period teardown.
@@ -56,13 +85,16 @@ provider, zero LLM spend, unless noted):
   multi-worker synthetic load (no loss, no duplication).
 - **Conversational org interface**: one unified "talk to your org" chat in
   natural language. A single turn is classified to an intent (answer a question,
-  draft a plan, convene a group, act) and dispatched, with per-turn concern
-  routing to the closest-fit role agent and transparent multi-voice (specialists
-  chime in with attribution). Human-consented agent-initiated invites and direct
-  MCP acting under trust (sensitive actions approval-gated; fail-closed when
-  security governance is inactive) round it out. The read/propose/group and
-  multi-voice capabilities are on by default and gate live per request;
-  agent-initiated invites and direct MCP acting are off by default.
+  steer work a charter already authorised, convene a group, act, run a charter
+  interview, configure the control plane) and dispatched, with transparent
+  multi-voice so specialists chime in with attribution. The read, propose,
+  group and multi-voice capabilities are on by default and gate live per
+  request. Per-turn concern routing to the closest-fit role agent needs both
+  `chief_of_staff.routing_enabled` and the persona master switch
+  `self_improvement.chief_of_staff_enabled`, and because the master ships off,
+  routing is off until an operator turns it on. Agent-initiated invites, direct
+  MCP acting and the operator console are off by default as well, and the
+  latter two fail closed when security governance is inactive.
 - **Operations**: structured logging with correlation tracking and redaction,
   log shipping, Prometheus metrics, OTLP, HttpOnly-cookie multi-user sessions
   with CSRF protection, Wolfi apko-composed distroless images, Trivy
@@ -79,18 +111,23 @@ provider, zero LLM spend, unless noted):
 
 ## In active development
 
-These turn a wired runtime into something you would leave running. The runtime,
-coordinator, intake, work pipeline, sandbox dispatch, and distributed-path
-consumers already run under deterministic harnesses; what remains is
-operator-facing maturity and real-provider acceptance:
+The work that stands between the machinery above and a loop that finishes:
 
+- **Getting a run to the assembly stage**: each live round is scoped to move the
+  stop point downstream and to record where it lands. The open work is the
+  decomposition bounds the most recent rounds died on, chiefly the two caps
+  that size a level and contradict each other, plus the stall detection that
+  did not fire on a planning session repeating one fruitless tool call until
+  its turn budget ran out.
 - **Self-improvement loop**: company-wide signals from existing subsystems
   producing deployment and product-level improvement proposals through a
   rule-first hybrid pipeline with mandatory human approval. Components built
-  and unit-tested; live end-to-end run pending.
-- **Real-provider acceptance**: the e2e harness drives the runtime against a
-  deterministic scripted provider, not a real LLM. A real-provider
-  golden-company benchmark and run narrative arrive with the operate tier.
+  and unit-tested; the master switch `self_improvement.enabled` ships off and
+  no live end-to-end run has happened.
+- **Real-provider acceptance**: the end-to-end harness drives the runtime
+  against a deterministic scripted provider rather than a real LLM. A
+  real-provider golden-company benchmark and run narrative arrive with the
+  operate tier.
 
 ## Backlog
 
@@ -100,8 +137,11 @@ Research candidates and longer-term ideas without a scheduled timeframe. See
 - Advanced memory architecture (GraphRAG, RL consolidation)
 - Distributed multi-node organisational memory consistency (Phase 2
   compare-and-set on PostgreSQL advisory locks)
-- A2A skill negotiation and inter-org federation (delegation across
-  organisations)
+- Inter-org federation as an operator surface. The A2A gateway, the peer
+  registry and the five JSON-RPC methods (including `skills/query` and
+  `skills/negotiate`) are implemented and covered by in-process tests, but no
+  harness stands two deployments up against each other, so delegation across
+  organisations is unexercised
 - Community template marketplace
 - Kubernetes sandbox backend
 - Shift system for agents

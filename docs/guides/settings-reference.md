@@ -84,6 +84,7 @@ These surface previously-hardcoded timeouts, batch sizes, and resource limits. A
 | `chief_of_staff` | Unified-chat + Chief-of-Staff capability flags (turn-router, multi-voice, propose, concern-routing, group-chat, learning, alerts, narrative, invite, direct-MCP) and per-feature models |
 | `knowledge` | Knowledge substrate (document ingestion + retrieval) enable and optional generative-RAG synthesis (model, strategy, per-answer chunk budget) |
 | `design` | Image-generation master flag and the image model the design `image_generator` tool routes through |
+| `output_style` | House writing-style guardrail: master enable, shadow mode, active pack, and exemptions |
 | `demo` | Demo-mode showcase content (e.g. greeting copy) |
 
 ### Security headers and error documentation

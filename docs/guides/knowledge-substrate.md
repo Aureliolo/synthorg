@@ -20,15 +20,19 @@ The implementation lives under `src/synthorg/knowledge/`. See the [knowledge sub
 
 ## Enablement
 
-The single operator toggle is `knowledge.enabled` (default `false`). Wiring is additionally gated on infrastructure: it requires both a connected persistence backend and a memory backend. If either is absent, or the toggle is off, the controllers and MCP handlers return `503`.
+The substrate is on by default. It is ghost-wired at boot whenever both a connected persistence backend and a memory backend exist, and the master switch is read live per request at the handlers, so toggling it takes effect on the next call with no restart. Turning it off, or booting without either dependency, makes the controllers and MCP handlers answer `503`.
 
-Config keys (`src/synthorg/knowledge/config.py`):
+Runtime settings (`src/synthorg/settings/definitions/knowledge.py`), all live:
 
 | Key | Type | Default | Purpose |
 |---|---|---|---|
-| `knowledge.enabled` | bool | `false` | Master switch. |
-| `knowledge.pdf_loader` | str | `pdfplumber` | PDF loader implementation. |
-| `knowledge.code_chunker` | str | `tree_sitter` | Code chunker implementation. |
+| `knowledge.enabled` | bool | `true` | Master switch for ingestion and retrieval. |
+| `knowledge.synthesis_enabled` | bool | `true` | Whether the generative `ask` surface is available. Retrieval is unaffected by it. |
+| `knowledge.synthesis_model` | MODEL_REF | `""` | The `(provider, model)` pair the synthesiser dispatches on. Unset leaves `ask` answering `503`; `search` stays available. |
+| `knowledge.synthesis_synthesizer` | str | `llm` | Synthesis strategy discriminator. |
+| `knowledge.synthesis_max_chunks` | int | (constant) | Retrieved chunks the synthesiser may ground on. |
+
+`KnowledgeConfig` (`src/synthorg/knowledge/config.py`) carries the boot-time strategy discriminators `pdf_loader` (default `pdfplumber`) and `code_chunker` (default `tree_sitter`), plus `repo_root`, the operator-configured filesystem root that bounds repository and PDF ingestion. Its own `enabled` field is **not** consulted for the enable decision; the settings-service flag above is the single owner of that.
 
 Chunk budgets and search limits are module constants in `src/synthorg/knowledge/constants.py` because they are part of the on-disk index contract. The optional `pdfplumber`, `tree-sitter`, and `tree-sitter-language-pack` dependencies ship under the `knowledge` extras group and import lazily; a missing import raises a clear dependency error with install guidance.
 
@@ -39,11 +43,12 @@ All REST endpoints are read-only and require read access. Ingest, reindex, and d
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/projects/{project_id}/knowledge` | Paginated sources for a project. Query params: `cursor`, `limit` (default 50), `include_global` (default `true`), `stale_only` (default `false`). |
-| `GET` | `/projects/{project_id}/knowledge/search` | Hits ordered by relevance. Required `q`, optional `limit` (1 to 64, default 8). |
+| `GET` | `/projects/{project_id}/knowledge/search` | Cited hits ordered by relevance. Required `q`, optional `limit` (1 to 64, default 8). |
+| `GET` | `/projects/{project_id}/knowledge/ask` | Retrieves cited chunks, then synthesises a grounded answer whose every claim resolves to one of them. Same parameters as `search`. Answers `503` when no synthesis model is configured; `search` is unaffected. |
 | `GET` | `/projects/{project_id}/knowledge/{source_id}` | Single source by id (404 if absent). |
 | `GET` | `/knowledge` | Paginated global (project-unscoped) sources for admin UIs. |
 
-The MCP surface (`src/synthorg/meta/mcp/domains/knowledge.py`) adds the admin-gated `knowledge:ingest`, `knowledge:reindex`, and `knowledge:delete` tools alongside the read tools.
+The MCP surface (`src/synthorg/meta/mcp/domains/knowledge.py`) mirrors those reads as `synthorg_knowledge_search`, `synthorg_knowledge_ask`, `synthorg_knowledge_list`, and `synthorg_knowledge_get` (capability `knowledge:read`), and adds `synthorg_knowledge_ingest`, `synthorg_knowledge_reindex`, and `synthorg_knowledge_delete` under `knowledge:admin`, each requiring the admin guardrail arguments.
 
 ## Worked example: search a corpus
 
@@ -61,4 +66,4 @@ curl -s -H "Authorization: Bearer <token>" \
 
 ## Observability
 
-The substrate emits structured log events only (no WebSocket events): `knowledge.source.ingested`, `knowledge.source.unchanged`, `knowledge.chunks.indexed`, `knowledge.reindex.completed`, and `knowledge.searched`, plus warning-level keys for ingest failures, unresolved citations, and unavailable sources.
+The substrate emits structured log events only (no WebSocket events): `knowledge.source.ingested`, `knowledge.source.unchanged`, `knowledge.chunks.indexed`, `knowledge.reindex.started` / `.completed`, `knowledge.searched`, and `knowledge.synthesised`, plus warning-level keys for ingest failures, unresolved citations, unavailable sources, blocked ticket fetches, and invalid synthesiser output.

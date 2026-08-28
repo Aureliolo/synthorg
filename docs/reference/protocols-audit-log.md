@@ -137,6 +137,10 @@ While reconciling, #2503 also brought the `engine/` table section into line with
 - Flipped to `KEEP` (per #1864 re-flag, verified against source): `ShadowTaskProvider`, `ShadowAgentRunner`, `ReviewStage`, `ConfidenceFormatter`, `StrategicContextProvider`, `ImpactScorer`, and `StepQualityClassifier` (the last now wired at boot + injected into every execution loop by #2503 itself).
 - Removed rows for protocols #1865 deleted (no longer in source): `_HeuristicGraderBridge`, `_RoutingScorerBridge`, `_ModelMatcherBridge`, `_ExecutionResultLike`, `_AgentRunResultLike`.
 
+## Superseded by the meeting/ceremony/conflict-resolution removal
+
+The entries above that name `ParticipantResolver` (`meeting/participant.py`), the `ConflictDetector` fold (`meeting/conflict_detection.py` into `meeting/protocol.py`), and `communication/meeting/factory.py::build_conflict_detector` are history: they record decisions made while that stack existed. `communication/meeting/`, `communication/conflict_resolution/`, and `communication/event_stream/consumer.py` have since been deleted in full, tables and all (migration `20260824000000_drop_meeting_ceremony_conflict_stack`), taking every protocol named in those entries with them. See the `src/synthorg/communication/` table in [Protocols Audit](protocols-audit.md) for the current classification.
+
 ## Out of scope
 
 - Actually deleting any `Protocol` class (cleanup PRs).

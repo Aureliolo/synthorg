@@ -68,8 +68,9 @@ structural check (`isinstance(ranker, CandidateRanker)`) holds because the proto
 
 Rankers are registered as `(strategy_name, ranker_factory)` pairs in the single source
 of truth, `src/synthorg/engine/assignment/registry.py`
-(`_SCORING_STRATEGY_SPECS`), alongside the built-ins (`ScoreDescendingRanker`,
-`WorkloadAscendingRanker`, `CostDescendingRanker`, `AuctionBidRanker`):
+(`_SCORING_STRATEGY_SPECS`), alongside the built-ins: `ScoreDescendingRanker`,
+`WorkloadAscendingRanker`, `CostDescendingRanker` (which despite its name picks the
+*lowest* total cost, tie-breaking on score), and `AuctionBidRanker`.
 
 ```python
 # src/synthorg/engine/assignment/registry.py
@@ -83,19 +84,28 @@ _SCORING_STRATEGY_SPECS: tuple[tuple[str, Callable[[], CandidateRanker]], ...] =
 ## Hyperparameter surface
 
 Tunable hyperparameters are exposed through the settings system so operators can adjust
-without redeploying. Register a `SettingDefinition` under the relevant namespace, then
-read the resolved value through a `ConfigResolver` (the typed accessors
-`get_float` / `get_int` / `get_str` live on `ConfigResolver`, not on `SettingsService`,
-whose `get()` returns the raw `SettingValue`):
+without redeploying. Register a `SettingDefinition` under an existing namespace
+(assignment tuning belongs to `SettingNamespace.ENGINE`; there is no `assignment`
+namespace, and `SettingNamespace` is an enum, so an invented one will not resolve).
+Read the value back through a `ConfigResolver`: the typed accessors
+`get_float` / `get_int` / `get_str` / `get_bool` live there, not on `SettingsService`,
+whose `get()` returns the raw `SettingValue`.
 
 ```python
 from synthorg.settings.resolver import ConfigResolver
 
 
 async def build_top_score(resolver: ConfigResolver) -> TopScoreRanker:
-    floor = await resolver.get_float("assignment", "score_floor")
+    floor = await resolver.get_float("engine", "assignment_score_floor")
     return TopScoreRanker(score_floor=floor)
 ```
+
+A factory like the one above bakes the value in at construction, so a later write
+reaches nothing until something rebuilds the ranker. Either read the resolver inside
+`rank`, or declare the key on the subsystem that builds the ranker with
+`rebuild_on_change=True` so the reconciler tears down and re-activates on a write. A
+writable setting that neither reaches is the third category the project does not
+allow: shown as editable, saved, and applied to nothing.
 
 ## Worked example: unit-test a ranker
 

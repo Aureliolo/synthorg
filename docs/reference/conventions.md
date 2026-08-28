@@ -30,7 +30,10 @@ class ApprovalRepository(Protocol):
     async def delete(self, approval_id: NotBlankStr) -> bool: ...
 ```
 
-Reference: `src/synthorg/persistence/approval_protocol.py:34-73`.
+Reference: `src/synthorg/persistence/approval_protocol.py:65-316` (the
+shown snippet is the canonical five-method shape; the real protocol
+also carries bespoke `save_many` / `get_many` / `expire_if_pending`
+methods under ADR-0001 D7).
 
 ## 2. Service lifecycle method symmetry
 
@@ -132,7 +135,7 @@ from synthorg.observability.events.workers import (
 from synthorg.observability.events.persistence.task import PERSISTENCE_TASK_SAVED
 ```
 
-Reference: `src/synthorg/workers/dispatcher.py:19-25`.
+Reference: `src/synthorg/workers/dispatcher.py:26-31`.
 
 ## 6. Domain error hierarchies
 
@@ -251,7 +254,7 @@ field happens to hold. Where the covenant has to hold all the way
 down, the field type carries it (a tuple, a frozenset, a frozen
 model), not the parent's `frozen` flag.
 
-Canonical example: `src/synthorg/approval/models.py:28`. Gate:
+Canonical example: `src/synthorg/approval/models.py:33`. Gate:
 `scripts/check_frozen_model_extra_forbid.py` (pre-push +
 `.pre-commit-config.yaml` `frozen-extra-forbid`).
 
@@ -433,7 +436,7 @@ would under `SystemClock`).
 
 ### Grandfathered callable shape
 
-`loop_prevention/{circuit_breaker,dedup,rate_limit}.py` deliberately use the
+`communication/loop_prevention/{circuit_breaker,dedup,rate_limit}.py` deliberately use the
 `clock: Callable[[], float] = time.monotonic` shape rather than the `Clock`
 Protocol: the churn of converting ~30 test sites passing callables <!-- lint-allow: doc-numeric-macros -- clock-migration test-site count, not a build-time stat -->
 outweighs the testability win, so this is a permanent carve-out. New code uses
@@ -644,7 +647,7 @@ distinct from `save` (persist) and `delete` (remove).
 | Method | Where | Notes |
 |--------|-------|-------|
 | `activate_workflow` | `WorkflowExecutionController.activate_workflow` (`src/synthorg/api/controllers/workflow_executions.py`) | Spawns a workflow execution loop. The corresponding teardown verb in this controller is `WorkflowExecutionController.cancel_execution`: workflow runtimes are cancelled rather than "deactivated" because `cancel_*` is the lifecycle-end verb when an entity carries an in-flight execution that may need to surface a cancellation outcome. |
-| `deactivate_client` | `ClientController.deactivate_client` (`src/synthorg/api/controllers/clients.py`), `ClientFacadeService.deactivate_client` (`src/synthorg/integrations/mcp_services.py`) | Disables an integration client without deletion. |
+| `deactivate_client` | `ClientController.deactivate_client` (`src/synthorg/api/controllers/clients.py`), `ClientFacadeService.deactivate_client` (`src/synthorg/integrations/mcp_facades/_clients.py`) | Disables an integration client without deletion. |
 | `deactivate_all` | `FineTuneCheckpointRepository.deactivate_all` (`src/synthorg/persistence/fine_tune_protocol.py`, both backends) | Bulk deactivate of fine-tune jobs. |
 
 Prefer these verbs for any new "becomes runnable / no longer runnable"
@@ -988,4 +991,4 @@ read-modify-writes that are race-free only under a single owner.
 * [errors.md](errors.md): RFC 9457 problem details, error-code
   ranges, HTTP exception handler registration recipe.
 * [mcp-handler-contract.md](mcp-handler-contract.md): the Args models
-  contract at the MCP boundary (#1611).
+  contract at the MCP boundary.

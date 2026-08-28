@@ -61,7 +61,7 @@ Tests override defaults per-case via `server.use(http.get(...))` inside the test
 `web/src/test-setup.tsx` registers a global `afterEach` that:
 
 - Calls `useToastStore.getState().dismissAll()` (clears pending auto-dismiss timers + the toasts array in one idiomatic call).
-- Invokes `cancelPendingPersist()` on the notifications store.
+- Calls `cancelPendingMcpCatalogSearch()` (clears the MCP-catalog store's 200ms search-debounce timer).
 - Calls `useThemeStore.getState().teardown()` (detaches the `prefers-reduced-motion` `MediaQueryList` listener installed at store creation).
 
 Tests that need to inspect the toasts list *after* timers drain can call `useToastStore.getState().cancelAllPending()` directly in their own teardown; it clears timers without mutating `toasts`.
@@ -72,7 +72,7 @@ The theme store also calls `teardown()` from its `import.meta.hot?.dispose(...)`
 
 ### WebSocket store is a deliberate exception
 
-`useWebSocketStore` exposes its own `teardown()` action (clears heartbeat / pong / reconnect timers, detaches socket event handlers, bumps `connectGeneration` to invalidate stale `doConnect` chains, resets observable state including `reconnectExhausted`, `sseFallbackActive`, `sseFallbackExhausted`, and `protocolVersionMismatch`) but is invoked from the file-local `resetStore()` in `web/src/__tests__/stores/websocket.test.ts`, NOT from the global `afterEach`. Wiring it into the global hook would eagerly import the apiClient chain in test-setup, which captures the unmocked `getCsrfToken` reference before tests that `vi.mock('@/utils/csrf')` can hoist; see PR #1603 commit `fcfddf30` for the diagnostic. The heartbeat tests pair this with `retry: 3` on three structurally-racy cases (matching the existing `first-message auth` precedent) to absorb the residual MSW-vs-fake-timer microtask race.
+`useWebSocketStore` exposes its own `teardown()` action (clears heartbeat / pong / reconnect timers, detaches socket event handlers, bumps `connectGeneration` to invalidate stale `doConnect` chains, resets observable state including `reconnectExhausted`, `sseFallbackActive`, `sseFallbackExhausted`, and `protocolVersionMismatch`) but is invoked from the file-local `resetStore()` in `web/src/__tests__/stores/websocket.test.ts`, NOT from the global `afterEach`. Wiring it into the global hook would eagerly import the apiClient chain in test-setup, which captures the unmocked `getCsrfToken` reference before tests that `vi.mock('@/utils/csrf')` can hoist. The heartbeat tests pair this with `retry: 3` on three structurally-racy cases (matching the existing `first-message auth` precedent) to absorb the residual MSW-vs-fake-timer microtask race.
 
 ## Active-Handle Gate (MANDATORY)
 
@@ -83,7 +83,7 @@ The unit project loads `web/test-infra/active-handle-tracker.ts` as a setupFile.
 `test-setup.tsx` installs two shims that bypass jsdom asynchronous primitives whose per-call work would otherwise slow tests down. The shims are speed optimisations; the active-handle gate would tolerate the original jsdom paths if they did not also schedule per-write `setTimeout(0)` dispatches that compound across thousands of tests.
 
 - **Cookie shim** (`@/cookie-shim`): replaces `Document.prototype.cookie` with a synchronous in-memory jar so jsdom's tough-cookie Promise-based accessor is bypassed. The jar is exported so tests can wipe per-test state without touching the DOM. The global `afterEach` clears the jar and re-seeds `csrf_token=test-csrf-token`. Tests that need different cookie behaviour override `Document.prototype.cookie` at the test level (see `__tests__/utils/csrf.test.ts`) and restore the shim in their own `afterEach`. Prototype-pollution defence is the primary security purpose; speed is a side-benefit.
-- **Storage shim** (`@/storage-shim`): patches `Storage.prototype` methods to bypass jsdom's `_dispatchStorageEvent` `setTimeout(0)` path. `localStorage instanceof Storage` stays true and `vi.spyOn(Storage.prototype, 'setItem' | 'getItem' | ...)` continues to intercept. State is held in an instance-keyed `WeakMap`; per-test isolation is the caller's responsibility (see `cancelSetupWizardPersist`, `cancelOrgChartPrefsPersist`, `cancelPendingPersist`).
+- **Storage shim** (`@/storage-shim`): patches `Storage.prototype` methods to bypass jsdom's `_dispatchStorageEvent` `setTimeout(0)` path. `localStorage instanceof Storage` stays true and `vi.spyOn(Storage.prototype, 'setItem' | 'getItem' | ...)` continues to intercept. State is held in an instance-keyed `WeakMap`; per-test isolation is the caller's responsibility. The dashboard is a pure API consumer with no client-side domain-state persistence, so the shim exists for the few allowlisted client-storage paths that remain: the auth/CSRF cookie shim, the build-version check (`@/utils/app-version`), and per-device, non-domain UX state (the workflow editor's canvas viewport, `use-unsaved-changes-guard`'s draft recovery).
 
 ### Companion ESLint rules
 
@@ -91,13 +91,15 @@ The unit project loads `web/test-infra/active-handle-tracker.ts` as a setupFile.
 
 ## WS Payload Sanitization
 
-`sanitizeWsString()` (exported from `web/src/stores/notifications.ts`) normalises every string field received from WebSocket events before it reaches storage or display. It strips C0 control characters and DELETE (except common whitespace `\t` / `\n` / `\r`), strips bidi-override characters (CVE-2021-42574 class), trims, and caps length at `MAX_STRING_LEN` (128) at code-point boundaries so surrogate pairs are not split.
+`sanitizeWsString()` (defined in `web/src/utils/ws-sanitize.ts`, kept out of the notifications store module so benchmark and unit-test imports can pull in the helper without dragging in the store's toast queue / persistence side effects; the store re-exports it for existing call sites) normalises every string field received from WebSocket events before it reaches storage or display. It strips C0 control characters and DELETE (except common whitespace `\t` / `\n` / `\r`), strips bidi-override characters (CVE-2021-42574 class), trims, and caps length at `MAX_WS_STRING_LEN` (128) at code-point boundaries so surrogate pairs are not split.
+
+`sanitizeWsEnum()` and `sanitizeWsEnumOrNull()` (same module) layer enum-allowlist validation on top: an unknown value logs a structured `ws.enum.unknown` warning (so a rolling backend deploy that ships a new enum value before the frontend learns it surfaces as observability drift, not a broken render) and either returns a caller-supplied fallback or, for fields where defaulting would be unsafe (a run outcome, a nested ref's status/type), `null`.
 
 Any new WS payload handler in the notifications store **or a sibling store that ingests untrusted strings** (messages, approvals, tasks, agents, ...) MUST route string fields through this sanitizer.
 
 ## WS Wire Protocol (MANDATORY)
 
-The client-server WebSocket contract lives behind a handful of constants in `web/src/utils/constants.ts` that MUST stay in lockstep with `src/synthorg/api/ws_models.py` / `src/synthorg/api/controllers/ws.py`.
+The client-server WebSocket contract lives behind a handful of constants in `web/src/utils/ws-constants.ts` that MUST stay in lockstep with `src/synthorg/api/ws_models.py` / `src/synthorg/api/controllers/ws.py`.
 
 ### Protocol version
 
@@ -143,7 +145,7 @@ So `WsConnectionBanner` has three states, not two: *connected* (hidden), *degrad
 
 ### SSE / polling constants
 
-Alongside the WS wire constants, `web/src/utils/constants.ts` carries `SSE_MAX_RECONNECT_ATTEMPTS` (SSE fallback reconnect budget) and `INTERRUPTS_POLL_INTERVAL` (interrupt-panel poll cadence while WS is down). These are client-only (no server counterpart) and so are not covered by the protocol-version drift gate.
+Alongside the WS wire constants, `web/src/utils/ws-constants.ts` carries `SSE_MAX_RECONNECT_ATTEMPTS` (SSE fallback reconnect budget); `web/src/utils/constants.ts` separately carries `INTERRUPTS_POLL_INTERVAL` (interrupt-panel poll cadence while WS is down). These are client-only (no server counterpart) and so are not covered by the protocol-version drift gate.
 
 ## See also
 

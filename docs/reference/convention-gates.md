@@ -35,6 +35,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_chat_inbound_fenced.py` | push | `integrations/chat_api/inbound/` | full | no | none | add |
 | `check_ci_rollup_complete.py` | commit+push | `.github/workflows/{verify-backend,verify-cli,build-images,perf-benchmarks,perf-web-vitals}.yml` + `branch_protection.yml` | full | no | none | add |
 | `check_ci_workflow_resilience.py` | push | `.github/workflows/` + `.github/actions/` + `docker/**/Dockerfile` | full | no | none | add |
+| `check_cli_bench_regression.sh` | CI (`verify-cli.yml :: cli-bench`) | `cli/internal/*_bench_test.go` (path-scoped via the `cli-changes` gate) | n/a | n/a | none (in-CI A/B compare, not a committed baseline) | keep |
 | `check_comparison_md_in_sync.py` | push | `competitors.yaml` + `comparison.md` + generator | full | no | none | keep |
 | `check_completion_config_temperature.py` | commit+push | `src/synthorg/` | full | no | none | keep |
 | `check_compose_template_comments.py` | push | `cli/internal/compose/compose.yml.tmpl` | full | no | none | add |

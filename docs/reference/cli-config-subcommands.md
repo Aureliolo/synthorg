@@ -54,6 +54,7 @@ The warning is **not** suppressed under `--quiet` or `--json`; a safety-critical
 - **Byte sizes**: plain integers (`1048576` = 1 MiB) or suffixed values. IEC binary suffixes: `B`, `KiB`, `MiB`, `GiB` (powers of 1024). SI decimal suffixes: `KB`, `MB`, `GB` (powers of 1000). Case-insensitive. Rejected: negative, zero, or values exceeding the 1 GiB runtime ceiling.
 - **Integers**: plain decimal integers. Each integer tunable declares its own `[min, max]` range (e.g. `image_pull_attempts` is `[1, 100]`). Rejected: non-numeric values, negatives, or values outside the per-tunable range.
 - **Registry hosts**: DNS hostname, optionally with `:port`. Matches `[a-zA-Z0-9][a-zA-Z0-9.-]*(:[0-9]+)?`.
+- **Image repository prefixes**: lowercase Docker repository path grammar. Matches `[a-z0-9][a-z0-9._/-]*`, up to 255 characters.
 - **Image tags**: Docker tag grammar. Matches `[a-zA-Z0-9][a-zA-Z0-9._-]*`.
 - **NATS URLs**: must use `nats://`, `tls://`, or `nats+tls://` scheme and include a host.
 - **NATS stream prefix**: uppercase alphanumerics with `_` or `-`. Matches `[A-Z0-9][A-Z0-9_-]*`.

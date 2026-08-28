@@ -75,8 +75,10 @@ The `synthorg_research_run` tool accepts these arguments (at least one `include_
 | `include_academic` | bool | `false` | Query academic search. |
 | `include_code` | bool | `false` | Query code search. |
 | `min_credibility` | float | `0.5` | Credibility floor for source retention. |
-| `max_subqueries` | int | `8` | Ceiling on planner-emitted sub-queries (1 to 32). |
+| `max_subqueries` | int | `8` | Ceiling on planner-emitted sub-queries (minimum 1, no upper bound). |
 
 ## Observability
 
-Research mode emits structured log events only (no WebSocket events): `research.run.started`, `research.run.planned`, `research.run.retrieved`, `research.run.triaged`, `research.run.deduplicated`, `research.run.synthesised`, and `research.run.completed`, plus warning-level keys for source failures, budget overruns, and invalid LLM output.
+Research mode emits structured log events only (no WebSocket events): `research.run.started`, `research.run.planned`, `research.run.retrieved`, `research.run.triaged`, `research.run.deduplicated`, `research.run.synthesised`, and `research.run.completed`, plus warning-level keys for source failures (`research.source.failed`), budget overruns (`research.budget.exceeded`), invalid LLM output (`research.llm.output_invalid`), a planner that fell back (`research.planner.fallback`), and the service being unavailable (`research.unavailable`).
+
+The brief's identifiers are derived, not minted: `(brief_id, run_id)` is a hash over the question, project scope, source toggles, credibility floor, and sub-query ceiling, so an identical request addresses the same run and a re-run upserts rather than duplicating. That is what makes replay possible without a caller tracking ids.

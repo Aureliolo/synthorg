@@ -43,10 +43,10 @@ The "Used by" column distinguishes three relationships to the CLI:
 | `SYNTHORG_BACKUP_RESTORE_TIMEOUT` | CLI | Override `synthorg backup restore --timeout` default |
 | `SYNTHORG_HEALTH_CHECK_TIMEOUT` | CLI | Per-request HTTP timeout for health endpoint probes (duration, default `5s`) |
 | `SYNTHORG_HEALTH_WAIT_TIMEOUT` | CLI | Total readiness-wait budget; default for `start --timeout` and the `wipe` reinit health wait (duration, default `90s`) |
-| `SYNTHORG_SELF_UPDATE_HTTP_TIMEOUT` | CLI | HTTP timeout for CLI binary download (duration) |
-| `SYNTHORG_SELF_UPDATE_API_TIMEOUT` | CLI | Overall budget for GitHub API metadata fetches, shared across the transient-failure retries (a 5xx or network blip is retried a few times with exponential backoff within this budget) (duration) |
-| `SYNTHORG_TUF_FETCH_TIMEOUT` | CLI | HTTP timeout for Sigstore TUF trusted root fetch (duration) |
-| `SYNTHORG_ATTESTATION_HTTP_TIMEOUT` | CLI | HTTP timeout for GitHub attestation API requests and `bundle_url` fetches (duration) |
+| `SYNTHORG_SELF_UPDATE_HTTP_TIMEOUT` | CLI | HTTP timeout for CLI binary download (duration, default `5m`) |
+| `SYNTHORG_SELF_UPDATE_API_TIMEOUT` | CLI | Overall budget for GitHub API metadata fetches, shared across the transient-failure retries (a 5xx or network blip is retried a few times with exponential backoff within this budget) (duration, default `30s`) |
+| `SYNTHORG_TUF_FETCH_TIMEOUT` | CLI | HTTP timeout for Sigstore TUF trusted root fetch (duration, default `30s`) |
+| `SYNTHORG_ATTESTATION_HTTP_TIMEOUT` | CLI | HTTP timeout for GitHub attestation API requests and `bundle_url` fetches (duration, default `30s`) |
 | `SYNTHORG_MAX_API_RESPONSE_BYTES` | CLI | Maximum bytes for API / checksum downloads (default `4MiB`; accepts `1MiB`, `1048576`). Sized for the list-commits walk used by `synthorg update`: each commit object inlines the full PGP signature plus signed-payload duplicate plus 20+ author / committer URL fields (~15 KiB / commit), so a typical 25-entry page is ~400 KiB and 4 MiB gives 10x headroom. Hard ceiling is 1 GiB via `MaxBytesCeiling`. |
 | `SYNTHORG_MAX_BINARY_BYTES` | CLI | Maximum bytes for CLI binary archive downloads (accepts `256MiB`) |
 | `SYNTHORG_MAX_ARCHIVE_ENTRY_BYTES` | CLI | Maximum bytes per archive entry during extraction (accepts `128MiB`) |

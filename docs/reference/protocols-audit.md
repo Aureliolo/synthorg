@@ -47,6 +47,8 @@ The 2026-05-10 snapshot counts in the original table were aggregated by hand and
 
 `@runtime_checkable` decoration: 209 of 250 (84%). The 41 without the decorator are listed inline below; absence is not a defect on its own; only a few need it.
 
+The totals above stop at the #1865 pass and are not current: the later removal of the whole meeting / ceremony / conflict-resolution stack (see `src/synthorg/communication/` below) deleted eleven further protocols this table does not reflect. Treat the per-area tables as the current record and this summary as the historical count as of #1865.
+
 ## Per-area classification
 
 Tables sort by recommendation (REMOVE first, then REVIEW, then KEEP). `rc` is `1` when `@runtime_checkable` is present.
@@ -94,22 +96,13 @@ Tables sort by recommendation (REMOVE first, then REVIEW, then KEEP). `rc` is `1
 
 ### `src/synthorg/communication/`
 
+The meeting / ceremony / conflict-resolution stack this section originally audited (`communication/meeting/`, `communication/conflict_resolution/`, and `communication/event_stream/consumer.py`) has since been deleted outright, tables and all (migration `20260824000000_drop_meeting_ceremony_conflict_stack`): the chain was reachable without an operator but never convened across nine live rounds and the depth-3 recursion sweep. The eleven protocol rows that lived under those paths are removed below rather than reclassified; see [Protocols Audit Cleanup Log](protocols-audit-log.md) for their pre-deletion history. Three protocols in this area survive.
+
 | Path | Line | Name | rc | impl | testuse | Recommendation | Notes |
 |---|---|---|---|---|---|---|---|
-| communication/conflict_resolution/escalation/notify.py | 56 | `EscalationNotifySubscriber` | 1 | 0 | 0 | KEEP | Plug-in `Subscriber`; factory-registered (`build_escalation_notify_subscriber`). |
-| communication/conflict_resolution/escalation/protocol.py | 175 | `DecisionProcessor` | 1 | 0 | 0 | KEEP | Pluggable strategy; updated by Phase G. |
-| communication/conflict_resolution/protocol.py | 70 | `JudgeEvaluator` | 1 | 1 | 0 | KEEP | Plug-in LLM-judge seam; `LlmJudgeEvaluator` is the concrete impl wired into the debate and hybrid resolvers. |
-| communication/event_stream/consumer.py | 15 | `EventStreamConsumer` | 1 | 0 | 0 | REMOVE | No usages; one-consumer seam. |
-| communication/meeting/participant.py | 56 | `ParticipantResolver` | 1 | 0 | 0 | REMOVE | Same name lives in `meeting/protocol.py`; one of the two is dead. |
 | communication/bus/persistence.py | 33 | `HistoryAccessor` | 1 | 0 | 2 | KEEP | Plug-in `Accessor`. |
 | communication/bus_protocol.py | 21 | `MessageBus` | 1 | 0 | 54 | KEEP | Core pluggable subsystem. |
-| communication/conflict_resolution/escalation/protocol.py | 26 | `EscalationQueueStore` | 1 | 3 | 7 | KEEP | Three concrete stores (in-memory, sqlite, postgres). |
-| communication/conflict_resolution/escalation/protocol.py | 149 | `CrossInstanceNotifyCapableStore` | 1 | 0 | 5 | KEEP | Capability marker. |
-| communication/conflict_resolution/protocol.py | 30 | `ConflictResolver` | 0 | 0 | 11 | KEEP | Plug-in `Resolver`. |
 | communication/handler.py | 21 | `MessageHandler` | 1 | 0 | 8 | KEEP | Plug-in `Handler`. |
-| communication/meeting/conflict_detection.py | 39 | `ConflictDetector` | 1 | 0 | 8 | KEEP | Plug-in `Detector`. |
-| communication/meeting/protocol.py | 41 | `ConflictDetector` | 1 | 0 | 8 | REVIEW | Duplicate of the name in `conflict_detection.py`; one of the two should fold into the other. |
-| communication/meeting/protocol.py | 63 | `MeetingProtocol` | 1 | 0 | 19 | KEEP | Public extension surface. |
 
 ### `src/synthorg/core/`
 

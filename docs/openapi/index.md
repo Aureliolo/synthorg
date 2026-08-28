@@ -239,7 +239,7 @@ In both shapes, `instance` is the **request correlation ID** used for log tracin
 | 2xxx | `validation` | `VALIDATION_ERROR`, `REQUEST_VALIDATION_ERROR` |
 | 3xxx | `not_found` | `RESOURCE_NOT_FOUND`, `RECORD_NOT_FOUND`, `ROUTE_NOT_FOUND` |
 | 4xxx | `conflict` | `RESOURCE_CONFLICT`, `DUPLICATE_RECORD`, `VERSION_CONFLICT` |
-| 5xxx | `rate_limit` | `RATE_LIMITED` |
+| 5xxx | `rate_limit` | `RATE_LIMITED`, `PER_OPERATION_RATE_LIMITED`, `CONCURRENCY_LIMIT_EXCEEDED` |
 | 6xxx | `budget_exhausted` | `BUDGET_EXHAUSTED` |
 | 7xxx | `provider_error` | Upstream LLM provider failures |
 | 8xxx | `internal` | Unhandled server errors |
@@ -256,9 +256,11 @@ The API applies three-tier rate limiting via `synthorg.api.config.RateLimitConfi
 - **Per-IP unauthenticated tier** (default 20/min/IP): only fires when `scope["user"]` is unset.
 - **Per-user authenticated tier** (default 6,000/min/user).
 
-The floor default is sized above both user-gated caps so shared-NAT deployments do not clip legitimate traffic. A Pydantic validator on `RateLimitConfig` rejects a floor lower than either the authenticated or unauthenticated cap. All three tiers are configurable per deployment; see `docs/security.md` for tuning, and `synthorg.api.config.RateLimitConfig` for the source-of-truth field descriptions and validator logic.
+The floor default is sized above both user-gated caps so shared-NAT deployments do not clip legitimate traffic. A Pydantic validator on `RateLimitConfig` rejects a floor lower than either the authenticated or unauthenticated cap. All three tiers are configurable per deployment; see [Security](../security.md) for tuning, and `synthorg.api.config.RateLimitConfig` for the source-of-truth field descriptions and validator logic.
 
 Clients that exceed any tier receive `429 Too Many Requests` carrying `error_code` 5000 (`RATE_LIMITED`) and a `Retry-After` header. In the envelope form the code lives at `error_detail.error_code`.
+
+Two narrower guards sit on top of the global tiers and answer with the same `429` shape under different codes. A per-operation sliding window buckets requests per `(operation, subject)` and denies with 5001 (`PER_OPERATION_RATE_LIMITED`). A per-operation inflight cap bounds simultaneous long-running requests for the same bucket and denies with 5002 (`CONCURRENCY_LIMIT_EXCEEDED`), which the window alone cannot do: a burst inside the window would otherwise start several fine-tunes at once.
 
 ---
 

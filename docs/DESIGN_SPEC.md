@@ -1,10 +1,14 @@
 # SynthOrg - High-Level Design Specification
 
-> A framework for building synthetic organisations: role-based AI agents run as a supervised company, with configurable roles, hierarchies, communication patterns, and tool access, under an oversight mode the operator sets.
+> Describe a piece of software and it gets built in one pass: split into parts, built in parallel, each part checked by something that did not write it. On your hardware, against any models you choose.
+
+A single agent in a loop cannot hold a whole application, which is why the binding constraint is decomposition quality rather than agent supply. The design below is organised around that: a recursive split into independently buildable units, isolated concurrent execution of the leaves, bottom-up assembly, and a review party structurally prevented from being the author. Roles, staffing and the approval gate are the plumbing that carries it, not the product.
+
+The loop has not yet completed a live run; see [the roadmap](roadmap/index.md) for what that means in practice.
 
 ---
 
-The design specification has been split into focused documentation pages for better navigation and maintainability. Each page covers a cohesive domain of the framework's design.
+The design specification is split into focused documentation pages. Each page covers a cohesive domain of the framework's design.
 
 ## Design Pages
 
@@ -18,6 +22,7 @@ The design specification has been split into focused documentation pages for bet
 | [Communication A2A Gateway](design/communication-a2a.md) | External Federation | Optional gateway, agent cards, concept mapping, SSE streaming, outbound client |
 | [Communication Coordination](design/communication-coordination.md) | Orchestration | Loop prevention, MCP facades, failure guardrails |
 | [Communication Event Stream](design/communication-events.md) | Observability + HITL | AG-UI projection, SSE endpoint, interrupt/resume, EvidencePackage, async delegation, citations |
+| [Chat Inbound](design/chat-inbound.md) | Human replies re-enter tasks | Slack Socket-Mode consumer routing a mention, DM, thread reply or reaction back to the parked approval it answers; off by default, and inbound content reaches an LLM only as a fenced resume reason |
 | [Distributed Runtime](design/distributed-runtime.md) | Transport Evaluation, Bus Backend, Task Queue, Migration | Pluggable distributed backend design, NATS JetStream first implementation, distributed task queue hook into TaskEngine |
 | [Task & Workflow Engine](design/engine.md) | Task Engine Core | Task lifecycle, routing, workflow types and definitions, TaskEngine centralised state coordination |
 | [Agent Execution](design/agent-execution.md) | Execution Loop | Execution status, the ReAct loop, prompt profiles, stagnation detection, context budget, brain/hands/session |
@@ -48,6 +53,8 @@ The design specification has been split into focused documentation pages for bet
 | [Tools & Capabilities](design/tools.md) | Tool categories, sandboxing, MCP, trust | Layered sandbox, progressive disclosure, action types, access levels |
 | [Agent Hands](design/agent-hands.md) | First-party connection-gated tools: forge, chat, deploy, publish | Repo scoping, the shared governance pipeline, destructive-tool admin guardrails, per-call target allowlists |
 | [Toolsmith (Self-Extending Toolkit)](design/toolsmith.md) | Runtime MCP tool-surface extension | Capability-gap detection, governed proposal/apply cycle, human-approval gating for new tools |
+| [Agent MCP Governance](design/agent-mcp-governance.md) | Per-agent MCP scoping | Progressive capability visibility per agent rather than one global grant, npm pinning on hand-authored server configs, container-launched stdio transport, catalog credential binding |
+| [Web Research](design/web-research.md) | Reaching current information | Vendor-agnostic search with declared result filters, a page reader with a three-rung escalation ladder, and the prompt habit that sends an agent to a primary source |
 | [Integrations](design/integrations.md) | OAuth flows, MCP catalog, webhooks, tunnel, health | External service integrations: OAuth provider connections, MCP server catalog + install, outbound webhooks, ngrok-style tunnel, integration-health rollups |
 | [A2A Protocol](design/a2a-protocol.md) | Agent-to-agent transport | Agent Card discovery, capability negotiation, signed envelope, well-known JWKS, gateway authentication |
 | [Security & Approval](design/security.md) | Approval workflow, autonomy, output scanning, policy engine | Fail-closed rule engine, review gates, credential isolation, A2A auth |

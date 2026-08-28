@@ -36,9 +36,9 @@ The default policy is 10 imports per 60 seconds per user, with a single concurre
 
 | Method | Path | Purpose | Response |
 |---|---|---|---|
-| `POST` | `/api/v1/brownfield/import` | Submit an import and analysis run for an existing codebase. | `202 Accepted` with `{project_id, status: "accepted"}` |
+| `POST` | `/api/v1/brownfield/import` | Submit an import and analysis run for an existing codebase. | `202 Accepted`, the standard `ApiResponse` envelope with `data: {project_id, status: "accepted"}` |
 
-The import and analysis run asynchronously. Poll the project's task board and structure map for completion, and watch the `brownfield.*` structured log events for pipeline progress.
+The `202` acknowledges the submission and nothing more. The whole pipeline (clone or copy, scan, index, then the analysis work item) runs in a background task the endpoint spawns, so every outcome after acceptance, including every rejection, surfaces through the project's structure map, the task board, and the `brownfield.*` log events rather than through the HTTP response.
 
 ## Worked example: import a repository
 
@@ -66,8 +66,10 @@ curl -s -X POST https://<host>/api/v1/brownfield/import \
 ## Re-import policy
 
 - No existing structure map: a fresh import runs.
-- Same source reference with an unchanged content hash: the import short-circuits (idempotent).
-- A different source reference onto an occupied project: rejected with `409` (`BrownfieldWorkspaceNotEmptyError`). Force-reset is a separate explicit operation.
+- Same source reference with an unchanged content hash: the re-scan short-circuits (idempotent). A changed hash re-scans and re-indexes.
+- A different source reference onto an occupied project: refused. Importing over an existing codebase is destructive, so the service raises `BrownfieldWorkspaceNotEmptyError` (a `409`-shaped error) and logs `brownfield.import.rejected` with `reason=different_source`.
+
+That refusal reaches the operator through the log and the unchanged structure map, not through the HTTP response, because the endpoint has already returned `202` by the time the pipeline reads the workspace. There is no reset endpoint: to point a project at a different codebase, use a different project.
 
 ## Observability
 
