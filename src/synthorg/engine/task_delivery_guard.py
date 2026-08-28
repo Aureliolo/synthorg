@@ -151,6 +151,7 @@ async def _workspace_verdict(
         The failure reason, or ``None`` when the run may proceed to review.
     """
     baseline = current_run_baseline()
+    declared_baseline = baseline.declared if baseline is not None else None
     produced_nothing = await produced_nothing_since(baseline)
     if produced_nothing is False:
         # Something appeared, changed or went. The declarations may still all
@@ -164,22 +165,28 @@ async def _workspace_verdict(
         return None
     if presence.nothing_delivered:
         return MISSING_ARTIFACTS_REASON.format(paths=", ".join(presence.missing))
+    # The two workspace questions read different evidence and legitimately
+    # disagree: the tree is compared by size, a declaration by digest. An edit
+    # that keeps a file's length (a flipped constant, a corrected identifier)
+    # leaves the tree fingerprint identical while the digest proves the run
+    # rewrote exactly what it promised. The finer evidence decides, or this
+    # guard fails a delivered run over a coincidence of byte counts.
+    if presence.delivered_something_since(declared_baseline):
+        return None
     # Presence answers a task that creates. A task that edits found its
     # declarations already there, so only the baseline separates a run that
     # fixed the file from one that read it and stopped. Exempted for a resumed
     # run, whose baseline was taken at the resume and so already contains
     # whatever an earlier segment wrote: this segment changing nothing is not
     # the same as the task having produced nothing.
-    if empty_run_fails and presence.delivered_nothing_since(
-        baseline.declared if baseline is not None else None
-    ):
+    if empty_run_fails and presence.delivered_nothing_since(declared_baseline):
         return UNCHANGED_ARTIFACTS_REASON.format(paths=", ".join(presence.probed))
     # Last, because the two reasons above name a path an operator can open
     # and this one names nothing. It is the only answer for a task whose
     # declarations are all prose ("the integrated, runnable deliverable"),
     # which nothing above can probe and which therefore had no delivery check
     # at all: the reviewer read a description of work that was never done.
-    if produced_nothing and empty_run_fails:
+    if produced_nothing is True and empty_run_fails:
         return NOTHING_PRODUCED_REASON
     return None
 
@@ -251,6 +258,7 @@ async def _absent_artifacts(
 __all__ = [
     "EMPTY_RUN_REASON",
     "MISSING_ARTIFACTS_REASON",
+    "NOTHING_PRODUCED_REASON",
     "NO_OP_JUSTIFICATION_KEY",
     "UNCHANGED_ARTIFACTS_REASON",
     "no_delivery_reason",

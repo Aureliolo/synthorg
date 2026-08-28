@@ -35,10 +35,16 @@ def _expected(*paths: str) -> tuple[ExpectedArtifact, ...]:
     )
 
 
-def _touch(root: Path, relpath: str) -> None:
+def _touch(root: Path, relpath: str, body: str = "delivered") -> Path:
+    """Write *body* to *relpath* under *root*, creating its parents.
+
+    Returns:
+        The path written.
+    """
     path = root / relpath
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("delivered", encoding="utf-8")
+    path.write_text(body, encoding="utf-8")
+    return path
 
 
 class TestIsProbeablePath:
@@ -315,6 +321,43 @@ class TestDeliveryAgainstABaseline:
 
         presence = missing_expected_artifacts(expected, workspace=tmp_path)
 
+        assert not presence.delivered_nothing_since(baseline)
+
+    def test_an_unhashable_declaration_is_not_evidence_of_delivery(
+        self, tmp_path: Path
+    ) -> None:
+        """The two questions are not complements, and this is the gap.
+
+        Reading "could not hash it" as "it changed" would let a run that
+        touched nothing anywhere pass by having declared a directory the seed
+        already provided. Fail-open belongs to the sibling, whose job is not
+        to fail a run over evidence never gathered; this one ASSERTS, so the
+        same absence has to answer no.
+        """
+        (tmp_path / "dist").mkdir()
+        expected = _expected("dist")
+        baseline = missing_expected_artifacts(expected, workspace=tmp_path)
+
+        presence = missing_expected_artifacts(expected, workspace=tmp_path)
+
+        assert not presence.delivered_something_since(baseline)
+        assert not presence.delivered_nothing_since(baseline)
+
+    def test_a_same_length_edit_is_a_delivery(self, tmp_path: Path) -> None:
+        """The case a size comparison cannot see.
+
+        Flipping a constant keeps a file's byte count, so the whole-tree
+        fingerprint reads it as untouched while the digest proves the run
+        rewrote what it promised.
+        """
+        target = _touch(tmp_path, "src/config.py", "RETRIES = 1\n")
+        expected = _expected("src/config.py")
+        baseline = missing_expected_artifacts(expected, workspace=tmp_path)
+        target.write_text("RETRIES = 5\n", encoding="utf-8")
+
+        presence = missing_expected_artifacts(expected, workspace=tmp_path)
+
+        assert presence.delivered_something_since(baseline)
         assert not presence.delivered_nothing_since(baseline)
 
     def test_no_baseline_falls_back_to_presence(self, tmp_path: Path) -> None:

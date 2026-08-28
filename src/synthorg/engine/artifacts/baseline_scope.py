@@ -57,6 +57,10 @@ logger = get_logger(__name__)
 class RunBaseline(BaseModel):
     """What the workspace held when a run began.
 
+    Immutable but not hashable, for the reason
+    :class:`~synthorg.engine.artifacts.expected_artifact_check.ArtifactPresence`
+    gives: it carries one.
+
     Attributes:
         workspace: The project's workspace directory, so the tree question
             can be asked again later against the same root.

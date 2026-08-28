@@ -59,6 +59,12 @@ _DIGEST_CHUNK: Final[int] = 65536
 class ArtifactPresence(BaseModel):
     """What the workspace says about a task's declared artifacts.
 
+    ``frozen`` here means immutable, not hashable: a digest map is what the
+    comparison below needs, and a mapping is unhashable, so hashing an
+    instance raises. Nothing keys on one, and swapping the map for a pair
+    sequence would buy a hashability no consumer wants at the cost of the
+    lookup this exists to do.
+
     Attributes:
         probed: The declarations path-shaped enough to ask about.
         missing: Those of *probed* with nothing at them.
@@ -80,6 +86,40 @@ class ArtifactPresence(BaseModel):
         description="Digest per probed declaration that is there now",
     )
 
+    def delivered_something_since(self, baseline: ArtifactPresence | None) -> bool:
+        """Did at least one declaration demonstrably change?
+
+        A digest is the finest evidence this module holds, and the only
+        evidence that can assert a run delivered rather than merely fail to
+        rule it out. A coarser signal taken elsewhere (a size, a modification
+        time) legitimately disagrees with it on an equal-length edit, so a
+        caller holding both needs to know which of them saw the content.
+
+        Deliberately NOT the negation of :meth:`delivered_nothing_since`, and
+        the gap between them is :data:`_UNHASHABLE`. A directory declared and
+        still there is unhashable on both sides, which is no evidence either
+        way: that sibling reads it as "do not fail this run", the fail-open
+        answer its own question wants, while asserting it as delivery would
+        let a run that touched nothing anywhere pass by having declared a
+        directory the seed already provided.
+
+        Args:
+            baseline: What the workspace said when the run began, or ``None``
+                when it was never asked.
+
+        Returns:
+            ``True`` when a probeable declaration appeared, changed or was
+            removed. ``False`` when nothing was asked (no baseline, or every
+            declaration was prose) and when the only evidence is unhashable,
+            both being an absence of evidence rather than a verdict.
+        """
+        if baseline is None or not self.probed:
+            return False
+        return any(
+            self.digests.get(declared) != baseline.digests.get(declared)
+            for declared in self.probed
+        )
+
     def delivered_nothing_since(self, baseline: ArtifactPresence | None) -> bool:
         """Did this run leave every declaration exactly as it found it?
 
@@ -92,18 +132,18 @@ class ArtifactPresence(BaseModel):
 
         Returns:
             ``True`` when no probeable declaration appeared, changed or was
-            removed. Without a baseline this falls back to
-            :attr:`nothing_delivered`: an unwired baseline is missing
-            evidence, and missing evidence must not fail a run that
-            delivered.
+            removed. A declaration this module could not hash counts against
+            it, because failing a run over evidence never gathered is the one
+            outcome this question must not produce. Without a baseline this
+            falls back to :attr:`nothing_delivered`, on the same rule.
         """
         if baseline is None:
             return self.nothing_delivered
         if not self.probed:
             return False
         return not any(
-            self.digests.get(declared) == _UNHASHABLE
-            or self.digests.get(declared) != baseline.digests.get(declared)
+            (found := self.digests.get(declared)) == _UNHASHABLE
+            or found != baseline.digests.get(declared)
             for declared in self.probed
         )
 

@@ -221,6 +221,34 @@ class TestRefusals:
 
         assert verdict is None
 
+    async def test_a_same_length_edit_to_a_declaration_passes(
+        self, tmp_path: Path
+    ) -> None:
+        """The two workspace questions read different evidence.
+
+        The tree is compared by size and a declaration by digest, so an edit
+        that keeps a file's length leaves the tree fingerprint identical while
+        the digest proves the run rewrote exactly what it promised. Flipping a
+        constant and correcting an identifier are both ordinary work of that
+        shape, and the coarser signal must not fail them.
+        """
+        ctx = _context(_task())
+        run = _run(ctx, tool_calls=2)
+        declared = tmp_path / _DECLARED
+        declared.parent.mkdir(parents=True)
+        declared.write_text("const RETRIES = 1\n", encoding="utf-8")
+        before = ArtifactPresence(probed=(_DECLARED,), digests={_DECLARED: "abc"})
+        after = ArtifactPresence(probed=(_DECLARED,), digests={_DECLARED: "def"})
+        baseline = _baseline(before, workspace=tmp_path)
+        declared.write_text("const RETRIES = 5\n", encoding="utf-8")
+
+        with run_baseline_scope(baseline):
+            verdict = await no_delivery_reason(
+                run, ctx, run_probe=_probe(after, workspace=tmp_path)
+            )
+
+        assert verdict is None
+
     async def test_a_run_that_produced_something_undeclared_reaches_review(
         self, tmp_path: Path
     ) -> None:
