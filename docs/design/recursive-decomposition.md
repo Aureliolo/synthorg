@@ -509,7 +509,7 @@ of the specification a merged tree satisfies, against the depth that tree
 actually reached, with a cost panel beside it. That axis is not the one the
 question asks for, and [The metric](#the-metric) below says why it stands in.
 
-The committed matrix records caps 1 to 4 at three, three, two and two
+The committed matrix records caps 1 to 4 at three, three, two, and two
 repetitions, one arm. The harness still supports two arms, and the first
 recording used both; what changed and why is in [The gate](#the-gate).
 
