@@ -25,6 +25,13 @@ project workspace. An absolute declaration is never opened: the read runs in
 the backend process, not the sandbox, so honouring one would hand any file
 that process can reach to an external model.
 
+When no declared path came back at all, the workspace's own files are read
+in their place. A declaration is a guess written before the tree exists, so
+a run that solved the task under other names satisfies none of them and is
+sent to review precisely so a reviewer can judge the substitution; handing
+that reviewer an empty section leaves it approving on the closing message,
+which is the reading this module exists to stop.
+
 The files are agent-written and therefore untrusted: whatever the reviewer
 receives is fenced by the caller before it reaches a prompt.
 """
@@ -39,6 +46,7 @@ from pydantic import JsonValue
 
 from synthorg.core.artifact import ExpectedArtifact
 from synthorg.engine.artifacts.expected_artifact_check import is_probeable_path
+from synthorg.engine.artifacts.workspace_fingerprint import fingerprint_tree
 from synthorg.engine.workspace.paths import project_workspace_dir
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.deliverable import DELIVERABLE_READ_FAILED
@@ -159,6 +167,7 @@ def read_declared_artifacts(
         return None
     root = workspace.resolve()
     entries: list[JsonValue] = []
+    declared_paths = {str(artifact.path) for artifact in expected}
     # The wrapper is charged before any entry, because it is rendered
     # whatever else fits and a budget that ignored it could be spent
     # entirely on entries and still overrun.
@@ -187,7 +196,73 @@ def read_declared_artifacts(
             break
         budget -= cost
         entries.append(entry)
-    return {"declared": len(expected), "artifacts": entries}
+    section: dict[str, JsonValue] = {
+        "declared": len(expected),
+        "artifacts": entries,
+    }
+    if any(
+        isinstance(entry, dict) and entry.get("status") == ARTIFACT_STATUS_READ
+        for entry in entries
+    ):
+        return section
+    instead = _read_produced_instead(
+        root,
+        declared_paths,
+        limit=max_bytes_per_file,
+        budget=budget - len(json.dumps({"produced_instead": []})),
+    )
+    if instead:
+        section["produced_instead"] = instead
+    return section
+
+
+def _read_produced_instead(
+    root: Path,
+    declared: set[str],
+    *,
+    limit: int,
+    budget: int,
+) -> list[JsonValue]:
+    """Read what the workspace holds when no declaration came back.
+
+    A declaration is written before the tree exists, so a run that solved
+    the task under other names satisfies none of them. That run now reaches
+    review rather than being failed on its declarations, and a reviewer
+    handed nothing but the agent's closing message approves on the strength
+    of prose, which is what this module exists to stop. So when no declared
+    path was read, the reviewer is shown what IS there instead.
+
+    Args:
+        root: The resolved workspace directory.
+        declared: The declared paths, so a file already reported is not
+            reported twice under a second heading.
+        limit: Per-file content bound, in characters.
+        budget: What is left of the section's total bound.
+
+    Returns:
+        One entry per file read, in path order so two reviews of the same
+        tree read the same, plus an omission marker when the budget ran out.
+        Empty when the workspace holds nothing, which is the honest answer
+        for a run that produced nothing at all.
+    """
+    produced = sorted(
+        path for path, _ in fingerprint_tree(root) if path not in declared
+    )
+    entries: list[JsonValue] = []
+    for index, path in enumerate(produced):
+        entry = _read_one(path, root=root, limit=max(0, min(limit, budget)))
+        cost = len(json.dumps(entry))
+        if cost > budget:
+            omission: dict[str, JsonValue] = {
+                "status": _STATUS_OMITTED,
+                "count": len(produced) - index,
+            }
+            if len(json.dumps(omission)) <= budget:
+                entries.append(omission)
+            break
+        budget -= cost
+        entries.append(entry)
+    return entries
 
 
 def workspace_deliverable_reader(

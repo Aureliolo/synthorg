@@ -445,6 +445,14 @@ it here discards working code: measured on a live recursion-depth cell,
 three of eight units wrote 4, 8 and 10 modules apiece under names the
 planner had not guessed.
 
+That only holds if the reviewer can see the substitution, so
+`engine/artifacts/deliverable_content.py` reads the files the workspace
+holds under a `produced_instead` heading whenever no declared path came back.
+Both headings share the one content budget, because they share the one
+prompt. Without it, sending such a run to review would hand the reviewer an
+empty section and leave it approving on the agent's closing prose, which is
+the reading that module exists to stop.
+
 Only a **path-shaped** declaration is probed. `ExpectedArtifact.path` carries
 whatever the planner wrote, which may be a file (`src/game.py`) or a
 deliverable named in prose ("the integrated, runnable deliverable"). Prose

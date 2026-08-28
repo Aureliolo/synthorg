@@ -289,6 +289,75 @@ class TestReadDeclaredArtifacts:
         assert json.dumps(section) == json.dumps({"declared": 2, "artifacts": []})
 
 
+class TestWhatWasProducedInstead:
+    """A declaration is a guess; the tree is what happened.
+
+    A run that satisfies no declaration now reaches review rather than being
+    failed on the declaration alone, precisely so a reviewer can judge the
+    substitution. It can only do that if it is shown the substitution.
+    """
+
+    def test_undeclared_files_are_read_when_no_declaration_was(
+        self, tmp_path: Path
+    ) -> None:
+        # The planner declared `csv_reader.py`; the run wrote `reader.py`.
+        _write(tmp_path, "sqlcsv/reader.py", "def read(): ...")
+        _write(tmp_path, "sqlcsv/types.py", "Row = dict")
+
+        section = _read(_expected("sqlcsv/csv_reader.py"), tmp_path)
+
+        assert section is not None
+        instead = cast("list[dict[str, JsonValue]]", section["produced_instead"])
+        assert [entry["path"] for entry in instead] == [
+            "sqlcsv/reader.py",
+            "sqlcsv/types.py",
+        ]
+        assert instead[0]["content"] == "def read(): ..."
+
+    def test_a_satisfied_declaration_needs_no_second_heading(
+        self, tmp_path: Path
+    ) -> None:
+        """The common case is unchanged, and the document stays small."""
+        _write(tmp_path, "src/game.py", "def rotate(): ...")
+        _write(tmp_path, "notes.md", "scratch")
+
+        section = _read(_expected("src/game.py"), tmp_path)
+
+        assert section is not None
+        assert "produced_instead" not in section
+
+    def test_a_run_that_produced_nothing_reports_nothing(self, tmp_path: Path) -> None:
+        """Empty is the honest answer, not an absent key hiding an empty tree."""
+        section = _read(_expected("src/game.py"), tmp_path)
+
+        assert section is not None
+        assert "produced_instead" not in section
+
+    def test_a_declared_path_is_not_reported_twice(self, tmp_path: Path) -> None:
+        """A directory declaration reads as `directory`, never as `read`.
+
+        Without the exclusion it would then reappear under the second
+        heading, once per file inside it.
+        """
+        _write(tmp_path, "dist/app.js", "console.log(1)")
+
+        section = _read(_expected("dist"), tmp_path)
+
+        assert section is not None
+        instead = cast("list[dict[str, JsonValue]]", section["produced_instead"])
+        assert [entry["path"] for entry in instead] == ["dist/app.js"]
+
+    def test_the_second_heading_shares_the_one_budget(self, tmp_path: Path) -> None:
+        """One prompt, one ceiling: the substitute cannot spend it twice."""
+        _write(tmp_path, "a.py", "x" * 400)
+        _write(tmp_path, "b.py", "y" * 400)
+
+        section = _read(_expected("declared.py"), tmp_path, total=300)
+
+        assert section is not None
+        assert len(json.dumps(section)) <= 300
+
+
 class TestWorkspaceDeliverableReader:
     async def test_reads_the_projects_own_workspace(self, tmp_path: Path) -> None:
         _write(tmp_path, "projects/proj-1/src/game.py", "def rotate(): ...")
