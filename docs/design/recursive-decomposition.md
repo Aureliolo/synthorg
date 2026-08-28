@@ -635,8 +635,16 @@ its tail.
 The declared list is still recorded, as `UnitRecord.missing_declared_paths`,
 because a planner over-declaring is worth seeing. It holds the paths the planner
 named that the finished tree does not contain, so what it measures is the
-planner rather than the work. The direction is stated here because the field's
-previous name read the other way and was cited backwards on this very page.
+planner rather than the work.
+
+The direction is stated because the field's previous name, `undeclared_paths`,
+read the other way and was cited backwards on this very page. One recorded unit
+holds `('sqlcsv/csv_loader.py', 'tests/test_csv_loader.py')` there. Under the
+old name that is a unit that wrote its module and its test suite, which is the
+most convincing evidence of success available; it is the list of what that unit
+FAILED to write. No type, test or docstring caught it, because each was
+correct. What catches a name pointing the wrong way is reading it against a
+concrete value, which is why the value is here rather than a description of it.
 
 ### Achieved depth, not the cap
 
