@@ -47,7 +47,7 @@ var (
 
 var wipeCmd = &cobra.Command{
 	Use:   "wipe",
-	Short: "Factory-reset: wipe all data with optional backup and restart",
+	Short: "Factory-reset: wipe all data with an optional backup",
 	Long: `Destroy all SynthOrg data (database, memory, settings) and return
 to a clean state. You are prompted at each step:
 
@@ -175,9 +175,9 @@ func presentOrUnavailable(v string) string {
 	return v
 }
 
-// confirmAndWipe asks for final confirmation, stops containers, removes
-// volumes, and optionally restarts the stack. Restart failures are
-// non-fatal -- they produce a warning and a manual-start hint.
+// confirmAndWipe asks for final confirmation, stops containers, and removes
+// volumes and the data directory. It leaves the stack down: there is no state
+// left to start against, so the caller is pointed at `synthorg init`.
 func (wc *wipeContext) confirmAndWipe() error {
 	confirmed, err := wc.confirmWipe()
 	if err != nil {

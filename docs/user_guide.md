@@ -149,7 +149,7 @@ After the containers are running, open the web dashboard at [http://localhost:30
 
 The backend validates that a company and at least one provider exist before allowing setup to finish. Agents are optional (Quick Setup skips agent configuration). Steps are completed sequentially; a later step only appears done if all prior steps are also complete. Completed steps show a summary and can be revisited via the step indicator. After completing the wizard, the dashboard appears and the setup wizard is not shown again.
 
-To start fresh, use `synthorg wipe` (offers an interactive backup, wipes all data, and optionally restarts with a clean slate to re-open the setup wizard) or delete the `api.setup_complete` setting via the settings API.
+To start fresh, use `synthorg wipe` (offers an interactive backup, then stops the stack and wipes all data; it does not restart, so run `synthorg init` afterwards) or delete the `api.setup_complete` setting via the settings API.
 
 ## Templates
 

@@ -63,12 +63,14 @@ planner that has not.
 
 ### Decomposition quality is the binding constraint
 
-Not agent supply, and not coordination cost. S2 corroborates a ceiling of roughly 11 to 25
-coherent independent units three separate ways: contract-first decomposition (15 to 25
-files at 47% functional success, Contract-Coding `arXiv:2604.13100`), dependency-graph
-partitioning of real repositories (1 to 11 partitions across 28 projects, Co-Coder
-`arXiv:2606.00953`), and design-then-contract (14 to 22 files, CodeTeam
-`arXiv:2606.22082`). Three methods, one range, so it is not one benchmark's artefact.
+Not agent supply, and not coordination cost. S2 puts the ceiling at roughly 11 to 25
+coherent independent units and calls it method-independent, drawing on three measurements:
+contract-first decomposition (15 to 25 files at 47% functional success, Contract-Coding
+`arXiv:2604.13100`), dependency-graph partitioning of real repositories (1 to 11 partitions
+across 28 projects, Co-Coder `arXiv:2606.00953`), and design-then-contract (14 to 22 files,
+CodeTeam `arXiv:2606.22082`). Read the three as they stand rather than as one converged
+figure: they do not share a unit (files against partitions), and it is the highest each
+method reached that spans 11 to 25, so no single one of them demonstrates the whole range.
 
 This is a finding about published systems. Whether it applies per level of a tree or
 globally is the open question above.
@@ -112,9 +114,11 @@ required component rather than a refinement.
 
 ### Self-hosting is durable rather than clever
 
-Every well-funded competitor monetises hosted metered compute, so a genuinely
-self-hostable equivalent cannibalises their margin and is unattractive for them to build.
-S2 records this as analysis derived from its competitor survey, not as a citation.
+Every competitor S2 surveyed monetises hosted metered compute. What follows from that, that
+a genuinely self-hostable equivalent cannibalises their margin and is unattractive for them
+to build, is the inference rather than the observation: S2 records it as analysis derived
+from that survey rather than as a citation, and the survey reaches the products it names
+rather than the market.
 
 ## Agent scaling
 
