@@ -168,6 +168,12 @@ class MergeOutcome:
             Diagnosis, never a verdict, for the reason the leaf's own field
             says.
         detail: Why it is not delivered, for a human reading the run.
+        terminations: How each ASSEMBLING session ended, in attempt order. A
+            review's ending is not observable through the gate's dispatch seam,
+            on the same rule as ``turns``. Recorded because "produced nothing"
+            and "was stopped before it could" look identical in every other
+            field, and telling them apart otherwise means reading the
+            transcripts.
     """
 
     workspace: CellWorkspace
@@ -184,6 +190,7 @@ class MergeOutcome:
     amendments: int = 0
     missing_declared_paths: tuple[str, ...] = ()
     detail: str = ""
+    terminations: tuple[str, ...] = ()
 
 
 def piece_slug(title: str, *, index: int) -> str:
@@ -355,6 +362,7 @@ async def run_merge(
     turns = 0
     cost = 0.0
     tokens = 0
+    terminations: tuple[str, ...] = ()
     for attempt in range(1, plan.attempts + 1):
         outcome = await run_session(
             deps,
@@ -368,6 +376,7 @@ async def run_merge(
         turns += outcome.turns
         cost += outcome.cost
         tokens += outcome.tokens
+        terminations = (*terminations, outcome.termination)
         review = await reviewer.review(_review_request(plan, attempt))
         sessions += 1
         cost += review.cost
@@ -403,6 +412,7 @@ async def run_merge(
         amendments=amendments,
         missing_declared_paths=final.missing,
         detail=delivery.reason,
+        terminations=terminations,
     )
 
 

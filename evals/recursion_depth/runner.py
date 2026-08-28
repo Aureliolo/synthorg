@@ -1384,6 +1384,7 @@ def _leaf_record(
         executor=leaf.executor,
         detail=leaf.detail,
         missing_declared_paths=leaf.missing_declared_paths,
+        terminations=leaf.terminations,
     )
 
 
@@ -1413,6 +1414,7 @@ def _merge_record(
         parked=outcome.parked,
         amendments=outcome.amendments,
         missing_declared_paths=outcome.missing_declared_paths,
+        terminations=outcome.terminations,
     )
 
 
