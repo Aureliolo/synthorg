@@ -15,6 +15,7 @@ from synthorg.knowledge.service import KnowledgeService
 from synthorg.persistence.code_execution_protocol import CodeExecutionFilterSpec
 from synthorg.persistence.knowledge_usage_protocol import KnowledgeUsageFilterSpec
 from synthorg.tools.code_runner import CodeRunnerTool
+from synthorg.tools.sandbox.errors import SandboxProjectScopeUnresolvedError
 from synthorg.tools.sandbox.result import SandboxResult
 from tests._shared import FakeClock, mock_of
 from tests.unit.deliverable_receipts._fakes import (
@@ -163,12 +164,24 @@ class TestCodeExecutionCapture:
         rows = await records.query(CodeExecutionFilterSpec())
         assert rows == ()
 
-    async def test_test_run_skipped_without_scope(self) -> None:
+    async def test_an_unscoped_run_raises_and_mints_no_receipt(self) -> None:
+        """No project to run inside is not something a retry clears.
+
+        The scope decides which project's files the command is mounted
+        against, so an unbound identity has no safe answer: falling back to
+        the workspace root would widen one project's command to every
+        project's files. It is refused past the tool, and the refusal must
+        still leave no receipt, or the ledger would carry evidence for a run
+        that never happened.
+        """
         records = InMemoryCodeExecutionRecordRepository()
         tool = CodeRunnerTool(sandbox=_sandbox(), code_execution_records=records)
-        await tool.execute(
-            arguments={"code": "pytest", "language": "bash"},
-        )
+
+        with pytest.raises(SandboxProjectScopeUnresolvedError):
+            await tool.execute(
+                arguments={"code": "pytest", "language": "bash"},
+            )
+
         rows = await records.query(CodeExecutionFilterSpec())
         assert rows == ()
 

@@ -87,6 +87,28 @@ _DECOMPOSITION_TOOL = "submit_decomposition_plan"
 _RELEASE_CRITERION = "The v0.8 release is cut from a green main"
 _NOTES_CRITERION = "Release notes summarise the user-facing changes"
 
+# Path-shaped, so each subtask's declaration is one the workspace can be asked
+# about and the scripted turn can satisfy by writing it. A run that declares a
+# deliverable and leaves its workspace untouched is a no-op the engine fails on
+# purpose, and this harness tests OBJECTIVE ENTRY rather than delivery.
+_RELEASE_ARTIFACT = "release/CHANGELOG.md"
+_NOTES_ARTIFACT = "release/NOTES.md"
+
+
+def _declared_artifact(messages: list[ChatMessage]) -> str:
+    """Which subtask's declared path this turn is being asked to produce.
+
+    The scripted turn has no task object, only the brief it was handed, so
+    the subtask is read back off the title the decomposition wrote into it.
+
+    Returns:
+        The declared path for whichever subtask this session is running.
+    """
+    brief = "\n".join(str(message.content or "") for message in messages)
+    if "Write the release notes" in brief:
+        return _NOTES_ARTIFACT
+    return _RELEASE_ARTIFACT
+
 
 class _StopStrategy:
     """Branches decomposition tool calls vs plain sub-agent turns.
@@ -144,11 +166,7 @@ class _StopStrategy:
                                         "The release is cut.",
                                     ],
                                     "satisfies": [_RELEASE_CRITERION],
-                                    # Prose, not a path: this harness runs no
-                                    # real editor, and the artifact probe asks
-                                    # the workspace only about path-shaped
-                                    # declarations.
-                                    "expected_artifacts": ["a cut release"],
+                                    "expected_artifacts": [_RELEASE_ARTIFACT],
                                 },
                                 {
                                     "id": "sub-notes",
@@ -168,7 +186,7 @@ class _StopStrategy:
                                     # a plan declaring an order and no edge at
                                     # all is refused at parse time.
                                     "dependencies": ["sub-release"],
-                                    "expected_artifacts": ["written release notes"],
+                                    "expected_artifacts": [_NOTES_ARTIFACT],
                                 },
                             ],
                         },
@@ -182,7 +200,15 @@ class _StopStrategy:
             return CompletionResponse(
                 content=None,
                 tool_calls=(
-                    ToolCall(id="work-1", name="echo", arguments={"message": "done"}),
+                    ToolCall(
+                        id="work-1",
+                        name="write_file",
+                        arguments={
+                            "path": _declared_artifact(messages),
+                            "content": "# delivered by the scripted turn\n",
+                            "create_directories": True,
+                        },
+                    ),
                 ),
                 finish_reason=FinishReason.TOOL_USE,
                 usage=usage,
@@ -209,7 +235,9 @@ def _make_agent() -> AgentIdentity:
         status=AgentStatus.ACTIVE,
         # ``echo`` is ToolCategory.OTHER, which the default STANDARD level
         # excludes; the scripted turns call it, so it is allowed by name.
-        tools=ToolPermissions(allowed=(NotBlankStr("echo"),)),
+        # ``write_file`` rides beside it so a dispatched subtask can satisfy
+        # the declaration it was given rather than being exempted from it.
+        tools=ToolPermissions(allowed=(NotBlankStr("echo"), NotBlankStr("write_file"))),
     )
 
 

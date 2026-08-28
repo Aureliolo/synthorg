@@ -117,6 +117,13 @@ _CRITICAL_SUBTASK_TITLE = "Migrate the production schema"
 _LOG_CRITERION = "The log line is tidied without changing behaviour"
 _MIGRATION_CRITERION = "The production schema migration is applied and verified"
 
+# Path-shaped, so each subtask's declaration is one the workspace can be asked
+# about and the scripted turn can satisfy by writing it. A prose declaration
+# would be unprobeable, which is not an exemption from the delivery check but
+# the one case where nothing else can answer it either.
+_CHEAP_ARTIFACT = "logging/format.py"
+_CRITICAL_ARTIFACT = "migrations/0001_schema.sql"
+
 # Capability-priced model catalogue. Model ids are the canonical
 # ``example-<capability>`` archetypes, so the heuristic classifier assigns each
 # its rung, and the scripted driver can price each completion by rung.
@@ -142,6 +149,21 @@ def _cost_for_model(model_id: str) -> float:
         if capability in model_id:
             return cost
     return _CAPABILITY_COST_PER_1K["expert"]
+
+
+def _declared_artifact(messages: list[ChatMessage]) -> str:
+    """Which subtask's declared path this turn is being asked to produce.
+
+    The scripted turn has no task object, only the brief it was handed, so
+    the subtask is read back off the title the decomposition wrote into it.
+
+    Returns:
+        The declared path for whichever subtask this session is running.
+    """
+    brief = "\n".join(str(message.content or "") for message in messages)
+    if _CRITICAL_SUBTASK_TITLE in brief:
+        return _CRITICAL_ARTIFACT
+    return _CHEAP_ARTIFACT
 
 
 class _MixedStakesStrategy:
@@ -201,13 +223,7 @@ class _MixedStakesStrategy:
                                         "Log lines align consistently.",
                                     ],
                                     "satisfies": [_LOG_CRITERION],
-                                    # Prose, not a path: this harness runs no
-                                    # real editor, and the artifact probe asks
-                                    # the workspace only about path-shaped
-                                    # declarations.
-                                    "expected_artifacts": [
-                                        "log lines that align consistently"
-                                    ],
+                                    "expected_artifacts": [_CHEAP_ARTIFACT],
                                 },
                                 {
                                     "id": "sub-critical",
@@ -224,9 +240,7 @@ class _MixedStakesStrategy:
                                         "The schema migrates without data loss.",
                                     ],
                                     "satisfies": [_MIGRATION_CRITERION],
-                                    "expected_artifacts": [
-                                        "a migrated production schema"
-                                    ],
+                                    "expected_artifacts": [_CRITICAL_ARTIFACT],
                                 },
                             ],
                         },
@@ -240,7 +254,15 @@ class _MixedStakesStrategy:
             return CompletionResponse(
                 content=None,
                 tool_calls=(
-                    ToolCall(id="work-1", name="echo", arguments={"message": "done"}),
+                    ToolCall(
+                        id="work-1",
+                        name="write_file",
+                        arguments={
+                            "path": _declared_artifact(messages),
+                            "content": "# delivered by the scripted turn\n",
+                            "create_directories": True,
+                        },
+                    ),
                 ),
                 finish_reason=FinishReason.TOOL_USE,
                 usage=usage,
@@ -333,7 +355,12 @@ def _agent(name: str, skill: str, capability: CapabilityLevel) -> AgentIdentity:
         status=AgentStatus.ACTIVE,
         # ``echo`` is ToolCategory.OTHER, which the default STANDARD level
         # excludes; the scripted turns call it, so it is allowed by name.
-        tools=ToolPermissions(allowed=(NotBlankStr("echo"),)),
+        # ``write_file`` rides beside it because a subtask that declares a
+        # deliverable and leaves its workspace untouched is a no-op the engine
+        # fails on purpose. This harness tests ROUTING, so the write is the
+        # cheapest honest way to be a run that delivered rather than one
+        # exempted from the check.
+        tools=ToolPermissions(allowed=(NotBlankStr("echo"), NotBlankStr("write_file"))),
     )
 
 
