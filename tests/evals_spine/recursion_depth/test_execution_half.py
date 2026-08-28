@@ -43,6 +43,7 @@ from evals.recursion_depth.gate import MergeReview, MergeReviewRequest
 from evals.recursion_depth.grading import (
     RUNNER_PROBE_ARGS,
     SandboxUnitGrader,
+    UnitGrader,
     read_verdict,
     refuse_without_a_runner,
 )
@@ -459,10 +460,16 @@ def _deps(*, own_tests: tuple[bool, str] = (True, "")) -> SweepDeps:
     def _no_sandbox(_root: Path, *, owner: str) -> object:
         raise AssertionError
 
+    # Scripted rather than always passing, so the delivery arms either side of
+    # the gate stay reachable: a grader that cannot fail leaves "built, and its
+    # suite did not pass" untested through the loop that produces it. The
+    # verdict itself is asserted directly in ``TestTheOwnTestGate``.
     return SweepDeps(
         build_provider=_no_provider,  # type: ignore[arg-type]
         build_tool_registry=lambda _workspace, *, owner: None,
-        build_grader=lambda _workspace, *, owner: _ScriptedGrader(own_tests),
+        build_grader=lambda _workspace, *, owner: mock_of[UnitGrader](
+            own_tests_pass=AsyncMock(return_value=own_tests)
+        ),
         build_sandbox=_no_sandbox,  # type: ignore[arg-type]
     )
 
@@ -490,30 +497,6 @@ def _runnerless_sandbox() -> tuple[SandboxBackend, AsyncMock]:
     )
     backend: SandboxBackend = mock_of[SandboxBackend](execute=execute)
     return backend, execute
-
-
-class _ScriptedGrader:
-    """Stands in for the container grader, which needs a Docker daemon.
-
-    What the merge loop's tests are about is attempt accounting and arm wiring,
-    neither of which the verdict changes; the verdict itself is asserted
-    directly in ``TestTheOwnTestGate``. It is scripted rather than always
-    passing so the delivery arms either side of the gate stay reachable: a
-    grader that cannot fail leaves "built, and its suite did not pass" untested
-    through the loop that produces it.
-    """
-
-    def __init__(self, verdict: tuple[bool, str]) -> None:
-        self._verdict = verdict
-
-    async def own_tests_pass(self, project_dir: Path) -> tuple[bool, str]:
-        """Report the scripted suite result.
-
-        Returns:
-            Whatever this grader was built with.
-        """
-        del project_dir
-        return self._verdict
 
 
 @dataclass(frozen=True)

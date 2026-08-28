@@ -634,8 +634,10 @@ its tail.
 
 The declared list is still recorded, as `UnitRecord.missing_declared_paths`,
 because a planner over-declaring is worth seeing. It holds the paths the planner
-named that the finished tree does not contain, so what it measures is the
-planner rather than the work.
+named that the finished tree does not contain, which is a mismatch between the
+two rather than a fact about either on its own. It is a diagnostic and nothing
+more: nothing reads it to decide `produced`, and delivery is settled by the
+tree.
 
 The direction is stated because the field's previous name, `undeclared_paths`,
 read the other way and was cited backwards on this very page. One recorded unit
@@ -784,8 +786,9 @@ cap costs its branching to the POWER of its depth: one repetition fewer at the
 deepest cap buys back more time than any other single change, and the shallow
 end is nearly free either way. It takes `CAP:COUNT` pairs and changes only the
 caps named. Per run rather than by editing the file, because the committed
-counts are the experimental DESIGN (three at every cap, so per-depth spread is
-reportable everywhere rather than only where the transition is expected), and an
+counts are the experimental DESIGN (three at caps 1 and 2 and two at caps 3 and
+4, so per-depth spread is reportable everywhere rather than only where the
+transition is expected), and an
 operator trading one of them for a schedule should not leave the next reader
 inheriting a quota window as if it were an intended design: a cap dropped to one
 repetition reports a range of one draw, which is the thing the design exists to
