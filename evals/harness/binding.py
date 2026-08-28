@@ -119,13 +119,20 @@ class HarnessBinder:
 
     Attributes:
         host: The started host whose signer mints and whose gateway verifies.
-        open_sandboxes: Sandboxes handed to a registry and not yet released.
-            The deployment's lifecycle reuses a container per owner, so the
-            binder that opened one is what has to close it.
+        open_sandboxes: Sandboxes not yet released, keyed by the OWNER that
+            opened them. The deployment's lifecycle reuses a container per
+            owner, so the binder that opened one is what has to close it, and
+            the key is what stops it closing anybody else's: sessions run
+            concurrently, and ``DockerSandboxBackend.cleanup()`` latches a
+            shutdown flag nothing clears, so a sandbox taken from a running
+            sibling is dead for the rest of the process rather than merely
+            interrupted.
     """
 
     host: RecordingGatewayHost
-    open_sandboxes: list[DockerSandbox] = field(default_factory=list, repr=False)
+    open_sandboxes: dict[str, list[DockerSandbox]] = field(
+        default_factory=dict, repr=False
+    )
 
     @property
     def company_config(self) -> RootConfig:
@@ -168,6 +175,12 @@ class HarnessBinder:
             cost_ceiling=binding.cost_ceiling,
             ttl_seconds=_BEARER_TTL_SECONDS,
         )
+        # Told to the transcript tap, which runs ahead of the gateway that
+        # verifies this token and so has no other way to know which session a
+        # request belongs to. Here because this is the one place holding both
+        # the credential and the identity it was minted for.
+        if self.host.transcripts is not None:
+            self.host.transcripts.attach(bearer, binding.execution_id)
         # What the run is authorised to spend, and against which pair. Never
         # the bearer: it is the credential, and this is the one place holding it.
         logger.debug(
@@ -251,7 +264,24 @@ class HarnessBinder:
         registry = ProviderRegistry.from_config({binding.ref.provider: routed})
         return registry.get(binding.ref.provider)
 
-    def build_sandbox(self, root: Path) -> DockerSandbox:
+    def track_sandbox(self, sandbox: DockerSandbox, *, owner: str) -> None:
+        """File *sandbox* under *owner*, which is what may later release it.
+
+        Args:
+            sandbox: The backend to track.
+            owner: Who opened it. Only a release naming this key closes it.
+        """
+        self.open_sandboxes.setdefault(owner, []).append(sandbox)
+
+    def sandbox_owners(self) -> tuple[str, ...]:
+        """Report the owners currently holding a sandbox.
+
+        Returns:
+            The keys, sorted, for a caller checking what is still open.
+        """
+        return tuple(sorted(self.open_sandboxes))
+
+    def build_sandbox(self, root: Path, *, owner: str) -> DockerSandbox:
         """Build a container backend rooted at *root*, tracked for release.
 
         Separate from :meth:`build_tool_registry` because the two answer to
@@ -261,12 +291,17 @@ class HarnessBinder:
         image and a network posture because the reason is the same either way:
         the code being run is model output.
 
+        Grading a unit outlives the session that built it, so it takes an owner
+        of its own rather than the session's: released under the session key it
+        would be torn down before it had run the suite it exists to run.
+
         Args:
             root: The directory mounted as the container's workspace.
+            owner: Who is accountable for releasing it.
 
         Returns:
-            The sandbox, appended to ``open_sandboxes`` so the run's teardown
-            reclaims it whether the grading finished or raised.
+            The sandbox, tracked under *owner* so the teardown reclaims it
+            whether the grading finished or raised.
         """
         app_state = self.host.app_state
         sandbox = DockerSandbox(
@@ -282,10 +317,12 @@ class HarnessBinder:
                 clock=app_state.clock,
             ),
         )
-        self.open_sandboxes.append(sandbox)
+        self.track_sandbox(sandbox, owner=owner)
         return sandbox
 
-    def build_tool_registry(self, workspace: CellWorkspace) -> ToolRegistry:
+    def build_tool_registry(
+        self, workspace: CellWorkspace, *, owner: str
+    ) -> ToolRegistry:
         """Build the tool set a run gets, scoped to *workspace*.
 
         Every tool is constructed against the cell root, not the graded project
@@ -315,6 +352,11 @@ class HarnessBinder:
         the deployment configures ``per-agent``. Measuring per-call measures
         something the product does not run.
 
+        Args:
+            workspace: The tree the tools are rooted at.
+            owner: The session the shell's sandbox belongs to. Only that
+                session's release closes it.
+
         Returns:
             The workspace-scoped :class:`ToolRegistry`.
         """
@@ -333,7 +375,7 @@ class HarnessBinder:
                 clock=app_state.clock,
             ),
         )
-        self.open_sandboxes.append(sandbox)
+        self.track_sandbox(sandbox, owner=owner)
         return ToolRegistry(
             [
                 ReadFileTool(workspace_root=base),
@@ -344,24 +386,57 @@ class HarnessBinder:
             ]
         )
 
-    async def release_tool_sandboxes(self) -> None:
-        """Tear down every sandbox this binder has handed out.
+    async def release_tool_sandboxes(self, owner: str) -> None:
+        """Tear down the sandboxes *owner* opened, and only those.
 
         Called after each run. A reusing lifecycle destroys its warm container
         on a grace timer owned by the strategy instance, and each run builds and
         discards its own, so nothing would await that timer: a long matrix would
         leave one container behind per run.
 
+        Scoped to one owner because sessions run concurrently and a release
+        naming no owner takes whatever is open, siblings included. That is not
+        an interruption they recover from: ``cleanup`` latches a shutdown flag
+        nothing clears, so the taken sandbox answers every later command with
+        the same refusal and the agent holding it spends the rest of its budget
+        retrying a shell that cannot come back.
+
         Every sandbox is attempted whatever the others do. A raise from one
         teardown would otherwise strand the rest for the life of the matrix, and
         this runs in a bare ``finally``, where it would replace a measurement
         that had already succeeded with an unavailable row. A container this
         could not reclaim is reported and left to Docker.
+
+        Args:
+            owner: Whose sandboxes to release. An owner holding none is not an
+                error: a session whose registry built no shell still runs its
+                release on the way out.
         """
-        # Taken before the first await: a second call while one is in flight
+        # Popped before the first await: a second call while one is in flight
         # would otherwise clean the same container twice.
-        pending = list(self.open_sandboxes)
+        pending = self.open_sandboxes.pop(owner, [])
+        await self._release(pending)
+
+    async def release_all_sandboxes(self) -> None:
+        """Tear down every sandbox still open, whoever opened it.
+
+        The run-end sweep. Per-owner releases reclaim the ordinary path; this
+        one covers what a raise left behind, and an owner whose release never
+        ran because the failure happened before it.
+        """
+        pending = [
+            sandbox for group in self.open_sandboxes.values() for sandbox in group
+        ]
         self.open_sandboxes.clear()
+        await self._release(pending)
+
+    @staticmethod
+    async def _release(pending: list[DockerSandbox]) -> None:
+        """Clean up *pending*, newest first, reporting rather than raising.
+
+        Args:
+            pending: The sandboxes to tear down, already untracked.
+        """
         failures = 0
         for sandbox in reversed(pending):
             try:

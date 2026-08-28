@@ -47,6 +47,7 @@ from tests._shared.response_shapes import (
     assert_no_card_shaped_run,
 )
 from tests._shared.settings_fake import FakeSettingsService
+from tests._shared.special_files import make_named_pipe
 from tests._shared.sprint_doubles import FakeSprintRepository
 from tests._shared.staffing import (
     role_holder,
@@ -93,6 +94,7 @@ __all__ = [
     "make_app_state",
     "make_company",
     "make_in_memory_catalog",
+    "make_named_pipe",
     "make_pipeline_result",
     "mock_of",
     "model_ref_resolver",

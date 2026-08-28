@@ -30,14 +30,27 @@ the planner decides what it uses. Binning on the cap makes caps the planner
 never reached look like measured points, so the primary curves bin each run on
 the depth it reached and the cap curves are reported beside them with the
 histogram that says how much of the sweep was real.
+
+**SPREAD** is a third view over the same two numbers, and it exists because
+both curves POOL a bucket's repetitions. Pooling is the right shape for a rate
+over work and it cannot answer the question a repeated cap is recorded to
+answer: whether a low point is one bad draw or a real drop. So each bucket also
+reports the range and the middle of its runs, per metric, and a reader who
+wants the runs themselves finds one row each in ``cells``.
 """
 
 from collections import defaultdict
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
+from statistics import median_low
 
 from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.manifest import Arm
-from evals.recursion_depth.models import CellRecord, DepthPoint, SurvivalPoint
+from evals.recursion_depth.models import (
+    CellRecord,
+    DepthPoint,
+    DepthSpread,
+    SurvivalPoint,
+)
 
 #: Says which bucket a run belongs in, for both its fraction and its spend.
 type RunBucket = Callable[[CellRecord], int]
@@ -231,6 +244,122 @@ def _survival(
     )
 
 
+def spread_by_achieved_depth(
+    cells: Iterable[CellRecord], *, requirement_count: int
+) -> tuple[DepthSpread, ...]:
+    """Report how much each bucket's repetitions disagreed, by depth reached.
+
+    Args:
+        cells: The measured runs.
+        requirement_count: The specification's own requirement count, for the
+            subset check each run's satisfied count is held to.
+
+    Returns:
+        One row per ``(depth, arm)``, on the axis
+        :func:`curve_by_achieved_depth` uses.
+    """
+    return _spread(cells, bucket=_achieved_bucket, requirement_count=requirement_count)
+
+
+def spread_by_depth_cap(
+    cells: Iterable[CellRecord], *, requirement_count: int
+) -> tuple[DepthSpread, ...]:
+    """The same, binned on the ``max_depth`` cap the run was allowed.
+
+    Args:
+        cells: The measured runs.
+        requirement_count: The specification's own requirement count.
+
+    Returns:
+        One row per ``(cap, arm)``, ascending.
+    """
+    return _spread(cells, bucket=_cap_bucket, requirement_count=requirement_count)
+
+
+def _run_survival(cell: CellRecord) -> float | None:
+    """One run's own leaf-work survival rate.
+
+    Per RUN rather than per bucket, which is what makes a spread a spread. The
+    absent case is the same one :class:`SurvivalPoint` states and it has to be
+    kept absent here too: a run whose delivered leaves claimed nothing has no
+    rate, and folding it in as a zero reports a collapse nobody measured.
+
+    Returns:
+        The rate, or ``None`` when this run attributed nothing.
+    """
+    claimed = _delivered_claims(cell)
+    if not claimed:
+        return None
+    return len(claimed & set(cell.merged_passing)) / len(claimed)
+
+
+def _spread(
+    cells: Iterable[CellRecord], *, bucket: RunBucket, requirement_count: int
+) -> tuple[DepthSpread, ...]:
+    """Fold every run into one range per ``(bin, arm)``.
+
+    Ranged over runs rather than over pooled operands, and the median is the
+    LOW one: it is always a value some run actually recorded, so a bucket of
+    two never reports a figure that describes neither of them.
+
+    Returns:
+        The rows, ordered by depth then arm.
+    """
+    satisfied: dict[tuple[int, Arm], list[int]] = defaultdict(list)
+    survival: dict[tuple[int, Arm], list[float]] = defaultdict(list)
+    counted: dict[tuple[int, Arm], int] = defaultdict(int)
+    for cell in cells:
+        if cell.achieved_depth is None:
+            continue
+        slot = (bucket(cell), cell.arm)
+        # DISTINCT ids, for the reason `_curve` takes them: `merged_passing`
+        # permits repeats and the denominator counts each requirement once.
+        satisfied[slot].append(len(set(cell.merged_passing)))
+        rate = _run_survival(cell)
+        if rate is not None:
+            survival[slot].append(rate)
+        counted[slot] += 1
+    return tuple(
+        _row(
+            depth,
+            arm,
+            satisfied[(depth, arm)],
+            survival[(depth, arm)],
+            cells=counted[(depth, arm)],
+            requirement_count=requirement_count,
+        )
+        for depth, arm in sorted(counted, key=lambda slot: (slot[0], slot[1].value))
+    )
+
+
+def _row(
+    depth: int,
+    arm: Arm,
+    satisfied: Sequence[int],
+    survival: Sequence[float],
+    *,
+    cells: int,
+    requirement_count: int,
+) -> DepthSpread:
+    """Build one bucket's row from the runs it holds.
+
+    Returns:
+        The row.
+    """
+    return DepthSpread(
+        depth=depth,
+        arm=arm,
+        cells=cells,
+        required=requirement_count,
+        satisfied_min=min(satisfied),
+        satisfied_median=median_low(satisfied),
+        satisfied_max=max(satisfied),
+        survival_min=min(survival) if survival else None,
+        survival_median=median_low(survival) if survival else None,
+        survival_max=max(survival) if survival else None,
+    )
+
+
 def achieved_depth_histogram(cells: Iterable[CellRecord]) -> dict[str, int]:
     """How many runs at each cap reached each depth, per arm.
 
@@ -263,6 +392,8 @@ __all__ = [
     "achieved_depth_histogram",
     "curve_by_achieved_depth",
     "curve_by_depth_cap",
+    "spread_by_achieved_depth",
+    "spread_by_depth_cap",
     "survival_by_achieved_depth",
     "survival_by_depth_cap",
 ]

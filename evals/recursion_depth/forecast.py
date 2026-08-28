@@ -1,67 +1,38 @@
 # module-kind: code
-"""What one cell is expected to cost, from what this sweep has already measured.
+"""What one cell is expected to cost, so the sweep can decline to start it.
 
-The manifest's ``projected_branching`` is an assumption written before any tree
-exists, and it is the one input a sweep can correct as it runs: every recorded
-cell is a measurement of how wide this planner actually splits, against this
-specification, with these models. Live cap-1 trees came back at 6 and 8 against
-an assumed 4, so a forecast that keeps trusting the assumption is wrong in the
-expensive direction by a factor that compounds with depth.
+The estimate exists so a sweep can refuse a cell it cannot finish. That is a
+different job from the ceiling itself, which books sessions after they run: a
+cell entered without the budget to complete it spends everything left, records
+nothing measurable, and stops. Whatever it spent bought a cell that enters no
+curve.
 
-The estimate exists so the sweep can decline to START a cell it cannot finish.
-That is a different job from the ceiling itself, which books sessions after
-they run: a cell entered without the budget to complete it spends everything
-left, records nothing measurable, and stops. Whatever it spent bought a cell
-that enters no curve.
+Two sources, in that order. A cap the matrix has already recorded is KNOWN, so
+the costliest of those runs is the estimate: the matrix repeats caps, and once
+one cap-3 cell has run there is nothing left to model. A cap nothing has run
+takes the manifest's declared ``expected_sessions_per_cell``.
 
-So the estimate errs HIGH throughout. Refusing a cell that would have fit ends
-the sweep with budget unspent, losing one measurement; entering a cell that
-does not fit loses that same measurement AND everything it spends on the way to
-discovering it. The second is strictly worse, so ties go to refusing.
+Declared, rather than derived from ``projected_sessions``, and the difference is
+what this module is for. That model assumes uniform branching, and these trees
+do not branch uniformly: a recorded cap-3 tree split 7 ways at the root, 4.6
+ways at level 1 and 3.5 ways at level 2, so the widest factor any cell shows is
+the ROOT's, and raising it to the fourth power answered 3,601 sessions for a
+cap-4 cell whose real cost is near 300. Used to decide whether a cell starts,
+that refuses the deepest cell of every sweep: the check written to save a cell's
+spend would instead have cost the measurement the sweep exists to take.
+
+The estimate still errs HIGH, because the asymmetry that made it err high has
+not changed. Refusing a cell that would have fit ends the sweep with budget
+unspent, losing one measurement; entering a cell that does not fit loses that
+same measurement AND everything it spends on the way to discovering it. What
+changed is that the margin is now a figure an operator sized from measurement
+rather than an artefact of the wrong tree shape.
 """
 
 from collections.abc import Sequence
 
 from evals.recursion_depth.manifest import RecursionDepthManifest
 from evals.recursion_depth.models import CellRecord
-
-
-def measured_branching(cells: Sequence[CellRecord]) -> int | None:
-    """The widest branching factor any recorded cell actually used.
-
-    A tree of ``b`` branching and ``d`` achieved levels holds ``b ** d``
-    leaves, so ``b`` is the ``d``-th root of the leaf count. Rounded UP, and
-    taken as the maximum across cells rather than the mean, because both
-    choices push the forecast high and the cost of forecasting low is a whole
-    wasted cell.
-
-    Cells that produced no tree are skipped: ``achieved_depth`` is ``None``
-    precisely when there is nothing to measure branching from.
-
-    Args:
-        cells: Every cell recorded so far, measured or not.
-
-    Returns:
-        The widest factor observed, or ``None`` when nothing has been measured.
-    """
-    widest: int | None = None
-    for cell in cells:
-        depth = cell.achieved_depth
-        leaves = len(cell.leaves)
-        if depth is None or depth < 1 or leaves < 1:
-            continue
-        # Searched rather than computed as `leaves ** (1 / depth)`: floating
-        # point puts a perfect square root of 36 at 5.999999999999999, and a
-        # factor the tree demonstrably reached would be rounded below itself.
-        #
-        # Starting at two, which is what `projected_sessions` divides by and
-        # what the manifest's own field requires. A single-leaf tree measures
-        # a factor of one, which is not a shape the cost model describes.
-        branching = 2
-        while branching**depth < leaves:
-            branching += 1
-        widest = branching if widest is None else max(widest, branching)
-    return widest
 
 
 def estimate_sessions(
@@ -71,19 +42,11 @@ def estimate_sessions(
 ) -> int:
     """What one cell at *depth_cap* is expected to cost, in sessions.
 
-    Prefers a measurement of the same cap over any inference: the matrix
-    repeats caps, so once one cap-3 cell has run, what a cap-3 cell costs is
-    known rather than modelled. The maximum of those is taken for the same
-    reason the branching factor is.
-
-    Falling back, the manifest's own projection is reused with the measured
-    branching substituted for the assumed one, so there is one cost model in
-    the harness rather than a second one that can disagree with the figure the
-    plan printed.
-
     Args:
         manifest: The matrix being recorded.
-        cells: Every cell recorded so far, measured or not.
+        cells: Every cell recorded so far, measured or not. A cell that
+            produced no tree is not a measurement of anything: it stopped
+            before the cost it would have had.
         depth_cap: The cap of the cell about to run.
 
     Returns:
@@ -96,4 +59,4 @@ def estimate_sessions(
     ]
     if same_cap:
         return max(same_cap)
-    return manifest.projected_sessions(depth_cap, branching=measured_branching(cells))
+    return manifest.expected_sessions(depth_cap)

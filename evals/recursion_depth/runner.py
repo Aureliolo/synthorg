@@ -89,14 +89,7 @@ from evals.recursion_depth.models import (
 )
 from evals.recursion_depth.oracle import run_oracle
 from evals.recursion_depth.planner import PlanningSpend, TreePlanner
-from evals.recursion_depth.session import (
-    SessionLimits,
-    SweepDeps,
-    built_unit_workspace,
-    leaf_unit_key,
-    merge_unit_key,
-    unit_workspace,
-)
+from evals.recursion_depth.session import SessionLimits, SweepDeps
 from evals.recursion_depth.staffing import SweepRoster
 from evals.recursion_depth.tree import (
     SpecBrief,
@@ -105,6 +98,13 @@ from evals.recursion_depth.tree import (
     merge_nodes,
     objective_task,
     unit_definitions,
+)
+from evals.recursion_depth.unit import (
+    UnitDelivery,
+    built_unit_workspace,
+    leaf_unit_key,
+    merge_unit_key,
+    unit_workspace,
 )
 from evals.runner.execution import EVAL_TASK_PROJECT
 from synthorg.core.agent import AgentIdentity
@@ -749,7 +749,7 @@ class _ContinuedCell:
     root: Task
     tree: DecompositionResult
     produced: dict[str, CellWorkspace]
-    delivered: dict[str, bool]
+    delivered: dict[str, UnitDelivery]
 
 
 def _continue_cell(
@@ -778,7 +778,7 @@ def _continue_cell(
     if resumed.plan is None:
         return None
     produced: dict[str, CellWorkspace] = {}
-    delivered: dict[str, bool] = {}
+    delivered: dict[str, UnitDelivery] = {}
     for unit in resumed.units:
         if unit.kind == PLAN:
             continue
@@ -796,7 +796,7 @@ def _continue_cell(
             )
             return None
         produced[key] = workspace
-        delivered[key] = unit.delivered
+        delivered[key] = UnitDelivery(produced=unit.produced, reason=unit.detail)
     for unit in resumed.units:
         units.replay(unit)
     logger.info(
@@ -962,6 +962,7 @@ async def _run_cell(
     )
     merged = await run_oracle(
         build_sandbox=context.deps.build_sandbox,
+        release_sandboxes=context.deps.release_tools,
         spec_dir=context.spec_dir,
         tree=assembled.project_dir,
     )
@@ -995,7 +996,7 @@ async def _build_tree_units(
     units: CellUnits,
     *,
     produced: dict[str, CellWorkspace],
-    delivered: dict[str, bool],
+    delivered: dict[str, UnitDelivery],
 ) -> CellWorkspace:
     """Build every leaf and assemble every node, children before their parent.
 
@@ -1056,7 +1057,9 @@ async def _build_tree_units(
             reviewer=reviewer,
         )
         produced[str(parent.id)] = outcome.workspace
-        delivered[str(parent.id)] = outcome.delivered
+        delivered[str(parent.id)] = UnitDelivery(
+            produced=outcome.produced, reason=outcome.detail
+        )
         units.append(_merge_record(parent, node, outcome))
         context.budget.spend(outcome.attempts)
     return produced[str(root.id)]
@@ -1069,7 +1072,7 @@ async def _leaf_pieces(
     *,
     definitions: Mapping[str, SubtaskDefinition],
     produced: dict[str, CellWorkspace],
-    delivered: dict[str, bool],
+    delivered: dict[str, UnitDelivery],
     units: CellUnits,
 ) -> tuple[MergePiece, ...]:
     """Build each of *node*'s children, and name what the merge assembles.
@@ -1110,7 +1113,7 @@ async def _leaf_pieces(
                 title=str(task.title),
                 slug=piece_slug(str(task.title), index=index),
                 tree=produced[key].project_dir,
-                delivered=delivered[key],
+                delivery=delivered[key],
             )
         )
     return tuple(pieces)
@@ -1123,7 +1126,7 @@ async def _build_missing_leaves(
     *,
     definitions: Mapping[str, SubtaskDefinition],
     produced: dict[str, CellWorkspace],
-    delivered: dict[str, bool],
+    delivered: dict[str, UnitDelivery],
     units: CellUnits,
 ) -> None:
     """Build every child of *node* that is not already on disk.
@@ -1174,7 +1177,14 @@ async def _build_missing_leaves(
             )
         key = str(task.id)
         produced[key] = leaf.workspace
-        delivered[key] = leaf.delivered
+        delivered[key] = UnitDelivery(produced=leaf.produced, reason=leaf.detail)
+        # Deliberately synchronous inside a gathered coroutine. The append
+        # write-flush-fsyncs, and running it on the loop is what serialises
+        # concurrent siblings against one file handle: a thread hop would free
+        # the loop but interleave two writers into one JSONL line, corrupting
+        # the ledger these cells were paid for. Measured at 1.0ms median and
+        # 2.3ms worst of 200, against leaves running minutes and a 1200s stall
+        # threshold, so the block it costs buys that safety for nothing.
         units.append(_leaf_record(task, definitions[key], node, leaf, context.spec))
         context.budget.spend(leaf.attempts)
 
@@ -1366,13 +1376,14 @@ def _leaf_record(
             unit=str(task.title),
         ),
         delivered=leaf.delivered,
+        produced=leaf.produced,
         attempts=leaf.attempts,
         turns=leaf.turns,
         cost=leaf.cost,
         tokens=leaf.tokens,
         executor=leaf.executor,
         detail=leaf.detail,
-        undeclared_paths=leaf.undeclared_paths,
+        missing_declared_paths=leaf.missing_declared_paths,
     )
 
 
@@ -1390,6 +1401,7 @@ def _merge_record(
         kind=MERGE,
         depth=node.depth,
         delivered=outcome.delivered,
+        produced=outcome.produced,
         attempts=outcome.attempts,
         turns=outcome.turns,
         cost=outcome.cost,
@@ -1400,7 +1412,7 @@ def _merge_record(
         verdict=NotBlankStr(outcome.verdict) if outcome.verdict is not None else None,
         parked=outcome.parked,
         amendments=outcome.amendments,
-        undeclared_paths=outcome.undeclared_paths,
+        missing_declared_paths=outcome.missing_declared_paths,
     )
 
 

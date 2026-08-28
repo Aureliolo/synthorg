@@ -24,9 +24,23 @@ class SandboxError(ToolError):
     Attributes:
         AGENT_MESSAGE: What an agent may be told instead of this error's own
             text. ``None`` means the text is already safe to hand over.
+        RETRYABLE: Whether an identical command could ever succeed later. A
+            retryable failure is handed to the agent as an ordinary error
+            result and it decides what to do; a non-retryable one is raised
+            past the tool, which ends the session as an infrastructure error.
+
+            The distinction is not decoration. A condition the agent cannot
+            clear, delivered as an ordinary tool result, reads exactly like a
+            transient one, so the only sane behaviour available to the agent
+            (try again, then try another route) spends its entire budget on a
+            call that cannot succeed. Measured on a recorded sweep: six units
+            each burned to a 1.5-million-token ceiling retrying ``ls`` against
+            a sandbox that had shut down, wrote nothing, and were recorded as
+            having built nothing.
     """
 
     AGENT_MESSAGE: ClassVar[str | None] = None
+    RETRYABLE: ClassVar[bool] = True
 
 
 class SandboxTimeoutError(SandboxError):
@@ -60,6 +74,7 @@ class SandboxWorkspaceUnmappableError(SandboxError):
         "command can run against them. Nothing about the command caused this; "
         "see the 'agent_tool_execution' subsystem for the condition."
     )
+    RETRYABLE: ClassVar[bool] = False
 
 
 class SandboxShuttingDownError(SandboxError):
@@ -75,6 +90,11 @@ class SandboxShuttingDownError(SandboxError):
         "This deployment's sandbox is shutting down, so no command can be "
         "started. Nothing about the command caused this."
     )
+    # The flag `cleanup` sets is never cleared, so this backend refuses every
+    # command for the rest of the process. Handed back as an ordinary error it
+    # is indistinguishable from a transient one, and retrying it is what an
+    # agent will do until something stops it.
+    RETRYABLE: ClassVar[bool] = False
 
 
 class SandboxSubpathUnsupportedError(SandboxError):
@@ -90,6 +110,7 @@ class SandboxSubpathUnsupportedError(SandboxError):
         "Nothing about the command caused this; see the "
         "'agent_tool_execution' subsystem for the condition."
     )
+    RETRYABLE: ClassVar[bool] = False
 
 
 class SandboxProjectScopeUnresolvedError(SandboxError):
@@ -105,6 +126,7 @@ class SandboxProjectScopeUnresolvedError(SandboxError):
         "This command has no project to run inside, so it cannot be given a "
         "workspace. Nothing about the command caused this."
     )
+    RETRYABLE: ClassVar[bool] = False
 
 
 def agent_facing_message(exc: SandboxError) -> str:

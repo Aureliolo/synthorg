@@ -29,6 +29,7 @@ from evals.recursion_depth.models import (
     UNRESOLVED_CLAIMS_CAVEAT,
     CellRecord,
     DepthPoint,
+    DepthSpread,
     Provenance,
     RecursionDepthReport,
     SpendSource,
@@ -39,6 +40,8 @@ from evals.recursion_depth.score import (
     achieved_depth_histogram,
     curve_by_achieved_depth,
     curve_by_depth_cap,
+    spread_by_achieved_depth,
+    spread_by_depth_cap,
     survival_by_achieved_depth,
     survival_by_depth_cap,
 )
@@ -155,6 +158,10 @@ def assemble_report(
         by_depth_cap=curve_by_depth_cap(measured, requirement_count=required),
         survival_by_achieved_depth=survival_by_achieved_depth(measured),
         survival_by_depth_cap=survival_by_depth_cap(measured),
+        spread_by_achieved_depth=spread_by_achieved_depth(
+            measured, requirement_count=required
+        ),
+        spread_by_depth_cap=spread_by_depth_cap(measured, requirement_count=required),
         achieved_depth_histogram=achieved_depth_histogram(measured),
         caveats=tuple(caveats),
     )
@@ -285,6 +292,31 @@ def _curve_sections(report: RecursionDepthReport) -> list[str]:
         "",
         *_survival_table(report.survival_by_depth_cap),
         "",
+        "## Per-depth spread",
+        "",
+        "Both curves above POOL a bucket's repetitions into one fraction, which",
+        "is the right shape for a rate over work and cannot say whether a low",
+        "point is one bad draw or a real drop. That is the question a cap is",
+        "recorded more than once to answer, so the range and the middle run are",
+        "reported here. The middle is the LOW median, so it is always a figure",
+        "some run actually recorded rather than one describing none of them. A",
+        "survival range reads `n/a` when no run in the bucket attributed",
+        "anything, which is not the same as a rate of zero.",
+        "",
+        *_spread_table(report.spread_by_achieved_depth),
+        "",
+        "### The same, by depth cap",
+        "",
+        *_spread_table(report.spread_by_depth_cap),
+        "",
+        "## Every cell",
+        "",
+        "One row per run, which is the population behind every figure above.",
+        "An unavailable cell is listed too, because it cost real money and",
+        "leaving it out would make the matrix read as smaller than it was.",
+        "",
+        *_cell_table(report),
+        "",
     ]
 
 
@@ -387,6 +419,78 @@ def _survival_table(points: tuple[SurvivalPoint, ...]) -> list[str]:
             f"| {point.delivered_claims} | {rendered} | {point.cells} |"
         )
     return rows
+
+
+def _spread_table(rows: tuple[DepthSpread, ...]) -> list[str]:
+    """Render one spread view as a Markdown table.
+
+    Returns:
+        The table lines.
+    """
+    header = (
+        "| Depth | Arm | Runs | Satisfied (min..max) | Median | Required "
+        "| Survival (min..max) | Median |"
+    )
+    table = [header, "|---:|---|---:|---|---:|---:|---|---:|"]
+    table.extend(
+        f"| {row.depth} | {row.arm.value} | {row.cells} "
+        f"| {row.satisfied_min}..{row.satisfied_max} "
+        f"| {row.satisfied_median} | {row.required} "
+        f"| {_rate_range(row)} | {_rate(row.survival_median)} |"
+        for row in rows
+    )
+    return table
+
+
+def _rate_range(row: DepthSpread) -> str:
+    """Render one bucket's survival range, absent rather than zero.
+
+    Returns:
+        The rendered range.
+    """
+    if row.survival_min is None or row.survival_max is None:
+        return "n/a"
+    return f"{row.survival_min:.3f}..{row.survival_max:.3f}"
+
+
+def _rate(value: float | None) -> str:
+    """Render one survival figure, absent rather than zero.
+
+    Returns:
+        The rendered figure.
+    """
+    return "n/a" if value is None else f"{value:.3f}"
+
+
+def _cell_table(report: RecursionDepthReport) -> list[str]:
+    """Render one row per recorded run.
+
+    Built from ``report.cells`` rather than from a model of its own: the record
+    already carries every column through its ``total_*`` fields, and a second
+    holder of those figures is one that can come to disagree with them.
+
+    Returns:
+        The table lines.
+    """
+    table = [
+        "| Cell | Achieved | Satisfied | Required | Sessions | Tokens | Spend |",
+        "|---|---|---:|---:|---:|---:|---:|",
+    ]
+    required = report.provenance.requirement_count
+    for cell in report.cells:
+        key = cell_key(cell.depth_cap, cell.arm, cell.repetition)
+        achieved = (
+            "unavailable" if cell.achieved_depth is None else str(cell.achieved_depth)
+        )
+        satisfied = (
+            "n/a" if cell.achieved_depth is None else str(len(set(cell.merged_passing)))
+        )
+        table.append(
+            f"| {key} | {achieved} | {satisfied} | {required} "
+            f"| {cell.total_attempts} | {cell.total_tokens} "
+            f"| {cell.total_cost:.4f} |"
+        )
+    return table
 
 
 def _histogram_table(report: RecursionDepthReport) -> list[str]:

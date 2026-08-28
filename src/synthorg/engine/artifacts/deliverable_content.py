@@ -25,13 +25,20 @@ project workspace. An absolute declaration is never opened: the read runs in
 the backend process, not the sandbox, so honouring one would hand any file
 that process can reach to an external model.
 
+When no declared path came back at all, the workspace's own files are read
+in their place. A declaration is a guess written before the tree exists, so
+a run that solved the task under other names satisfies none of them and is
+sent to review precisely so a reviewer can judge the substitution; handing
+that reviewer an empty section leaves it approving on the closing message,
+which is the reading this module exists to stop.
+
 The files are agent-written and therefore untrusted: whatever the reviewer
 receives is fenced by the caller before it reaches a prompt.
 """
 
 import asyncio
 import json
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from pathlib import Path
 from typing import Final
 
@@ -39,6 +46,7 @@ from pydantic import JsonValue
 
 from synthorg.core.artifact import ExpectedArtifact
 from synthorg.engine.artifacts.expected_artifact_check import is_probeable_path
+from synthorg.engine.artifacts.workspace_fingerprint import fingerprint_tree
 from synthorg.engine.workspace.paths import project_workspace_dir
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.deliverable import DELIVERABLE_READ_FAILED
@@ -61,6 +69,12 @@ _MAX_TOTAL_KEY: Final[str] = "review_artifact_max_chars_total"
 #: free text with no length bound of its own, and the label is charged
 #: against the same budget as content, so it needs its own ceiling.
 _MAX_PATH_LABEL: Final[int] = 256
+
+#: What :func:`json.dumps` writes between two elements of a list. Charged per
+#: entry after the first: the wrapper is costed against an EMPTY list, so a
+#: separator is rendered into the section that nothing ever budgeted for, and
+#: the overrun grows with the entry count.
+_SEPARATOR_BYTES: Final[int] = len(", ")
 
 #: What the reader found at a declared path. ``not_a_path`` is a prose
 #: deliverable rather than a file, which the reviewer can still judge; it is
@@ -86,8 +100,21 @@ type DeliverableReader = Callable[
 ]
 
 
-def _read_one(declared: str, *, root: Path, limit: int) -> dict[str, JsonValue]:
-    """Read one declared artifact, bounded at *limit* characters.
+def _read_one(
+    declared: str, *, root: Path, limit: int, is_declaration: bool = True
+) -> dict[str, JsonValue]:
+    """Read one artifact, bounded at *limit* characters.
+
+    Args:
+        declared: The path to read.
+        root: The resolved workspace directory.
+        limit: Per-file content bound, in characters.
+        is_declaration: Whether *declared* is a PLANNER's free text, which may
+            be prose rather than a path. A name walked off the filesystem is
+            already known to be a file, and putting it through the prose test
+            would report a real produced file called ``design notes.md`` as
+            "not a path". Containment is checked either way, because that is
+            about where the file sits rather than how its name was obtained.
 
     Returns:
         Its entry in the document: always a ``path`` and a ``status``, plus
@@ -97,7 +124,7 @@ def _read_one(declared: str, *, root: Path, limit: int) -> dict[str, JsonValue]:
         not know is missing.
     """
     label = declared[:_MAX_PATH_LABEL]
-    if not is_probeable_path(declared):
+    if is_declaration and not is_probeable_path(declared):
         return {"path": label, "status": _STATUS_NOT_A_PATH}
     resolved = (root / Path(declared)).resolve()
     if resolved == root:
@@ -113,6 +140,15 @@ def _read_one(declared: str, *, root: Path, limit: int) -> dict[str, JsonValue]:
         return {"path": label, "status": _STATUS_ABSENT}
     if resolved.is_dir():
         return {"path": label, "status": _STATUS_DIRECTORY}
+    if not resolved.is_file():
+        # A named pipe or a device is not a deliverable, and opening one
+        # blocks until somebody writes to it, which nobody here will. The
+        # workspace is a tree an agent can write, so it can hold one.
+        return {
+            "path": label,
+            "status": _STATUS_UNREADABLE,
+            "reason": "not a regular file",
+        }
     try:
         with resolved.open(encoding="utf-8", errors="replace") as handle:
             text = handle.read(limit + 1)
@@ -158,36 +194,134 @@ def read_declared_artifacts(
     if not expected:
         return None
     root = workspace.resolve()
-    entries: list[JsonValue] = []
+    declared_paths = {str(artifact.path) for artifact in expected}
     # The wrapper is charged before any entry, because it is rendered
     # whatever else fits and a budget that ignored it could be spent
     # entirely on entries and still overrun.
-    budget = max_total_bytes - len(
-        json.dumps({"declared": len(expected), "artifacts": []})
+    entries, budget = _pack_entries(
+        [str(artifact.path) for artifact in expected],
+        root=root,
+        limit=max_bytes_per_file,
+        budget=max_total_bytes
+        - len(json.dumps({"declared": len(expected), "artifacts": []})),
+        is_declaration=True,
     )
-    for index, artifact in enumerate(expected):
+    section: dict[str, JsonValue] = {
+        "declared": len(expected),
+        "artifacts": entries,
+    }
+    if any(
+        isinstance(entry, dict) and entry.get("status") == ARTIFACT_STATUS_READ
+        for entry in entries
+    ):
+        return section
+    # The dumped stand-in costs its own two braces where the real rendering
+    # costs the two bytes of the separator joining it to ``artifacts``, so the
+    # charge is exact rather than approximate. Keeping the stand-in a whole
+    # document is what makes it exact; charging the key alone would undercount.
+    instead = _read_produced_instead(
+        root,
+        declared_paths,
+        limit=max_bytes_per_file,
+        budget=budget - len(json.dumps({"produced_instead": []})),
+    )
+    if instead:
+        section["produced_instead"] = instead
+    return section
+
+
+def _read_produced_instead(
+    root: Path,
+    declared: Collection[str],
+    *,
+    limit: int,
+    budget: int,
+) -> list[JsonValue]:
+    """Read what the workspace holds when no declaration came back.
+
+    A declaration is written before the tree exists, so a run that solved
+    the task under other names satisfies none of them. That run now reaches
+    review rather than being failed on its declarations, and a reviewer
+    handed nothing but the agent's closing message approves on the strength
+    of prose, which is what this module exists to stop. So when no declared
+    path was read, the reviewer is shown what IS there instead.
+
+    Args:
+        root: The resolved workspace directory.
+        declared: The declared paths, so a file already reported is not
+            reported twice under a second heading.
+        limit: Per-file content bound, in characters.
+        budget: What is left of the section's total bound.
+
+    Returns:
+        One entry per file read, in path order so two reviews of the same
+        tree read the same, plus an omission marker when the budget ran out.
+        Empty when the workspace holds nothing, which is the honest answer
+        for a run that produced nothing at all.
+    """
+    produced = sorted(
+        path for path, _ in fingerprint_tree(root) if path not in declared
+    )
+    entries, _remaining = _pack_entries(
+        produced, root=root, limit=limit, budget=budget, is_declaration=False
+    )
+    return entries
+
+
+def _pack_entries(
+    paths: Sequence[str],
+    *,
+    root: Path,
+    limit: int,
+    budget: int,
+    is_declaration: bool,
+) -> tuple[list[JsonValue], int]:
+    """Read *paths* into entries, stopping when the section's budget runs out.
+
+    The one owner of how a section spends its bound, because both headings
+    this module renders spend the same one and two copies of the arithmetic
+    drift apart on the first correction made to only one of them.
+
+    Args:
+        paths: What to read, in the order it should be rendered.
+        root: The resolved workspace directory.
+        limit: Per-file content bound, in characters.
+        budget: What is left of the section's total bound.
+        is_declaration: Whether *paths* are planner free text rather than
+            names walked off the filesystem. See :func:`_read_one`.
+
+    Returns:
+        The entries, plus what remains of *budget* after them, so a caller
+        rendering a second heading charges it against what the first left.
+    """
+    entries: list[JsonValue] = []
+    for index, path in enumerate(paths):
         entry = _read_one(
-            str(artifact.path),
+            path,
             root=root,
-            limit=max(0, min(max_bytes_per_file, budget)),
+            limit=max(0, min(limit, budget)),
+            is_declaration=is_declaration,
         )
         # Charge the rendered entry, not just its content: the path label is
         # planner free text and reaches the same prompt budget.
-        cost = len(json.dumps(entry))
+        separator = _SEPARATOR_BYTES if entries else 0
+        cost = len(json.dumps(entry)) + separator
         if cost > budget:
             omission: dict[str, JsonValue] = {
                 "status": _STATUS_OMITTED,
-                "count": len(expected) - index,
+                "count": len(paths) - index,
             }
             # The marker is content too, so it only goes in if it fits. A
             # section that overran while announcing that it overran would be
             # the same defect wearing a label.
-            if len(json.dumps(omission)) <= budget:
+            marker_cost = len(json.dumps(omission)) + separator
+            if marker_cost <= budget:
                 entries.append(omission)
+                budget -= marker_cost
             break
         budget -= cost
         entries.append(entry)
-    return {"declared": len(expected), "artifacts": entries}
+    return entries, budget
 
 
 def workspace_deliverable_reader(

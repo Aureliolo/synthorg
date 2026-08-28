@@ -23,7 +23,7 @@ from synthorg.engine._task_sync_transitions import (
     transition_to_awaiting_input,
     transition_to_interrupted,
 )
-from synthorg.engine.artifacts.expected_artifact_check import ExpectedArtifactProbe
+from synthorg.engine.artifacts.baseline_scope import RunBaselineProbe
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
@@ -204,7 +204,7 @@ async def apply_post_execution_transitions(
     approval_store: ApprovalStoreProtocol | None = None,
     review_gate: ReviewGateService | None = None,
     review_pipeline: ReviewPipeline | None = None,
-    artifact_probe: ExpectedArtifactProbe | None = None,
+    run_probe: RunBaselineProbe | None = None,
 ) -> ExecutionResult:
     """Apply post-execution task transitions based on termination reason.
 
@@ -241,7 +241,7 @@ async def apply_post_execution_transitions(
         approval_store: Queue the review / failure item lands in.
         review_gate: Auto-review gate, when the operator enabled it.
         review_pipeline: Staged review pipeline, paired with the gate.
-        artifact_probe: Asks the project workspace whether the declared
+        run_probe: Asks the project workspace whether the declared
             artifacts exist. ``None`` leaves the zero-tool-call proxy as
             the only empty-run signal.
 
@@ -298,7 +298,7 @@ async def apply_post_execution_transitions(
     if reason not in (TerminationReason.COMPLETED, TerminationReason.NO_OP):
         return execution_result
 
-    undelivered = await _failed_for_no_delivery(move, artifact_probe=artifact_probe)
+    undelivered = await _failed_for_no_delivery(move, run_probe=run_probe)
     if undelivered is not None:
         return undelivered
 
@@ -310,7 +310,7 @@ async def apply_post_execution_transitions(
 async def _failed_for_no_delivery(
     move: _Move,
     *,
-    artifact_probe: ExpectedArtifactProbe | None,
+    run_probe: RunBaselineProbe | None,
 ) -> ExecutionResult | None:
     """Fail a run that finished having delivered nothing, or return ``None``.
 
@@ -319,7 +319,7 @@ async def _failed_for_no_delivery(
         proceed to review.
     """
     reason = await no_delivery_reason(
-        move.execution_result, move.ctx, artifact_probe=artifact_probe
+        move.execution_result, move.ctx, run_probe=run_probe
     )
     if reason is None:
         return None

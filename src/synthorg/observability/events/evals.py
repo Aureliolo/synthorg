@@ -38,6 +38,13 @@ EVALS_HARNESS_HOST_STOP_TIMED_OUT: Final[str] = "evals.harness.host_stop_timed_o
 EVALS_HARNESS_HOST_SECRETS_INSTALLED: Final[str] = (
     "evals.harness.host_secrets_installed"
 )
+EVALS_HARNESS_SCRATCH_DISCARDED: Final[str] = "evals.harness.scratch_discarded"
+"""A scratch tree an earlier attempt left behind was removed before booting.
+Logged at WARNING because it means a previous run did not stop cleanly, which
+is worth knowing, and never at ERROR because inheriting the tree is the only
+outcome that would be one: the database under it is encrypted with that run's
+own ephemeral bootstrap secrets, so booting onto it fails while reading
+``providers.configs`` rather than producing anything readable."""
 EVALS_HARNESS_HOST_IMAGES_INSTALLED: Final[str] = "evals.harness.host_images_installed"
 EVALS_HARNESS_IMAGE_UNRESOLVED: Final[str] = "evals.harness.image_unresolved"
 EVALS_HARNESS_HOST_ADMIN_SEEDED: Final[str] = "evals.harness.host_admin_seeded"

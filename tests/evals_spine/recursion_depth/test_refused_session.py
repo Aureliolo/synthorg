@@ -101,15 +101,15 @@ def _deps() -> SweepDeps:
     async def _no_provider(_binding: object) -> object:
         raise AssertionError
 
-    def _no_sandbox(_root: Path) -> object:
+    def _no_sandbox(_root: Path, *, owner: str) -> object:
         raise AssertionError
 
-    def _no_grader(_workspace: object) -> object:
+    def _no_grader(_workspace: object, *, owner: str) -> object:
         raise AssertionError
 
     return SweepDeps(
         build_provider=_no_provider,  # type: ignore[arg-type]
-        build_tool_registry=lambda _workspace: None,
+        build_tool_registry=lambda _w, *, owner: None,
         build_grader=_no_grader,  # type: ignore[arg-type]
         build_sandbox=_no_sandbox,  # type: ignore[arg-type]
     )

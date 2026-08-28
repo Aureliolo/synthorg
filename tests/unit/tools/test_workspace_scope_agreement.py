@@ -23,6 +23,7 @@ from synthorg.engine.workspace.paths import project_workspace_dir
 from synthorg.tools.code_runner import CodeRunnerTool
 from synthorg.tools.file_system.write_file import WriteFileTool
 from synthorg.tools.git_tools import GitStatusTool
+from synthorg.tools.sandbox.errors import SandboxProjectScopeUnresolvedError
 from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.tools.sandbox.result import SandboxResult
 from synthorg.tools.terminal.shell_command import ShellCommandTool
@@ -78,14 +79,19 @@ class TestShellScope:
         # A tool exercised outside a run, or a run with no project, has no
         # subtree to select. Passing no project selects the whole workspace,
         # which is every other project's files, so the command is refused
-        # instead: the agent is told, and the sandbox is never reached.
+        # instead, and the sandbox is never reached.
+        #
+        # It is raised rather than returned because the execution identity is
+        # bound for the life of a session: unbound for this command means
+        # unbound for every command after it, so an agent handed this as an
+        # ordinary error would retry a call that cannot succeed until its
+        # budget ran out.
         sandbox = _sandbox()
         tool = ShellCommandTool(sandbox=sandbox)
 
-        result = await tool.execute(arguments={"command": "true"})
+        with pytest.raises(SandboxProjectScopeUnresolvedError):
+            await tool.execute(arguments={"command": "true"})
 
-        assert result.is_error is True
-        assert "no project" in result.content
         assert cast("AsyncMock", sandbox.execute).await_args is None
 
 

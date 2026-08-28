@@ -271,6 +271,27 @@ def _ceiling_note(manifest: RecursionDepthManifest, projected: int) -> list[str]
     ]
 
 
+def _declared_cap(manifest: RecursionDepthManifest) -> int:
+    """Sessions every planned cell would take at its declared figure.
+
+    ``expected_sessions`` is per CELL, and a cell is one ``(cap, arm,
+    repetition)``, so the arm count belongs in the product as much as the
+    repetition count does. Omitting it reports half the cost of a two-arm
+    matrix, which is exactly the reading that would let one be started
+    against a ceiling that cannot hold it.
+
+    Args:
+        manifest: The recording matrix.
+
+    Returns:
+        The summed declared cost.
+    """
+    return len(manifest.arms) * sum(
+        manifest.repetitions[depth] * manifest.expected_sessions(depth)
+        for depth in manifest.depths
+    )
+
+
 def _projection_lines(manifest: RecursionDepthManifest, projected: int) -> list[str]:
     """Render what the matrix is projected to cost, and on what assumption.
 
@@ -294,6 +315,32 @@ def _projection_lines(manifest: RecursionDepthManifest, projected: int) -> list[
             f"planning session, so a cap of d holds "
             f"{manifest.projected_branching}^d leaves and plans at every node "
             f"above them. A planner that splits wider costs more than this."
+        ),
+        # The other half of the cost model, and the one the operator cannot
+        # infer from the line above. The projection is the scenario a ceiling
+        # is sized against; these decide whether a cell is STARTED at all, so a
+        # figure that has drifted below what a cap really costs shows up as a
+        # sweep that stops one cell short of the depth it was paid for.
+        (
+            "  expected      : "
+            + ", ".join(
+                f"cap {d}: {manifest.expected_sessions(d):,}/cell"
+                for d in manifest.depths
+            )
+            + " (declared from measurement; a cap already recorded is priced "
+            "from that run instead)"
+        ),
+        # Deliberately NOT called the expected bill. Each declared figure
+        # carries margin, because it decides whether a cell may START and
+        # refusing one that would have fit costs a measurement; summing them
+        # therefore adds up twelve margins and reads high. What it answers is a
+        # real question about the ceiling: could every planned cell still be
+        # entered if all of them ran dear?
+        (
+            f"  declared cap  : "
+            f"{_declared_cap(manifest):,}"
+            f" sessions if every cell hits its declared figure, which each"
+            f" carries margin, so the run is expected to finish well inside it"
         ),
         (
             f"  ceiling       : {manifest.max_sessions} sessions, then the "
@@ -361,7 +408,7 @@ def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
         f"  executor      : {_pair(manifest.executor)}",
         f"  reviewer      : {_pair(manifest.reviewer)}",
         f"  independence  : {manifest.independence.value}",
-        f"  merge attempts: {manifest.merge_attempts} (the SAME in both arms)",
+        f"  merge attempts: {manifest.merge_attempts} (the SAME in every arm)",
         "",
         f"  runs          : {len(cells)}",
         *_projection_lines(manifest, projected),
@@ -379,11 +426,11 @@ async def _release(
 ) -> None:
     """Give back what the sweep held, whether or not it finished.
 
-    Grading and the oracle open their own containers, and both run OUTSIDE the
-    session context whose exit drains the agent's. Left to that hook alone,
-    each grading container waits for the next unit's teardown and the last ones
-    are never reclaimed at all, which is the leak ``release_tool_sandboxes``
-    exists to prevent, reintroduced by a second producer.
+    Every container has an owner that releases it on the ordinary path: a
+    session releases its shell, a grading releases its suite runner, the oracle
+    releases both of its own. This is the sweep, for whatever a raise left
+    behind and for an owner whose release never ran because the failure landed
+    before it.
 
     Nested, so releasing the containers and reclaiming the trees are two
     independent obligations rather than a sequence where the first one failing
@@ -399,7 +446,7 @@ async def _release(
     """
     try:
         if binder is not None:
-            await binder.release_tool_sandboxes()
+            await binder.release_all_sandboxes()
     finally:
         await _reclaim_workspaces(run_work_root, keep=keep)
 
@@ -645,8 +692,8 @@ def _build_deps(
         # and unit N's graded run would see whatever unit N-1 left outside the
         # mount. owner_id pins the separation regardless, so that stays true
         # under a lifecycle this does not choose.
-        build_grader=lambda workspace: SandboxUnitGrader(
-            sandbox=binder.build_sandbox(workspace.root),
+        build_grader=lambda workspace, *, owner: SandboxUnitGrader(
+            sandbox=binder.build_sandbox(workspace.root, owner=owner),
             project_id=NotBlankStr(EVAL_TASK_PROJECT),
         ),
         build_sandbox=binder.build_sandbox,

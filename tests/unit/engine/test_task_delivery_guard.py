@@ -9,6 +9,7 @@ unverified, which is the whole reason those branches are not silent.
 
 from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime
+from pathlib import Path
 
 import pytest
 import structlog
@@ -18,11 +19,13 @@ from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
-from synthorg.engine.artifacts.baseline_scope import artifact_baseline_scope
-from synthorg.engine.artifacts.expected_artifact_check import (
-    ArtifactPresence,
-    ExpectedArtifactProbe,
+from synthorg.engine.artifacts.baseline_scope import (
+    RunBaseline,
+    RunBaselineProbe,
+    run_baseline_scope,
 )
+from synthorg.engine.artifacts.expected_artifact_check import ArtifactPresence
+from synthorg.engine.artifacts.workspace_fingerprint import fingerprint_tree
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.resume_scope import resumed_run_scope
@@ -30,6 +33,7 @@ from synthorg.engine.task_delivery_guard import (
     EMPTY_RUN_REASON,
     MISSING_ARTIFACTS_REASON,
     NO_OP_JUSTIFICATION_KEY,
+    NOTHING_PRODUCED_REASON,
     UNCHANGED_ARTIFACTS_REASON,
     _absent_artifacts,
     no_delivery_reason,
@@ -103,7 +107,9 @@ def _run(
     )
 
 
-def _probe(presence: ArtifactPresence) -> ExpectedArtifactProbe:
+def _probe(
+    presence: ArtifactPresence, *, workspace: Path = Path("unbuilt")
+) -> RunBaselineProbe:
     """Return a probe answering *presence* whatever it is asked.
 
     Returns:
@@ -112,16 +118,33 @@ def _probe(presence: ArtifactPresence) -> ExpectedArtifactProbe:
 
     async def _ask(
         project_id: str, expected: Sequence[ExpectedArtifact]
-    ) -> ArtifactPresence:
+    ) -> RunBaseline:
         """Answer the fixed presence.
 
         Returns:
-            The presence this probe was built with.
+            A baseline carrying the presence this probe was built with.
         """
         del project_id, expected
-        return presence
+        return RunBaseline(
+            workspace=workspace,
+            declared=presence,
+            tree=fingerprint_tree(workspace),
+        )
 
     return _ask
+
+
+def _baseline(
+    presence: ArtifactPresence, *, workspace: Path = Path("unbuilt")
+) -> RunBaseline:
+    """Take a baseline the way the engine does at run start.
+
+    Returns:
+        The baseline.
+    """
+    return RunBaseline(
+        workspace=workspace, declared=presence, tree=fingerprint_tree(workspace)
+    )
 
 
 def _degradations(logs: Sequence[Mapping[str, object]]) -> list[object]:
@@ -136,7 +159,7 @@ class TestRefusals:
     async def test_an_empty_work_run_fails(self) -> None:
         ctx = _context(_task())
 
-        verdict = await no_delivery_reason(_run(ctx), ctx, artifact_probe=None)
+        verdict = await no_delivery_reason(_run(ctx), ctx, run_probe=None)
 
         assert verdict == EMPTY_RUN_REASON
 
@@ -146,13 +169,13 @@ class TestRefusals:
         ctx = _context(_task())
         run = _run(ctx, metadata={NO_OP_JUSTIFICATION_KEY: "nothing to change"})
 
-        assert await no_delivery_reason(run, ctx, artifact_probe=None) is None
+        assert await no_delivery_reason(run, ctx, run_probe=None) is None
 
     async def test_a_task_declaring_nothing_is_not_probed(self) -> None:
         ctx = _context(_task(declares=False))
         run = _run(ctx, tool_calls=1)
 
-        assert await no_delivery_reason(run, ctx, artifact_probe=None) is None
+        assert await no_delivery_reason(run, ctx, run_probe=None) is None
 
     async def test_a_run_that_produced_none_of_its_declarations_fails(self) -> None:
         # The case the tool-call proxy waves through: the agent read files,
@@ -161,7 +184,7 @@ class TestRefusals:
         run = _run(ctx, tool_calls=3)
         probe = _probe(ArtifactPresence(probed=(_DECLARED,), missing=(_DECLARED,)))
 
-        verdict = await no_delivery_reason(run, ctx, artifact_probe=probe)
+        verdict = await no_delivery_reason(run, ctx, run_probe=probe)
 
         assert verdict == MISSING_ARTIFACTS_REASON.format(paths=_DECLARED)
 
@@ -173,23 +196,147 @@ class TestRefusals:
         run = _run(ctx, tool_calls=2)
         unchanged = ArtifactPresence(probed=(_DECLARED,), digests={_DECLARED: "abc"})
 
-        with artifact_baseline_scope(unchanged):
-            verdict = await no_delivery_reason(
-                run, ctx, artifact_probe=_probe(unchanged)
-            )
+        with run_baseline_scope(_baseline(unchanged)):
+            verdict = await no_delivery_reason(run, ctx, run_probe=_probe(unchanged))
 
         assert verdict == UNCHANGED_ARTIFACTS_REASON.format(paths=_DECLARED)
 
-    async def test_a_run_that_changed_what_it_declared_passes(self) -> None:
+    async def test_a_run_that_changed_what_it_declared_passes(
+        self, tmp_path: Path
+    ) -> None:
         ctx = _context(_task())
         run = _run(ctx, tool_calls=2)
+        declared = tmp_path / _DECLARED
+        declared.parent.mkdir(parents=True)
+        declared.write_text("// first\n", encoding="utf-8")
         before = ArtifactPresence(probed=(_DECLARED,), digests={_DECLARED: "abc"})
         after = ArtifactPresence(probed=(_DECLARED,), digests={_DECLARED: "def"})
+        baseline = _baseline(before, workspace=tmp_path)
+        declared.write_text("// rewritten, and longer\n", encoding="utf-8")
 
-        with artifact_baseline_scope(before):
-            verdict = await no_delivery_reason(run, ctx, artifact_probe=_probe(after))
+        with run_baseline_scope(baseline):
+            verdict = await no_delivery_reason(
+                run, ctx, run_probe=_probe(after, workspace=tmp_path)
+            )
 
         assert verdict is None
+
+    async def test_a_changed_tree_outranks_the_zero_tool_call_proxy(
+        self, tmp_path: Path
+    ) -> None:
+        """The tree owns the question; the tool count only stands in for it.
+
+        A proxy that can overrule the thing it proxies is a second answer to
+        one question, and the quieter one wins with nobody told. Here the
+        workspace holds work the turn count cannot see, and the run passes.
+        """
+        ctx = _context(_task())
+        run = _run(ctx, tool_calls=0)
+        declared = tmp_path / _DECLARED
+        declared.parent.mkdir(parents=True)
+        before = ArtifactPresence(probed=(_DECLARED,), missing=(_DECLARED,))
+        after = ArtifactPresence(probed=(_DECLARED,), digests={_DECLARED: "def"})
+        baseline = _baseline(before, workspace=tmp_path)
+        declared.write_text("// produced\n", encoding="utf-8")
+
+        with run_baseline_scope(baseline):
+            verdict = await no_delivery_reason(
+                run, ctx, run_probe=_probe(after, workspace=tmp_path)
+            )
+
+        assert verdict is None
+
+    async def test_an_unchanged_tree_still_fails_a_zero_tool_call_run(
+        self, tmp_path: Path
+    ) -> None:
+        """The proxy is not disabled, only outranked.
+
+        Where the tree agrees nothing was produced, the turn count is the
+        reason an operator reads, because it says what the run actually did.
+        """
+        ctx = _context(_task())
+        run = _run(ctx, tool_calls=0)
+        absent = ArtifactPresence(probed=(_DECLARED,), missing=(_DECLARED,))
+        baseline = _baseline(absent, workspace=tmp_path)
+
+        with run_baseline_scope(baseline):
+            verdict = await no_delivery_reason(
+                run, ctx, run_probe=_probe(absent, workspace=tmp_path)
+            )
+
+        assert verdict == EMPTY_RUN_REASON
+
+    async def test_a_same_length_edit_to_a_declaration_passes(
+        self, tmp_path: Path
+    ) -> None:
+        """The two workspace questions read different evidence.
+
+        The tree is compared by size and a declaration by digest, so an edit
+        that keeps a file's length leaves the tree fingerprint identical while
+        the digest proves the run rewrote exactly what it promised. Flipping a
+        constant and correcting an identifier are both ordinary work of that
+        shape, and the coarser signal must not fail them.
+        """
+        ctx = _context(_task())
+        run = _run(ctx, tool_calls=2)
+        declared = tmp_path / _DECLARED
+        declared.parent.mkdir(parents=True)
+        declared.write_text("const RETRIES = 1\n", encoding="utf-8")
+        before = ArtifactPresence(probed=(_DECLARED,), digests={_DECLARED: "abc"})
+        after = ArtifactPresence(probed=(_DECLARED,), digests={_DECLARED: "def"})
+        baseline = _baseline(before, workspace=tmp_path)
+        declared.write_text("const RETRIES = 5\n", encoding="utf-8")
+
+        with run_baseline_scope(baseline):
+            verdict = await no_delivery_reason(
+                run, ctx, run_probe=_probe(after, workspace=tmp_path)
+            )
+
+        assert verdict is None
+
+    async def test_a_run_that_produced_something_undeclared_reaches_review(
+        self, tmp_path: Path
+    ) -> None:
+        """The declaration is a guess made before the tree existed.
+
+        Measured on a live cell: three of eight units wrote 4, 8 and 10
+        modules apiece under names the planner had not guessed. Failing them
+        here would discard working code over a naming disagreement a reviewer
+        can read; the missing declaration is the reviewer's question, not
+        this guard's.
+        """
+        ctx = _context(_task())
+        run = _run(ctx, tool_calls=9)
+        absent = ArtifactPresence(probed=(_DECLARED,), missing=(_DECLARED,))
+        baseline = _baseline(absent, workspace=tmp_path)
+        (tmp_path / "board.tsx").write_text("// real work\n", encoding="utf-8")
+
+        with run_baseline_scope(baseline):
+            verdict = await no_delivery_reason(
+                run, ctx, run_probe=_probe(absent, workspace=tmp_path)
+            )
+
+        assert verdict is None
+
+    async def test_a_run_that_touched_nothing_anywhere_fails(
+        self, tmp_path: Path
+    ) -> None:
+        """The only check a prose declaration ever gets.
+
+        ``the integrated, runnable deliverable`` is not path-shaped, so it is
+        never probed and the declared-artifact arms answer nothing about it.
+        A run under it could finish having written no file at all.
+        """
+        ctx = _context(_task())
+        run = _run(ctx, tool_calls=5)
+        prose = ArtifactPresence()
+
+        with run_baseline_scope(_baseline(prose, workspace=tmp_path)):
+            verdict = await no_delivery_reason(
+                run, ctx, run_probe=_probe(prose, workspace=tmp_path)
+            )
+
+        assert verdict == NOTHING_PRODUCED_REASON
 
 
 class TestResumedRuns:
@@ -205,7 +352,7 @@ class TestResumedRuns:
         ctx = _context(_task())
 
         with resumed_run_scope():
-            verdict = await no_delivery_reason(_run(ctx), ctx, artifact_probe=None)
+            verdict = await no_delivery_reason(_run(ctx), ctx, run_probe=None)
 
         assert verdict is None
 
@@ -218,10 +365,8 @@ class TestResumedRuns:
         run = _run(ctx, tool_calls=2)
         unchanged = ArtifactPresence(probed=(_DECLARED,), digests={_DECLARED: "abc"})
 
-        with resumed_run_scope(), artifact_baseline_scope(unchanged):
-            verdict = await no_delivery_reason(
-                run, ctx, artifact_probe=_probe(unchanged)
-            )
+        with resumed_run_scope(), run_baseline_scope(_baseline(unchanged)):
+            verdict = await no_delivery_reason(run, ctx, run_probe=_probe(unchanged))
 
         assert verdict is None
 
@@ -231,7 +376,7 @@ class TestResumedRuns:
         probe = _probe(ArtifactPresence(probed=(_DECLARED,), missing=(_DECLARED,)))
 
         with resumed_run_scope():
-            verdict = await no_delivery_reason(run, ctx, artifact_probe=probe)
+            verdict = await no_delivery_reason(run, ctx, run_probe=probe)
 
         assert verdict == MISSING_ARTIFACTS_REASON.format(paths=_DECLARED)
 
@@ -244,7 +389,7 @@ class TestUnverifiable:
         run = _run(ctx, tool_calls=2)
 
         with structlog.testing.capture_logs() as logs:
-            verdict = await no_delivery_reason(run, ctx, artifact_probe=None)
+            verdict = await no_delivery_reason(run, ctx, run_probe=None)
 
         assert verdict is None
         assert _degradations(logs) == [
@@ -293,7 +438,7 @@ class TestUnverifiable:
 
         async def _raising(
             project_id: str, expected: Sequence[ExpectedArtifact]
-        ) -> ArtifactPresence:
+        ) -> RunBaseline:
             """Fail the way a workspace the backend cannot read does.
 
             Raises:
@@ -304,7 +449,7 @@ class TestUnverifiable:
 
         with structlog.testing.capture_logs() as logs:
             verdict = await no_delivery_reason(
-                _run(ctx, tool_calls=2), ctx, artifact_probe=_raising
+                _run(ctx, tool_calls=2), ctx, run_probe=_raising
             )
 
         assert verdict is None

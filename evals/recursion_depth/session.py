@@ -21,6 +21,7 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
+from typing import Protocol, runtime_checkable
 
 from evals.harness.binding import RunBinding
 from evals.harness.stall_watch import (
@@ -29,9 +30,13 @@ from evals.harness.stall_watch import (
     StallWatch,
 )
 from evals.harness.transcript import TranscriptRecorder
-from evals.harness.workspace import CellWorkspace, existing_workspace, seed_workspace
+from evals.harness.workspace import CellWorkspace
 from evals.prompt_layers import bind_default_prompt_layers
-from evals.recursion_depth.grading import SandboxFactory, UnitGrader
+from evals.recursion_depth.grading import (
+    SandboxFactory,
+    SandboxReleaseHook,
+    UnitGrader,
+)
 from evals.recursion_depth.manifest import ModelPair
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
@@ -40,11 +45,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
-from synthorg.engine.artifacts.expected_artifact_check import (
-    ArtifactPresence,
-    missing_expected_artifacts,
-    workspace_artifact_probe,
-)
+from synthorg.engine.artifacts.baseline_scope import workspace_run_probe
 from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
@@ -68,14 +69,45 @@ from synthorg.tools.registry import ToolRegistry
 logger = get_logger(__name__)
 
 ProviderFactory = Callable[[RunBinding], Awaitable[CompletionProvider]]
-ToolRegistryFactory = Callable[[CellWorkspace], ToolRegistry | None]
-#: Builds what grades a delivered tree, scoped to the workspace it sits in.
-GraderFactory = Callable[[CellWorkspace], UnitGrader]
-#: Releases whatever a unit's tools hold open. The deployment's sandbox
-#: lifecycle keeps a warm container per owner on a grace timer the strategy
-#: object owns, and every unit builds and discards its own, so a sweep of
-#: hundreds of units would otherwise leave one container behind per unit.
-ToolReleaseHook = Callable[[], Awaitable[None]]
+
+
+@runtime_checkable
+class ToolRegistryFactory(Protocol):
+    """Builds a unit's tools, scoped to its workspace."""
+
+    def __call__(
+        self, workspace: CellWorkspace, /, *, owner: str
+    ) -> ToolRegistry | None:
+        """Return the registry, filing what it holds open under *owner*.
+
+        The owner is the only key that may later release it. Units run
+        concurrently and a sandbox teardown latches, so a release naming no
+        owner takes a running sibling's shell and it never comes back.
+        """
+        ...
+
+
+@runtime_checkable
+class GraderFactory(Protocol):
+    """Builds what grades a delivered tree."""
+
+    def __call__(self, workspace: CellWorkspace, /, *, owner: str) -> UnitGrader:
+        """Return the grader, filing what it holds open under *owner*.
+
+        Grading runs after the session that produced the tree has closed, so it
+        takes an owner of its own: under the session's key it would be released
+        before it had run the suite it exists to run.
+        """
+        ...
+
+
+#: Releases whatever ONE owner holds open. The deployment's sandbox lifecycle
+#: keeps a warm container per owner on a grace timer the strategy object owns,
+#: and every unit builds and discards its own, so a sweep of hundreds of units
+#: would otherwise leave one container behind per unit. Owner-scoped because
+#: units run concurrently: a release naming no owner takes a running sibling's
+#: sandbox, which latches shut rather than reopening.
+ToolReleaseHook = SandboxReleaseHook
 LedgerFactory = Callable[[str], AbstractAsyncContextManager[ProgressTrackingLedger]]
 #: Called with ``(unit_label, idle_seconds)`` when a unit goes quiet.
 StallReporter = Callable[[str, float], None]
@@ -396,123 +428,6 @@ def session_spend(
     )
 
 
-def leaf_unit_key(task_id: str) -> str:
-    """What a leaf's tree is called under its cell.
-
-    The single owner of the format, because a resume reaches for a tree a
-    previous attempt built by rebuilding this string: a second spelling would
-    look in an empty directory and re-run work already paid for.
-
-    Returns:
-        The key.
-    """
-    return f"leaf-{task_id}"
-
-
-def merge_unit_key(task_id: str) -> str:
-    """What an assembly's tree is called under its cell.
-
-    Returns:
-        The key.
-    """
-    return f"merge-{task_id}"
-
-
-def unit_workspace(
-    *, cell_key: str, unit_key: str, spec_dir: Path, work_root: Path
-) -> CellWorkspace:
-    """Recreate one unit's workspace from the specification's committed seed.
-
-    Args:
-        cell_key: Names the run this unit belongs to.
-        unit_key: Names the unit within that run.
-        spec_dir: The specification directory, which holds the seed.
-        work_root: Directory per-unit trees are created under.
-
-    Returns:
-        The provisioned workspace.
-    """
-    return seed_workspace(
-        cell_key=f"{cell_key}/{unit_key}",
-        seed_dir="seed",
-        suite_root=spec_dir,
-        work_root=work_root,
-    )
-
-
-def built_unit_workspace(
-    *, cell_key: str, unit_key: str, work_root: Path
-) -> CellWorkspace | None:
-    """The tree a previous attempt left for one unit, if it is still there.
-
-    Args:
-        cell_key: Names the run this unit belongs to.
-        unit_key: Names the unit within that run.
-        work_root: Directory per-unit trees live under.
-
-    Returns:
-        The workspace, or ``None`` when nothing was built there.
-    """
-    return existing_workspace(cell_key=f"{cell_key}/{unit_key}", work_root=work_root)
-
-
-def probe_artifacts(task: Task, workspace: CellWorkspace) -> ArtifactPresence:
-    """Ask *workspace* what it holds against *task*'s declared paths.
-
-    Read off disk rather than from the session's account of itself: a run
-    reports the tools it called, and whether those calls left the declared file
-    behind is a different question that only the tree answers.
-
-    Taken once BEFORE a session and once after, because the question delivery
-    turns on is what this run produced rather than what the workspace happens
-    to contain: the seed is recreated per unit and a declaration satisfied by
-    the seed is not work.
-
-    Args:
-        task: The unit's task, carrying its declared artifacts.
-        workspace: The tree it ran against.
-
-    Returns:
-        What each probeable declaration says right now.
-    """
-    return missing_expected_artifacts(
-        task.artifacts_expected, workspace=workspace.project_dir
-    )
-
-
-def produced_nothing(
-    task: Task, workspace: CellWorkspace, baseline: ArtifactPresence | None
-) -> bool:
-    """Whether this run left every declaration exactly as it found it.
-
-    The product's own rule, through the product's own helper, and deliberately
-    not a stricter one of this harness's own. ``ArtifactPresence`` states the
-    rule where it is defined ("the 'none, not some' rule is this module's to
-    state once"), and a harness measuring the product must not judge delivery
-    harder than the product does.
-
-    Asking instead whether ANY declared path was missing makes delivery turn on
-    the planner's declaration rather than on the agent's work. That declaration
-    is written per node at whatever granularity the planner chose, so one output
-    is a delivery under a parent's two-entry list and a non-delivery under the
-    leaf's four-entry one: a live run booked 598,585 tokens as no delivery over
-    an absent empty ``tests/__init__.py``, on a unit that had written its
-    module, a 31-test suite, and run it.
-
-    What a unit declared is still recorded, because a planner over-declaring is
-    worth seeing. It just does not decide.
-
-    Args:
-        task: The unit's task, carrying its declared artifacts.
-        workspace: The tree it ran against.
-        baseline: What the same probe said before the session ran.
-
-    Returns:
-        Whether nothing declared appeared, changed or was removed.
-    """
-    return probe_artifacts(task, workspace).delivered_nothing_since(baseline)
-
-
 def run_binding(
     *, identity: AgentIdentity, task: Task, execution_id: str, limits: SessionLimits
 ) -> RunBinding:
@@ -607,6 +522,15 @@ def watching(
 ) -> AbstractAsyncContextManager[None]:
     """Report *session* for as long as it stays quiet.
 
+    The ledger it reads is the CELL's, shared with every sibling leaf in
+    flight, so the watch is pointed at this session's own task. Read whole, a
+    session that stopped answering is invisible for as long as any sibling is
+    working, and one quiet cell reports once per concurrent watch under a
+    different label each time.
+
+    A merge and the reviews that follow it run under one task id, so they share
+    a reading. That is what they are: one assembly, taken in sequence.
+
     Args:
         deps: The sweep's collaborators, for the idle threshold and channel.
         session: The open session to watch.
@@ -619,6 +543,7 @@ def watching(
         cell=NotBlankStr(session.label),
         idle_seconds=deps.stall_idle_seconds,
         notify=partial(_forward_stall, deps.on_stall, session.label),
+        task_id=NotBlankStr(session.task_id),
     )
     return watch.watching()
 
@@ -751,7 +676,7 @@ async def _build_engine(
     # at boot have to be bound explicitly or the sweep measures a prompt the
     # product never sends.
     bind_default_prompt_layers()
-    base = deps.build_tool_registry(workspace)
+    base = deps.build_tool_registry(workspace, owner=binding.execution_id)
     tools = _with_extra_tools(base, extra_tools)
     return AgentEngine(
         provider=await deps.build_provider(binding),
@@ -763,7 +688,7 @@ async def _build_engine(
         # prose having written nothing terminates NO_OP rather than reading as
         # a clean success, which would put undelivered work in the survival
         # denominator.
-        artifact_probe=workspace_artifact_probe(workspace.root),
+        run_probe=workspace_run_probe(workspace.root),
         recovery_strategy=FailAndReassignStrategy(),
         # Both or neither, which the engine enforces. With them a session's
         # conversation is on disk turn by turn, so a failure that outlasts the
@@ -804,16 +729,25 @@ async def transcript_scope(deps: SweepDeps, label: str) -> AsyncIterator[None]:
     ``open_session`` would silently record the building and skip the planning,
     which is the half the experiment is about.
 
+    Binds under THIS session's label. Sessions run concurrently, so a recorder
+    holding one current path records whichever session bound last and drops the
+    rest: a live cell produced no transcript at all for three of its eight
+    leaves, and wrote four units' requests into one file.
+
+    Args:
+        deps: The sweep's injected collaborators.
+        label: This session's execution id, which names its transcript.
+
     Yields:
         Nothing; the unbind runs on the way out.
     """
     try:
         if deps.transcripts is not None and deps.transcript_root is not None:
-            deps.transcripts.bind(deps.transcript_root / f"{label}.jsonl")
+            deps.transcripts.bind(label, deps.transcript_root / f"{label}.jsonl")
         yield
     finally:
         if deps.transcripts is not None:
-            deps.transcripts.unbind()
+            deps.transcripts.unbind(label)
 
 
 @contextlib.asynccontextmanager
@@ -826,6 +760,17 @@ async def _released_tools(deps: SweepDeps, label: str) -> AsyncIterator[None]:
     try would leave this session's containers to the grace timer the release
     exists to pre-empt.
 
+    The release names THIS session, so a sibling still running keeps the shell
+    it is working in. Unscoped, the first unit of a concurrent wave to finish
+    tore down every sandbox open at that moment, and the flag that teardown
+    sets never clears: the siblings spent the rest of their budget retrying a
+    command that could not succeed and were recorded as having built nothing.
+
+    Args:
+        deps: The sweep's injected collaborators.
+        label: This session's execution id, which owns both the transcript and
+            whatever its tools hold open.
+
     Yields:
         Nothing; the unbind and the release run on the way out.
     """
@@ -834,7 +779,34 @@ async def _released_tools(deps: SweepDeps, label: str) -> AsyncIterator[None]:
             yield
     finally:
         if deps.release_tools is not None:
-            await deps.release_tools()
+            await deps.release_tools(label)
+
+
+@contextlib.asynccontextmanager
+async def graded(
+    deps: SweepDeps, workspace: CellWorkspace, *, owner: str
+) -> AsyncIterator[UnitGrader]:
+    """Open a grader for *workspace* and release its container afterwards.
+
+    Grading opens a sandbox of its own and runs after the session that produced
+    the tree has closed, so it can be neither released by that session nor left
+    to the run's end: one container per graded unit, held for the length of a
+    matrix, is the leak the per-session release exists to prevent.
+
+    Args:
+        deps: The sweep's injected collaborators.
+        workspace: The tree to grade.
+        owner: The key this grading's container is filed under. Distinct from
+            any session's, so nothing releases it out from under the suite.
+
+    Yields:
+        The grader, live for the length of the block.
+    """
+    try:
+        yield deps.build_grader(workspace, owner=owner)
+    finally:
+        if deps.release_tools is not None:
+            await deps.release_tools(owner)
 
 
 def ledger_scope(
@@ -877,14 +849,12 @@ __all__ = [
     "SweepDeps",
     "ToolRegistryFactory",
     "ToolReleaseHook",
+    "graded",
     "ledger_scope",
     "open_session",
-    "probe_artifacts",
-    "produced_nothing",
     "run_binding",
     "run_session",
     "session_spend",
     "transcript_scope",
-    "unit_workspace",
     "watching",
 ]

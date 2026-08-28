@@ -17,7 +17,7 @@ from synthorg.persistence.code_execution_protocol import (
 )
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import ToolExecutionResult
-from synthorg.tools.sandbox.errors import SandboxError
+from synthorg.tools.sandbox.errors import SandboxError, SandboxShuttingDownError
 from synthorg.tools.sandbox.result import SandboxResult
 from synthorg.tools.terminal.config import TerminalConfig
 from synthorg.tools.terminal.shell_command import ShellCommandTool
@@ -157,6 +157,22 @@ class TestShellCommandExecution:
         result = await tool.execute(arguments={"command": "echo hi"})
         assert result.is_error is True
         assert "sandbox" in result.content.lower()
+
+    @pytest.mark.unit
+    async def test_a_terminal_sandbox_condition_is_raised_not_returned(
+        self,
+    ) -> None:
+        """The agent is not offered a retry it can only lose money on.
+
+        A shut-down backend refuses every later command too, so returning this
+        as a result puts the agent in a loop it cannot leave: measured on a
+        recorded sweep, six units each spent a 1.5-million-token ceiling
+        retrying ``ls`` and wrote nothing at all.
+        """
+        sandbox = FakeSandbox(error=SandboxShuttingDownError("tearing down"))
+        tool = ShellCommandTool(sandbox=sandbox)
+        with pytest.raises(SandboxShuttingDownError):
+            await tool.execute(arguments={"command": "echo hi"})
 
     @pytest.mark.unit
     async def test_empty_command(self, shell_tool: ShellCommandTool) -> None:

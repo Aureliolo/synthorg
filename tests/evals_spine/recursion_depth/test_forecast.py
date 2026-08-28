@@ -4,17 +4,21 @@
 The ceiling books sessions AFTER they run, so on its own it can only stop a
 sweep that has already overrun: a cell entered without the budget to complete
 it spends everything left, records no ``achieved_depth`` and enters no curve.
-The forecast is what makes that spend recoverable instead, so these pin the two
-properties it needs. It must be built from what the sweep MEASURED, because the
-manifest's assumed branching is the input a live run corrects; and it must err
-HIGH, because forecasting low costs a whole cell rather than one measurement.
+The forecast is what makes that spend recoverable instead.
+
+Two properties, and the second is the one a live matrix turns on. It must
+prefer a MEASUREMENT of the same cap over anything modelled, because the matrix
+repeats caps. And for a cap nothing has run it must answer a figure somebody
+sized from measurement, NOT a full-tree projection: a projection is the
+scenario that sizes the ceiling, and using it to decide whether a cell starts
+refuses the deepest cells of every sweep.
 """
 
 from pathlib import Path
 
 import pytest
 
-from evals.recursion_depth.forecast import estimate_sessions, measured_branching
+from evals.recursion_depth.forecast import estimate_sessions
 from evals.recursion_depth.manifest import Arm, load_manifest
 from evals.recursion_depth.models import LEAF, CellRecord, UnitRecord
 from synthorg.core.types import NotBlankStr
@@ -60,64 +64,16 @@ def _cell(
     )
 
 
-class TestBranchingIsMeasuredNotAssumed:
-    """The assumption is the thing a running sweep can correct about itself."""
-
-    def test_nothing_measured_yet_reports_nothing(self) -> None:
-        assert measured_branching(()) is None
-
-    def test_a_cell_that_produced_no_tree_measures_nothing(self) -> None:
-        # `achieved_depth` is None precisely when there is no tree to measure.
-        unavailable = _cell(depth_cap=3, achieved_depth=None, leaves=0)
-
-        assert measured_branching((unavailable,)) is None
-
-    @pytest.mark.parametrize(
-        ("depth", "leaves", "expected"),
-        [
-            (1, 6, 6),
-            (1, 8, 8),
-            (2, 36, 6),
-            # Rounds UP: 30 leaves over two levels is not a whole factor, and
-            # 5 would under-forecast a tree that reached wider than 5.
-            (2, 30, 6),
-        ],
-        ids=["flat-six", "flat-eight", "square", "rounds-up"],
-    )
-    def test_the_factor_is_the_depth_th_root_of_the_leaf_count(
-        self, depth: int, leaves: int, expected: int
-    ) -> None:
-        cell = _cell(depth_cap=depth, achieved_depth=depth, leaves=leaves)
-
-        assert measured_branching((cell,)) == expected
-
-    def test_the_widest_cell_wins(self) -> None:
-        # Max rather than mean: both errors are not equal, and this one is the
-        # cheap one.
-        narrow = _cell(depth_cap=1, achieved_depth=1, leaves=4)
-        wide = _cell(depth_cap=1, achieved_depth=1, leaves=9)
-
-        assert measured_branching((narrow, wide)) == 9
-
-    def test_a_single_leaf_never_reports_a_factor_of_one(self) -> None:
-        # One would divide by zero in the manifest's own cost model.
-        cell = _cell(depth_cap=1, achieved_depth=1, leaves=1)
-
-        assert measured_branching((cell,)) == 2
-
-
 class TestTheEstimatePrefersMeasurementOverInference:
     """A cap that has already run is known, not modelled."""
 
-    def test_with_nothing_measured_it_falls_back_to_the_manifest(self) -> None:
+    def test_with_nothing_measured_it_takes_the_declared_cost(self) -> None:
         manifest = load_manifest(_COMMITTED_MANIFEST)
 
-        assert estimate_sessions(manifest, (), 2) == manifest.projected_sessions(2)
+        assert estimate_sessions(manifest, (), 2) == manifest.expected_sessions(2)
 
-    def test_a_measured_cap_is_read_back_rather_than_projected(self) -> None:
+    def test_a_measured_cap_is_read_back_rather_than_declared(self) -> None:
         manifest = load_manifest(_COMMITTED_MANIFEST)
-        # Nine sessions against a projection built from an assumed branching of
-        # four, so reading the measurement back is visibly not the projection.
         measured = _cell(depth_cap=1, achieved_depth=1, leaves=9, attempts_each=1)
 
         assert estimate_sessions(manifest, (measured,), 1) == 9
@@ -129,13 +85,59 @@ class TestTheEstimatePrefersMeasurementOverInference:
 
         assert estimate_sessions(manifest, (cheap, dear), 1) == 12
 
-    def test_an_unmeasured_cap_projects_from_measured_branching(self) -> None:
+    def test_a_cell_that_produced_no_tree_is_not_a_measurement(self) -> None:
         manifest = load_manifest(_COMMITTED_MANIFEST)
-        wide = _cell(depth_cap=1, achieved_depth=1, leaves=8)
+        unavailable = _cell(depth_cap=2, achieved_depth=None, leaves=0)
 
-        estimate = estimate_sessions(manifest, (wide,), 3)
+        assert estimate_sessions(
+            manifest, (unavailable,), 2
+        ) == manifest.expected_sessions(2)
 
-        # The whole point: a cap nothing has run is forecast from how wide this
-        # planner actually splits, not from the manifest's guess.
-        assert estimate == manifest.projected_sessions(3, branching=8)
-        assert estimate > manifest.projected_sessions(3)
+
+class TestTheDeepestCapIsStillReachable:
+    """The regression this module exists for, in the shape that produced it."""
+
+    def test_a_shallow_wide_cell_does_not_price_the_deep_end_out(self) -> None:
+        """Trees branch WIDE at the top and narrow below, so ``b ** d`` lies.
+
+        The first sweep's cap-1 cell held 7 leaves over one level, its cap-2
+        cell 38 over two, its cap-3 cell 58 over three: per-level fan-out of 7,
+        then 4.6, then 3.5. A model taking the widest factor any cell showed
+        and raising it to the fourth power answered 3,601 sessions for a cap-4
+        cell whose real cost is near 300, so the check that exists to SAVE a
+        cell's spend would have refused every cap-4 cell of every sweep, and
+        the run would stop having re-measured what it already knew.
+        """
+        manifest = load_manifest(_COMMITTED_MANIFEST)
+        recorded = (
+            _cell(depth_cap=1, achieved_depth=1, leaves=7),
+            _cell(depth_cap=2, achieved_depth=2, leaves=38),
+            _cell(depth_cap=3, achieved_depth=3, leaves=58),
+        )
+
+        estimate = estimate_sessions(manifest, recorded, 4)
+
+        assert estimate == manifest.expected_sessions(4)
+        # The figure the old model would have produced from the same cells.
+        assert estimate < manifest.projected_sessions(4, branching=7)
+
+    def test_the_declared_costs_leave_the_matrix_affordable(self) -> None:
+        """Every planned cell can be STARTED under the shipped ceiling.
+
+        Checked against the manifest itself rather than against a copy of its
+        numbers: an operator lowering one and raising another is exactly the
+        edit that leaves the deepest cells unreachable, and it would otherwise
+        surface hours into a paid run.
+        """
+        manifest = load_manifest(_COMMITTED_MANIFEST)
+
+        # The worst case the refusal check ever sees: every earlier cell cost
+        # its declared figure, and the deepest cell is still asked for.
+        spent = sum(
+            manifest.repetitions[depth] * manifest.expected_sessions(depth)
+            for depth in manifest.depths
+            if depth < max(manifest.depths)
+        )
+        deepest = manifest.expected_sessions(max(manifest.depths))
+
+        assert spent + deepest <= manifest.max_sessions

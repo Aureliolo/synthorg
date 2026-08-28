@@ -21,7 +21,7 @@ from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.agent_state_recording import AgentStateRepositoryProvider
-from synthorg.engine.artifacts.expected_artifact_check import workspace_artifact_probe
+from synthorg.engine.artifacts.baseline_scope import workspace_run_probe
 from synthorg.engine.flight_recording import FlightRecorderSink
 from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
 from synthorg.engine.recovery import RecoveryStrategy
@@ -577,7 +577,7 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         # here and it receives the question it can ask: did this project
         # produce what its task declared. Bound to the same root the agent's
         # file tools write through, so the check reads what the run wrote.
-        artifact_probe=workspace_artifact_probe(agent_workspace_root_of(app_state)),
+        run_probe=workspace_run_probe(agent_workspace_root_of(app_state)),
         clarification_enabled=await config_resolver_of(app_state).get_bool(
             "engine", "clarification_enabled"
         ),

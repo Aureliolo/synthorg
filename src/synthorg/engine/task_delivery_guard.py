@@ -1,11 +1,19 @@
 # module-kind: code
 """Did this run deliver what it promised?
 
-One question asked three ways, weakest evidence first: the loop's own
-NO_OP classification, the zero-tool-call proxy, and finally the workspace
-itself. Kept together because they are one decision, and splitting them
-across a caller made the order they must be asked in a matter of reading
-control flow rather than of reading one function.
+One question with ONE owner, and two proxies that only stand in for it. "Did
+this run change the tree at all" is the owner: it needs no plan and cannot be
+wrong about a file named differently from the guess a planner made before the
+tree existed. The loop's own NO_OP classification and the zero-tool-call count
+are the proxies, and they are consulted only where the tree could not answer
+or agreed with them. A proxy that could overrule the thing it proxies would be
+a second answer to one question, which is how a run that delivered comes to be
+failed with nobody told.
+
+Once that is settled, the declarations are the sharper question, and the one
+whose answer an operator can act on. A run that produced something and
+satisfied no declaration reaches review, where a reviewer can read what it
+produced instead; a run that changed nothing is failed here.
 
 This module only decides, and returns the operator-facing reason when the
 answer is no. Moving the task is the caller's job (``task_sync``), which is
@@ -16,11 +24,13 @@ evidence for it is a different concern from the status write it drives.
 from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.engine.artifacts.baseline_scope import current_artifact_baseline
-from synthorg.engine.artifacts.expected_artifact_check import (
-    ArtifactPresence,
-    ExpectedArtifactProbe,
+from synthorg.engine.artifacts.baseline_scope import (
+    RunBaseline,
+    RunBaselineProbe,
+    current_run_baseline,
+    produced_nothing_since,
 )
+from synthorg.engine.artifacts.expected_artifact_check import ArtifactPresence
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.resume_scope import is_resumed_run
@@ -56,6 +66,16 @@ UNCHANGED_ARTIFACTS_REASON: Final[str] = (
     "failing the task instead of sending unchanged work to review"
 )
 
+# Reason surfaced when the whole workspace is byte-for-byte as the run found
+# it. Names no path, deliberately: nothing was written anywhere, so a list of
+# declarations would suggest the run went wrong at those paths rather than
+# never having produced anything at all.
+NOTHING_PRODUCED_REASON: Final[str] = (
+    "Run left its workspace exactly as it found it, producing no file "
+    "anywhere; failing the task instead of sending an empty deliverable to "
+    "review"
+)
+
 # Extension point for a legitimately empty run (e.g. a task that concluded no
 # change was needed): its presence routes an otherwise-empty run to review
 # instead of FAILED. The invariant is fail-closed today -- no production path
@@ -69,14 +89,14 @@ async def no_delivery_reason(
     run: ExecutionResult,
     ctx: AgentContext,
     *,
-    artifact_probe: ExpectedArtifactProbe | None,
+    run_probe: RunBaselineProbe | None,
 ) -> str | None:
     """Return why this run delivered nothing, or ``None`` when it did.
 
     Args:
         run: The finished run.
         ctx: Its context, carrying the task and its project.
-        artifact_probe: The wired workspace probe, or ``None``.
+        run_probe: The wired workspace probe, or ``None``.
 
     Returns:
         The operator-facing failure reason, or ``None`` when the run may
@@ -98,11 +118,26 @@ async def no_delivery_reason(
     # still completes to review rather than FAILED.
     empty_run_fails = not is_resumed_run()
 
+    baseline = current_run_baseline()
+    produced_nothing = await produced_nothing_since(baseline)
+    if produced_nothing is False:
+        # The workspace is the ONE owner of "did this run produce anything",
+        # and it says work happened. The two proxies below only stand in for
+        # it, so neither is consulted: letting a tool-call count overrule the
+        # tree it proxies is a second answer to one question, and the quieter
+        # authority wins with nobody told.
+        #
+        # The declarations are not consulted either, and deliberately. A
+        # planner names paths before the tree exists, so an agent that solved
+        # the task under other names satisfies none of them; that is a
+        # judgement about substituted work, which is the reviewer's, not an
+        # empty run, which is this guard's.
+        return None
+
     # A silent no-op success is a failure: a WORK task (one that declared
     # expected artifacts) that produced none (proxied by zero tool calls) is
-    # failed unless an explicit no-op justification was recorded. Enforced in
-    # two layers: the react loop classifies the empty run as NO_OP, and this
-    # also guards a COMPLETED that slipped through from another loop.
+    # failed unless an explicit no-op justification was recorded. Reached only
+    # where the workspace could not answer or agreed nothing was produced.
     if empty_run_fails and (
         run.termination_reason == TerminationReason.NO_OP
         or (expects_artifacts and run.total_tool_calls == 0)
@@ -110,54 +145,84 @@ async def no_delivery_reason(
         return EMPTY_RUN_REASON
     if not expects_artifacts:
         return None
-    return await _workspace_verdict(
-        ctx, artifact_probe, empty_run_fails=empty_run_fails
+    return await _declared_verdict(
+        ctx,
+        run_probe,
+        baseline,
+        produced_nothing=produced_nothing,
+        empty_run_fails=empty_run_fails,
     )
 
 
-async def _workspace_verdict(
+async def _declared_verdict(
     ctx: AgentContext,
-    artifact_probe: ExpectedArtifactProbe | None,
+    run_probe: RunBaselineProbe | None,
+    baseline: RunBaseline | None,
     *,
+    produced_nothing: bool | None,
     empty_run_fails: bool,
 ) -> str | None:
-    """Ask the workspace the question the tool-call count only proxies.
+    """Judge the run against what it DECLARED, the tree question settled.
 
-    An agent that read files, wrote nothing and stopped passes the proxy, so
-    the declared deliverables are checked on disk. Deliberately not exempted
-    for a resumed run on the presence arm: the resume exemption exists
-    because this segment's turn count says nothing about earlier segments,
-    and the filesystem has no such blind spot.
+    The caller has already asked whether anything was produced anywhere. This
+    asks the sharper question the answer to that one cannot cover: a run may
+    have written a great deal and satisfied none of its declarations, or have
+    left every declaration exactly as it found it.
+
+    Deliberately not exempted for a resumed run on the presence arm: the
+    resume exemption exists because this segment's turn count says nothing
+    about earlier segments, and the filesystem has no such blind spot.
+
+    Args:
+        ctx: The finished run's context.
+        run_probe: The wired workspace probe, or ``None``.
+        baseline: What the workspace held when the run began.
+        produced_nothing: What the tree already answered, so the prose-only
+            arm below does not re-ask it. ``None`` when it could not be asked.
+        empty_run_fails: Whether an empty segment is this run's to answer for.
 
     Returns:
         The failure reason, or ``None`` when the run may proceed to review.
     """
-    presence = await _absent_artifacts(artifact_probe, ctx)
+    declared_baseline = baseline.declared if baseline is not None else None
+    presence = await _absent_artifacts(run_probe, ctx)
     if presence is None:
         return None
     if presence.nothing_delivered:
         return MISSING_ARTIFACTS_REASON.format(paths=", ".join(presence.missing))
+    # Both questions compare content, so they agree about every path both can
+    # see. What they do not share is scope: the tree fingerprint prunes the
+    # directories a tool writes and the names its caller mounted, so a
+    # declaration that lives inside one of those is invisible to it and this
+    # per-declaration digest is the only evidence there is for that path.
+    if presence.delivered_something_since(declared_baseline):
+        return None
     # Presence answers a task that creates. A task that edits found its
     # declarations already there, so only the baseline separates a run that
     # fixed the file from one that read it and stopped. Exempted for a resumed
     # run, whose baseline was taken at the resume and so already contains
     # whatever an earlier segment wrote: this segment changing nothing is not
     # the same as the task having produced nothing.
-    if empty_run_fails and presence.delivered_nothing_since(
-        current_artifact_baseline()
-    ):
+    if empty_run_fails and presence.delivered_nothing_since(declared_baseline):
         return UNCHANGED_ARTIFACTS_REASON.format(paths=", ".join(presence.probed))
+    # Last, because the two reasons above name a path an operator can open
+    # and this one names nothing. It is the only answer for a task whose
+    # declarations are all prose ("the integrated, runnable deliverable"),
+    # which nothing above can probe and which therefore had no delivery check
+    # at all: the reviewer read a description of work that was never done.
+    if produced_nothing is True and empty_run_fails:
+        return NOTHING_PRODUCED_REASON
     return None
 
 
 async def _absent_artifacts(
-    artifact_probe: ExpectedArtifactProbe | None,
+    run_probe: RunBaselineProbe | None,
     ctx: AgentContext,
 ) -> ArtifactPresence | None:
-    """Ask the workspace which declared artifacts are missing.
+    """Ask the workspace which declared artifacts are there now.
 
     Args:
-        artifact_probe: The wired probe, or ``None`` when the engine was
+        run_probe: The wired probe, or ``None`` when the engine was
             built without a workspace root to resolve against.
         ctx: The finished run's context, carrying the task and its project.
 
@@ -174,7 +239,7 @@ async def _absent_artifacts(
         additionally makes the deliverable reader hand the reviewer an
         explicit unreadable-workspace marker.
     """
-    if artifact_probe is None:
+    if run_probe is None:
         logger.warning(
             EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,
             reason="no workspace probe is wired; declared artifacts unverified",
@@ -196,7 +261,7 @@ async def _absent_artifacts(
         )
         return None
     try:
-        return await artifact_probe(project_id, task.artifacts_expected)
+        return (await run_probe(project_id, task.artifacts_expected)).declared
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised below
         # lint-allow: swallow-ok -- a degraded probe must let the review run
         # on an unverified answer rather than fail the delivered work. The
@@ -217,6 +282,7 @@ async def _absent_artifacts(
 __all__ = [
     "EMPTY_RUN_REASON",
     "MISSING_ARTIFACTS_REASON",
+    "NOTHING_PRODUCED_REASON",
     "NO_OP_JUSTIFICATION_KEY",
     "UNCHANGED_ARTIFACTS_REASON",
     "no_delivery_reason",

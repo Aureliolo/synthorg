@@ -156,9 +156,9 @@ def _planner(
 
     deps = SweepDeps(
         build_provider=_provider,
-        build_tool_registry=lambda _workspace: mock_of[ToolRegistry](),
-        build_grader=lambda _workspace: mock_of[UnitGrader](),
-        build_sandbox=lambda root: mock_of[SandboxBackend](),
+        build_tool_registry=lambda _w, *, owner: mock_of[ToolRegistry](),
+        build_grader=lambda _w, *, owner: mock_of[UnitGrader](),
+        build_sandbox=lambda root, *, owner: mock_of[SandboxBackend](),
         open_run_ledger=_open if gateway_hosted else None,
     )
     return AgentSessionPlanner(

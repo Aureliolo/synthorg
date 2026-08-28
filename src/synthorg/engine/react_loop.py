@@ -508,7 +508,7 @@ class ReactLoop:
                     turns,
                     error_message=error_msg,
                 )
-            nudged = nudge_empty_run(ctx, turns, turn_number)
+            nudged = await nudge_empty_run(ctx, turns, turn_number)
             if nudged is not None:
                 return nudged
             return await self._handle_completion(ctx, response, turns)
@@ -550,23 +550,24 @@ class ReactLoop:
             for the normal text-response completion.
         """
         # Fail-loud on a silent no-op: a WORK task (one that declared
-        # expected artifacts) that finished without calling a tool that could
-        # deliver produced zero artifacts. Chat actions (no ``task_execution``)
-        # and tasks that expect no deliverable legitimately answer in text, so
-        # only artifact-expecting empty runs are reclassified from COMPLETED
-        # to NO_OP (routed to FAILED downstream unless justified). A resumed
-        # run only sees this segment's turns, so its count is not a valid proxy
-        # for total output (earlier segments may have produced artifacts before
-        # an approval park); leave it COMPLETED.
+        # expected artifacts) that finished having put nothing in its
+        # workspace produced zero artifacts. Chat actions (no
+        # ``task_execution``) and tasks that expect no deliverable
+        # legitimately answer in text, so only artifact-expecting empty runs
+        # are reclassified from COMPLETED to NO_OP (routed to FAILED
+        # downstream unless justified). A resumed run only sees this segment's
+        # turns, so its count is not a valid proxy for total output (earlier
+        # segments may have produced artifacts before an approval park); leave
+        # it COMPLETED.
         if (
             ctx.task_execution is not None
             and ctx.task_execution.task.artifacts_expected
-            and delivered_nothing(turns)
             and not is_resumed_run()
+            and await delivered_nothing(turns)
         ):
             no_op_msg = (
-                "Task run produced no artifacts: the agent finished without "
-                "calling any tool that could produce one. A silent no-op "
+                "Task run produced no artifacts: the agent finished leaving "
+                "its workspace exactly as it found it. A silent no-op "
                 "success is a failure."
             )
             logger.warning(

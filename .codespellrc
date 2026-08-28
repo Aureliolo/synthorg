@@ -13,7 +13,12 @@
 # pre-commit invokes codespell with paths that include a `./` (or
 # Windows `.\`) prefix, which the bare `.vale/...` pattern does not
 # match. Keep both forms.
-skip = .venv,.git,.mypy_cache,.ruff_cache,.pytest_cache,.cache,.claude,node_modules,build,dist,htmlcov,coverage,.coverage,logs,*.log,*.log.*,*.lock,*.png,*.svg,*.jpg,*.jpeg,*.ico,*.gif,*.webp,*.pdf,*.bin,*_pb2.py,*.gen.*,*.min.js,*mockServiceWorker.js,_vendor,web/dist,web/build,playwright-report,test-results,storybook-static,site,_site,_audit,*.svg.gz,scripts/_codespell_baseline.txt,*package-lock.json,uv.lock,*go.sum,.codespellrc,.test_durations.*,*/.vale/styles/Google/*,*/.vale/styles/config/vocabularies/British/*,.vale/styles/Google/*,.vale/styles/config/vocabularies/British/*
+# `*.jsonl` is recorded eval output: every tracked one is a sweep journal
+# whose rows carry prose an AGENT wrote during a paid run. Correcting a word
+# in there does not fix a typo, it edits a measurement, so the spelling of
+# what a model happened to write is not this gate's business. Every authored
+# word beside them (each results directory's README) is still scanned.
+skip = .venv,.git,.mypy_cache,.ruff_cache,.pytest_cache,.cache,.claude,node_modules,build,dist,htmlcov,coverage,.coverage,logs,*.log,*.log.*,*.lock,*.png,*.svg,*.jpg,*.jpeg,*.ico,*.gif,*.webp,*.pdf,*.bin,*_pb2.py,*.gen.*,*.min.js,*mockServiceWorker.js,_vendor,web/dist,web/build,playwright-report,test-results,storybook-static,site,_site,_audit,*.svg.gz,*.jsonl,scripts/_codespell_baseline.txt,*package-lock.json,uv.lock,*go.sum,.codespellrc,.test_durations.*,*/.vale/styles/Google/*,*/.vale/styles/config/vocabularies/British/*,.vale/styles/Google/*,.vale/styles/config/vocabularies/British/*
 # Project vocabulary lives in .vale/styles/config/vocabularies/SynthOrg/accept.txt (one term per line).
 # Vale (when wired) consumes the same file; sharing it keeps the two spellers in lock-step.
 ignore-words = .vale/styles/config/vocabularies/SynthOrg/accept.txt

@@ -66,7 +66,7 @@ _SPEC_DIR = (
 _REFERENCE_TREE = Path(__file__).resolve().parent / "reference_tree"
 
 
-def _local_sandbox(root: Path) -> SubprocessSandbox:
+def _local_sandbox(root: Path, /, *, owner: str) -> SubprocessSandbox:
     """Build the backend these two tests grade in.
 
     A recording grades in a container, because the tree it grades is model
@@ -89,6 +89,12 @@ def _local_sandbox(root: Path) -> SubprocessSandbox:
     interpreter; on a host it is resolved on PATH, which on a Linux runner
     finds ``/usr/bin/python`` rather than this environment, and that
     interpreter has no pytest.
+
+    Args:
+        root: The directory to grade in.
+        owner: Ignored. A recording files its containers under an owner so a
+            release cannot take a running unit's; nothing here is tracked or
+            released, and a subprocess has no container to reclaim.
 
     Returns:
         A sandbox rooted at *root*.
@@ -176,7 +182,7 @@ def test_the_expectations_do_not_outlive_collection(tmp_path: Path) -> None:
     assert oracle_leftovers(staged) != ()
 
     result = asyncio.run(
-        _local_sandbox(scratch).execute(
+        _local_sandbox(scratch, owner="leftovers-probe").execute(
             command=sys.executable,
             args=oracle_argv(
                 nodes=node_ids(_SPEC_DIR), wanted=tuple(node_ids(_SPEC_DIR))[:2]

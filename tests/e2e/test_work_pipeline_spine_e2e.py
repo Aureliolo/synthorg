@@ -96,14 +96,36 @@ _ANALYSIS_SKILL = "analysis"
 _RESEARCH_CRITERION = "Research findings are documented and cited"
 _ANALYSIS_CRITERION = "Analysis synthesises the research into a report"
 
+# Path-shaped, so each subtask's declaration is one the workspace can be asked
+# about and the scripted turn can satisfy by writing it. A run that declares a
+# deliverable and leaves its workspace untouched is a no-op the engine fails on
+# purpose, and this harness tests the SPINE rather than delivery.
+_RESEARCH_ARTIFACT = "research/sources.md"
+_ANALYSIS_ARTIFACT = "analysis/summary.md"
+
+
+def _declared_artifact(messages: list[ChatMessage]) -> str:
+    """Which subtask's declared path this turn is being asked to produce.
+
+    The scripted turn has no task object, only the brief it was handed, so
+    the subtask is read back off the title the decomposition wrote into it.
+
+    Returns:
+        The declared path for whichever subtask this session is running.
+    """
+    brief = "\n".join(str(message.content or "") for message in messages)
+    if "Analyse the findings" in brief:
+        return _ANALYSIS_ARTIFACT
+    return _RESEARCH_ARTIFACT
+
 
 class _DecompositionAwareStrategy:
     """Branches decomposition tool calls vs plain sub-agent turns.
 
-    A sub-agent turn calls one tool before answering, because a run that
-    declares expected artifacts and calls nothing is a silent no-op the
-    engine fails on purpose. Scripting the tool call is what makes the
-    dispatched work a delivery rather than a claim of one.
+    A sub-agent turn writes its declared artifact before answering, because a
+    run that declares deliverables and leaves its workspace as it found it is
+    a silent no-op the engine fails on purpose. Scripting the write is what
+    makes the dispatched work a delivery rather than a claim of one.
     """
 
     def next_response(
@@ -140,14 +162,7 @@ class _DecompositionAwareStrategy:
                                         "Data sources are catalogued.",
                                     ],
                                     "satisfies": [_RESEARCH_CRITERION],
-                                    # Prose, not a path: this harness runs no
-                                    # real editor, and the artifact probe asks
-                                    # the workspace only about path-shaped
-                                    # declarations. A file path here would be
-                                    # a promise of a file nothing writes.
-                                    "expected_artifacts": [
-                                        "a catalogue of the data sources"
-                                    ],
+                                    "expected_artifacts": [_RESEARCH_ARTIFACT],
                                 },
                                 {
                                     "id": "sub-analysis",
@@ -160,9 +175,7 @@ class _DecompositionAwareStrategy:
                                         "Findings are summarised.",
                                     ],
                                     "satisfies": [_ANALYSIS_CRITERION],
-                                    "expected_artifacts": [
-                                        "a written summary of the findings"
-                                    ],
+                                    "expected_artifacts": [_ANALYSIS_ARTIFACT],
                                 },
                             ],
                         },
@@ -176,7 +189,15 @@ class _DecompositionAwareStrategy:
             return CompletionResponse(
                 content=None,
                 tool_calls=(
-                    ToolCall(id="work-1", name="echo", arguments={"message": "done"}),
+                    ToolCall(
+                        id="work-1",
+                        name="write_file",
+                        arguments={
+                            "path": _declared_artifact(messages),
+                            "content": "# delivered by the scripted turn\n",
+                            "create_directories": True,
+                        },
+                    ),
                 ),
                 finish_reason=FinishReason.TOOL_USE,
                 usage=usage,
@@ -237,7 +258,9 @@ def _make_agent(name: str, skill: str) -> AgentIdentity:
         status=AgentStatus.ACTIVE,
         # ``echo`` is ToolCategory.OTHER, which the default STANDARD level
         # excludes; the scripted turns call it, so it is allowed by name.
-        tools=ToolPermissions(allowed=(NotBlankStr("echo"),)),
+        # ``write_file`` rides beside it so a dispatched subtask can satisfy
+        # the declaration it was given rather than being exempted from it.
+        tools=ToolPermissions(allowed=(NotBlankStr("echo"), NotBlankStr("write_file"))),
     )
 
 

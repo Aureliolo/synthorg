@@ -138,6 +138,9 @@
 (?i)maximised
 (?i)maximises
 (?i)maximising
+(?i)memoise
+(?i)memoised
+(?i)memoises
 (?i)minimise
 (?i)minimised
 (?i)minimises

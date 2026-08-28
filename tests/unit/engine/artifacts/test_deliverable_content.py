@@ -22,7 +22,7 @@ from synthorg.engine.artifacts.deliverable_content import (
     workspace_deliverable_reader,
 )
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
-from tests._shared import mock_of
+from tests._shared import make_named_pipe, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -119,6 +119,18 @@ class TestReadDeclaredArtifacts:
         entries = _entries(_read(_expected("dist"), tmp_path))
 
         assert entries[0]["status"] == "directory"
+
+    def test_a_named_pipe_is_never_opened(self, tmp_path: Path) -> None:
+        """Opening one blocks until somebody writes, which nobody here will.
+
+        The workspace is a tree an agent can write, so it can hold one, and
+        this reader is what a reviewer waits on. It passes by finishing.
+        """
+        make_named_pipe(tmp_path / "pipe")
+
+        entries = _entries(_read(_expected("pipe"), tmp_path))
+
+        assert entries[0]["status"] == "unreadable"
 
     def test_a_prose_declaration_is_reported_not_probed(self, tmp_path: Path) -> None:
         """A deliverable name is not a filename, and saying so is the point."""
@@ -287,6 +299,127 @@ class TestReadDeclaredArtifacts:
         # marker fits, and emitting either would overrun the ceiling.
         assert _entries(section) == []
         assert json.dumps(section) == json.dumps({"declared": 2, "artifacts": []})
+
+
+class TestWhatWasProducedInstead:
+    """A declaration is a guess; the tree is what happened.
+
+    A run that satisfies no declaration now reaches review rather than being
+    failed on the declaration alone, precisely so a reviewer can judge the
+    substitution. It can only do that if it is shown the substitution.
+    """
+
+    def test_undeclared_files_are_read_when_no_declaration_was(
+        self, tmp_path: Path
+    ) -> None:
+        # The planner declared `csv_reader.py`; the run wrote `reader.py`.
+        _write(tmp_path, "sqlcsv/reader.py", "def read(): ...")
+        _write(tmp_path, "sqlcsv/types.py", "Row = dict")
+
+        section = _read(_expected("sqlcsv/csv_reader.py"), tmp_path)
+
+        assert section is not None
+        instead = cast("list[dict[str, JsonValue]]", section["produced_instead"])
+        assert [entry["path"] for entry in instead] == [
+            "sqlcsv/reader.py",
+            "sqlcsv/types.py",
+        ]
+        assert instead[0]["content"] == "def read(): ..."
+
+    def test_a_satisfied_declaration_needs_no_second_heading(
+        self, tmp_path: Path
+    ) -> None:
+        """The common case is unchanged, and the document stays small."""
+        _write(tmp_path, "src/game.py", "def rotate(): ...")
+        _write(tmp_path, "notes.md", "scratch")
+
+        section = _read(_expected("src/game.py"), tmp_path)
+
+        assert section is not None
+        assert "produced_instead" not in section
+
+    def test_a_run_that_produced_nothing_reports_nothing(self, tmp_path: Path) -> None:
+        """Empty is the honest answer, not an absent key hiding an empty tree."""
+        section = _read(_expected("src/game.py"), tmp_path)
+
+        assert section is not None
+        assert "produced_instead" not in section
+
+    def test_a_produced_name_carrying_a_space_is_still_read(
+        self, tmp_path: Path
+    ) -> None:
+        """Whitespace separates prose from a path only in a DECLARATION.
+
+        A name walked off the filesystem is already known to be a file, so
+        putting it through the prose test reports real work as "not a path"
+        and hands the reviewer a status where the content should be.
+        """
+        _write(tmp_path, "design notes.md", "what I built and why")
+
+        section = _read(_expected("declared.py"), tmp_path)
+
+        assert section is not None
+        instead = cast("list[dict[str, JsonValue]]", section["produced_instead"])
+        assert instead[0]["path"] == "design notes.md"
+        assert instead[0]["status"] == "read"
+        assert instead[0]["content"] == "what I built and why"
+
+    def test_a_declared_path_is_not_reported_twice(self, tmp_path: Path) -> None:
+        """A directory declaration reads as `directory`, never as `read`.
+
+        Without the exclusion it would then reappear under the second
+        heading, once per file inside it.
+        """
+        _write(tmp_path, "dist/app.js", "console.log(1)")
+
+        section = _read(_expected("dist"), tmp_path)
+
+        assert section is not None
+        instead = cast("list[dict[str, JsonValue]]", section["produced_instead"])
+        assert [entry["path"] for entry in instead] == ["dist/app.js"]
+
+    def test_the_second_heading_shares_the_one_budget(self, tmp_path: Path) -> None:
+        """One prompt, one ceiling: the substitute cannot spend it twice."""
+        _write(tmp_path, "a.py", "x" * 400)
+        _write(tmp_path, "b.py", "y" * 400)
+
+        section = _read(_expected("declared.py"), tmp_path, total=300)
+
+        assert section is not None
+        assert len(json.dumps(section)) <= 300
+
+    def test_the_second_heading_announces_what_it_dropped(self, tmp_path: Path) -> None:
+        """A silently truncated list reads as a workspace holding two files."""
+        produced = ("a.py", "b.py", "c.py", "d.py")
+        for name in produced:
+            _write(tmp_path, name, "x" * 200)
+
+        section = _read(_expected("declared.py"), tmp_path, total=700)
+
+        assert section is not None
+        instead = cast("list[dict[str, JsonValue]]", section["produced_instead"])
+        assert instead[-1]["status"] == "omitted_for_budget"
+        assert instead[-1]["count"] == len(produced) - (len(instead) - 1)
+
+    @pytest.mark.parametrize("files", [2, 5, 12, 30])
+    def test_many_small_entries_never_overrun_the_ceiling(
+        self, tmp_path: Path, files: int
+    ) -> None:
+        """The separator between two entries is rendered but easily unbudgeted.
+
+        The wrapper is costed against an EMPTY list, so every entry after the
+        first writes two bytes nothing charged for and the overrun grows with
+        the entry count: exactly the shape a real workspace has, and the one
+        a single-entry test cannot see.
+        """
+        total = 900
+        for index in range(files):
+            _write(tmp_path, f"pkg/mod_{index:02d}.py", "x" * 20)
+
+        section = _read(_expected("declared.py"), tmp_path, total=total)
+
+        assert section is not None
+        assert len(json.dumps(section)) <= total
 
 
 class TestWorkspaceDeliverableReader:

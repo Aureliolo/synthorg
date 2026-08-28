@@ -39,6 +39,21 @@ _RESPONSE_BODY: Final[dict[str, object]] = {
 }
 
 
+_LABEL: Final = "d1-gated-r0-leaf-one"
+
+
+def _bound(recorder: TranscriptRecorder, path: Path, *, bearer: str = _BEARER) -> None:
+    """Bind *path* the way a session does: a label, and the token that reaches it.
+
+    Args:
+        recorder: The recorder under test.
+        path: Where this session's exchanges land.
+        bearer: The credential its requests present.
+    """
+    recorder.bind(_LABEL, path)
+    recorder.attach(bearer, _LABEL)
+
+
 def _scope(path: str) -> Scope:
     """An HTTP scope for *path*, carrying the bearer the recorder mints.
 
@@ -119,7 +134,7 @@ async def test_compressed_response_is_recorded_as_the_client_reads_it(
 ) -> None:
     """Every encoding the host may negotiate round-trips to the parsed body."""
     recorder = TranscriptRecorder()
-    recorder.bind(tmp_path / "transcript.jsonl")
+    _bound(recorder, tmp_path / "transcript.jsonl")
     body = compress(json.dumps(_RESPONSE_BODY).encode())
 
     await _drive(
@@ -136,7 +151,7 @@ async def test_compressed_response_is_recorded_as_the_client_reads_it(
 async def test_streamed_body_is_kept_as_text(tmp_path: Path) -> None:
     """A server-sent-events completion is evidence even though it is not JSON."""
     recorder = TranscriptRecorder()
-    recorder.bind(tmp_path / "transcript.jsonl")
+    _bound(recorder, tmp_path / "transcript.jsonl")
 
     await _drive(
         transcribing(
@@ -159,7 +174,7 @@ async def test_undecodable_body_is_recorded_without_losing_the_exchange(
     there, which is worse than a line an operator can see is unreadable.
     """
     recorder = TranscriptRecorder()
-    recorder.bind(tmp_path / "transcript.jsonl")
+    _bound(recorder, tmp_path / "transcript.jsonl")
 
     truncated = gzip.compress(json.dumps(_RESPONSE_BODY).encode())[:20]
 
@@ -176,7 +191,7 @@ async def test_undecodable_body_is_recorded_without_losing_the_exchange(
 async def test_authorization_header_is_never_recorded(tmp_path: Path) -> None:
     """The bearer this process mints stays out of a file an operator opens."""
     recorder = TranscriptRecorder()
-    recorder.bind(tmp_path / "transcript.jsonl")
+    _bound(recorder, tmp_path / "transcript.jsonl")
 
     await _drive(
         transcribing(
@@ -192,7 +207,7 @@ async def test_authorization_header_is_never_recorded(tmp_path: Path) -> None:
 async def test_non_completion_traffic_is_not_recorded(tmp_path: Path) -> None:
     """Only completion traffic is transcribed; the rest is the recorder itself."""
     recorder = TranscriptRecorder()
-    recorder.bind(tmp_path / "transcript.jsonl")
+    _bound(recorder, tmp_path / "transcript.jsonl")
 
     await _drive(
         transcribing(_app_sending(b'{"ok": true}', encoding=None), recorder),
@@ -206,8 +221,8 @@ async def test_non_completion_traffic_is_not_recorded(tmp_path: Path) -> None:
 async def test_unbound_recorder_records_nothing(tmp_path: Path) -> None:
     """The host serves the same application whether or not anybody transcribes."""
     recorder = TranscriptRecorder()
-    recorder.bind(tmp_path / "transcript.jsonl")
-    recorder.unbind()
+    _bound(recorder, tmp_path / "transcript.jsonl")
+    recorder.unbind(_LABEL)
 
     await _drive(
         transcribing(
@@ -231,11 +246,11 @@ async def test_a_straggler_lands_in_the_cell_that_issued_it(tmp_path: Path) -> N
     recorder = TranscriptRecorder()
     first = tmp_path / "rep1.jsonl"
     second = tmp_path / "rep2.jsonl"
-    recorder.bind(first)
+    _bound(recorder, first)
 
     async def _rebinding_app(scope: Scope, receive: Receive, send: Send) -> None:
         # Stands in for the repetition ending while this call is in flight.
-        recorder.bind(second)
+        recorder.bind(_LABEL, second)
         await _app_sending(json.dumps(_RESPONSE_BODY).encode(), encoding=None)(
             scope, receive, send
         )
@@ -251,7 +266,7 @@ async def test_a_straggler_lands_in_the_cell_that_issued_it(tmp_path: Path) -> N
 async def test_a_credential_in_a_body_is_scrubbed(tmp_path: Path) -> None:
     """The bodies are whole payloads, and a transcript gets forwarded."""
     recorder = TranscriptRecorder()
-    recorder.bind(tmp_path / "transcript.jsonl")
+    _bound(recorder, tmp_path / "transcript.jsonl")
     leaked = "sk-not-a-real-key-0123456789"
 
     await _drive(
@@ -264,3 +279,97 @@ async def test_a_credential_in_a_body_is_scrubbed(tmp_path: Path) -> None:
     )
 
     assert leaked not in (tmp_path / "transcript.jsonl").read_text("utf-8")
+
+
+def _scope_for(bearer: str) -> Scope:
+    """A completions scope presenting *bearer*.
+
+    Returns:
+        The scope.
+    """
+    return cast(
+        "HTTPScope",
+        {
+            "type": "http",
+            "path": "/v1/chat/completions",
+            "method": "POST",
+            "headers": [(b"authorization", f"Bearer {bearer}".encode())],
+        },
+    )
+
+
+async def test_concurrent_sessions_do_not_take_each_others_transcripts(
+    tmp_path: Path,
+) -> None:
+    """The defect this keying exists for, stated as a test.
+
+    A recorder holding one current path records whichever session bound last.
+    Measured on a live cell: three of eight leaves produced no transcript at
+    all, and one file named for a single leaf held requests from four units.
+    """
+    recorder = TranscriptRecorder()
+    first = tmp_path / "leaf-one.jsonl"
+    second = tmp_path / "leaf-two.jsonl"
+    recorder.bind("leaf-one", first)
+    recorder.attach("bearer-one", "leaf-one")
+    # The sibling binds while the first is still open, which is exactly what
+    # concurrency does and what used to take the first one's path away.
+    recorder.bind("leaf-two", second)
+    recorder.attach("bearer-two", "leaf-two")
+
+    app = transcribing(
+        _app_sending(json.dumps(_RESPONSE_BODY).encode(), encoding=None), recorder
+    )
+    await _drive(app, _scope_for("bearer-one"), b'{"unit": "one"}')
+    await _drive(app, _scope_for("bearer-two"), b'{"unit": "two"}')
+
+    assert len(_recorded(first)) == 1
+    assert len(_recorded(second)) == 1
+
+
+async def test_one_session_ending_does_not_blind_its_sibling(
+    tmp_path: Path,
+) -> None:
+    """An unbind names one session, so the rest keep recording.
+
+    Unscoped, the first leaf of a concurrent wave to finish stopped every
+    transcript still open, and the siblings' remaining turns went nowhere.
+    """
+    recorder = TranscriptRecorder()
+    surviving = tmp_path / "leaf-two.jsonl"
+    recorder.bind("leaf-one", tmp_path / "leaf-one.jsonl")
+    recorder.attach("bearer-one", "leaf-one")
+    recorder.bind("leaf-two", surviving)
+    recorder.attach("bearer-two", "leaf-two")
+
+    recorder.unbind("leaf-one")
+
+    await _drive(
+        transcribing(
+            _app_sending(json.dumps(_RESPONSE_BODY).encode(), encoding=None), recorder
+        ),
+        _scope_for("bearer-two"),
+        b'{"unit": "two"}',
+    )
+
+    assert len(_recorded(surviving)) == 1
+
+
+async def test_a_request_with_no_known_bearer_records_nothing(
+    tmp_path: Path,
+) -> None:
+    """A token nobody attached belongs to no recorded session."""
+    recorder = TranscriptRecorder()
+    path = tmp_path / "leaf-one.jsonl"
+    recorder.bind("leaf-one", path)
+    recorder.attach("bearer-one", "leaf-one")
+
+    await _drive(
+        transcribing(
+            _app_sending(json.dumps(_RESPONSE_BODY).encode(), encoding=None), recorder
+        ),
+        _scope_for("some-other-token"),
+        b"{}",
+    )
+
+    assert not path.exists()

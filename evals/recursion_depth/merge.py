@@ -33,16 +33,20 @@ from evals.recursion_depth.manifest import ModelPair
 from evals.recursion_depth.session import (
     SessionLimits,
     SweepDeps,
-    probe_artifacts,
-    produced_nothing,
+    graded,
     run_session,
+)
+from evals.recursion_depth.unit import (
+    UnitDelivery,
+    UnitFingerprint,
+    probe_artifacts,
+    produced_tree,
 )
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.artifacts.expected_artifact_check import ArtifactPresence
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
@@ -86,16 +90,17 @@ class MergePiece:
         title: What the planner called it.
         slug: Its directory name under :data:`CHILDREN_DIR`.
         tree: The tree it produced.
-        delivered: Whether it delivered. Mounted either way, and named either
-            way in the brief: a merge whose inputs are partly broken is the
-            ordinary case, and hiding that would brief the agent for a
-            situation it is not in.
+        delivery: What it produced and whether that stands up. Mounted either
+            way, and named either way in the brief: a merge whose inputs are
+            partly broken is the ordinary case, and hiding that would brief
+            the agent for a situation it is not in. What the brief must NOT do
+            is collapse the two, which is why this is not a bool.
     """
 
     title: str
     slug: str
     tree: Path
-    delivered: bool
+    delivery: UnitDelivery
 
 
 @dataclass(frozen=True)
@@ -132,8 +137,15 @@ class MergeOutcome:
     Attributes:
         workspace: The assembled tree, which its own parent assembles next and
             which, at the root, is what the held-out oracle grades.
-        delivered: Whether an attempt changed something the node declared and
-            the merged tree's own tests pass.
+        delivered: Whether an attempt changed the assembled tree AND the
+            merged tree's own tests pass. The scoring flag, and deliberately
+            not what the parent's brief renders: see ``produced``.
+        produced: Whether an attempt changed the assembled tree at all. This
+            is the half the parent is briefed on, because a subtree that
+            assembled a package and failed a check is an input the parent can
+            still build from. Briefing the two as one word told a live root
+            merge that four subtrees holding 169 modules had delivered
+            nothing, and it then wrote nothing itself.
         attempts: Sessions the merge consumed, repair rounds included.
         turns: Agent turns across the assembling sessions. A review's turns
             are not observable through the gate's dispatch seam, which answers
@@ -150,7 +162,9 @@ class MergeOutcome:
         verdict: The last verdict taken, absent in the ungated arm.
         parked: Whether the gate escalated with nobody to escalate to.
         amendments: How many child-interface changes the agent recorded.
-        undeclared_paths: Declared paths absent from the assembled tree.
+        missing_declared_paths: Declared paths ABSENT from the assembled tree.
+            Recorded because a planner over-declaring is worth seeing; it does
+            not decide delivery, which is read off the assembled tree.
             Diagnosis, never a verdict, for the reason the leaf's own field
             says.
         detail: Why it is not delivered, for a human reading the run.
@@ -161,13 +175,14 @@ class MergeOutcome:
     attempts: int
     turns: int
     cost: float
+    produced: bool = False
     tokens: int = 0
     executor: ModelPair | None = None
     reviewer: ModelPair | None = None
     verdict: str | None = None
     parked: bool = False
     amendments: int = 0
-    undeclared_paths: tuple[str, ...] = ()
+    missing_declared_paths: tuple[str, ...] = ()
     detail: str = ""
 
 
@@ -224,6 +239,27 @@ def mount_children(workspace: CellWorkspace, pieces: tuple[MergePiece, ...]) -> 
         drop_escaping_links(destination, anchor=piece.tree)
 
 
+def _piece_state(piece: MergePiece) -> str:
+    """Say what state *piece* arrived in, in words the merge can act on.
+
+    Three states, because there are three, and a brief that offers two puts
+    the third somewhere it does not belong. A piece that built nothing cannot
+    be assembled from and the merge has to cover the gap itself. A piece that
+    built something whose own suite did not pass is still the work, and the
+    merge assembles it and fixes what is wrong. Collapsing the second into the
+    first is what made a live root merge, handed 277 modules across seven
+    subtrees, write nothing at all across six attempts.
+
+    Returns:
+        The annotation, empty for a piece that arrived clean.
+    """
+    if not piece.delivery.produced:
+        return "  [BUILT NOTHING]"
+    if piece.delivery.reason:
+        return f"  [BUILT, BUT NOT SIGNED OFF: {piece.delivery.reason}]"
+    return ""
+
+
 def merge_brief(plan: MergePlan, findings: tuple[str, ...]) -> str:
     """Compose the brief one merge attempt runs against.
 
@@ -237,8 +273,7 @@ def merge_brief(plan: MergePlan, findings: tuple[str, ...]) -> str:
     """
     stated = [f"Objective: {plan.task.title}", "The pieces, and where they are:"]
     stated.extend(
-        f"- `{CHILDREN_DIR}/{piece.slug}/`: {piece.title}"
-        + ("" if piece.delivered else "  [DID NOT DELIVER]")
+        f"- `{CHILDREN_DIR}/{piece.slug}/`: {piece.title}{_piece_state(piece)}"
         for piece in plan.pieces
     )
     if plan.criteria:
@@ -249,15 +284,25 @@ def merge_brief(plan: MergePlan, findings: tuple[str, ...]) -> str:
         stated.extend(f"- {finding}" for finding in findings)
     sections = [
         (
-            "Every piece of this has been built and, where it was a unit of "
-            "work, has passed its own tests in its own tree. None of that "
-            "shows they work together, which is what this job is for."
+            "Each piece was built on its own. Any state noted against a piece "
+            "above is that piece's own, and none of it says whether they work "
+            "together, which is what this job is for. A piece marked as not "
+            "signed off is still the work: assemble it and fix what is wrong "
+            "with it, rather than writing it again."
         ),
         (
             f"The pieces are copies under `{CHILDREN_DIR}/`, for you to read "
             "and take from. The deliverable is the tree at the workspace root: "
             "a piece left where it was mounted is not assembled, and nothing "
             f"under `{CHILDREN_DIR}/` is graded."
+        ),
+        (
+            "That applies to the tests as much as to the code. The assembled "
+            "tree is checked by running its suite from the workspace root, "
+            f"and `{CHILDREN_DIR}/` is not searched, so a test you leave "
+            "behind in a piece is a test nothing runs. Bring the pieces' "
+            "tests up with their code and make them pass against the "
+            "assembly."
         ),
         (
             "You may change a child's interface to make the pieces fit. That "
@@ -301,9 +346,9 @@ async def run_merge(
     await asyncio.to_thread(mount_children, plan.workspace, plan.pieces)
     # After the children are mounted and before the first attempt, so what a
     # child already delivered is not credited to the assembly that received it.
-    baseline = await asyncio.to_thread(
-        probe_artifacts, _attempt_task(plan, ()), plan.workspace
-    )
+    # The declared paths are still probed at the end, because a planner
+    # over-declaring is worth seeing; they just do not decide delivery.
+    assembled_before = await asyncio.to_thread(produced_tree, plan.workspace)
     findings: tuple[str, ...] = ()
     review = MergeReview(approved=None)
     sessions = 0
@@ -338,14 +383,15 @@ async def run_merge(
         if review.approved is True or review.parked:
             break
         findings = _trim(review.findings)
-    detail = await _undelivered_reason(deps, plan, turns=turns, baseline=baseline)
+    delivery = await _delivery(deps, plan, turns=turns, baseline=assembled_before)
     amendments = await asyncio.to_thread(count_amendments, plan.workspace)
     final = await asyncio.to_thread(
         probe_artifacts, _attempt_task(plan, ()), plan.workspace
     )
     return MergeOutcome(
         workspace=plan.workspace,
-        delivered=not detail,
+        delivered=delivery.delivered,
+        produced=delivery.produced,
         attempts=sessions,
         turns=turns,
         cost=cost,
@@ -355,8 +401,8 @@ async def run_merge(
         verdict=review.verdict,
         parked=review.parked,
         amendments=amendments,
-        undeclared_paths=final.missing,
-        detail=detail,
+        missing_declared_paths=final.missing,
+        detail=delivery.reason,
     )
 
 
@@ -440,10 +486,14 @@ def _deliverable_summary(plan: MergePlan) -> str:
     )
 
 
-async def _undelivered_reason(
-    deps: SweepDeps, plan: MergePlan, *, turns: int, baseline: ArtifactPresence
-) -> str:
-    """Say why the merged tree is not a delivery, or nothing when it is.
+async def _delivery(
+    deps: SweepDeps,
+    plan: MergePlan,
+    *,
+    turns: int,
+    baseline: UnitFingerprint,
+) -> UnitDelivery:
+    """Say what the merge assembled, and separately whether it stands up.
 
     A merge whose every attempt took no turn was refused before it began
     rather than having assembled badly, and the two send an operator to
@@ -453,26 +503,40 @@ async def _undelivered_reason(
         deps: The sweep's injected collaborators.
         plan: The node being assembled.
         turns: Turns across every attempt.
-        baseline: What the workspace said before the first attempt, so the
-            question stays what THIS assembly produced.
+        baseline: The assembled tree before the first attempt, so the question
+            stays what THIS assembly produced rather than what it was handed.
 
     Returns:
-        The reason, empty when the merge delivered.
+        What it assembled and why that is or is not a clean delivery. The
+        suite is run from the workspace root and never descends into
+        ``.children/``, so a merge that assembled the code and left the
+        pieces' tests where it found them reports a failing check while
+        holding a complete package. That is why the two travel separately.
     """
     if turns == 0:
-        return (
-            "no assembly attempt ran a single turn, so nothing was assembled "
-            "and this is not an assembly failure"
+        return UnitDelivery(
+            produced=False,
+            reason=(
+                "no assembly attempt ran a single turn, so nothing was "
+                "assembled and this is not an assembly failure"
+            ),
         )
-    if await asyncio.to_thread(
-        produced_nothing, _attempt_task(plan, ()), plan.workspace, baseline
-    ):
-        return "no assembly attempt changed anything the node declared"
-    grader = deps.build_grader(plan.workspace)
-    passed, report = await grader.own_tests_pass(plan.workspace.project_dir)
+    if await asyncio.to_thread(produced_tree, plan.workspace) == baseline:
+        return UnitDelivery(
+            produced=False,
+            reason=(
+                "no assembly attempt changed the tree outside the pieces it was given"
+            ),
+        )
+    async with graded(
+        deps, plan.workspace, owner=f"grade:{plan.execution_prefix}"
+    ) as grader:
+        passed, report = await grader.own_tests_pass(plan.workspace.project_dir)
     if not passed:
-        return f"the merged tree's own tests did not pass: {report}"
-    return ""
+        return UnitDelivery(
+            produced=True, reason=f"the merged tree's own tests did not pass: {report}"
+        )
+    return UnitDelivery(produced=True, reason="")
 
 
 def _trim(findings: tuple[str, ...]) -> tuple[str, ...]:

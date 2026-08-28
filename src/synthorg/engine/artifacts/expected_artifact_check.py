@@ -33,16 +33,14 @@ removed, and a run all of whose declarations are byte-identical to how it
 found them delivered nothing.
 """
 
-import asyncio
 import hashlib
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Sequence
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.artifact import ExpectedArtifact
-from synthorg.engine.workspace.paths import project_workspace_dir
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,
@@ -60,6 +58,12 @@ _DIGEST_CHUNK: Final[int] = 65536
 
 class ArtifactPresence(BaseModel):
     """What the workspace says about a task's declared artifacts.
+
+    ``frozen`` here means immutable, not hashable: a digest map is what the
+    comparison below needs, and a mapping is unhashable, so hashing an
+    instance raises. Nothing keys on one, and swapping the map for a pair
+    sequence would buy a hashability no consumer wants at the cost of the
+    lookup this exists to do.
 
     Attributes:
         probed: The declarations path-shaped enough to ask about.
@@ -82,6 +86,46 @@ class ArtifactPresence(BaseModel):
         description="Digest per probed declaration that is there now",
     )
 
+    def delivered_something_since(self, baseline: ArtifactPresence | None) -> bool:
+        """Did at least one declaration demonstrably change?
+
+        The only evidence in this module that can assert a run delivered
+        rather than merely fail to rule it out. It is asked per declaration,
+        so it reaches a path the whole-tree question cannot: that walk prunes
+        the directories a tool writes and the names its caller mounted, and a
+        declaration inside one of those has no other evidence.
+
+        Deliberately NOT the negation of :meth:`delivered_nothing_since`, and
+        the gap between them is :data:`_UNHASHABLE`. An unhashable value is
+        the absence of evidence rather than evidence of a change, on EITHER
+        side: a declaration that was a directory and still is says nothing,
+        and so does one that turned into a directory mid-run, since neither
+        yields a content this module ever read. That sibling treats the same
+        marker as "do not fail this run", the fail-open answer its own
+        question wants, while asserting it as delivery here would let a run
+        that touched nothing anywhere pass by declaring a directory.
+
+        Args:
+            baseline: What the workspace said when the run began, or ``None``
+                when it was never asked.
+
+        Returns:
+            ``True`` when a probeable declaration appeared, changed or was
+            removed. ``False`` when nothing was asked (no baseline, or every
+            declaration was prose) and when the only evidence is unhashable,
+            both being an absence of evidence rather than a verdict.
+        """
+        if baseline is None or not self.probed:
+            return False
+        for declared in self.probed:
+            found = self.digests.get(declared)
+            was = baseline.digests.get(declared)
+            if _UNHASHABLE in (found, was):
+                continue
+            if found != was:
+                return True
+        return False
+
     def delivered_nothing_since(self, baseline: ArtifactPresence | None) -> bool:
         """Did this run leave every declaration exactly as it found it?
 
@@ -94,18 +138,18 @@ class ArtifactPresence(BaseModel):
 
         Returns:
             ``True`` when no probeable declaration appeared, changed or was
-            removed. Without a baseline this falls back to
-            :attr:`nothing_delivered`: an unwired baseline is missing
-            evidence, and missing evidence must not fail a run that
-            delivered.
+            removed. A declaration this module could not hash counts against
+            it, because failing a run over evidence never gathered is the one
+            outcome this question must not produce. Without a baseline this
+            falls back to :attr:`nothing_delivered`, on the same rule.
         """
         if baseline is None:
             return self.nothing_delivered
         if not self.probed:
             return False
         return not any(
-            self.digests.get(declared) == _UNHASHABLE
-            or self.digests.get(declared) != baseline.digests.get(declared)
+            (found := self.digests.get(declared)) == _UNHASHABLE
+            or found != baseline.digests.get(declared)
             for declared in self.probed
         )
 
@@ -123,15 +167,6 @@ class ArtifactPresence(BaseModel):
             ``False``: nothing was asked, so nothing was answered.
         """
         return bool(self.probed) and len(self.missing) == len(self.probed)
-
-
-#: Resolves ``(project_id, expected) -> what the workspace says``. The engine
-#: holds one of these rather than a workspace root, so the layout knowledge
-#: stays in the wiring layer that already owns it. Async because the answer
-#: comes from the filesystem, and every consumer sits on the event loop.
-type ExpectedArtifactProbe = Callable[
-    [str, Sequence[ExpectedArtifact]], Awaitable[ArtifactPresence]
-]
 
 
 def is_probeable_path(spec: str) -> bool:
@@ -243,37 +278,8 @@ def missing_expected_artifacts(
     )
 
 
-def workspace_artifact_probe(base_root: Path) -> ExpectedArtifactProbe:
-    """Bind an :data:`ExpectedArtifactProbe` to the shared workspace root.
-
-    Args:
-        base_root: Root every project's workspace lives under.
-
-    Returns:
-        A probe resolving each project's own workspace directory.
-    """
-
-    async def _probe(
-        project_id: str, expected: Sequence[ExpectedArtifact]
-    ) -> ArtifactPresence:
-        """Probe *project_id*'s workspace for *expected*.
-
-        Returns:
-            The probeable declarations and which of them are absent.
-        """
-        return await asyncio.to_thread(
-            missing_expected_artifacts,
-            expected,
-            workspace=project_workspace_dir(base_root, project_id),
-        )
-
-    return _probe
-
-
 __all__ = [
     "ArtifactPresence",
-    "ExpectedArtifactProbe",
     "is_probeable_path",
     "missing_expected_artifacts",
-    "workspace_artifact_probe",
 ]

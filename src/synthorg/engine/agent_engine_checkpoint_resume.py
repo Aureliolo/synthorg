@@ -19,7 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
-from synthorg.engine.artifacts.expected_artifact_check import ExpectedArtifactProbe
+from synthorg.engine.artifacts.baseline_scope import RunBaselineProbe
 from synthorg.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
 )
@@ -106,7 +106,7 @@ class AgentEngineCheckpointResumeMixin:
     _shutdown_checker: ShutdownChecker | None
     _cost_tracker: CostTrackerProtocol | None
     _task_engine: TaskEngine | None
-    _artifact_probe: ExpectedArtifactProbe | None
+    _run_probe: RunBaselineProbe | None
     _approval_store: ApprovalStoreProtocol | None
     _checkpoint_repo: CheckpointRepository | None
     _heartbeat_repo: HeartbeatRepository | None
@@ -286,7 +286,7 @@ class AgentEngineCheckpointResumeMixin:
                 task_id=task_id,
                 task_engine=self._task_engine,
                 approval_store=self._approval_store,
-                artifact_probe=self._artifact_probe,
+                run_probe=self._run_probe,
             )
             logger.info(
                 EXECUTION_RESUME_COMPLETE,

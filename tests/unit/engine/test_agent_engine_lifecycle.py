@@ -15,9 +15,7 @@ from synthorg.core.project import Project
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.agent_engine import AgentEngine
-from synthorg.engine.artifacts.expected_artifact_check import (
-    workspace_artifact_probe,
-)
+from synthorg.engine.artifacts.baseline_scope import workspace_run_probe
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
@@ -199,7 +197,7 @@ class TestAgentEnginePostExecutionTransitions:
         engine = AgentEngine(
             provider=mock_provider_factory([]),
             execution_loop=mock_loop,
-            artifact_probe=workspace_artifact_probe(tmp_path),
+            run_probe=workspace_run_probe(tmp_path),
             project_repo=mock_of[ProjectRepository](
                 get=AsyncMock(
                     return_value=Project(

@@ -9,7 +9,7 @@ from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.approval_gate import ApprovalGate
-from synthorg.engine.artifacts.expected_artifact_check import ExpectedArtifactProbe
+from synthorg.engine.artifacts.baseline_scope import RunBaselineProbe
 from synthorg.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
     make_loop_with_callback,
@@ -101,7 +101,7 @@ class AgentEnginePostExecMixin:
     _flight_recorder_sink: FlightRecorderSink | None
     _review_gate: ReviewGateService | None
     _review_pipeline: ReviewPipeline | None
-    _artifact_probe: ExpectedArtifactProbe | None
+    _run_probe: RunBaselineProbe | None
     _apply_recovery: ApplyRecovery
     _recovery_strategy: RecoveryStrategy | None
     _checkpoint_repo: CheckpointRepository | None
@@ -203,7 +203,7 @@ class AgentEnginePostExecMixin:
                 approval_store=self._approval_store,
                 review_gate=self._review_gate,
                 review_pipeline=self._review_pipeline,
-                artifact_probe=self._artifact_probe,
+                run_probe=self._run_probe,
             )
         except ExecutionStateError:
             await self._release_run_checkpoints(execution_result)

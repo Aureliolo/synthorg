@@ -1,5 +1,7 @@
 """Unit tests for sandbox backend factory functions."""
 
+import gc
+import weakref
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
@@ -9,11 +11,13 @@ import pytest
 
 from synthorg.observability.events.sandbox import SANDBOX_FACTORY_CLEANUP_FAILED
 from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.tools.sandbox import factory as factory_module
 from synthorg.tools.sandbox.config import SubprocessSandboxConfig
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.factory import (
     build_sandbox_backends,
     cleanup_sandbox_backends,
+    cleanup_tracked_sandbox_backends,
     merge_gvisor_defaults,
     merge_secure_backend_defaults,
     resolve_sandbox_for_category,
@@ -370,6 +374,73 @@ class TestCleanupSandboxBackends:
         call_args = mock_logger.warning.call_args
         assert call_args[0][0] == SANDBOX_FACTORY_CLEANUP_FAILED
         assert call_args[1]["backend"] == "broken"
+
+
+class TestCleanupTrackedSandboxBackends:
+    """Shutdown reclaims every backend this process built, not one owner's.
+
+    Four call sites build backends independently and none of them sees the
+    others, so a teardown draining any one owner's mapping reclaims a subset
+    and reports it as the whole.
+    """
+
+    async def test_building_a_backend_registers_it(self, tmp_path: Path) -> None:
+        """The derivation: the factory records what it builds, so a drain sees
+        every backend regardless of which of the four owners asked for it."""
+        registry: weakref.WeakKeyDictionary[SandboxBackend, str] = (
+            weakref.WeakKeyDictionary()
+        )
+        with patch.object(factory_module, "_BUILT_BACKENDS", registry):
+            built = build_sandbox_backends(
+                config=SandboxingConfig(default_backend="subprocess"),
+                workspace=tmp_path,
+            )
+
+            assert dict(registry.items()) == {v: k for k, v in built.items()}
+
+    async def test_it_reclaims_a_backend_the_caller_never_holds(self) -> None:
+        """The defect this exists for, stated as a test.
+
+        Nothing is handed in: a shutdown has no mapping, and every owner that
+        does have one holds a subset.
+        """
+        orphan = AsyncMock(spec=SandboxBackend)
+        registry: weakref.WeakKeyDictionary[SandboxBackend, str] = (
+            weakref.WeakKeyDictionary()
+        )
+        registry[orphan] = "docker"
+        with patch.object(factory_module, "_BUILT_BACKENDS", registry):
+            await cleanup_tracked_sandbox_backends()
+
+        orphan.cleanup.assert_awaited_once()
+
+    async def test_a_drain_with_nothing_built_is_not_an_error(self) -> None:
+        """A process that never built one still runs its shutdown step."""
+        with patch.object(
+            factory_module, "_BUILT_BACKENDS", weakref.WeakKeyDictionary()
+        ):
+            await cleanup_tracked_sandbox_backends()
+
+    async def test_a_dropped_backend_is_not_resurrected(self, tmp_path: Path) -> None:
+        """Weakness is what keeps the registry from being a leak of its own.
+
+        Held strongly, tracking would keep every backend a process ever built
+        alive for the life of that process, which is the opposite of what a
+        teardown is for.
+        """
+        registry: weakref.WeakKeyDictionary[SandboxBackend, str] = (
+            weakref.WeakKeyDictionary()
+        )
+        with patch.object(factory_module, "_BUILT_BACKENDS", registry):
+            built = build_sandbox_backends(
+                config=SandboxingConfig(default_backend="subprocess"),
+                workspace=tmp_path,
+            )
+            assert len(registry) == len(built)
+            del built
+            gc.collect()
+
+            assert len(registry) == 0
 
 
 class TestMergeGvisorDefaults:

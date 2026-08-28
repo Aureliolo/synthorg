@@ -78,6 +78,7 @@ from synthorg.observability.events.evals import (
     EVALS_HARNESS_HOST_STOP_TIMED_OUT,
     EVALS_HARNESS_HOST_STOPPED,
     EVALS_HARNESS_IMAGE_UNRESOLVED,
+    EVALS_HARNESS_SCRATCH_DISCARDED,
 )
 from synthorg.observability.redaction import safe_error_description
 from synthorg.persistence.checkpoint_protocol import (
@@ -577,6 +578,7 @@ class RecordingGatewayHost:
 
     async def _boot(self) -> None:
         """Run the fallible boot sequence the host slot has been claimed for."""
+        await self._discard_stale_scratch()
         self._config.scratch_dir.mkdir(
             parents=True, exist_ok=True, mode=_SCRATCH_DIR_MODE
         )
@@ -680,6 +682,46 @@ class RecordingGatewayHost:
                 shutil.rmtree, self._config.scratch_dir, ignore_errors=True
             )
             logger.info(EVALS_HARNESS_HOST_STOPPED, port=port)
+
+    async def _discard_stale_scratch(self) -> None:
+        """Remove a scratch tree an earlier run left behind, before booting.
+
+        The database here is throwaway by construction: it is encrypted with
+        bootstrap secrets minted fresh for THIS run, so a database from any
+        other run is not merely stale, it is unreadable. ``stop()`` removes it
+        on the way out, which covers every exit the process gets to run and
+        none of the ones it does not.
+
+        A hard kill is the one that matters, because it is the case a resume
+        exists for. The scratch path is derived from the recording's output
+        directory, so it is identical across attempts at one recording: a
+        killed sweep leaves a database written under its own key, and the
+        resume that follows mints a different one and dies reading
+        ``providers.configs`` during ``build_capability_policy``, before a
+        single cell can be replayed. Measured exactly that way, exit 3 with the
+        journal and every paid cell intact and unreachable.
+
+        So the removal happens on the way IN as well. Entry is the only moment
+        both facts are known and nothing has been written yet: that a previous
+        attempt may have left a tree, and that this run cannot read it.
+
+        Failures are reported rather than raised. What follows is a ``mkdir``
+        and a fresh database, so a tree that could not be removed surfaces as
+        the boot failure it causes rather than as one from this line.
+        """
+        scratch = self._config.scratch_dir
+        if not await asyncio.to_thread(scratch.exists):
+            return
+        logger.warning(
+            EVALS_HARNESS_SCRATCH_DISCARDED,
+            scratch_dir=str(scratch),
+            note=(
+                "an earlier attempt left a scratch database; it is encrypted "
+                "with that run's own bootstrap secrets and cannot be read by "
+                "this one, so it is discarded rather than inherited"
+            ),
+        )
+        await asyncio.to_thread(shutil.rmtree, scratch, ignore_errors=True)
 
     async def _seed_admin(self, persistence: PersistenceBackend) -> None:
         """Occupy the single-CEO slot before the host can accept a connection.

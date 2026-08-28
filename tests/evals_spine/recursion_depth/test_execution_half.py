@@ -6,11 +6,13 @@ and the attempt accounting are what a regression would break and neither needs
 a model to answer.
 """
 
+import itertools
 import shutil
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from types import MappingProxyType
 from typing import Protocol
 from unittest.mock import AsyncMock
 
@@ -32,6 +34,7 @@ from evals.recursion_depth import runner as runner_module
 from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.execute import (
     UNIT_REPORT_PATH,
+    LeafOutcome,
     leaf_brief,
     leaf_task,
     run_leaf,
@@ -40,6 +43,7 @@ from evals.recursion_depth.gate import MergeReview, MergeReviewRequest
 from evals.recursion_depth.grading import (
     RUNNER_PROBE_ARGS,
     SandboxUnitGrader,
+    UnitGrader,
     read_verdict,
     refuse_without_a_runner,
 )
@@ -93,12 +97,10 @@ from evals.recursion_depth.session import (
     SessionLimits,
     SessionOutcome,
     SweepDeps,
-    leaf_unit_key,
-    probe_artifacts,
-    produced_nothing,
 )
 from evals.recursion_depth.staffing import SweepRoster, build_roster
 from evals.recursion_depth.tree import SpecBrief
+from evals.recursion_depth.unit import UnitDelivery, leaf_unit_key
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.task import AcceptanceCriterion, Task
@@ -320,7 +322,7 @@ class TestTheMergeWorkspace:
             title="Parser / lexer",
             slug=piece_slug("Parser / lexer", index=0),
             tree=source,
-            delivered=True,
+            delivery=UnitDelivery(produced=True, reason=""),
         )
 
         mount_children(workspace, (piece,))
@@ -358,10 +360,18 @@ class TestTheMergeWorkspace:
         assert count_amendments(_workspace(tmp_path, "empty")) == 0
 
 
+#: A piece that arrived built and signed off.
+_CLEAN = UnitDelivery(produced=True, reason="")
+
+#: A piece that built nothing at all, which is the only state that leaves its
+#: parent with a gap to cover itself.
+_EMPTY = UnitDelivery(produced=False, reason="it ran no turns")
+
+
 class TestTheMergeBrief:
     """Renegotiation is ordinary, and a broken input is named as one."""
 
-    def _plan(self, tmp_path: Path, *, delivered: bool) -> MergePlan:
+    def _plan(self, tmp_path: Path, *, delivered: UnitDelivery) -> MergePlan:
         """Build a merge plan with one piece.
 
         Returns:
@@ -376,7 +386,7 @@ class TestTheMergeBrief:
                     title="Parser",
                     slug="00-parser",
                     tree=tmp_path / "child",
-                    delivered=delivered,
+                    delivery=delivered,
                 ),
             ),
             criteria=(NotBlankStr("It runs end to end"),),
@@ -386,20 +396,20 @@ class TestTheMergeBrief:
         )
 
     def test_it_permits_and_asks_for_recorded_amendments(self, tmp_path: Path) -> None:
-        brief = merge_brief(self._plan(tmp_path, delivered=True), ())
+        brief = merge_brief(self._plan(tmp_path, delivered=_CLEAN), ())
 
         assert "You may change a child's interface" in brief
         assert AMENDMENT_MARKER in brief
 
-    def test_it_names_a_piece_that_did_not_deliver(self, tmp_path: Path) -> None:
+    def test_it_names_a_piece_that_built_nothing(self, tmp_path: Path) -> None:
         # Hiding it would brief the agent for a situation it is not in.
-        brief = merge_brief(self._plan(tmp_path, delivered=False), ())
+        brief = merge_brief(self._plan(tmp_path, delivered=_EMPTY), ())
 
-        assert "[DID NOT DELIVER]" in brief
+        assert "[BUILT NOTHING]" in brief
 
     def test_a_rejection_reaches_the_repair_attempt(self, tmp_path: Path) -> None:
         brief = merge_brief(
-            self._plan(tmp_path, delivered=True), ("[high] the CLI exits 1 on R02",)
+            self._plan(tmp_path, delivered=_CLEAN), ("[high] the CLI exits 1 on R02",)
         )
 
         assert "the CLI exits 1 on R02" in brief
@@ -428,8 +438,17 @@ class _ScriptedReviewer:
         return self.answers[index]
 
 
-def _deps() -> SweepDeps:
-    """Build deps whose factories are never reached.
+def _deps(*, own_tests: tuple[bool, str] = (True, "")) -> SweepDeps:
+    """Build deps whose provider and sandbox factories are never reached.
+
+    The grader IS reached, on every unit that produced something: it is the
+    gate deciding whether what was built stands up.
+
+    Args:
+        own_tests: What the grader reports for the unit's own suite. Injected
+            rather than fixed, because a unit that BUILT and then failed its
+            suite is a distinct outcome from one that built nothing, and the
+            two are only separable through a grader that can say so.
 
     Returns:
         The deps.
@@ -438,13 +457,19 @@ def _deps() -> SweepDeps:
     async def _no_provider(_binding: object) -> object:
         raise AssertionError
 
-    def _no_sandbox(_root: Path) -> object:
+    def _no_sandbox(_root: Path, *, owner: str) -> object:
         raise AssertionError
 
+    # Scripted rather than always passing, so the delivery arms either side of
+    # the gate stay reachable: a grader that cannot fail leaves "built, and its
+    # suite did not pass" untested through the loop that produces it. The
+    # verdict itself is asserted directly in ``TestTheOwnTestGate``.
     return SweepDeps(
         build_provider=_no_provider,  # type: ignore[arg-type]
-        build_tool_registry=lambda _workspace: None,
-        build_grader=lambda _workspace: _PassingGrader(),
+        build_tool_registry=lambda _workspace, *, owner: None,
+        build_grader=lambda _workspace, *, owner: mock_of[UnitGrader](
+            own_tests_pass=AsyncMock(return_value=own_tests)
+        ),
         build_sandbox=_no_sandbox,  # type: ignore[arg-type]
     )
 
@@ -472,24 +497,6 @@ def _runnerless_sandbox() -> tuple[SandboxBackend, AsyncMock]:
     )
     backend: SandboxBackend = mock_of[SandboxBackend](execute=execute)
     return backend, execute
-
-
-class _PassingGrader:
-    """Stands in for the container grader, which needs a Docker daemon.
-
-    What the merge loop's tests are about is attempt accounting and arm wiring,
-    neither of which the verdict changes; the verdict itself is asserted
-    directly in ``TestTheOwnTestGate``.
-    """
-
-    async def own_tests_pass(self, project_dir: Path) -> tuple[bool, str]:
-        """Report a clean suite.
-
-        Returns:
-            Always a pass.
-        """
-        del project_dir
-        return True, ""
 
 
 @dataclass(frozen=True)
@@ -529,13 +536,17 @@ def scripted_sessions(monkeypatch: pytest.MonkeyPatch) -> list[_Attempt]:
         return SessionOutcome(cost=0.5, tokens=1200, turns=3, termination="completed")
 
     monkeypatch.setattr(merge_module, "run_session", _fake_session)
-    # Stubbed to "it produced something", because these tests are about the
-    # loop's accounting rather than about what an offline tree holds. The
-    # delivery wiring this hides, including that the baseline is probed before
-    # the session, is covered against the real function in
-    # TestDeliveryIsAboutWorkNotTheDeclaration.
+    # Stubbed to "it assembled something", because these tests are about the
+    # loop's accounting rather than about what an offline tree holds. Each call
+    # answers a different fingerprint, so the before-and-after comparison the
+    # loop makes reads as a change. What this hides, including that the
+    # baseline is taken before the first attempt, is covered against the real
+    # function in tests/evals_spine/recursion_depth/test_merge_delivery.py.
+    assemblies = itertools.count()
     monkeypatch.setattr(
-        merge_module, "produced_nothing", lambda _task, _ws, _baseline: False
+        merge_module,
+        "produced_tree",
+        lambda _ws: frozenset({("sqlcsv/lexer.py", str(next(assemblies)))}),
     )
     return ran
 
@@ -775,8 +786,53 @@ class TestDeliveryIsAboutWorkNotTheDeclaration:
             }
         )
 
-    def test_a_missing_package_marker_does_not_zero_a_unit(
-        self, tmp_path: Path
+    async def _leaf(
+        self,
+        task: Task,
+        workspace: CellWorkspace,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        writes: Mapping[str, str] = MappingProxyType({}),
+        own_tests: tuple[bool, str] = (True, ""),
+    ) -> LeafOutcome:
+        """Run one leaf whose session writes *writes* and stops.
+
+        Through ``run_leaf`` rather than against the verdict helper, because
+        the rule is only worth anything where the loop applies it: an
+        assertion on the helper alone holds for a loop that stopped calling it.
+
+        Args:
+            task: The unit's task.
+            workspace: The tree it runs against.
+            monkeypatch: Used to script the session.
+            writes: Relative path to content the session writes.
+            own_tests: What the grader reports for the unit's own suite.
+
+        Returns:
+            The leaf's outcome.
+        """
+
+        async def _scripted(_deps_arg: SweepDeps, **_rest: object) -> SessionOutcome:
+            for path, content in writes.items():
+                written = workspace.project_dir / path
+                written.parent.mkdir(parents=True, exist_ok=True)
+                written.write_text(content, encoding="utf-8")
+            return SessionOutcome(
+                cost=0.5, tokens=1200, turns=3, termination="completed"
+            )
+
+        monkeypatch.setattr(execute_module, "run_session", _scripted)
+        return await run_leaf(
+            _deps(own_tests=own_tests),
+            task=task,
+            owner=_identity("Builder"),
+            workspace=workspace,
+            execution_id="d1-gated-r0-leaf",
+            limits=SessionLimits(max_turns=8, cost_ceiling=5.0, token_ceiling=100_000),
+        )
+
+    async def test_a_missing_package_marker_does_not_zero_a_unit(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The measured case, verbatim: three of four paths written."""
         task = self._task(
@@ -786,27 +842,32 @@ class TestDeliveryIsAboutWorkNotTheDeclaration:
             "tests/__init__.py",
         )
         workspace = _workspace(tmp_path, "leaf")
-        baseline = probe_artifacts(task, workspace)
-        for path in ("src/inference.py", "tests/test_inference.py", "README.md"):
-            written = workspace.project_dir / path
-            written.parent.mkdir(parents=True, exist_ok=True)
-            written.write_text("real work", encoding="utf-8")
 
-        assert produced_nothing(task, workspace, baseline) is False
+        outcome = await self._leaf(
+            task,
+            workspace,
+            monkeypatch,
+            writes={
+                "src/inference.py": "real work",
+                "tests/test_inference.py": "real work",
+                "README.md": "real work",
+            },
+        )
+
+        assert outcome.delivered, outcome.detail
         # Still recorded, because a planner declaring what it does not need is
         # worth seeing. It just does not decide.
-        assert probe_artifacts(task, workspace).missing == ("tests/__init__.py",)
+        assert outcome.missing_declared_paths == ("tests/__init__.py",)
 
     async def test_the_baseline_is_taken_before_the_session_runs(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Through ``run_leaf``, because the ordering is the wiring, not the rule.
+        """The ordering is the wiring, not the rule.
 
-        The pure-function tests either side of this one hold whatever order
-        ``run_leaf`` probes in. Taking the baseline AFTER the session compares
-        the tree with itself, so every leaf reads as having changed nothing and
-        the whole sweep delivers zero, which no assertion on ``produced_nothing``
-        alone can see.
+        Taking the baseline AFTER the session compares the tree with itself, so
+        every leaf reads as having changed nothing and the whole sweep delivers
+        zero. The tests either side of this one hold whatever order ``run_leaf``
+        probes in, so only a leaf that WRITES can show the order is right.
         """
         task = self._task("src/inference.py")
         workspace = _workspace(tmp_path, "leaf")
@@ -965,19 +1026,21 @@ class TestDeliveryIsAboutWorkNotTheDeclaration:
         assert "ran no turns" not in outcome.detail
         assert outcome.delivered, outcome.detail
 
-    def test_a_session_that_wrote_nothing_still_does_not_deliver(
-        self, tmp_path: Path
+    async def test_a_session_that_wrote_nothing_still_does_not_deliver(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The anti-vacuity half, which is the half that has to hold."""
         task = self._task("src/inference.py", "tests/test_inference.py")
         workspace = _workspace(tmp_path, "empty")
 
-        baseline = probe_artifacts(task, workspace)
+        outcome = await self._leaf(task, workspace, monkeypatch)
 
-        assert produced_nothing(task, workspace, baseline) is True
+        assert outcome.produced is False
+        assert outcome.delivered is False
+        assert "left its tree exactly as it found it" in outcome.detail
 
-    def test_a_declaration_the_seed_already_satisfied_is_not_this_run_s_work(
-        self, tmp_path: Path
+    async def test_a_declaration_the_seed_already_satisfied_is_not_this_run_s_work(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Why the baseline is taken before the session rather than assumed.
 
@@ -985,25 +1048,83 @@ class TestDeliveryIsAboutWorkNotTheDeclaration:
         provides is present the moment the session opens. Judged on presence
         alone, a unit that did nothing at all would read as a delivery.
         """
-        task = self._task("README.md")
+        task = self._task("src/inference.py")
         workspace = _workspace(tmp_path, "seeded")
-        seeded = workspace.project_dir / "README.md"
+        seeded = workspace.project_dir / "src/inference.py"
+        seeded.parent.mkdir(parents=True, exist_ok=True)
         seeded.write_text("from the seed", encoding="utf-8")
 
-        baseline = probe_artifacts(task, workspace)
+        outcome = await self._leaf(task, workspace, monkeypatch)
 
-        assert produced_nothing(task, workspace, baseline) is True
+        assert outcome.produced is False
+        assert outcome.delivered is False
 
-    def test_changing_a_seeded_file_is_work(self, tmp_path: Path) -> None:
+    async def test_changing_a_seeded_file_is_work(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Delivery is what this run CHANGED, not what the tree holds."""
-        task = self._task("README.md")
+        task = self._task("src/inference.py")
         workspace = _workspace(tmp_path, "changed")
-        seeded = workspace.project_dir / "README.md"
+        seeded = workspace.project_dir / "src/inference.py"
+        seeded.parent.mkdir(parents=True, exist_ok=True)
         seeded.write_text("from the seed", encoding="utf-8")
-        baseline = probe_artifacts(task, workspace)
-        seeded.write_text("rewritten by the agent", encoding="utf-8")
 
-        assert produced_nothing(task, workspace, baseline) is False
+        outcome = await self._leaf(
+            task,
+            workspace,
+            monkeypatch,
+            writes={"src/inference.py": "rewritten by the agent"},
+        )
+
+        assert outcome.produced is True
+        assert outcome.delivered is True
+
+    async def test_a_unit_that_wrote_only_its_own_report_produced_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The unit report is the one file writing it is not delivery.
+
+        Every unit is asked to write one, so counting it would make the tree
+        question unfalsifiable: a session that did nothing else would still
+        read as having changed the tree.
+        """
+        task = self._task("src/inference.py")
+        workspace = _workspace(tmp_path, "report-only")
+
+        outcome = await self._leaf(
+            task,
+            workspace,
+            monkeypatch,
+            writes={UNIT_REPORT_PATH: "# what I did\n\nNothing, in the end.\n"},
+        )
+
+        assert outcome.produced is False
+        assert outcome.delivered is False
+
+    async def test_a_unit_that_built_and_failed_its_suite_still_produced(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The two halves the parent's brief renders separately.
+
+        A unit that wrote modules and failed its own suite is an input a merge
+        can still assemble from, so telling the merge it received nothing is a
+        lie it acts on: the cap-2 root was told 4 of 7 pieces holding 169
+        modules had failed, and wrote nothing in 6 attempts over 119 turns.
+        """
+        task = self._task("src/inference.py")
+        workspace = _workspace(tmp_path, "unsigned")
+
+        outcome = await self._leaf(
+            task,
+            workspace,
+            monkeypatch,
+            writes={"src/inference.py": "real work"},
+            own_tests=(False, "3 failed"),
+        )
+
+        assert outcome.produced is True
+        assert outcome.delivered is False
+        assert "3 failed" in outcome.detail
 
 
 def _masked(logs: Sequence[Mapping[str, object]]) -> list[str]:
@@ -1290,14 +1411,18 @@ def assembled_trees(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 
 async def _scripted_oracle(
-    *, build_sandbox: object, spec_dir: Path, tree: Path
+    *,
+    build_sandbox: object,
+    release_sandboxes: object = None,
+    spec_dir: Path,
+    tree: Path,
 ) -> OracleOutcome:
     """Stand in for the held-out oracle, which needs a container to run.
 
     Returns:
         One passing requirement, which is enough for the matrix to score.
     """
-    del build_sandbox, spec_dir, tree
+    del build_sandbox, release_sandboxes, spec_dir, tree
     return OracleOutcome(results={RequirementId("R01"): True}, report="")
 
 
@@ -1458,6 +1583,9 @@ def _manifest(**overrides: object) -> RecursionDepthManifest:
         "unit_token_ceiling": 1000,
         "max_sessions": 100,
         "projected_branching": 4,
+        # Every cap the fixture's callers sweep, since a swept cap must be
+        # priced and an unswept entry is inert.
+        "expected_sessions_per_cell": {1: 10, 2: 20, 3: 30},
     }
     payload.update(overrides)
     return RecursionDepthManifest.model_validate(payload)
