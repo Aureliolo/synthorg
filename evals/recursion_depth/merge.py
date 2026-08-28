@@ -35,6 +35,7 @@ from evals.recursion_depth.session import (
     SweepDeps,
     graded,
     probe_artifacts,
+    produced_tree,
     run_session,
 )
 from synthorg.core.agent import AgentIdentity
@@ -55,13 +56,6 @@ logger = get_logger(__name__)
 #: workspace root, and a child package left where the root package should be
 #: would grade as though the merge had happened.
 CHILDREN_DIR: Final[str] = ".children"
-
-#: What sits in a merge's tree without being anything the merge assembled: the
-#: children it was handed, its own paperwork, and the brief it started from.
-#: Everything else at the root IS the assembly.
-_NOT_ASSEMBLY: Final[frozenset[str]] = frozenset(
-    {CHILDREN_DIR, ".synthorg", "README.md"}
-)
 
 #: What a merge must produce. Both, because the stage only means something if
 #: both land: the assembled thing, and the end-to-end run showing it works.
@@ -312,7 +306,7 @@ async def run_merge(
     # child already delivered is not credited to the assembly that received it.
     # The declared paths are still probed at the end, because a planner
     # over-declaring is worth seeing; they just do not decide delivery.
-    assembled_before = await asyncio.to_thread(assembled_tree, plan.workspace)
+    assembled_before = await asyncio.to_thread(produced_tree, plan.workspace)
     findings: tuple[str, ...] = ()
     review = MergeReview(approved=None)
     sessions = 0
@@ -479,7 +473,7 @@ async def _undelivered_reason(
             "no assembly attempt ran a single turn, so nothing was assembled "
             "and this is not an assembly failure"
         )
-    if await asyncio.to_thread(assembled_tree, plan.workspace) == baseline:
+    if await asyncio.to_thread(produced_tree, plan.workspace) == baseline:
         return "no assembly attempt changed the tree outside the pieces it was given"
     async with graded(
         deps, plan.workspace, owner=f"grade:{plan.execution_prefix}"
@@ -488,43 +482,6 @@ async def _undelivered_reason(
     if not passed:
         return f"the merged tree's own tests did not pass: {report}"
     return ""
-
-
-def assembled_tree(workspace: CellWorkspace) -> frozenset[tuple[str, int]]:
-    """Fingerprint what the merge has assembled, ignoring what it was handed.
-
-    A merge is judged on the tree it produces, never on its own paperwork. The
-    first version declared the report and the end-to-end output as the merge's
-    expected artifacts and asked the shared artifact probe about those, so a
-    merge that assembled the whole package and skipped one markdown file was
-    recorded as having changed nothing.
-
-    That verdict does not stay local: :func:`merge_brief` marks a child
-    ``[DID NOT DELIVER]`` for its parent, so the false negative is briefed
-    upward. Measured on a live cap-2 cell, the root merge was told four of its
-    seven subtrees had failed when every one of them had assembled a package,
-    and it scored zero against an oracle that passed 35 to 38 at cap 1, where
-    the tree has no intermediate merges to mislabel. A defect that only fires
-    below the root is one that reads exactly like depth not working.
-
-    Args:
-        workspace: The merge's tree.
-
-    Returns:
-        Each assembled file as ``(relative path, size)``. Size rather than a
-        digest because this only has to answer whether the assembly MOVED, and
-        it runs over trees holding hundreds of files.
-    """
-    root = workspace.project_dir
-    if not root.is_dir():
-        return frozenset()
-    return frozenset(
-        (str(path.relative_to(root).as_posix()), path.stat().st_size)
-        for entry in root.iterdir()
-        if entry.name not in _NOT_ASSEMBLY
-        for path in (entry.rglob("*") if entry.is_dir() else (entry,))
-        if path.is_file()
-    )
 
 
 def _trim(findings: tuple[str, ...]) -> tuple[str, ...]:

@@ -33,7 +33,7 @@ from evals.recursion_depth.session import (
     SweepDeps,
     graded,
     probe_artifacts,
-    produced_nothing,
+    produced_tree,
     run_session,
 )
 from evals.recursion_depth.tree import SpecBrief
@@ -42,7 +42,6 @@ from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.artifacts.expected_artifact_check import ArtifactPresence
 from synthorg.engine.decomposition.models import SubtaskDefinition
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
@@ -223,9 +222,9 @@ async def run_leaf(
         The leaf's outcome.
     """
     # Before the session, because delivery is a question about what THIS run
-    # produced: the workspace is recreated from the committed seed, and a
-    # declaration the seed already satisfied is not work this unit did.
-    baseline = await asyncio.to_thread(probe_artifacts, task, workspace)
+    # produced: the workspace is recreated from the committed seed, and what
+    # the seed already held is not work this unit did.
+    baseline = await asyncio.to_thread(produced_tree, workspace)
     outcome = await run_session(
         deps,
         identity=owner,
@@ -353,7 +352,7 @@ async def _undelivered_reason(
     task: Task,
     workspace: CellWorkspace,
     outcome: SessionOutcome,
-    baseline: ArtifactPresence,
+    baseline: frozenset[tuple[str, int]],
     *,
     turns: int,
 ) -> str:
@@ -389,8 +388,8 @@ async def _undelivered_reason(
             f"the unit ran no turns, so nothing was built and this is not a "
             f"delivery failure: it terminated {outcome.termination}"
         )
-    if await asyncio.to_thread(produced_nothing, task, workspace, baseline):
-        return "the session left every declared path exactly as it found it"
+    if await asyncio.to_thread(produced_tree, workspace) == baseline:
+        return "the session left its tree exactly as it found it"
     async with graded(deps, workspace, owner=f"grade:{task.id}") as grader:
         passed, report = await grader.own_tests_pass(workspace.project_dir)
     if not passed:

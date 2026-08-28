@@ -1,17 +1,22 @@
 # module-kind: tests
-"""A merge is judged on the tree it assembled, never on its own paperwork.
+"""A unit is judged on the tree it produced, never on a guess made before it ran.
 
-The regression these pin cost a matrix. A merge declared its report and its
-end-to-end output as its expected artifacts, and delivery was decided by asking
-the shared artifact probe about those, so a merge that assembled the whole
-package and skipped one markdown file was recorded as having changed nothing.
+Two live regressions, one primitive. Both inferred delivery instead of asking,
+and both were wrong in the same direction.
 
-That verdict does not stay local. ``merge_brief`` marks a child
-``[DID NOT DELIVER]`` for its parent, so the false negative is briefed upward,
-and it can only fire BELOW the root: a cap-1 tree has no intermediate merges to
-mislabel and scored 35 to 38 of 42, while a cap-2 tree told its root that four
-of seven subtrees had failed scored zero. A defect that only fires with depth
-reads exactly like depth not working.
+A MERGE declared its report and end-to-end output as its expected artifacts and
+was judged on those, so one that assembled the whole package and skipped a
+markdown file read as having changed nothing. That verdict is briefed to the
+parent as ``[DID NOT DELIVER]``, and it can only fire BELOW the root: a cap-1
+tree has no intermediate merges to mislabel and scored 35 to 38 of 42, while a
+cap-2 tree told its root that four of seven subtrees had failed scored zero. A
+defect that only fires with depth reads exactly like depth not working.
+
+A LEAF was judged on whether any PLANNER-DECLARED path had changed, a guess made
+before the tree existed. Measured on one cap-1 cell: two leaves, one of four
+files and one of ten, both booked as having produced nothing because they had
+named their modules differently. That feeds the survival denominator, so it
+removed them from the metric rather than merely mislabelling them.
 """
 
 from datetime import date
@@ -25,10 +30,9 @@ from evals.recursion_depth.merge import (
     MERGE_REPORT_PATH,
     MergePiece,
     MergePlan,
-    assembled_tree,
     merge_brief,
 )
-from evals.recursion_depth.session import SessionLimits
+from evals.recursion_depth.session import SessionLimits, produced_tree
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType
@@ -64,7 +68,7 @@ class TestWhatCountsAsAssembly:
         workspace = _workspace(tmp_path)
         _seed_child(workspace, "00-lexer")
 
-        assert assembled_tree(workspace) == frozenset()
+        assert produced_tree(workspace) == frozenset()
 
     def test_the_brief_and_the_paperwork_are_not_an_assembly(
         self, tmp_path: Path
@@ -77,7 +81,7 @@ class TestWhatCountsAsAssembly:
         report.parent.mkdir(parents=True, exist_ok=True)
         report.write_text("I assembled it", encoding="utf-8")
 
-        assert assembled_tree(workspace) == frozenset()
+        assert produced_tree(workspace) == frozenset()
 
     def test_a_package_at_the_root_is_an_assembly(self, tmp_path: Path) -> None:
         """The deliverable is the tree at the workspace root."""
@@ -90,7 +94,7 @@ class TestWhatCountsAsAssembly:
 
         # Size read back rather than assumed: the platform may translate line
         # endings on the way out, and this pins the path, not the encoding.
-        assert assembled_tree(workspace) == frozenset(
+        assert produced_tree(workspace) == frozenset(
             {("sqlcsv/lexer.py", written.stat().st_size)}
         )
 
@@ -102,12 +106,12 @@ class TestWhatCountsAsAssembly:
         """
         workspace = _workspace(tmp_path)
         _seed_child(workspace, "00-lexer")
-        before = assembled_tree(workspace)
+        before = produced_tree(workspace)
         package = workspace.project_dir / "sqlcsv"
         package.mkdir()
         (package / "lexer.py").write_text("# assembled\n", encoding="utf-8")
 
-        assert assembled_tree(workspace) != before
+        assert produced_tree(workspace) != before
 
     def test_an_edit_to_an_assembled_file_counts(self, tmp_path: Path) -> None:
         """A repair round that rewrites the assembly has changed the tree."""
@@ -116,10 +120,37 @@ class TestWhatCountsAsAssembly:
         package.mkdir()
         target = package / "lexer.py"
         target.write_text("# first\n", encoding="utf-8")
-        before = assembled_tree(workspace)
+        before = produced_tree(workspace)
         target.write_text("# rewritten, and longer\n", encoding="utf-8")
 
-        assert assembled_tree(workspace) != before
+        assert produced_tree(workspace) != before
+
+
+class TestALeafThatNamedItsFilesDifferently:
+    """The leaf half of the same defect, and the one that reached a metric."""
+
+    def test_code_under_an_undeclared_name_still_counts(self, tmp_path: Path) -> None:
+        """Two live leaves, of four and ten files, were booked as producing
+        nothing because the planner had guessed different module names."""
+        workspace = _workspace(tmp_path)
+        before = produced_tree(workspace)
+        package = workspace.project_dir / "sqlcsv"
+        package.mkdir()
+        # The planner declared `csv_reader.py`; the leaf wrote `reader.py`.
+        (package / "reader.py").write_text("# real work\n", encoding="utf-8")
+
+        assert produced_tree(workspace) != before
+
+    def test_a_leaf_that_wrote_only_its_report_produced_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """Paperwork is not the deliverable at either level."""
+        workspace = _workspace(tmp_path)
+        report = workspace.project_dir / ".synthorg" / "unit" / "report.md"
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("I built it, honest", encoding="utf-8")
+
+        assert produced_tree(workspace) == frozenset()
 
 
 class TestWhatTheParentIsTold:

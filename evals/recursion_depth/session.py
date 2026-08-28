@@ -21,7 +21,7 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from evals.harness.binding import RunBinding
 from evals.harness.stall_watch import (
@@ -516,6 +516,57 @@ def probe_artifacts(task: Task, workspace: CellWorkspace) -> ArtifactPresence:
     )
 
 
+#: What sits in a unit's tree without being anything that unit produced: the
+#: pieces a merge was handed, the unit's own paperwork, and the brief it
+#: started from. Everything else under the project directory IS the work.
+_NOT_PRODUCED: Final[frozenset[str]] = frozenset(
+    {".children", ".synthorg", "README.md"}
+)
+
+
+def produced_tree(workspace: CellWorkspace) -> frozenset[tuple[str, int]]:
+    """Fingerprint what a unit has produced, ignoring what it was handed.
+
+    The one question every delivery verdict in this harness asks, so there is
+    one answer to it. Both callers previously inferred it instead, and both
+    were wrong in the same direction:
+
+    A leaf was judged on whether any PLANNER-DECLARED path had changed. The
+    declaration is a guess made before the tree existed, so a leaf that wrote
+    four modules under names the planner had not predicted was recorded as
+    having left every declared path as it found it. Measured on a live cap-1
+    cell: two leaves, one of 4 files and one of 10, both booked as producing
+    nothing. That verdict feeds the survival denominator, so it does not merely
+    mislabel the leaf, it removes it from the metric.
+
+    A merge was judged on whether it wrote its own report, which is the same
+    mistake one level up and additionally briefed the parent
+    ``[DID NOT DELIVER]``; see ``results/merge-delivery-false-negative/``.
+
+    Asking the tree needs no guess about which paths matter and no knowledge of
+    which tools mutate. What a unit DECLARED is still recorded, because a
+    planner over-declaring is worth seeing. It just does not decide.
+
+    Args:
+        workspace: The unit's tree.
+
+    Returns:
+        Each produced file as ``(relative path, size)``. Size rather than a
+        digest because this only has to answer whether the work MOVED, and it
+        runs over trees holding hundreds of files.
+    """
+    root = workspace.project_dir
+    if not root.is_dir():
+        return frozenset()
+    return frozenset(
+        (path.relative_to(root).as_posix(), path.stat().st_size)
+        for entry in root.iterdir()
+        if entry.name not in _NOT_PRODUCED
+        for path in (entry.rglob("*") if entry.is_dir() else (entry,))
+        if path.is_file()
+    )
+
+
 def produced_nothing(
     task: Task, workspace: CellWorkspace, baseline: ArtifactPresence | None
 ) -> bool:
@@ -975,6 +1026,7 @@ __all__ = [
     "open_session",
     "probe_artifacts",
     "produced_nothing",
+    "produced_tree",
     "run_binding",
     "run_session",
     "session_spend",
