@@ -102,11 +102,12 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     whose run produced none terminates here and the task goes `FAILED`, rather
     than reaching review as though it had delivered. Every plan-dispatched
     WORK item declares an artifact, so the guard is always armed for one (see
-    [Initiative Tail](initiative-tail.md)). The zero-tool-call predicate the
-    loops apply is the cheap signal, not the whole guard: an agent that read
-    two files, wrote nothing, and stopped made tool calls and is not `NO_OP`,
-    so the post-execution pipeline also probes the declared paths on disk (see
-    [Declared-artifact check](#declared-artifact-check)). When that probe is
+    [Initiative Tail](initiative-tail.md)). "Produced none" is decided by
+    asking the workspace whether this run changed it, not by counting tool
+    calls: an agent that read two files, wrote nothing, and stopped made tool
+    calls, and one that created directories and announced its next step made
+    five (see [Did this run do anything?](#did-this-run-do-anything)). When
+    the post-execution pipeline is
     what catches the run, the verdict is written back onto the run as well as
     the task: the returned `ExecutionResult` carries `NO_OP` in place of the
     `COMPLETED` the loop claimed, because `AgentRunResult.is_success` reads
@@ -276,8 +277,8 @@ LOCKED organisation a weaker response than it chose and said nothing.
 12. **Apply post-execution transitions:**
     - On the `COMPLETED` and `NO_OP` branches (after the shutdown and park
       branches and the zero-tool-call proxy), a task that declared
-      `artifacts_expected` and produced none of them goes IN_PROGRESS ->
-      FAILED (see [Declared-artifact check](#declared-artifact-check)); a
+      `artifacts_expected` and left its workspace untouched goes IN_PROGRESS
+      -> FAILED (see [Declared-artifact check](#declared-artifact-check)); a
       run that delivered nothing never reaches review. A run interrupted by
       shutdown, or parked for clarification, is not failed for missing
       artifacts it was never given the chance to produce.
@@ -395,16 +396,54 @@ and wrapped in an `AgentRunResult` with `TerminationReason.ERROR`.
     - Computed fields: `termination_reason`, `total_turns`, `total_cost`,
       `is_success`, `completion_summary`
 
+### Did this run do anything?
+
+Asked of the workspace, and asked once. `engine/artifacts/workspace_fingerprint.py`
+takes every file under the project's workspace with its size; a run that
+leaves that set identical produced nothing. `AgentEngine.run` takes the
+answer before the loop starts and publishes it on
+`engine/artifacts/baseline_scope.py`, where the loop's own correction, its
+no-op classification and the post-execution guard all read it, so the three
+cannot answer differently about a run one of them is about to end.
+
+The question needs no plan, which is the point. A declaration is written
+before the tree exists, from a title and a sentence, so a run briefed to
+build the CSV reader that writes `sqlcsv/reader.py` where
+`sqlcsv/csv_reader.py` was declared satisfies no declaration and has
+produced eight modules. A tool name cannot answer it either: `mkdir`, `ls`
+and `cat` are the same call as a write to anything that only knows names,
+and a recorded leaf that ran exactly those was read as finished on turn 6
+of 40 holding an empty tree.
+
+Trees a tool writes rather than an author are pruned wherever they appear
+(`.git`, `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`,
+`node_modules`, `.venv`): an agent that ran the suite it was handed authored
+nothing, and counting the cache it left would wave through the run the check
+exists to catch. Length rather than content, because this decides whether to
+spend one more turn, not whether work is correct.
+
+When nothing changed and the task declared artifacts, the run fails under
+whichever reason names most: the declared paths when any of them is
+path-shaped, and `NOTHING_PRODUCED_REASON` otherwise. That last case is the
+only check a prose declaration ever gets.
+
 ### Declared-artifact check
 
-A task that declared `artifacts_expected` and produced **none** of the
-declared files goes `IN_PROGRESS -> FAILED`, whatever its tool-call count.
-`engine/artifacts/expected_artifact_check.py` resolves each
-`ExpectedArtifact.path` against the task's project workspace
+Once the workspace says something happened, the sharper question is whether
+it was what the task promised. `engine/artifacts/expected_artifact_check.py`
+resolves each `ExpectedArtifact.path` against the task's project workspace
 (`engine/workspace/paths.py::project_workspace_dir`) and returns what is
 missing; `apply_post_execution_transitions` consumes it through an injected
-`ExpectedArtifactProbe` seam, so a deployment without a workspace root simply
-falls back to the tool-call proxy rather than failing every task.
+`RunBaselineProbe` seam alongside the fingerprint, so a deployment without a
+workspace root simply falls back to the tool-call proxy rather than failing
+every task.
+
+A run that produced **something** and satisfied no declaration reaches
+review rather than failing here. The naming disagreement is real and worth
+a verdict, but it is one a reviewer can read the tree to settle, and failing
+it here discards working code: measured on a live recursion-depth cell,
+three of eight units wrote 4, 8 and 10 modules apiece under names the
+planner had not guessed.
 
 Only a **path-shaped** declaration is probed. `ExpectedArtifact.path` carries
 whatever the planner wrote, which may be a file (`src/game.py`) or a
@@ -424,9 +463,10 @@ recorded reason names the paths that are absent.
 Presence answers a task that creates. Most engineering work edits a file
 that is already there, and for those tasks every declared path exists before
 the agent starts, so presence alone comes back "delivered" whatever the run
-did. `AgentEngine.run` therefore asks the same probe **before** the loop
-runs and publishes the answer on `engine/artifacts/baseline_scope.py`; the
-post-execution transition compares the two. A declaration counts as
+did. The same baseline that carries the fingerprint carries each
+declaration's digest, taken in one call off one directory so the two views
+cannot describe different moments; the post-execution transition compares
+the two. A declaration counts as
 delivered when it appeared, changed or was removed, and a run all of whose
 declarations are byte-identical to how it found them is failed under its own
 reason, which names the paths rather than saying they are missing (they are
@@ -445,12 +485,13 @@ Three corrections run before the zero-artifact guard can fire, because every
 failure they catch looks identical to "produced nothing" while the run still
 had budget to deliver.
 
-`engine/loop_empty_run.py` fires at most once, immediately after the first
-turn, and only when the task declares artifacts, no turn has called a tool,
-a turn remains, and the run is not a resumed segment. It names the declared
-deliverables (fenced with `wrap_untrusted`, since a planner-authored path is
-model output) and says prose is not a deliverable. A second empty turn falls
-through to the guard, so the correction costs one round trip and never loops.
+`engine/loop_empty_run.py` fires at most once, on the first turn that calls
+no tool, and only when the task declares artifacts, the workspace holds
+nothing this run put there, a turn remains, and the run is not a resumed
+segment. It names the declared deliverables (fenced with `wrap_untrusted`,
+since a planner-authored path is model output) and says prose is not a
+deliverable. A second empty turn falls through to the guard, so the
+correction costs one round trip and never loops.
 
 `engine/loop_silent_turn.py` fires when a reasoning model spends a whole turn
 on its thinking channel and its visible channel comes back empty. That is

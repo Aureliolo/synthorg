@@ -18,9 +18,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.artifacts.expected_artifact_check import (
     is_probeable_path,
     missing_expected_artifacts,
-    workspace_artifact_probe,
 )
-from synthorg.engine.errors import WorkspaceSetupError
 
 pytestmark = pytest.mark.unit
 
@@ -230,36 +228,6 @@ class TestMissingExpectedArtifacts:
 
         assert presence.probed == ("src/game.py",)
         assert not presence.nothing_delivered
-
-
-class TestWorkspaceArtifactProbe:
-    async def test_probe_resolves_the_projects_own_directory(
-        self, tmp_path: Path
-    ) -> None:
-        _touch(tmp_path, "projects/proj-1/src/game.py")
-        probe = workspace_artifact_probe(tmp_path)
-
-        presence = await probe("proj-1", _expected("src/game.py"))
-
-        assert presence.missing == ()
-
-    async def test_another_projects_delivery_does_not_count(
-        self, tmp_path: Path
-    ) -> None:
-        """Two projects share a root; one must not satisfy the other's task."""
-        _touch(tmp_path, "projects/proj-1/src/game.py")
-        probe = workspace_artifact_probe(tmp_path)
-
-        presence = await probe("proj-2", _expected("src/game.py"))
-
-        assert presence.missing == ("src/game.py",)
-        assert presence.nothing_delivered
-
-    async def test_traversal_in_the_project_id_is_refused(self, tmp_path: Path) -> None:
-        probe = workspace_artifact_probe(tmp_path)
-
-        with pytest.raises(WorkspaceSetupError, match="traversal"):
-            await probe("../escape", _expected("src/game.py"))
 
 
 class TestDeliveryAgainstABaseline:

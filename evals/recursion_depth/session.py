@@ -45,10 +45,10 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.artifacts.baseline_scope import workspace_run_probe
 from synthorg.engine.artifacts.expected_artifact_check import (
     ArtifactPresence,
     missing_expected_artifacts,
-    workspace_artifact_probe,
 )
 from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.observability import get_logger
@@ -907,7 +907,7 @@ async def _build_engine(
         # prose having written nothing terminates NO_OP rather than reading as
         # a clean success, which would put undelivered work in the survival
         # denominator.
-        artifact_probe=workspace_artifact_probe(workspace.root),
+        run_probe=workspace_run_probe(workspace.root),
         recovery_strategy=FailAndReassignStrategy(),
         # Both or neither, which the engine enforces. With them a session's
         # conversation is on disk turn by turn, so a failure that outlasts the

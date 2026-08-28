@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import Sequence
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
 
@@ -15,11 +16,13 @@ from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._review_oracle_gates import GateOutcome
 from synthorg.engine._task_sync_engine import sync_to_task_engine
-from synthorg.engine.artifacts.baseline_scope import artifact_baseline_scope
-from synthorg.engine.artifacts.expected_artifact_check import (
-    ArtifactPresence,
-    ExpectedArtifactProbe,
+from synthorg.engine.artifacts.baseline_scope import (
+    RunBaseline,
+    RunBaselineProbe,
+    run_baseline_scope,
 )
+from synthorg.engine.artifacts.expected_artifact_check import ArtifactPresence
+from synthorg.engine.artifacts.workspace_fingerprint import fingerprint_tree
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError, TaskEngineError
 from synthorg.engine.loop_protocol import (
@@ -53,7 +56,7 @@ def _fake_probe(
     *,
     missing: tuple[str, ...] | None = None,
     digest: str | None = None,
-) -> ExpectedArtifactProbe:
+) -> RunBaselineProbe:
     """Build a probe reporting *missing* against whatever was declared.
 
     Args:
@@ -64,21 +67,24 @@ def _fake_probe(
             the changed / unchanged distinction.
 
     Returns:
-        An async probe matching the ``ExpectedArtifactProbe`` shape.
+        An async probe matching the ``RunBaselineProbe`` shape. Its workspace
+        never exists, so the tree arm answers "nothing produced" and the
+        declared arms below it are what these tests exercise.
     """
 
-    async def _run(
-        _project: str, expected: Sequence[ExpectedArtifact]
-    ) -> ArtifactPresence:
+    async def _run(_project: str, expected: Sequence[ExpectedArtifact]) -> RunBaseline:
         declared = tuple(str(artifact.path) for artifact in expected)
         absent = declared if missing is None else missing
-        return ArtifactPresence(
-            probed=declared,
-            missing=absent,
-            digests=(
-                {}
-                if digest is None
-                else {path: digest for path in declared if path not in absent}
+        return RunBaseline(
+            workspace=Path("unbuilt"),
+            declared=ArtifactPresence(
+                probed=declared,
+                missing=absent,
+                digests=(
+                    {}
+                    if digest is None
+                    else {path: digest for path in declared if path not in absent}
+                ),
             ),
         )
 
@@ -881,8 +887,11 @@ class TestApplyPostExecutionTransitions:
 
         async def _nothing_delivered(
             _project: str, _expected: Sequence[ExpectedArtifact]
-        ) -> ArtifactPresence:
-            return ArtifactPresence(probed=("src/x.py",), missing=("src/x.py",))
+        ) -> RunBaseline:
+            return RunBaseline(
+                workspace=Path("unbuilt"),
+                declared=ArtifactPresence(probed=("src/x.py",), missing=("src/x.py",)),
+            )
 
         with resumed_run_scope():
             out = await apply_post_execution_transitions(
@@ -890,7 +899,7 @@ class TestApplyPostExecutionTransitions:
                 agent_id=str(sample_agent.id),
                 task_id=str(work_task.id),
                 task_engine=_make_mock_task_engine(),
-                artifact_probe=_nothing_delivered,
+                run_probe=_nothing_delivered,
             )
 
         assert out.context.task_execution is not None
@@ -1052,7 +1061,7 @@ class TestApplyPostExecutionTransitions:
             task_id=str(work_task.id),
             task_engine=mock_te,
             approval_store=approval_store,
-            artifact_probe=_fake_probe(),
+            run_probe=_fake_probe(),
         )
 
         assert out.context.task_execution is not None
@@ -1085,14 +1094,16 @@ class TestApplyPostExecutionTransitions:
             probed=("src/x.py",), missing=(), digests={"src/x.py": "before"}
         )
 
-        with artifact_baseline_scope(found_as_seeded):
+        with run_baseline_scope(
+            RunBaseline(workspace=Path("unbuilt"), declared=found_as_seeded)
+        ):
             out = await apply_post_execution_transitions(
                 result,
                 agent_id=str(sample_agent.id),
                 task_id=str(work_task.id),
                 task_engine=_make_mock_task_engine(),
                 approval_store=mock_of[ApprovalStoreProtocol](add=AsyncMock()),
-                artifact_probe=_fake_probe(missing=(), digest="before"),
+                run_probe=_fake_probe(missing=(), digest="before"),
             )
 
         assert out.termination_reason == TerminationReason.NO_OP
@@ -1103,6 +1114,7 @@ class TestApplyPostExecutionTransitions:
         self,
         sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
+        tmp_path: Path,
     ) -> None:
         """The guard must not fail a run that actually edited what it declared.
 
@@ -1123,15 +1135,24 @@ class TestApplyPostExecutionTransitions:
         found_as_seeded = ArtifactPresence(
             probed=("src/x.py",), missing=(), digests={"src/x.py": "before"}
         )
+        declared = tmp_path / "src" / "x.py"
+        declared.parent.mkdir(parents=True)
+        declared.write_text("# seeded\n", encoding="utf-8")
+        baseline = RunBaseline(
+            workspace=tmp_path,
+            declared=found_as_seeded,
+            tree=fingerprint_tree(tmp_path),
+        )
+        declared.write_text("# rewritten, and longer\n", encoding="utf-8")
 
-        with artifact_baseline_scope(found_as_seeded):
+        with run_baseline_scope(baseline):
             out = await apply_post_execution_transitions(
                 result,
                 agent_id=str(sample_agent.id),
                 task_id=str(work_task.id),
                 task_engine=_make_mock_task_engine(),
                 approval_store=mock_of[ApprovalStoreProtocol](add=AsyncMock()),
-                artifact_probe=_fake_probe(missing=(), digest="after"),
+                run_probe=_fake_probe(missing=(), digest="after"),
             )
 
         assert out.termination_reason == TerminationReason.COMPLETED
@@ -1167,7 +1188,7 @@ class TestApplyPostExecutionTransitions:
             task_id=str(work_task.id),
             task_engine=_make_mock_task_engine(),
             approval_store=mock_of[ApprovalStoreProtocol](add=AsyncMock()),
-            artifact_probe=_fake_probe(),
+            run_probe=_fake_probe(),
         )
 
         assert out.termination_reason == TerminationReason.NO_OP
@@ -1248,7 +1269,7 @@ class TestApplyPostExecutionTransitions:
             agent_id=str(sample_agent.id),
             task_id=str(work_task.id),
             task_engine=_make_mock_task_engine(),
-            artifact_probe=_fake_probe(missing=("tests/x.py",)),
+            run_probe=_fake_probe(missing=("tests/x.py",)),
         )
 
         assert out.context.task_execution is not None
@@ -1275,7 +1296,7 @@ class TestApplyPostExecutionTransitions:
             agent_id=str(sample_agent.id),
             task_id=str(work_task.id),
             task_engine=_make_mock_task_engine(),
-            artifact_probe=_fake_probe(missing=()),
+            run_probe=_fake_probe(missing=()),
         )
 
         assert out.context.task_execution is not None
@@ -1309,7 +1330,7 @@ class TestApplyPostExecutionTransitions:
 
         async def _raises(
             _project: str, _expected: Sequence[ExpectedArtifact]
-        ) -> ArtifactPresence:
+        ) -> RunBaseline:
             msg = "workspace volume unavailable"
             raise OSError(msg)
 
@@ -1318,7 +1339,7 @@ class TestApplyPostExecutionTransitions:
             agent_id=str(sample_agent.id),
             task_id=str(work_task.id),
             task_engine=_make_mock_task_engine(),
-            artifact_probe=_raises,
+            run_probe=_raises,
         )
 
         assert out.context.task_execution is not None

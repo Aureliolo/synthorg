@@ -33,16 +33,14 @@ removed, and a run all of whose declarations are byte-identical to how it
 found them delivered nothing.
 """
 
-import asyncio
 import hashlib
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Sequence
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.artifact import ExpectedArtifact
-from synthorg.engine.workspace.paths import project_workspace_dir
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,
@@ -123,15 +121,6 @@ class ArtifactPresence(BaseModel):
             ``False``: nothing was asked, so nothing was answered.
         """
         return bool(self.probed) and len(self.missing) == len(self.probed)
-
-
-#: Resolves ``(project_id, expected) -> what the workspace says``. The engine
-#: holds one of these rather than a workspace root, so the layout knowledge
-#: stays in the wiring layer that already owns it. Async because the answer
-#: comes from the filesystem, and every consumer sits on the event loop.
-type ExpectedArtifactProbe = Callable[
-    [str, Sequence[ExpectedArtifact]], Awaitable[ArtifactPresence]
-]
 
 
 def is_probeable_path(spec: str) -> bool:
@@ -243,37 +232,8 @@ def missing_expected_artifacts(
     )
 
 
-def workspace_artifact_probe(base_root: Path) -> ExpectedArtifactProbe:
-    """Bind an :data:`ExpectedArtifactProbe` to the shared workspace root.
-
-    Args:
-        base_root: Root every project's workspace lives under.
-
-    Returns:
-        A probe resolving each project's own workspace directory.
-    """
-
-    async def _probe(
-        project_id: str, expected: Sequence[ExpectedArtifact]
-    ) -> ArtifactPresence:
-        """Probe *project_id*'s workspace for *expected*.
-
-        Returns:
-            The probeable declarations and which of them are absent.
-        """
-        return await asyncio.to_thread(
-            missing_expected_artifacts,
-            expected,
-            workspace=project_workspace_dir(base_root, project_id),
-        )
-
-    return _probe
-
-
 __all__ = [
     "ArtifactPresence",
-    "ExpectedArtifactProbe",
     "is_probeable_path",
     "missing_expected_artifacts",
-    "workspace_artifact_probe",
 ]

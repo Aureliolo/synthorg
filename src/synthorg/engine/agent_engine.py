@@ -54,10 +54,10 @@ from synthorg.engine.agent_state_recording import (
     release_agent_row,
 )
 from synthorg.engine.artifacts.baseline_scope import (
-    artifact_baseline_scope,
+    RunBaselineProbe,
     capture_run_baseline,
+    run_baseline_scope,
 )
-from synthorg.engine.artifacts.expected_artifact_check import ExpectedArtifactProbe
 from synthorg.engine.autonomy_seam import AutonomyResolution
 from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.context import AgentContext
@@ -213,7 +213,7 @@ class AgentEngine(
         approval_store: ApprovalStoreProtocol | None = None,
         review_gate: ReviewGateService | None = None,
         review_pipeline: ReviewPipeline | None = None,
-        artifact_probe: ExpectedArtifactProbe | None = None,
+        run_probe: RunBaselineProbe | None = None,
         clarification_enabled: bool = True,
         scoping_enabled: bool = True,
         parked_context_repo: ParkedContextRepository | None = None,
@@ -280,7 +280,7 @@ class AgentEngine(
         self._approval_store = approval_store
         self._review_gate = review_gate
         self._review_pipeline = review_pipeline
-        self._artifact_probe = artifact_probe
+        self._run_probe = run_probe
         self._clarification_enabled = clarification_enabled
         self._scoping_enabled = scoping_enabled
         self._external_api_runtime = external_api_runtime
@@ -575,9 +575,9 @@ class AgentEngine(
                 # I/O, and outside the boundary that left the run with no
                 # terminal projection at all: no FAILED, nothing to replan.
                 run_scopes.enter_context(
-                    artifact_baseline_scope(
+                    run_baseline_scope(
                         await capture_run_baseline(
-                            self._artifact_probe,
+                            self._run_probe,
                             project_id=task.project,
                             expected=task.artifacts_expected,
                         )

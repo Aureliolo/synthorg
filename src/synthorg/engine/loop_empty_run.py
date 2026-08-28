@@ -5,10 +5,22 @@ first empty turn it ends a run whose remaining turns were never used, and does
 so before the agent has been told what it missed. Exactly one correction is
 issued here, so a run can only fail for delivering nothing after being told it
 delivered nothing.
+
+Whether it HAS delivered anything is asked of the workspace. A recorded leaf
+ran ``pwd``, ``ls``, ``cat``, ``python3 --version`` and ``mkdir``, announced
+what it would write next, and was read as finished on turn 6 of 40 with an
+empty tree: every one of those calls counted as delivery under a proxy that
+only knows tool names, so the correction never fired. A tool name cannot
+answer this, because the same tool writes a file or lists a directory
+depending on its arguments.
 """
 
 from collections.abc import Iterable
 
+from synthorg.engine.artifacts.baseline_scope import (
+    current_run_baseline,
+    produced_nothing_since,
+)
 from synthorg.engine.context import AgentContext
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.resume_scope import is_resumed_run
@@ -24,23 +36,43 @@ from synthorg.tools.discovery import DISCOVERY_NAMES
 logger = get_logger(__name__)
 
 
-def delivered_nothing(turns: Iterable[TurnRecord]) -> bool:
-    """Report whether no turn so far could have produced a deliverable.
+async def delivered_nothing(turns: Iterable[TurnRecord]) -> bool:
+    """Report whether this run has produced anything yet.
 
-    "Called a tool" is the proxy both the nudge and the zero-artifact guard use
-    for "produced something", and the discovery tools break it: they exist to
+    The single owner of that question inside the loop, asked by the
+    correction below and by the loop's own no-op classification, so the two
+    cannot disagree about a run one of them is about to end.
+
+    The workspace answers it whenever a baseline was taken, and a baseline is
+    taken for exactly the runs that declare deliverables. Falling back to the
+    tool-call proxy is the unwired case only: it is what shipped before, and
+    missing evidence must not change what a run is told.
+
+    Returns:
+        ``True`` when nothing has been produced.
+    """
+    unchanged = await produced_nothing_since(current_run_baseline())
+    if unchanged is not None:
+        return unchanged
+    return _called_no_delivering_tool(turns)
+
+
+def _called_no_delivering_tool(turns: Iterable[TurnRecord]) -> bool:
+    """Report whether no tool call so far could have produced a deliverable.
+
+    The fallback for a run with no baseline to compare against. "Called a
+    tool" is the proxy, and the discovery tools break it: they exist to
     describe the other tools and return nothing else, so a run that asks what
     tools it has and then answers in prose has delivered exactly as little as
     one that called nothing at all, while passing a guard that counts calls.
-    A recorded run did precisely that and finished ``completed`` holding an
-    empty workspace.
 
     The set is deliberately the discovery tools alone rather than every
     read-only tool. Reading a file delivers nothing either, but nothing here
     declares which tools mutate, and a guess at that boundary would be a
     classification invented at the guard rather than declared at the tool.
-    Reading and writing nothing is caught after the run instead, by the
-    declared-artifact probe that asks the workspace.
+    That is precisely the limit the workspace question above removes, and it
+    is why this is the fallback rather than the answer: ``mkdir`` and ``ls``
+    are the same call to a name.
 
     Returns:
         ``True`` when every tool call so far was a discovery call, or there
@@ -51,7 +83,7 @@ def delivered_nothing(turns: Iterable[TurnRecord]) -> bool:
     )
 
 
-def _nudge_message(
+async def _nudge_message(
     ctx: AgentContext,
     turns: list[TurnRecord],
 ) -> ChatMessage | None:
@@ -64,7 +96,7 @@ def _nudge_message(
       have delivered;
     * the task declares artifacts, so there is a concrete deliverable to name;
     * this is the first empty turn, so the correction fires once;
-    * nothing delivering has been called, so nothing was produced;
+    * the workspace holds nothing this run put there;
     * a turn remains to correct in.
 
     Keyed on the first *empty* turn rather than on the first turn, because
@@ -89,9 +121,9 @@ def _nudge_message(
     if execution is None or not execution.task.artifacts_expected:
         return None
     empty_so_far = sum(1 for turn in turns if not turn.tool_calls_made)
-    if empty_so_far != 1 or not delivered_nothing(turns):
+    if empty_so_far != 1 or ctx.max_turns <= len(turns):
         return None
-    if ctx.max_turns <= len(turns):
+    if not await delivered_nothing(turns):
         return None
     # Fenced, because a declared path is model-authored: decomposition takes
     # it from the LLM as a non-blank string with no charset restriction, so a
@@ -105,15 +137,16 @@ def _nudge_message(
     return ChatMessage(
         role=MessageRole.USER,
         content=(
-            "You answered without calling a single tool, so this task has "
-            "produced nothing. It declares these deliverables: "
+            "Your workspace is exactly as you found it, so this task has "
+            "produced nothing: listing, reading and creating directories "
+            "leave no deliverable behind. It declares these deliverables: "
             f"{declared} Prose is not a deliverable. Use your tools to "
             "create them now, then say you are done."
         ),
     )
 
 
-def nudge_empty_run(
+async def nudge_empty_run(
     ctx: AgentContext,
     turns: list[TurnRecord],
     turn_number: int,
@@ -129,7 +162,7 @@ def nudge_empty_run(
         The context to run the corrective turn with, or ``None`` to let the
         caller treat the empty turn as the run's answer.
     """
-    message = _nudge_message(ctx, turns)
+    message = await _nudge_message(ctx, turns)
     if message is None:
         return None
     logger.info(
