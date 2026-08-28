@@ -21,7 +21,7 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Final, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from evals.harness.binding import RunBinding
 from evals.harness.stall_watch import (
@@ -30,7 +30,7 @@ from evals.harness.stall_watch import (
     StallWatch,
 )
 from evals.harness.transcript import TranscriptRecorder
-from evals.harness.workspace import CellWorkspace, existing_workspace, seed_workspace
+from evals.harness.workspace import CellWorkspace
 from evals.prompt_layers import bind_default_prompt_layers
 from evals.recursion_depth.grading import (
     SandboxFactory,
@@ -46,10 +46,6 @@ from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.artifacts.baseline_scope import workspace_run_probe
-from synthorg.engine.artifacts.expected_artifact_check import (
-    ArtifactPresence,
-    missing_expected_artifacts,
-)
 from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
@@ -430,221 +426,6 @@ def session_spend(
         cost=sum(record.cost for record in counted),
         tokens=sum(record.input_tokens + record.output_tokens for record in counted),
     )
-
-
-def leaf_unit_key(task_id: str) -> str:
-    """What a leaf's tree is called under its cell.
-
-    The single owner of the format, because a resume reaches for a tree a
-    previous attempt built by rebuilding this string: a second spelling would
-    look in an empty directory and re-run work already paid for.
-
-    Returns:
-        The key.
-    """
-    return f"leaf-{task_id}"
-
-
-def merge_unit_key(task_id: str) -> str:
-    """What an assembly's tree is called under its cell.
-
-    Returns:
-        The key.
-    """
-    return f"merge-{task_id}"
-
-
-def unit_workspace(
-    *, cell_key: str, unit_key: str, spec_dir: Path, work_root: Path
-) -> CellWorkspace:
-    """Recreate one unit's workspace from the specification's committed seed.
-
-    Args:
-        cell_key: Names the run this unit belongs to.
-        unit_key: Names the unit within that run.
-        spec_dir: The specification directory, which holds the seed.
-        work_root: Directory per-unit trees are created under.
-
-    Returns:
-        The provisioned workspace.
-    """
-    return seed_workspace(
-        cell_key=f"{cell_key}/{unit_key}",
-        seed_dir="seed",
-        suite_root=spec_dir,
-        work_root=work_root,
-    )
-
-
-def built_unit_workspace(
-    *, cell_key: str, unit_key: str, work_root: Path
-) -> CellWorkspace | None:
-    """The tree a previous attempt left for one unit, if it is still there.
-
-    Args:
-        cell_key: Names the run this unit belongs to.
-        unit_key: Names the unit within that run.
-        work_root: Directory per-unit trees live under.
-
-    Returns:
-        The workspace, or ``None`` when nothing was built there.
-    """
-    return existing_workspace(cell_key=f"{cell_key}/{unit_key}", work_root=work_root)
-
-
-def probe_artifacts(task: Task, workspace: CellWorkspace) -> ArtifactPresence:
-    """Ask *workspace* what it holds against *task*'s declared paths.
-
-    Read off disk rather than from the session's account of itself: a run
-    reports the tools it called, and whether those calls left the declared file
-    behind is a different question that only the tree answers.
-
-    Taken once BEFORE a session and once after, because the question delivery
-    turns on is what this run produced rather than what the workspace happens
-    to contain: the seed is recreated per unit and a declaration satisfied by
-    the seed is not work.
-
-    Args:
-        task: The unit's task, carrying its declared artifacts.
-        workspace: The tree it ran against.
-
-    Returns:
-        What each probeable declaration says right now.
-    """
-    return missing_expected_artifacts(
-        task.artifacts_expected, workspace=workspace.project_dir
-    )
-
-
-#: What sits in a unit's tree without being anything that unit produced: the
-#: pieces a merge was handed, the unit's own paperwork, and the brief it
-#: started from. Everything else under the project directory IS the work.
-_NOT_PRODUCED: Final[frozenset[str]] = frozenset(
-    {".children", ".synthorg", "README.md"}
-)
-
-
-@dataclass(frozen=True, slots=True)
-class UnitDelivery:
-    """What a unit produced, kept apart from whether what it produced stands up.
-
-    Two questions with one answer between them is what this separates. A merge
-    that assembles the whole package and does not copy its children's tests up
-    to the workspace root collects no tests, because the grader runs pytest at
-    that root and ``.children/`` is dot-prefixed, so pytest's own
-    ``norecursedirs`` never descends into it. The unit had therefore built
-    something and failed a check, and both facts arrived at its parent as the
-    single word ``[DID NOT DELIVER]``.
-
-    Measured on a live cap-2 cell, that is not a labelling nicety. Four of the
-    root's seven pieces were marked that way while holding 46, 46, 41 and 36
-    Python modules between them; the root was told most of its inputs had
-    failed, and across six attempts and 119 turns it wrote nothing at all. The
-    cell scored 0 of 42. Correlation between the mark and whether the merge
-    happened to copy a test file up a directory was exact, six of six.
-
-    So the parent is told what it can act on. ``produced`` decides whether
-    there is anything there to assemble; ``reason`` says what is wrong with it,
-    which is a different sentence and reads as one.
-
-    Attributes:
-        produced: Whether the unit's own tree changed. The only fact that
-            answers "is there something here".
-        reason: Why this is not a clean delivery, empty when it is. Set with
-            ``produced`` false when nothing was built, and with ``produced``
-            true when something was built that does not stand up.
-    """
-
-    produced: bool
-    reason: str
-
-    @property
-    def delivered(self) -> bool:
-        """Did this unit both produce something and pass its own checks?
-
-        Returns:
-            True only when both hold. This is the scoring flag; it is
-            deliberately NOT what the parent's brief renders, because a
-            subtree that built a package and failed a check is not the same
-            input as one that built nothing.
-        """
-        return self.produced and not self.reason
-
-
-def produced_tree(workspace: CellWorkspace) -> frozenset[tuple[str, int]]:
-    """Fingerprint what a unit has produced, ignoring what it was handed.
-
-    The one question every delivery verdict in this harness asks, so there is
-    one answer to it. Both callers previously inferred it instead, and both
-    were wrong in the same direction:
-
-    A leaf was judged on whether any PLANNER-DECLARED path had changed. The
-    declaration is a guess made before the tree existed, so a leaf that wrote
-    four modules under names the planner had not predicted was recorded as
-    having left every declared path as it found it. Measured on a live cap-1
-    cell: two leaves, one of 4 files and one of 10, both booked as producing
-    nothing. That verdict feeds the survival denominator, so it does not merely
-    mislabel the leaf, it removes it from the metric.
-
-    A merge was judged on whether it wrote its own report, which is the same
-    mistake one level up and additionally briefed the parent
-    ``[DID NOT DELIVER]``; see ``results/merge-delivery-false-negative/``.
-
-    Asking the tree needs no guess about which paths matter and no knowledge of
-    which tools mutate. What a unit DECLARED is still recorded, because a
-    planner over-declaring is worth seeing. It just does not decide.
-
-    Args:
-        workspace: The unit's tree.
-
-    Returns:
-        Each produced file as ``(relative path, size)``. Size rather than a
-        digest because this only has to answer whether the work MOVED, and it
-        runs over trees holding hundreds of files.
-    """
-    root = workspace.project_dir
-    if not root.is_dir():
-        return frozenset()
-    return frozenset(
-        (path.relative_to(root).as_posix(), path.stat().st_size)
-        for entry in root.iterdir()
-        if entry.name not in _NOT_PRODUCED
-        for path in (entry.rglob("*") if entry.is_dir() else (entry,))
-        if path.is_file()
-    )
-
-
-def produced_nothing(
-    task: Task, workspace: CellWorkspace, baseline: ArtifactPresence | None
-) -> bool:
-    """Whether this run left every declaration exactly as it found it.
-
-    The product's own rule, through the product's own helper, and deliberately
-    not a stricter one of this harness's own. ``ArtifactPresence`` states the
-    rule where it is defined ("the 'none, not some' rule is this module's to
-    state once"), and a harness measuring the product must not judge delivery
-    harder than the product does.
-
-    Asking instead whether ANY declared path was missing makes delivery turn on
-    the planner's declaration rather than on the agent's work. That declaration
-    is written per node at whatever granularity the planner chose, so one output
-    is a delivery under a parent's two-entry list and a non-delivery under the
-    leaf's four-entry one: a live run booked 598,585 tokens as no delivery over
-    an absent empty ``tests/__init__.py``, on a unit that had written its
-    module, a 31-test suite, and run it.
-
-    What a unit declared is still recorded, because a planner over-declaring is
-    worth seeing. It just does not decide.
-
-    Args:
-        task: The unit's task, carrying its declared artifacts.
-        workspace: The tree it ran against.
-        baseline: What the same probe said before the session ran.
-
-    Returns:
-        Whether nothing declared appeared, changed or was removed.
-    """
-    return probe_artifacts(task, workspace).delivered_nothing_since(baseline)
 
 
 def run_binding(
@@ -1068,17 +849,12 @@ __all__ = [
     "SweepDeps",
     "ToolRegistryFactory",
     "ToolReleaseHook",
-    "UnitDelivery",
     "graded",
     "ledger_scope",
     "open_session",
-    "probe_artifacts",
-    "produced_nothing",
-    "produced_tree",
     "run_binding",
     "run_session",
     "session_spend",
     "transcript_scope",
-    "unit_workspace",
     "watching",
 ]

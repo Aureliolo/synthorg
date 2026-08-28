@@ -32,11 +32,8 @@ from evals.recursion_depth.merge import (
     MergePlan,
     merge_brief,
 )
-from evals.recursion_depth.session import (
-    SessionLimits,
-    UnitDelivery,
-    produced_tree,
-)
+from evals.recursion_depth.session import SessionLimits
+from evals.recursion_depth.unit import UnitDelivery, produced_tree
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType

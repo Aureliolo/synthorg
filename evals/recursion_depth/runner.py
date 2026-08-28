@@ -89,15 +89,7 @@ from evals.recursion_depth.models import (
 )
 from evals.recursion_depth.oracle import run_oracle
 from evals.recursion_depth.planner import PlanningSpend, TreePlanner
-from evals.recursion_depth.session import (
-    SessionLimits,
-    SweepDeps,
-    UnitDelivery,
-    built_unit_workspace,
-    leaf_unit_key,
-    merge_unit_key,
-    unit_workspace,
-)
+from evals.recursion_depth.session import SessionLimits, SweepDeps
 from evals.recursion_depth.staffing import SweepRoster
 from evals.recursion_depth.tree import (
     SpecBrief,
@@ -106,6 +98,13 @@ from evals.recursion_depth.tree import (
     merge_nodes,
     objective_task,
     unit_definitions,
+)
+from evals.recursion_depth.unit import (
+    UnitDelivery,
+    built_unit_workspace,
+    leaf_unit_key,
+    merge_unit_key,
+    unit_workspace,
 )
 from evals.runner.execution import EVAL_TASK_PROJECT
 from synthorg.core.agent import AgentIdentity
@@ -1179,6 +1178,13 @@ async def _build_missing_leaves(
         key = str(task.id)
         produced[key] = leaf.workspace
         delivered[key] = UnitDelivery(produced=leaf.produced, reason=leaf.detail)
+        # Deliberately synchronous inside a gathered coroutine. The append
+        # write-flush-fsyncs, and running it on the loop is what serialises
+        # concurrent siblings against one file handle: a thread hop would free
+        # the loop but interleave two writers into one JSONL line, corrupting
+        # the ledger these cells were paid for. Measured at 1.0ms median and
+        # 2.3ms worst of 200, against leaves running minutes and a 1200s stall
+        # threshold, so the block it costs buys that safety for nothing.
         units.append(_leaf_record(task, definitions[key], node, leaf, context.spec))
         context.budget.spend(leaf.attempts)
 
