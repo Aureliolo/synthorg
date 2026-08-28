@@ -38,7 +38,7 @@ receives is fenced by the caller before it reaches a prompt.
 
 import asyncio
 import json
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from pathlib import Path
 from typing import Final
 
@@ -69,6 +69,12 @@ _MAX_TOTAL_KEY: Final[str] = "review_artifact_max_chars_total"
 #: free text with no length bound of its own, and the label is charged
 #: against the same budget as content, so it needs its own ceiling.
 _MAX_PATH_LABEL: Final[int] = 256
+
+#: What :func:`json.dumps` writes between two elements of a list. Charged per
+#: entry after the first: the wrapper is costed against an EMPTY list, so a
+#: separator is rendered into the section that nothing ever budgeted for, and
+#: the overrun grows with the entry count.
+_SEPARATOR_BYTES: Final[int] = len(", ")
 
 #: What the reader found at a declared path. ``not_a_path`` is a prose
 #: deliverable rather than a file, which the reviewer can still judge; it is
@@ -182,7 +188,8 @@ def read_declared_artifacts(
         )
         # Charge the rendered entry, not just its content: the path label is
         # planner free text and reaches the same prompt budget.
-        cost = len(json.dumps(entry))
+        separator = _SEPARATOR_BYTES if entries else 0
+        cost = len(json.dumps(entry)) + separator
         if cost > budget:
             omission: dict[str, JsonValue] = {
                 "status": _STATUS_OMITTED,
@@ -191,8 +198,10 @@ def read_declared_artifacts(
             # The marker is content too, so it only goes in if it fits. A
             # section that overran while announcing that it overran would be
             # the same defect wearing a label.
-            if len(json.dumps(omission)) <= budget:
+            marker_cost = len(json.dumps(omission)) + separator
+            if marker_cost <= budget:
                 entries.append(omission)
+                budget -= marker_cost
             break
         budget -= cost
         entries.append(entry)
@@ -205,6 +214,10 @@ def read_declared_artifacts(
         for entry in entries
     ):
         return section
+    # The dumped stand-in costs its own two braces where the real rendering
+    # costs the two bytes of the separator joining it to ``artifacts``, so the
+    # charge is exact rather than approximate. Keeping the stand-in a whole
+    # document is what makes it exact; charging the key alone would undercount.
     instead = _read_produced_instead(
         root,
         declared_paths,
@@ -218,7 +231,7 @@ def read_declared_artifacts(
 
 def _read_produced_instead(
     root: Path,
-    declared: set[str],
+    declared: Collection[str],
     *,
     limit: int,
     budget: int,
@@ -251,14 +264,17 @@ def _read_produced_instead(
     entries: list[JsonValue] = []
     for index, path in enumerate(produced):
         entry = _read_one(path, root=root, limit=max(0, min(limit, budget)))
-        cost = len(json.dumps(entry))
+        separator = _SEPARATOR_BYTES if entries else 0
+        cost = len(json.dumps(entry)) + separator
         if cost > budget:
             omission: dict[str, JsonValue] = {
                 "status": _STATUS_OMITTED,
                 "count": len(produced) - index,
             }
-            if len(json.dumps(omission)) <= budget:
+            marker_cost = len(json.dumps(omission)) + separator
+            if marker_cost <= budget:
                 entries.append(omission)
+                budget -= marker_cost
             break
         budget -= cost
         entries.append(entry)

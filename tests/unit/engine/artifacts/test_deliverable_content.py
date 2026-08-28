@@ -357,6 +357,39 @@ class TestWhatWasProducedInstead:
         assert section is not None
         assert len(json.dumps(section)) <= 300
 
+    def test_the_second_heading_announces_what_it_dropped(self, tmp_path: Path) -> None:
+        """A silently truncated list reads as a workspace holding two files."""
+        produced = ("a.py", "b.py", "c.py", "d.py")
+        for name in produced:
+            _write(tmp_path, name, "x" * 200)
+
+        section = _read(_expected("declared.py"), tmp_path, total=700)
+
+        assert section is not None
+        instead = cast("list[dict[str, JsonValue]]", section["produced_instead"])
+        assert instead[-1]["status"] == "omitted_for_budget"
+        assert instead[-1]["count"] == len(produced) - (len(instead) - 1)
+
+    @pytest.mark.parametrize("files", [2, 5, 12, 30])
+    def test_many_small_entries_never_overrun_the_ceiling(
+        self, tmp_path: Path, files: int
+    ) -> None:
+        """The separator between two entries is rendered but easily unbudgeted.
+
+        The wrapper is costed against an EMPTY list, so every entry after the
+        first writes two bytes nothing charged for and the overrun grows with
+        the entry count: exactly the shape a real workspace has, and the one
+        a single-entry test cannot see.
+        """
+        total = 900
+        for index in range(files):
+            _write(tmp_path, f"pkg/mod_{index:02d}.py", "x" * 20)
+
+        section = _read(_expected("declared.py"), tmp_path, total=total)
+
+        assert section is not None
+        assert len(json.dumps(section)) <= total
+
 
 class TestWorkspaceDeliverableReader:
     async def test_reads_the_projects_own_workspace(self, tmp_path: Path) -> None:
