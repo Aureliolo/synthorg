@@ -230,7 +230,7 @@ synthorg backup list                     # list available backups
 synthorg backup restore <id> --confirm   # restore from a backup
 ```
 
-`synthorg backup` follows the connected persistence backend, so it dispatches to a `pg_dump`-based handler when the bundled Postgres service is in use and to a SQLite handler otherwise; the Postgres path additionally requires the `pg_dump` / `pg_restore` binaries on the backend's `PATH`. For manual Docker Compose deployments, back up the `synthorg-data` volume directly, and the separate `synthorg-pgdata` volume when Postgres is running. The NATS service's `synthorg-nats-data` volume holds only in-flight queue state and does not need backing up.
+`synthorg backup` follows the connected persistence backend, so it dispatches to a `pg_dump`-based handler when the bundled Postgres service is in use and to a SQLite handler otherwise; the Postgres path additionally requires the `pg_dump` / `pg_restore` binaries on the backend's `PATH`. For manual Docker Compose deployments, back up the `synthorg-data` volume directly, and the separate `synthorg-pgdata` volume when Postgres is running. Back up `synthorg-nats-data` alongside them: `docker/nats.conf` points JetStream's `store_dir` at `/data`, which is exactly where that volume mounts, and both streams are file-backed. The task queue holds unacknowledged claims and the dead-letter subject under work-queue retention, and the agent communication bus holds per-channel message history under limits retention, which the product reads back. Restoring without it drops that history and resets every durable consumer's position, so redelivery afterwards does not match what it replaced.
 
 ### Wipe & Reset
 
