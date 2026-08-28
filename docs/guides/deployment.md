@@ -80,12 +80,12 @@ All environment variables are configured in `docker/.env` (copy from `docker/.en
 
 | Variable | Description |
 |----------|-------------|
-| `SYNTHORG_JWT_SECRET` | JWT signing secret. Must be >= 32 characters of URL-safe base64. Never commit to version control. Generate: `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
+| `SYNTHORG_JWT_SECRET` | JWT signing secret. Must be at least 32 characters; selecting `HS384` or `HS512` raises that floor to 48 and 64, since RFC 7518 wants an HMAC key at least as long as the hash output. Any character set: only the length is enforced. Never commit to version control. Generate: `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
 | `SYNTHORG_SETTINGS_KEY` | Fernet encryption key for sensitive settings at rest. Must be a valid Fernet key. Generate: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
 | `SYNTHORG_PAGINATION_CURSOR_SECRET` | HMAC signing key for opaque pagination cursor tokens, >= 16 bytes. The backend refuses to start without a stable value, in every channel: an ephemeral per-process key would silently invalidate every outstanding cursor across a restart. Generate: `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
 | `POSTGRES_PASSWORD` | Superuser password for the bundled Postgres service. Required whenever that service runs (the default for both the CLI-generated and the hand-maintained compose); the container refuses to start without it. Generate: `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
 
-`synthorg init` generates and stores all four; a manual Docker Compose install must set them in `docker/.env` itself. Set `SYNTHORG_MASTER_KEY` alongside them: it is not on this list because the stack starts without it, but the connection-secret backend then downgrades to storing those secrets unencrypted rather than refusing, and the operator gets no signal that at-rest encryption is off.
+`synthorg init` generates and stores all four; a manual Docker Compose install must set them in `docker/.env` itself. Set `SYNTHORG_MASTER_KEY` alongside them: it is not on this list because the stack starts without it, but the connection-secret backend then downgrades to storing those secrets unencrypted rather than refusing. The downgrade is logged once during startup, at ERROR, naming the variable and stating that at-rest encryption is off. That log line is the whole of the notice, so an install that does not read startup logs runs unencrypted without anything later saying so.
 
 ### Optional
 
@@ -137,7 +137,7 @@ Every registered setting automatically accepts an env-var override of the form `
 
 | Build arg | Default | Description |
 |-----------|---------|-------------|
-| `BASE_IMAGE` | *(none, required)* | The apko-composed Wolfi base to layer the venv and application source onto. `docker/backend/Dockerfile` treats a blank value as a hard build error rather than resolving a floating tag; CI passes a digest-pinned ref, and a manual build passes a tag such as `ghcr.io/aureliolo/synthorg-backend-base:main`. Only relevant when building the backend from source (`docker/compose.yml`); the CLI-generated compose pulls a published `synthorg-backend` image and never builds. |
+| `BASE_IMAGE` | *(none, required)* | The apko-composed Wolfi base to layer the venv and application source onto. `docker/backend/Dockerfile` treats a blank value as a hard build error rather than resolving a floating tag. Both CI and a manual build pass a digest-pinned ref (`ghcr.io/aureliolo/synthorg-backend-base@sha256:<digest>`), so two builds of the same commit layer on the same base; the [User Guide](../user_guide.md#quick-start-manual-docker-compose) shows how to resolve the digest once and reuse it. Only relevant when building the backend from source (`docker/compose.yml`); the CLI-generated compose pulls a published `synthorg-backend` image and never builds. |
 | `DEPLOYMENT_ENV` | `dev` | Baked deployment-environment tag (`dev` / `pre-release` / `prod`). CI computes and passes this automatically; local `docker build` without `--build-arg` inherits `dev`. |
 
 ---
