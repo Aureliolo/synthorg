@@ -884,11 +884,12 @@ abstractions above the computation graph level.
 
 ## Agent-Controlled Context Compaction
 
-Compaction always runs the text path, and two independent enhancements layer onto it, each
-enabled separately by `CompactionConfig` and neither excluding the other. All of it shares
-the same split/finalise machinery in `compaction/summarizer.py`; the `invoke_compaction()` helper in
-`engine/loop_helpers.py` is the shared entry point for any loop that manages its own context
-in-process.
+Compaction always builds the snippet-join text summary, and two enhancements layer onto it
+from `CompactionConfig`. They are not alike: the LLM summariser replaces that text when it is
+enabled, taking it as the fallback for a provider failure, while the memory offload is purely
+additive and leaves the summary untouched. All of it shares the same split/finalise machinery
+in `compaction/summarizer.py`; the `invoke_compaction()` helper in `engine/loop_helpers.py` is
+the shared entry point for any loop that manages its own context in-process.
 
 ### Text summary (default path)
 

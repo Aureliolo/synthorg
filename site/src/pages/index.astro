@@ -9,7 +9,7 @@ import ScrollSyncPanel from "../components/ScrollSyncPanel.astro";
 import DashboardPreview from "../components/islands/DashboardPreview";
 import GitHubButton from "../components/GitHubButton.astro";
 
-const description = "Real software takes a whole organisation. SynthOrg is a synthetic one: it splits a build into parts that stand alone, builds them in parallel, each in its own isolated workspace, and has each part checked by something that did not write it. Self-hosted, on your hardware, against models you choose. Pre-alpha.";
+const description = "Where one agent stops, an organisation starts. SynthOrg is a synthetic one: it staffs the roles, splits the work into jobs that stand alone, builds them in parallel, each in its own isolated workspace, and sends each one to a reviewer who had no hand in it. Self-hosted, on your hardware, against models you choose. Pre-alpha.";
 
 const siteUrl = Astro.site;
 
@@ -36,7 +36,7 @@ try {
 }
 ---
 
-<Base title="SynthOrg | Self-Hosted Parallel Software Builds" description={description} enableRecaptcha={true}>
+<Base title="SynthOrg | Self-Hosted AI Software Organisation" description={description} enableRecaptcha={true}>
   <!-- ============================================================ -->
   <!-- HERO (Dark) -->
   <!-- ============================================================ -->
@@ -51,17 +51,17 @@ try {
 
       <!-- Headline -->
       <h1 class="text-5xl md:text-7xl font-bold leading-tight mb-6">
-        Real software takes
+        Where one agent stops,
         <span class="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-teal-400">
-          a whole organisation
+          an organisation starts
         </span>
       </h1>
 
       <!-- Subtext -->
       <p class="text-lg md:text-xl text-gray-400 max-w-2xl mx-auto mb-10">
-        SynthOrg is a synthetic one: work split into parts that stand alone,
-        each built in its own isolated workspace, each checked by something
-        that did not write it
+        SynthOrg is a synthetic one: it staffs the roles, splits the work into
+        jobs that stand alone, and sends each one to a reviewer who had no hand
+        in it
       </p>
 
       <!-- CTAs -->

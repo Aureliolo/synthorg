@@ -1,6 +1,6 @@
 <p align="center">
   <strong>SynthOrg</strong><br>
-  <em>Real software takes a whole organisation. SynthOrg is a synthetic one.</em>
+  <em>Where one agent stops, an organisation starts. SynthOrg is a synthetic one.</em>
 </p>
 
 <p align="center">

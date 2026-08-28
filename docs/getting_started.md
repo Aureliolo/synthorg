@@ -199,7 +199,7 @@ npm --prefix web run build       # production build
 ```
 
 The dashboard is a pure API consumer: it persists no application state client-side, so every
-feature it offers is reachable over the REST API alone.
+feature it offers is driven through the API, with a WebSocket delivering live updates on top.
 
 ## IDE Setup
 

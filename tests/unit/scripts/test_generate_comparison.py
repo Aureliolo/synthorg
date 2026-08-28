@@ -350,7 +350,7 @@ class TestMarkdownGeneration:
     def test_frontmatter_contains_date(self) -> None:
         lines = gen._frontmatter_and_intro("2026-04-02")
         text = "\n".join(lines)
-        assert "Last updated: 2026-04-02" in text
+        assert "Comparison data last changed: 2026-04-02" in text
 
     def test_frontmatter_contains_legend(self) -> None:
         lines = gen._frontmatter_and_intro("2026-04-02")

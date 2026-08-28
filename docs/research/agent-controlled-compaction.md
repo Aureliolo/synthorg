@@ -131,11 +131,14 @@ The resulting summary is a list of sentence fragments with no structure.
 - Whether the current turn boundary is semantically significant
 - The complexity of the task (SIMPLE vs. COMPLEX/EPIC tasks need different strategies)
 
-**No epistemic marker awareness.** Research (arXiv:2603.24472) shows that suppressing
-markers like "wait", "hmm", "actually", "maybe" during self-distillation degrades AIME24
-accuracy by up to 40%. That is a training-time result rather than a summarisation one, but
-the current `_build_summary()` truncates these markers indiscriminately via the 100-char
-snippet cap and sanitization.
+**Epistemic marker awareness is a flag, not a strategy.** Research (arXiv:2603.24472) shows
+that suppressing markers like "wait", "hmm", "actually", "maybe" during self-distillation
+degrades AIME24 accuracy by up to 40%. That is a training-time result rather than a
+summarisation one. `preserve_epistemic_markers` defaults on, and under it `_build_summary()`
+routes each assistant message through `should_preserve_message()` and keeps the sentences
+`extract_marker_sentences()` finds at their own length rather than the 100-char snippet cap.
+What it does not do is decide when preserving them is worth the tokens: the flag is read the
+same way on every message no matter the task or the fill pressure.
 
 **Fixed threshold regardless of model capacity.** `fill_threshold_percent=80.0` applies
 uniformly. A model with a 200k token context window starts compacting at 160k tokens. A
