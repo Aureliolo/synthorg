@@ -96,12 +96,14 @@ class ArtifactPresence(BaseModel):
         declaration inside one of those has no other evidence.
 
         Deliberately NOT the negation of :meth:`delivered_nothing_since`, and
-        the gap between them is :data:`_UNHASHABLE`. A directory declared and
-        still there is unhashable on both sides, which is no evidence either
-        way: that sibling reads it as "do not fail this run", the fail-open
-        answer its own question wants, while asserting it as delivery would
-        let a run that touched nothing anywhere pass by having declared a
-        directory the seed already provided.
+        the gap between them is :data:`_UNHASHABLE`. An unhashable value is
+        the absence of evidence rather than evidence of a change, on EITHER
+        side: a declaration that was a directory and still is says nothing,
+        and so does one that turned into a directory mid-run, since neither
+        yields a content this module ever read. That sibling treats the same
+        marker as "do not fail this run", the fail-open answer its own
+        question wants, while asserting it as delivery here would let a run
+        that touched nothing anywhere pass by declaring a directory.
 
         Args:
             baseline: What the workspace said when the run began, or ``None``
@@ -115,10 +117,14 @@ class ArtifactPresence(BaseModel):
         """
         if baseline is None or not self.probed:
             return False
-        return any(
-            self.digests.get(declared) != baseline.digests.get(declared)
-            for declared in self.probed
-        )
+        for declared in self.probed:
+            found = self.digests.get(declared)
+            was = baseline.digests.get(declared)
+            if _UNHASHABLE in (found, was):
+                continue
+            if found != was:
+                return True
+        return False
 
     def delivered_nothing_since(self, baseline: ArtifactPresence | None) -> bool:
         """Did this run leave every declaration exactly as it found it?

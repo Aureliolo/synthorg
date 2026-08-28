@@ -41,6 +41,7 @@ children: a harness mounting inputs into the tree it grades knows which of
 them it put there, and this module does not.
 """
 
+import builtins
 import hashlib
 import stat
 from collections.abc import Collection
@@ -158,9 +159,16 @@ def _content_key(path: Path) -> str:
 
     Returns:
         A hex digest for a regular file, the link text for a symlink, the
-        kind for anything else, or :data:`_UNREADABLE` when the filesystem
-        refuses. One unreadable file must not cost the fingerprint every
-        other file beside it, which is what an escaping ``OSError`` would do.
+        kind for anything else, or :data:`_UNREADABLE` when reading it fails.
+        One unreadable file must not cost the fingerprint every other file
+        beside it, which is what an escaping exception would do. Broader than
+        ``OSError`` because the failure modes are not all one class: a path
+        the OS accepted but Python cannot render raises ``ValueError``, and a
+        fingerprint that dies on one such entry answers for none of the tree.
+
+    Raises:
+        MemoryError: Re-raised: the process is in no state to keep walking.
+        RecursionError: Re-raised, on the same rule.
     """
     try:
         mode = path.lstat().st_mode
@@ -172,7 +180,9 @@ def _content_key(path: Path) -> str:
             return f"{_SPECIAL_PREFIX}{stat.S_IFMT(mode)}"
         with path.open("rb") as handle:
             return hashlib.file_digest(handle, "sha256").hexdigest()
-    except OSError as exc:
+    except builtins.MemoryError, RecursionError:
+        raise
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised above
         logger.warning(
             EXECUTION_ENGINE_ARTIFACT_PROBE_DEGRADED,
             phase="fingerprint",

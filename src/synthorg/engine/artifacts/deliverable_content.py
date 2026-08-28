@@ -194,39 +194,18 @@ def read_declared_artifacts(
     if not expected:
         return None
     root = workspace.resolve()
-    entries: list[JsonValue] = []
     declared_paths = {str(artifact.path) for artifact in expected}
     # The wrapper is charged before any entry, because it is rendered
     # whatever else fits and a budget that ignored it could be spent
     # entirely on entries and still overrun.
-    budget = max_total_bytes - len(
-        json.dumps({"declared": len(expected), "artifacts": []})
+    entries, budget = _pack_entries(
+        [str(artifact.path) for artifact in expected],
+        root=root,
+        limit=max_bytes_per_file,
+        budget=max_total_bytes
+        - len(json.dumps({"declared": len(expected), "artifacts": []})),
+        is_declaration=True,
     )
-    for index, artifact in enumerate(expected):
-        entry = _read_one(
-            str(artifact.path),
-            root=root,
-            limit=max(0, min(max_bytes_per_file, budget)),
-        )
-        # Charge the rendered entry, not just its content: the path label is
-        # planner free text and reaches the same prompt budget.
-        separator = _SEPARATOR_BYTES if entries else 0
-        cost = len(json.dumps(entry)) + separator
-        if cost > budget:
-            omission: dict[str, JsonValue] = {
-                "status": _STATUS_OMITTED,
-                "count": len(expected) - index,
-            }
-            # The marker is content too, so it only goes in if it fits. A
-            # section that overran while announcing that it overran would be
-            # the same defect wearing a label.
-            marker_cost = len(json.dumps(omission)) + separator
-            if marker_cost <= budget:
-                entries.append(omission)
-                budget -= marker_cost
-            break
-        budget -= cost
-        entries.append(entry)
     section: dict[str, JsonValue] = {
         "declared": len(expected),
         "artifacts": entries,
@@ -283,21 +262,58 @@ def _read_produced_instead(
     produced = sorted(
         path for path, _ in fingerprint_tree(root) if path not in declared
     )
+    entries, _remaining = _pack_entries(
+        produced, root=root, limit=limit, budget=budget, is_declaration=False
+    )
+    return entries
+
+
+def _pack_entries(
+    paths: Sequence[str],
+    *,
+    root: Path,
+    limit: int,
+    budget: int,
+    is_declaration: bool,
+) -> tuple[list[JsonValue], int]:
+    """Read *paths* into entries, stopping when the section's budget runs out.
+
+    The one owner of how a section spends its bound, because both headings
+    this module renders spend the same one and two copies of the arithmetic
+    drift apart on the first correction made to only one of them.
+
+    Args:
+        paths: What to read, in the order it should be rendered.
+        root: The resolved workspace directory.
+        limit: Per-file content bound, in characters.
+        budget: What is left of the section's total bound.
+        is_declaration: Whether *paths* are planner free text rather than
+            names walked off the filesystem. See :func:`_read_one`.
+
+    Returns:
+        The entries, plus what remains of *budget* after them, so a caller
+        rendering a second heading charges it against what the first left.
+    """
     entries: list[JsonValue] = []
-    for index, path in enumerate(produced):
+    for index, path in enumerate(paths):
         entry = _read_one(
             path,
             root=root,
             limit=max(0, min(limit, budget)),
-            is_declaration=False,
+            is_declaration=is_declaration,
         )
+        # Charge the rendered entry, not just its content: the path label is
+        # planner free text and reaches the same prompt budget.
         separator = _SEPARATOR_BYTES if entries else 0
         cost = len(json.dumps(entry)) + separator
         if cost > budget:
             omission: dict[str, JsonValue] = {
                 "status": _STATUS_OMITTED,
-                "count": len(produced) - index,
+                "count": len(paths) - index,
             }
+            # The marker is content too, so it only goes in if it fits. A
+            # section that overran while announcing that it overran would be
+            # the same defect wearing a label.
             marker_cost = len(json.dumps(omission)) + separator
             if marker_cost <= budget:
                 entries.append(omission)
@@ -305,7 +321,7 @@ def _read_produced_instead(
             break
         budget -= cost
         entries.append(entry)
-    return entries
+    return entries, budget
 
 
 def workspace_deliverable_reader(

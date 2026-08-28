@@ -58,8 +58,8 @@ def _link(link: Path, target: str) -> Path:
     """
     try:
         link.symlink_to(target)
-    except OSError as exc:  # pragma: no cover - platform-dependent
-        pytest.skip(f"symlinks unavailable here: {exc}")
+    except OSError:  # pragma: no cover - platform-dependent
+        pytest.skip("symlinks unavailable on this platform")
     return link
 
 
@@ -231,6 +231,31 @@ class TestAFilesystemThatRefusesToAnswer:
         def _refuse(self: Path) -> object:
             if self == refused:
                 raise PermissionError(13, "refused", str(self))
+            return real_lstat(self)
+
+        monkeypatch.setattr(Path, "lstat", _refuse)
+
+        assert fingerprint_tree(tmp_path) == frozenset(
+            {("readable.py", _digest(readable)), ("refused.py", "<unreadable>")}
+        )
+
+    def test_a_failure_that_is_not_an_oserror_keeps_its_path(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Not every way of failing to read a file is an ``OSError``.
+
+        A path the OS accepted but Python cannot render raises ``ValueError``,
+        and a fingerprint that let one escape would answer for none of the
+        tree rather than for all of it but one.
+        """
+        readable = _write(tmp_path / "readable.py", "xy")
+        refused = _write(tmp_path / "refused.py", "xyz")
+        real_lstat = Path.lstat
+
+        def _refuse(self: Path) -> object:
+            if self == refused:
+                msg = "embedded null byte"
+                raise ValueError(msg)
             return real_lstat(self)
 
         monkeypatch.setattr(Path, "lstat", _refuse)

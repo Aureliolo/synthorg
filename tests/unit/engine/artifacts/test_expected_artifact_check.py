@@ -343,6 +343,25 @@ class TestDeliveryAgainstABaseline:
         assert not presence.delivered_something_since(baseline)
         assert not presence.delivered_nothing_since(baseline)
 
+    def test_a_declaration_that_became_a_directory_is_not_a_delivery(
+        self, tmp_path: Path
+    ) -> None:
+        """Unhashable on ONE side is the same absence as on both.
+
+        The two sides differ here, so comparing them naively reads as a
+        change. What actually happened is that the module read a content
+        before the run and none after, which asserts nothing about delivery.
+        """
+        target = _touch(tmp_path, "build", "a file, for now\n")
+        expected = _expected("build")
+        baseline = missing_expected_artifacts(expected, workspace=tmp_path)
+        target.unlink()
+        target.mkdir()
+
+        presence = missing_expected_artifacts(expected, workspace=tmp_path)
+
+        assert not presence.delivered_something_since(baseline)
+
     def test_a_same_length_edit_is_a_delivery(self, tmp_path: Path) -> None:
         """The case a size comparison cannot see.
 
