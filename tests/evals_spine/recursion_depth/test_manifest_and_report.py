@@ -331,8 +331,18 @@ class TestTheMatrixIsCoherent:
         manifest = load_manifest(_COMMITTED_MANIFEST)
 
         assert manifest.depths == (1, 2, 3, 4)
-        assert all(manifest.repetitions[depth] == 3 for depth in manifest.depths)
-        assert manifest.planned_cells == 12
+        # Repetitions are concentrated where a cell is cheap. Every depth needs
+        # a population or it reports a point rather than a range, and cap 1
+        # earned its three: independently planned trees at that cap scored 37,
+        # 37 and 23 of 42. The deep end is bracketed rather than sampled,
+        # because one more cap-4 cell costs more than every cap-1 and cap-2
+        # cell in the matrix put together.
+        assert manifest.repetitions[1] == 3
+        assert manifest.repetitions[2] == 3
+        assert manifest.repetitions[3] == 2
+        assert manifest.repetitions[4] == 2
+        assert all(manifest.repetitions[depth] >= 2 for depth in manifest.depths)
+        assert manifest.planned_cells == 10
         assert all(manifest.expected_sessions(depth) >= 1 for depth in manifest.depths)
 
     def test_the_shipped_manifest_names_no_vendor(self) -> None:
