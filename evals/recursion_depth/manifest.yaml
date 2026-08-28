@@ -1,10 +1,19 @@
 # Recording matrix for the recursion-depth sweep.
 #
-# Three repetitions at EVERY depth, because per-depth spread is what this matrix
-# is for and a spread needs a population at every point on the axis. The first
-# recording ran one repetition per cell, so treatment and tree draw were
-# confounded throughout: each cell plans its own tree, and a single draw cannot
-# say which of the two moved.
+# Repetitions exist because per-depth spread is what this matrix is for: the
+# first recording ran one per cell, so treatment and tree draw were confounded
+# throughout, and a single draw cannot say which of the two moved. That the
+# spread is worth paying for is measured rather than assumed. Three cap-1 cells
+# on independently planned trees scored 37, 37 and 23 of 42, so a lone cap-1
+# draw could have reported anything from strong to middling.
+#
+# They are concentrated where a cell is cheap, because the bill is almost
+# entirely the deep end. Measured per cell on this harness: cap 1 is about an
+# hour and 14M tokens, cap 2 about three hours and 45M. Cap 3 and cap 4 are
+# roughly two and four times that again, so a third repetition at cap 4 costs
+# more than every cap-1 and cap-2 cell in the matrix combined. Two draws at the
+# deep end still bracket a cell rather than reporting a point, which is what
+# stops one unlucky tree reading as the curve.
 #
 # ONE arm, and it is the gated one. Gating is not the binding question, the
 # replication is, and halving the arms pays for it. It also dissolves the
@@ -38,8 +47,8 @@ depths: [1, 2, 3, 4]
 repetitions:
   1: 3
   2: 3
-  3: 3
-  4: 3
+  3: 2
+  4: 2
 arms:
   - gated
 executor:
