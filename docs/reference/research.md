@@ -63,14 +63,15 @@ planner that has not.
 
 ### Decomposition quality is the binding constraint
 
-Not agent supply, and not coordination cost. S2 puts the ceiling at roughly 11 to 25
-coherent independent units and calls it method-independent, drawing on three measurements:
-contract-first decomposition (15 to 25 files at 47% functional success, Contract-Coding
+Not agent supply, and not coordination cost. Three measurements bound it: contract-first
+decomposition (15 to 25 files at 47% functional success, Contract-Coding
 `arXiv:2604.13100`), dependency-graph partitioning of real repositories (1 to 11 partitions
 across 28 projects, Co-Coder `arXiv:2606.00953`), and design-then-contract (14 to 22 files,
-CodeTeam `arXiv:2606.22082`). Read the three as they stand rather than as one converged
-figure: they do not share a unit (files against partitions), and it is the highest each
-method reached that spans 11 to 25, so no single one of them demonstrates the whole range.
+CodeTeam `arXiv:2606.22082`). S2 reads them together as a ceiling of roughly 11 to 25
+coherent independent units and calls that method-independent. Read as they stand they
+support something weaker: they do not share a unit (files against partitions), and it is
+the highest each one reached that spans 11 to 25, so no single study demonstrates the
+range and none of them is evidence for its lower bound.
 
 This is a finding about published systems. Whether it applies per level of a tree or
 globally is the open question above.
@@ -178,8 +179,8 @@ Forking a role-based or graph-based framework would mean fighting its execution 
 add recursive splitting, per-part isolation and a reviewer structurally barred from being
 the author. None of that is a small addition to an existing loop.
 
-For a feature-by-feature comparison against other frameworks, see
-[Framework Comparison](comparison.md).
+For a feature-by-feature comparison against the rest of the ecosystem, see
+[Ecosystem Comparison](comparison.md).
 
 ### Libraries used
 

@@ -301,7 +301,7 @@ def _frontmatter_and_intro(last_updated: str) -> list[str]:
     """Generate the frontmatter, title, legend, and intro callout."""
     return [
         "---",
-        "title: Framework Comparison",
+        "title: Ecosystem Comparison",
         "description: >-",
         "  Where SynthOrg sits among agent frameworks, platforms, workflow",
         "  engines, and developer tools, and what the table cannot show.",
@@ -313,7 +313,7 @@ def _frontmatter_and_intro(last_updated: str) -> list[str]:
             " do not edit directly -->"
         ),
         "",
-        "# Framework Comparison",
+        "# Ecosystem Comparison",
         "",
         (
             "How SynthOrg compares to agent frameworks, platforms,"
@@ -349,11 +349,13 @@ def _frontmatter_and_intro(last_updated: str) -> list[str]:
             " whatever the provider you configured needs, and against local"
             " models nothing leaves at all. The two outbound integrations,"
             " product telemetry and cross-deployment analytics, both ship off"
-            " and send only what their own pages document. Hosted competitors"
-            " monetise metered compute, so a genuinely self-hostable"
+            " and send only what their own pages document. Every competitor"
+            " surveyed for this table monetises hosted metered compute; the"
+            " inference drawn from that, that a genuinely self-hostable"
             " equivalent cannibalises their margin and is unattractive for"
-            " them to build. The Self-Hosted column is the one axis where"
-            " this shows."
+            " them to build, is analysis rather than something the table"
+            " measures. The Self-Hosted column is the one axis where the"
+            " observation itself shows."
         ),
         "",
         (
