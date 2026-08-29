@@ -10,6 +10,7 @@ tasks acquire the strategy's lock, mutate state, and call ``destroy_fn``.
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
 
 import pytest
 
@@ -56,12 +57,40 @@ def _make_strategy(
     grace: float = 0.1,
     max_idle: float = 300.0,
     clock: FakeClock | None = None,
+    pin_check: Callable[[str], Awaitable[bool]] | None = None,
+    pin_recheck_seconds: float = 0.01,
 ) -> PerAgentStrategy:
     config = SandboxLifecycleConfig(
         grace_period_seconds=grace,
         max_idle_seconds=max_idle,
     )
-    return PerAgentStrategy(config, clock=clock)
+    return PerAgentStrategy(
+        config,
+        clock=clock,
+        pin_check=pin_check,
+        pin_recheck_seconds=pin_recheck_seconds,
+    )
+
+
+class _CountingPin:
+    """A pin_check stub reporting live for the first *live_for* calls.
+
+    Mirrors the shape ``BackgroundJobRegistry.has_live_jobs`` will use:
+    an async predicate keyed by container_id. Recording every call lets
+    a test assert the recheck loop actually ran rather than merely
+    inferring it from the eventual outcome.
+    """
+
+    def __init__(self, live_for: int) -> None:
+        self._remaining = live_for
+        self.calls: list[str] = []
+
+    async def __call__(self, container_id: str) -> bool:
+        self.calls.append(container_id)
+        if self._remaining <= 0:
+            return False
+        self._remaining -= 1
+        return True
 
 
 class TestPerAgentAcquire:
@@ -690,4 +719,140 @@ class TestPerAgentGraceDestroyFailure:
         )
         assert h.container_id == "replacement"
         assert len(calls) == 1
+        await strategy.cleanup_all(destroy_fn=destroy_fn)
+
+
+class TestPerAgentPinning:
+    """A live background job holds off grace and idle teardown alike."""
+
+    async def test_pinned_container_survives_grace_expiry(self) -> None:
+        clock = FakeClock()
+        pin = _CountingPin(live_for=1000)
+        strategy = _make_strategy(grace=0.1, max_idle=300.0, clock=clock, pin_check=pin)
+        destroyed: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            return _make_handle("pinned")
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        await strategy.acquire(
+            owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
+        )
+        await strategy.release(owner_id="a1", destroy_fn=destroy_fn)
+        # Grace duration elapses, but the job is still "running" for the
+        # first three pin checks: the container must not be torn down.
+        await _settle(ticks=10)
+        assert destroyed == []
+        assert len(pin.calls) >= 3
+
+        await strategy.cleanup_all(destroy_fn=destroy_fn)
+
+    async def test_container_destroyed_once_job_ends(self) -> None:
+        clock = FakeClock()
+        pin = _CountingPin(live_for=2)
+        strategy = _make_strategy(grace=0.1, max_idle=300.0, clock=clock, pin_check=pin)
+        destroyed: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            return _make_handle("pinned-then-free")
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        await strategy.acquire(
+            owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
+        )
+        await strategy.release(owner_id="a1", destroy_fn=destroy_fn)
+        await _settle(ticks=20)
+
+        assert destroyed == ["pinned-then-free"]
+        # Three calls: two reporting the job still live, one reporting
+        # it ended -- proof the loop actually rechecked rather than
+        # destroying on the first pass.
+        assert len(pin.calls) == 3
+
+    async def test_pinned_container_survives_idle_expiry(self) -> None:
+        clock = FakeClock()
+        pin = _CountingPin(live_for=1000)
+        strategy = _make_strategy(grace=10.0, max_idle=0.05, clock=clock, pin_check=pin)
+        destroyed: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            return _make_handle("idle-pinned")
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        await strategy.acquire(
+            owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
+        )
+        await strategy.release(owner_id="a1", destroy_fn=destroy_fn)
+        # Idle threshold (0.05s) elapses well before grace (10.0s), so
+        # any teardown observed here is the idle path, not grace.
+        await _settle(ticks=10)
+        assert destroyed == []
+
+        await strategy.cleanup_all(destroy_fn=destroy_fn)
+
+    async def test_unpinned_container_behaves_exactly_as_before(self) -> None:
+        """``pin_check`` returning False immediately changes nothing."""
+        clock = FakeClock()
+
+        async def never_pinned(_container_id: str) -> bool:
+            return False
+
+        strategy = _make_strategy(grace=0.1, clock=clock, pin_check=never_pinned)
+        destroyed: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            return _make_handle("unpinned")
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        await strategy.acquire(
+            owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
+        )
+        await strategy.release(owner_id="a1", destroy_fn=destroy_fn)
+        await _settle()
+
+        assert destroyed == ["unpinned"]
+
+    async def test_reacquire_while_pinned_cancels_the_wait(self) -> None:
+        """A concurrent acquire still wins even mid pin-recheck loop.
+
+        ``_cancel_timer``/``_cancel_idle_timer`` cancel the whole
+        grace/idle task regardless of which await point it is stalled
+        at, so this must work identically to the existing
+        reacquire-within-grace case even while the task is looping on
+        the pin check rather than sleeping the plain grace duration.
+        """
+        clock = FakeClock()
+        pin = _CountingPin(live_for=1000)
+        strategy = _make_strategy(grace=0.05, clock=clock, pin_check=pin)
+        destroyed: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            return _make_handle("reacquired")
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        h1 = await strategy.acquire(
+            owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
+        )
+        await strategy.release(owner_id="a1", destroy_fn=destroy_fn)
+        # Let the grace timer fire and enter its pin-recheck loop.
+        await _settle(ticks=5)
+        assert destroyed == []
+
+        h2 = await strategy.acquire(
+            owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
+        )
+        assert h1 is h2
+        await _settle(ticks=5)
+        assert destroyed == []
+
         await strategy.cleanup_all(destroy_fn=destroy_fn)

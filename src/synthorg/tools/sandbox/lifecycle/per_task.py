@@ -2,12 +2,16 @@
 
 Reuses a container for all tool calls within the same task.  On
 ``release()`` the container is destroyed immediately -- task boundaries
-are clean cuts with no grace period.
+are clean cuts with no grace period -- unless a live background job is
+still running in it, in which case release waits the job out exactly as
+the per-agent strategy's grace/idle expiry do.
 """
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from typing import Final
 
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.sandbox import (
@@ -15,19 +19,58 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_CLEANUP,
     SANDBOX_LIFECYCLE_DESTROY_FAILED,
     SANDBOX_LIFECYCLE_RELEASE,
+    SANDBOX_LIFECYCLE_TEARDOWN_PINNED,
 )
 from synthorg.tools.sandbox.lifecycle._liveness import log_stale, probe_alive, reap
 from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
 
 logger = get_logger(__name__)
 
+#: See ``per_agent.DEFAULT_PIN_RECHECK_SECONDS``; independent constant
+#: rather than a shared import, because the two strategies are not
+#: otherwise coupled and this one has no ``grace_period_seconds`` to
+#: derive a sensible default from.
+DEFAULT_PIN_RECHECK_SECONDS: Final[float] = 15.0
+
 
 class PerTaskStrategy:
-    """Reuse a container per *owner_id*, destroy immediately on release."""
+    """Reuse a container per *owner_id*, destroy immediately on release.
 
-    def __init__(self) -> None:
-        """Initialize the per-task lifecycle strategy."""
+    A container whose ``pin_check`` reports a live background job is not
+    torn down by ``release()``: it waits, polling at
+    ``pin_recheck_seconds``, until the job ends. With no ``pin_check``
+    wired (the default), ``release()`` destroys immediately exactly as
+    it always has.
+    """
+
+    def __init__(
+        self,
+        *,
+        clock: Clock | None = None,
+        pin_check: Callable[[str], Awaitable[bool]] | None = None,
+        pin_recheck_seconds: float = DEFAULT_PIN_RECHECK_SECONDS,
+    ) -> None:
+        """Initialize the per-task lifecycle strategy.
+
+        Args:
+            clock: Time source for the pinned-release recheck wait.
+                Defaults to ``SystemClock``; tests pass ``FakeClock``
+                for deterministic recheck timing without real waiting.
+                Unused unless ``pin_check`` is set.
+            pin_check: Async predicate, keyed by ``container_id``,
+                answering whether a live background job is still
+                running inside it. ``None`` (the default) means no
+                background-job feature is wired, so ``release()``
+                behaves exactly as it always has.
+            pin_recheck_seconds: How often a pinned container's release
+                rechecks ``pin_check`` while held off. Unused when
+                ``pin_check`` is ``None``.
+        """
         self._containers: dict[str, ContainerHandle] = {}
+        self._clock: Clock = clock if clock is not None else SystemClock()
+        self._pin_check = pin_check
+        self._pin_recheck_seconds = pin_recheck_seconds
+        self._pending_teardowns: dict[str, asyncio.Task[None]] = {}
         self._lock = asyncio.Lock()
 
     @property
@@ -176,11 +219,37 @@ class PerTaskStrategy:
         owner_id: str,
         destroy_fn: Callable[[ContainerHandle], Awaitable[None]],
     ) -> None:
-        """Destroy the container immediately (task boundary)."""
+        """Destroy the container immediately, unless a live job pins it.
+
+        A pinned container is not destroyed inline here: this call runs
+        at the task boundary, and blocking it for as long as a
+        background job keeps running would hold up whatever is awaiting
+        task completion. Instead a background task waits the job out and
+        destroys once unpinned -- the same shape per-agent's grace/idle
+        expiry already use, just triggered at release instead of on a
+        timer.
+        """
         async with self._lock:
-            handle = self._containers.pop(owner_id, None)
+            handle = self._containers.get(owner_id)
         if handle is None:
             return
+
+        pinned = self._pin_check is not None and await self._pin_check(
+            handle.container_id
+        )
+        if pinned:
+            self._start_deferred_teardown(owner_id, destroy_fn=destroy_fn)
+            return
+
+        async with self._lock:
+            # Identity-checked: a concurrent acquire may already have
+            # replaced or removed the entry while the pin check above
+            # was in flight, and popping that would destroy a container
+            # somebody else is about to use (or double-destroy one this
+            # call already tore down via a deferred teardown).
+            if self._containers.get(owner_id) is not handle:
+                return
+            self._containers.pop(owner_id, None)
         logger.info(
             SANDBOX_LIFECYCLE_RELEASE,
             strategy="per-task",
@@ -207,12 +276,92 @@ class PerTaskStrategy:
                 error=safe_error_description(exc),
             )
 
+    def _start_deferred_teardown(
+        self,
+        owner_id: str,
+        *,
+        destroy_fn: Callable[[ContainerHandle], Awaitable[None]],
+    ) -> None:
+        """Launch the wait-then-destroy task for a pinned release.
+
+        Tracked in ``_pending_teardowns`` so ``cleanup_all()`` can
+        cancel and await it on shutdown instead of leaving it to finish
+        (or not) after the strategy itself has torn everything else
+        down.
+        """
+        logger.info(
+            SANDBOX_LIFECYCLE_RELEASE,
+            strategy="per-task",
+            owner_id=owner_id,
+            action="deferred-pinned",
+        )
+
+        async def _wait_then_destroy() -> None:
+            while True:
+                async with self._lock:
+                    handle = self._containers.get(owner_id)
+                if handle is None:
+                    return
+                if self._pin_check is None or not await self._pin_check(
+                    handle.container_id
+                ):
+                    break
+                logger.debug(
+                    SANDBOX_LIFECYCLE_TEARDOWN_PINNED,
+                    strategy="per-task",
+                    owner_id=owner_id,
+                    container_id=handle.container_id,
+                )
+                await self._clock.sleep(self._pin_recheck_seconds)
+            async with self._lock:
+                self._pending_teardowns.pop(owner_id, None)
+                if self._containers.get(owner_id) is not handle:
+                    return
+                self._containers.pop(owner_id, None)
+            logger.info(
+                SANDBOX_LIFECYCLE_RELEASE,
+                strategy="per-task",
+                owner_id=owner_id,
+                action="destroy",
+                container_id=handle.container_id,
+            )
+            try:
+                await destroy_fn(handle)
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                async with self._lock:
+                    self._containers.setdefault(owner_id, handle)
+                logger.warning(
+                    SANDBOX_LIFECYCLE_DESTROY_FAILED,
+                    strategy="per-task",
+                    owner_id=owner_id,
+                    container_id=handle.container_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+
+        old = self._pending_teardowns.pop(owner_id, None)
+        if old is not None and not old.done():
+            old.cancel()
+        self._pending_teardowns[owner_id] = asyncio.create_task(
+            _wait_then_destroy(),
+            name=f"sandbox-pinned-release-{owner_id}",
+        )
+
     async def cleanup_all(
         self,
         *,
         destroy_fn: Callable[[ContainerHandle], Awaitable[None]],
     ) -> None:
         """Destroy all tracked containers."""
+        async with self._lock:
+            pending = list(self._pending_teardowns.values())
+            self._pending_teardowns.clear()
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
         async with self._lock:
             handles = list(self._containers.values())
             count = len(handles)

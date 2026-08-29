@@ -30,3 +30,20 @@ class TestCreateLifecycleStrategy:
         config = SandboxLifecycleConfig(strategy=strategy)  # type: ignore[arg-type]
         result = create_lifecycle_strategy(config)
         assert isinstance(result, expected_cls)
+
+    @pytest.mark.parametrize("strategy", ["per-agent", "per-task"])
+    async def test_pin_check_reaches_reusable_strategies(self, strategy: str) -> None:
+        """A strategy holding a persistent container receives pin_check.
+
+        per-call is deliberately excluded: it destroys its container
+        after every call, so there is nothing for a pin to hold open,
+        and the factory does not thread pin_check to it at all.
+        """
+
+        async def pin_check(_container_id: str) -> bool:
+            return False
+
+        config = SandboxLifecycleConfig(strategy=strategy)  # type: ignore[arg-type]
+        result = create_lifecycle_strategy(config, pin_check=pin_check)
+        assert isinstance(result, PerAgentStrategy | PerTaskStrategy)
+        assert result._pin_check is pin_check
