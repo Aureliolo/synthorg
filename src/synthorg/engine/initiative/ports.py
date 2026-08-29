@@ -10,6 +10,7 @@ one.
 """
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
@@ -144,6 +145,32 @@ class ReplanTriggerPort(Protocol):
 
 
 @runtime_checkable
+class SkeletonPort(Protocol):
+    """The SKELETON stage, as the rollup needs it.
+
+    Structurally satisfied by
+    ``engine.initiative.skeleton.SkeletonStageService``. The rollup calls this
+    while a plan reads as SKELETON; the stage itself is idempotent (its task id
+    is derived from the plan id), so a repeated call is a no-op. It must not
+    block or raise: the call schedules detached work and returns.
+
+    Separate from :class:`IntegrationPort` rather than one "stage port" both
+    satisfy, because the rollup holds them in different fields and an unwired
+    one has a different consequence at each end: unwired here parks a plan
+    before anything is built, which is safe; unwired there parks one after
+    everything is, which is not.
+    """
+
+    def schedule(self, *, plan: Plan, attempt: int = 0) -> None:
+        """Schedule contract attempt *attempt* for a plan in SKELETON."""
+        ...
+
+    async def drain(self, *, timeout_sec: float) -> None:
+        """Await outstanding dispatches at shutdown, bounded by *timeout_sec*."""
+        ...
+
+
+@runtime_checkable
 class IntegrationPort(Protocol):
     """The INTEGRATE stage, as the rollup needs it.
 
@@ -181,6 +208,28 @@ class EvaluationPort(Protocol):
     async def drain(self, *, timeout_sec: float) -> None:
         """Await outstanding judgements at shutdown, bounded by *timeout_sec*."""
         ...
+
+
+@dataclass(frozen=True, slots=True)
+class StagePorts:
+    """The staged jobs a plan can sit in, as one argument.
+
+    Bundled rather than passed one by one because they are one concept and they
+    arrive together: each is resolved in the same later boot phase, each is
+    optional for the same reason, and an unwired one parks the plan in its own
+    status. Passing them separately also put the rollup's constructor over the
+    argument cap the moment a third stage existed, which is the cap doing its
+    job: three parameters that are always handled identically are one.
+
+    Attributes:
+        skeleton: The SKELETON stage, or ``None`` to park before dispatch.
+        integration: The INTEGRATE stage, or ``None`` to park before assembly.
+        evaluation: The EVALUATE stage, or ``None`` to park before delivery.
+    """
+
+    skeleton: SkeletonPort | None = None
+    integration: IntegrationPort | None = None
+    evaluation: EvaluationPort | None = None
 
 
 #: Reads whichever replan trigger the rollup is holding *now*. The EVALUATE

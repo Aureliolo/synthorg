@@ -85,6 +85,7 @@ class CapabilityId(StrEnum):
     # things and converge at different times, so a single capability made the
     # union of their requirements a precondition for any of them and a boot
     # without a coordinator got no integrate stage either.
+    INITIATIVE_SKELETON = "initiative_skeleton"
     INITIATIVE_INTEGRATE = "initiative_integrate"
     INITIATIVE_EVALUATE = "initiative_evaluate"
     INITIATIVE_REPLAN = "initiative_replan"

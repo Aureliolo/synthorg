@@ -270,15 +270,21 @@ class StallReason(StrEnum):
     ``BLOCKED``: every outstanding item is stuck behind something the org
     cannot clear itself. ``MIXED_DEAD``: some of each.
 
-    The last two are tail-stage verdicts, invisible to any derivation over
-    items (every item is done in both cases). ``INTEGRATION_FAILED``: the
-    pieces were built but do not assemble into a working whole.
-    ``EVALUATION_UNMET``: the whole runs but does not meet the objective.
+    The last three are stage verdicts, invisible to any derivation over items.
+    ``SKELETON_FAILED``: the contract could not be written as code, which is a
+    statement about the plan rather than about the agent that tried, and it is
+    invisible for the opposite reason to the other two: no item has been
+    dispatched yet, so there is nothing to derive from at all.
+    ``INTEGRATION_FAILED``: the pieces were built but do not assemble into a
+    working whole. ``EVALUATION_UNMET``: the whole runs but does not meet the
+    objective. In both of those every item is done, which is why an
+    item-derived stall cannot see them either.
     """
 
     ALL_FAILED = "all_failed"
     BLOCKED = "blocked"
     MIXED_DEAD = "mixed_dead"
+    SKELETON_FAILED = "skeleton_failed"
     INTEGRATION_FAILED = "integration_failed"
     EVALUATION_UNMET = "evaluation_unmet"
 

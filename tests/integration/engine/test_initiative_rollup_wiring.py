@@ -26,6 +26,7 @@ from synthorg.engine.initiative.ports import (
     EvaluationPort,
     IntegrationPort,
     PlanReconcilePort,
+    StagePorts,
 )
 from synthorg.engine.initiative.rollup import ProjectRollupService
 from synthorg.engine.initiative.tail_stages import integration_task_id
@@ -125,8 +126,7 @@ async def _wired(
         persistence=backend,
         plan_status_writer=build_plan_service(backend, clock=clock),
         clock=clock,
-        integration=integration,
-        evaluation=evaluation,
+        stages=StagePorts(integration=integration, evaluation=evaluation),
     )
     engine.register_observer(rollup.on_task_state_changed)
     await engine.start()
@@ -229,8 +229,7 @@ def _rollup(
         persistence=backend,
         plan_status_writer=build_plan_service(backend, clock=clock),
         clock=clock,
-        integration=integration,
-        evaluation=evaluation,
+        stages=StagePorts(integration=integration, evaluation=evaluation),
     )
 
 

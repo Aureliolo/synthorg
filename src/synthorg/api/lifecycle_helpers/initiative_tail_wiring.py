@@ -24,6 +24,7 @@ from synthorg.engine.initiative.ports import (
     PlanStatusWriter,
     ReplanTriggerPort,
     ReplanTriggerResolver,
+    SkeletonPort,
 )
 from synthorg.engine.loop_protocol import ShutdownChecker
 from synthorg.observability import get_logger, safe_error_description
@@ -114,6 +115,48 @@ def build_replan_trigger(
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         _log_degraded("initiative_replan_trigger", "auto-replan not wired", exc)
+        return None
+
+
+def build_skeleton_stage(
+    app_state: AppState,
+    persistence: PersistenceBackend,
+) -> SkeletonPort | None:
+    """Build the SKELETON stage, or ``None``.
+
+    Needs the work spine, because the contract job is an ordinary task that
+    must run under the same routing, budgets and review gate as everything
+    else. Without it the plan parks at SKELETON rather than dispatching, which
+    is the safe direction: nothing has been built against the contract yet.
+
+    Returns:
+        A ``SkeletonStageService``, or ``None`` when its deps are absent.
+    """
+    from synthorg.engine.initiative.skeleton import (  # noqa: PLC0415
+        SkeletonStageService,
+    )
+    from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
+    from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
+
+    slice_ = app_state.slice(EngineStateSlice)
+    if slice_.task_engine is None or slice_.work_pipeline is None:
+        logger.info(
+            API_APP_STARTUP,
+            service="initiative_skeleton_stage",
+            note="skeleton stage not wired; task engine or work pipeline absent",
+        )
+        return None
+    try:
+        return SkeletonStageService(
+            persistence=persistence,
+            task_engine=slice_.task_engine,
+            pipeline=slice_.work_pipeline,
+            config_resolver=config_resolver_of(app_state),
+            clock=app_state.clock,
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        _log_degraded("initiative_skeleton_stage", "skeleton stage not wired", exc)
         return None
 
 

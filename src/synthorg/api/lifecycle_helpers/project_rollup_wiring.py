@@ -182,6 +182,33 @@ async def attach_stall_escalation(app_state: AppState) -> None:
     _log_attached("initiative_stall_escalation")
 
 
+async def attach_skeleton_stage(app_state: AppState) -> None:
+    """Attach the SKELETON stage onto the wired rollup.
+
+    The activation the ``initiative_skeleton`` subsystem declares. Its own
+    dependency is the work pipeline, because the contract job is an ordinary
+    task; without it a plan parks at ``SKELETON`` and no unit is dispatched.
+
+    Raises:
+        SubsystemDeclinedError: No work pipeline to dispatch the contract
+            task through.
+    """
+    from synthorg.api.lifecycle_helpers.initiative_tail_wiring import (  # noqa: PLC0415
+        build_skeleton_stage,
+    )
+
+    resolved = _tail_target(app_state, ProjectRollupService.has_skeleton)
+    if resolved is None:
+        return
+    persistence, rollup = resolved
+    stage = build_skeleton_stage(app_state, persistence)
+    if stage is None:
+        msg = "no work pipeline; the contract job is an ordinary task"
+        raise SubsystemDeclinedError(msg)
+    rollup.attach_tail(skeleton=stage)
+    _log_attached("initiative_skeleton_stage")
+
+
 async def attach_integration_stage(app_state: AppState) -> None:
     """Attach the INTEGRATE stage onto the wired rollup.
 

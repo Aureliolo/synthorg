@@ -70,6 +70,12 @@ INITIATIVE_STALL_FOREIGN: Final[str] = "initiative.stall.foreign"
 #: decision or wrote the row underneath it.
 INITIATIVE_STALL_STALE_DECISION: Final[str] = "initiative.stall.stale_decision"
 
+INITIATIVE_SKELETON_SCHEDULED: Final[str] = "initiative.skeleton.scheduled"
+INITIATIVE_SKELETON_STARTED: Final[str] = "initiative.skeleton.started"
+INITIATIVE_SKELETON_DISPATCHED: Final[str] = "initiative.skeleton.dispatched"
+INITIATIVE_SKELETON_SKIPPED: Final[str] = "initiative.skeleton.skipped"
+INITIATIVE_SKELETON_FAILED: Final[str] = "initiative.skeleton.failed"
+
 INITIATIVE_INTEGRATION_SCHEDULED: Final[str] = "initiative.integration.scheduled"
 INITIATIVE_INTEGRATION_STARTED: Final[str] = "initiative.integration.started"
 INITIATIVE_INTEGRATION_DISPATCHED: Final[str] = "initiative.integration.dispatched"

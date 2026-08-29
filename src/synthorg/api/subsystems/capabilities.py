@@ -342,6 +342,10 @@ CAPABILITIES: tuple[Capability, ...] = (
     # them. One probe per collaborator, because they resolve independently:
     # a shared probe let a tail come up while the retro capture stayed unwired.
     Capability(
+        id=CapabilityId.INITIATIVE_SKELETON,
+        present=lambda s: _tail_attached(s, ProjectRollupService.has_skeleton),
+    ),
+    Capability(
         id=CapabilityId.INITIATIVE_INTEGRATE,
         present=lambda s: _tail_attached(s, ProjectRollupService.has_integration),
     ),

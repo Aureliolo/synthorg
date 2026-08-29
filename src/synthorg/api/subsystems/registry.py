@@ -623,6 +623,15 @@ async def _activate_project_rollup(app_state: AppState) -> None:
     await wire_project_rollup_service(app_state)
 
 
+async def _activate_initiative_skeleton(app_state: AppState) -> None:
+    """Attach the SKELETON stage onto the wired rollup."""
+    from synthorg.api.lifecycle_helpers.project_rollup_wiring import (  # noqa: PLC0415
+        attach_skeleton_stage,
+    )
+
+    await attach_skeleton_stage(app_state)
+
+
 async def _activate_initiative_integrate(app_state: AppState) -> None:
     """Attach the INTEGRATE stage onto the wired rollup."""
     from synthorg.api.lifecycle_helpers.project_rollup_wiring import (  # noqa: PLC0415
@@ -1446,6 +1455,18 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
     # of their requirements a precondition for any of them, so a boot without a
     # coordinator got no integrate stage either, and each degrades on its own
     # per docs/design/initiative-tail.md.
+    SubsystemSpec(
+        name="initiative_skeleton",
+        provides=CapabilityId.INITIATIVE_SKELETON,
+        requires=(
+            CapabilityId.PROJECT_ROLLUP_SERVICE,
+            CapabilityId.PERSISTENCE,
+            CapabilityId.TASK_ENGINE,
+            CapabilityId.SETTINGS_RESOLVER,
+            CapabilityId.WORK_PIPELINE,
+        ),
+        activate=_activate_initiative_skeleton,
+    ),
     SubsystemSpec(
         name="initiative_integrate",
         provides=CapabilityId.INITIATIVE_INTEGRATE,
