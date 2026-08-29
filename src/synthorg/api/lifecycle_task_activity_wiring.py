@@ -91,7 +91,8 @@ def wire_task_activity_observer(
     # The same workspace the enforcing gate reads, so a badge and the gate
     # cannot disagree about a skeleton whose suite fails by design.
     build_test_oracle = BuildTestOracle(
-        workspace_root=agent_workspace_root_of(app_state)
+        workspace_root=agent_workspace_root_of(app_state),
+        plans=persistence.plans,
     )
 
     async def _oracle_block_for(task: Task) -> bool:

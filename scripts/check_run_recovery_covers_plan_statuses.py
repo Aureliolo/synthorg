@@ -41,6 +41,7 @@ from synthorg.core.plan_enums import STAGE_STATUSES, TERMINAL_STATUSES, PlanStat
 from synthorg.engine.run_recovery.reconciler import (
     AWAITING_HUMAN_STATUSES,
     DRIVEN_STATUSES,
+    STAGING_STATUSES,
     UNFILLED_STATUSES,
 )
 
@@ -56,6 +57,7 @@ _GROUPS: Mapping[str, frozenset[PlanStatus]] = {
     "terminal (nothing left to do)": TERMINAL_STATUSES,
     "awaiting a human (parked correctly)": AWAITING_HUMAN_STATUSES,
     "unfillable (failed with a reason)": UNFILLED_STATUSES,
+    "staging (approved, moved into the contract stage)": STAGING_STATUSES,
     "driven (waves handed to the coordinator)": DRIVEN_STATUSES,
     "stage (one rollup pass re-drives the stage)": STAGE_STATUSES,
 }

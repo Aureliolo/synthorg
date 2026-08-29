@@ -27,9 +27,11 @@ distort the rollup. Provenance is what tells the two stages apart, since both
 rows are alike in those two fields: the actor is the discriminator, and
 :mod:`synthorg.engine.initiative.head_stages` owns it.
 
-Minting is idempotent by construction: each attempt's task id is derived from
-the plan id and the attempt index, so a re-fired edge finds the existing row and
-stops.
+Minting is idempotent: each attempt's task id is derived from the plan id and
+the attempt index, so a re-fired edge finds the existing row and stops. That
+rests on a single in-process writer owning the plan's rows, which is the
+assumption the get-then-resume in ``_run`` records; a multi-writer topology
+would need an atomic insert-only claim there instead.
 """
 
 from typing import Final
@@ -54,6 +56,7 @@ from synthorg.engine.initiative.skeleton_brief import (
     skeleton_title,
 )
 from synthorg.engine.initiative.stage_runner import StageRunner
+from synthorg.engine.initiative.stage_state import REDISPATCHABLE_STATUSES
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.engine.pipeline.protocol import WorkPipeline
 from synthorg.engine.task_engine import TaskEngine
@@ -62,6 +65,7 @@ from synthorg.observability.events.initiative import (
     INITIATIVE_SKELETON_DISPATCHED,
     INITIATIVE_SKELETON_FAILED,
     INITIATIVE_SKELETON_SCHEDULED,
+    INITIATIVE_SKELETON_SETTINGS_DEGRADED,
     INITIATIVE_SKELETON_SKIPPED,
     INITIATIVE_SKELETON_STARTED,
 )
@@ -196,9 +200,12 @@ class SkeletonStageService:
 
         The row is persisted before the pipeline is handed the task, and the
         pipeline runs the job inline, so a dispatch that died in between leaves
-        a row nothing is driving. A task still at CREATED is exactly that case
-        and is re-dispatchable; anything further along is either under way or
-        finished, and the outcome read owns it from there.
+        a row nothing is driving. Which statuses mean that is
+        :data:`REDISPATCHABLE_STATUSES`, read from the state machine rather
+        than restated here: the read answers PENDING for exactly those, so a
+        narrower condition here declines a row the read keeps offering, and the
+        rollup asks again on every pass for ever. Anything outside that set is
+        either under way or finished, and the outcome read owns it from there.
         """
         if not is_skeleton_task(existing, plan):
             logger.warning(
@@ -208,7 +215,7 @@ class SkeletonStageService:
                 reason="task_id_occupied_by_foreign_task",
             )
             return
-        if existing.status is not TaskStatus.CREATED:
+        if existing.status not in REDISPATCHABLE_STATUSES:
             logger.debug(
                 INITIATIVE_SKELETON_SKIPPED,
                 plan_id=str(plan.id),
@@ -222,7 +229,8 @@ class SkeletonStageService:
             plan_id=str(plan.id),
             project=str(plan.project),
             task_id=str(existing.id),
-            note="re-dispatching a contract job that never left created",
+            status=existing.status.value,
+            note="re-dispatching a contract job nothing was driving",
         )
         await self._hand_to_pipeline(plan, objective, existing)
 
@@ -306,7 +314,7 @@ class SkeletonStageService:
             # lint-allow: swallow-ok -- best-effort settings read
             reraise_critical(exc)
             logger.warning(
-                INITIATIVE_SKELETON_SKIPPED,
+                INITIATIVE_SKELETON_SETTINGS_DEGRADED,
                 key="skeleton_stage_timeout_seconds",
                 reason="settings_read_degraded",
                 error_type=type(exc).__name__,

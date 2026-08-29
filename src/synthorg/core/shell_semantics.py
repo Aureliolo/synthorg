@@ -209,4 +209,27 @@ def conjunctive_commands(
     return tuple(segments)
 
 
-__all__ = ["conjunctive_commands"]
+def trustworthy_segments(command: str) -> frozenset[tuple[str, ...]] | None:
+    """Split *command* into the commands its exit status still speaks for.
+
+    The set form of :func:`conjunctive_commands`, for callers comparing one
+    line against another rather than walking a line in order. Shared between
+    the manifest that DECLARES a gate command and the capture path that
+    recognises a run of it, so the reading applied to a declaration is
+    character for character the one applied to the run claimed against it. Two
+    readings would mean a gate a project may declare but never satisfy, or the
+    reverse.
+
+    Args:
+        command: The command line, as declared or as executed.
+
+    Returns:
+        Every command in the line as its argv, or ``None`` when any part of the
+        line breaks the implication that a zero exit means each of them exited
+        zero.
+    """
+    segments = conjunctive_commands(command, pipefail=True)
+    return None if segments is None else frozenset(segments)
+
+
+__all__ = ["conjunctive_commands", "trustworthy_segments"]

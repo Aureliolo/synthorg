@@ -55,7 +55,7 @@ def _case(outcome: str) -> str:
     """
     return (
         '<testsuite name="pytest" tests="1">'
-        f'<testcase classname="tests/test_score.py" '
+        '<testcase classname="tests.test_score" file="tests/test_score.py" '
         f'name="test_a_score_is_recorded">{outcome}</testcase>'
         "</testsuite>"
     )
@@ -85,9 +85,9 @@ class TestTheFiveWayTable:
                 id="collection_error",
             ),
             pytest.param(
-                '<error message="KeyError">KeyError: total</error>',
+                '<failure message="KeyError: total">KeyError: total</failure>',
                 PendingVerdict.RED,
-                "raised before it could assert",
+                "raised rather than asserting",
                 id="unexpected_exception",
             ),
             pytest.param(
@@ -120,6 +120,48 @@ class TestTheFiveWayTable:
         assert report.report_read is True
         assert [entry.verdict for entry in report.outcomes] == [verdict]
         assert reason_fragment in report.outcomes[0].reason
+        assert report.green is (verdict is PendingVerdict.GREEN)
+
+    @pytest.mark.parametrize(
+        ("message", "verdict"),
+        [
+            pytest.param("assert 0 == 1", PendingVerdict.GREEN, id="bare_assert"),
+            pytest.param(
+                "AssertionError: not implemented",
+                PendingVerdict.GREEN,
+                id="assertion_error",
+            ),
+            pytest.param(
+                "expect(received).toBe(expected)",
+                PendingVerdict.GREEN,
+                id="jest_expect",
+            ),
+            pytest.param("KeyError: 'total'", PendingVerdict.RED, id="key_error"),
+            pytest.param(
+                "TypeError: unsupported operand",
+                PendingVerdict.RED,
+                id="type_error",
+            ),
+            pytest.param("", PendingVerdict.RED, id="no_message"),
+        ],
+    )
+    def test_a_failure_is_read_from_its_message_not_its_tag(
+        self, tmp_path: Path, message: str, verdict: PendingVerdict
+    ) -> None:
+        """A runner picks ``failure`` over ``error`` by phase, not by cause.
+
+        pytest writes ``failure`` for anything that reaches the test body, so a
+        pending test raising ``KeyError`` is tagged exactly as a lost assertion
+        is. Trusting the tag alone forgives a skeleton that crashes, which is
+        the one outcome the marker must never cover.
+        """
+        _write_report(tmp_path, _case(f'<failure message="{message}"/>'))
+
+        report = classify_pending(
+            _pending(), workspace_path=tmp_path, test_report_path=_REPORT
+        )
+
+        assert report.outcomes[0].verdict is verdict
         assert report.green is (verdict is PendingVerdict.GREEN)
 
     def test_a_test_the_report_never_names_is_red(self, tmp_path: Path) -> None:
@@ -216,6 +258,11 @@ class TestHowARunnerSpellsTheNodeId:
     A skeleton whose manifest names the test one way while the runner writes it
     the other reads as "the report names no such test", which is red, so an
     author is sent to fix a contract that is correct.
+
+    The node id is the spelling that matters most, because it is the one the
+    manifest is documented to carry and the one no classname-derived form can
+    produce: pytest writes the classname as a dotted module path and keeps the
+    file in its own attribute, so the two share no boundary to build it from.
     """
 
     @pytest.mark.parametrize(
@@ -225,10 +272,13 @@ class TestHowARunnerSpellsTheNodeId:
             pytest.param(
                 "tests/test_score.py::test_a_score_is_recorded", id="pytest_node_id"
             ),
-            pytest.param("tests/test_score.py.test_a_score_is_recorded", id="dotted"),
+            pytest.param(
+                "tests.test_score::test_a_score_is_recorded", id="classname_qualified"
+            ),
+            pytest.param("tests.test_score.test_a_score_is_recorded", id="dotted"),
         ],
     )
-    def test_all_three_spellings_reach_the_same_case(
+    def test_every_spelling_reaches_the_same_case(
         self, tmp_path: Path, test_id: str
     ) -> None:
         _write_report(tmp_path, _case('<failure message="assert 0 == 1"/>'))
@@ -238,6 +288,37 @@ class TestHowARunnerSpellsTheNodeId:
                 PendingTest(
                     criterion=NotBlankStr(_CRITERION),
                     test_id=NotBlankStr(test_id),
+                ),
+            ),
+            workspace_path=tmp_path,
+            test_report_path=_REPORT,
+        )
+
+        assert report.green is True
+
+    def test_a_method_test_keeps_its_class_hop(self, tmp_path: Path) -> None:
+        """``classname`` carries the class beyond the module the file names.
+
+        Dropping that segment would build ``file::name`` for a method test,
+        which is not what the runner calls it, so the manifest entry a skeleton
+        actually writes would match nothing.
+        """
+        _write_report(
+            tmp_path,
+            '<testsuite name="pytest" tests="1">'
+            '<testcase classname="tests.test_score.TestScore" '
+            'file="tests/test_score.py" name="test_a_score_is_recorded">'
+            '<failure message="assert 0 == 1"/>'
+            "</testcase></testsuite>",
+        )
+
+        report = classify_pending(
+            (
+                PendingTest(
+                    criterion=NotBlankStr(_CRITERION),
+                    test_id=NotBlankStr(
+                        "tests/test_score.py::TestScore::test_a_score_is_recorded"
+                    ),
                 ),
             ),
             workspace_path=tmp_path,

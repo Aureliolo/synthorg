@@ -39,11 +39,21 @@ from synthorg.persistence.protocol import PersistenceBackend
 #: both are derived from the same plan id and attempt index.
 _TASK_NAMESPACE: Final[UUID] = uuid5(NAMESPACE_OID, "synthorg.initiative.skeleton")
 
-#: Ceiling on skeleton attempts for one plan. Past it the initiative is parked
-#: for an operator rather than rewriting the contract forever: a contract that
-#: will not compile three times over is a statement about the plan, not about
-#: the agent writing it, and a replan is the answer to that.
-MAX_SKELETON_ATTEMPTS: Final[int] = 3
+#: Attempts a plan gets at its own contract, which is ONE.
+#:
+#: A failed contract is a statement about the plan rather than about the agent
+#: that tried, so the answer is a replan, and a replan is a NEW plan with its
+#: own first attempt. There is no route back into SKELETON for the plan that
+#: failed: the transition table declares none, and ``derive_plan_status``
+#: returns a head status unchanged, so nothing can re-enter the stage the way
+#: the tail re-enters INTEGRATING through EXECUTING.
+#:
+#: Written as one because it IS one. A larger number here was pure decoration:
+#: stepping over a spent attempt needs the rollup to observe the plan
+#: re-entering the stage in the same pass, which cannot happen at SKELETON, so
+#: attempts one and two were unreachable and the ceiling described behaviour
+#: nothing could produce.
+MAX_SKELETON_ATTEMPTS: Final[int] = 1
 
 #: Identity recorded on the skeleton task, so the board shows the stage rather
 #: than attributing the contract to whoever last touched the initiative.

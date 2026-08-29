@@ -4417,6 +4417,7 @@ dependencies = [
     { name = "argon2-cffi" },
     { name = "cedarpy" },
     { name = "cryptography" },
+    { name = "defusedxml" },
     { name = "faker" },
     { name = "httpcore" },
     { name = "httpx" },
@@ -4486,7 +4487,6 @@ telemetry = [
 dev = [
     { name = "codespell" },
     { name = "commitizen" },
-    { name = "defusedxml" },
     { name = "deptry" },
     { name = "griffe-pydantic" },
     { name = "hypothesis" },
@@ -4529,7 +4529,6 @@ dev = [
     { name = "zensical" },
 ]
 docs = [
-    { name = "defusedxml" },
     { name = "griffe-pydantic" },
     { name = "mkdocs-d2-plugin" },
     { name = "mkdocs-redirects" },
@@ -4586,6 +4585,7 @@ requires-dist = [
     { name = "cryptography", specifier = "==50.0.1" },
     { name = "datasets", marker = "extra == 'fine-tune-cpu'", specifier = "==5.0.1" },
     { name = "datasets", marker = "extra == 'fine-tune-gpu'", specifier = "==5.0.1" },
+    { name = "defusedxml", specifier = "==0.7.1" },
     { name = "faker", specifier = "==40.37.0" },
     { name = "httpcore", specifier = "==1.0.9" },
     { name = "httpx", specifier = "==0.28.1" },
@@ -4637,7 +4637,6 @@ provides-extras = ["distributed", "fine-tune-cpu", "fine-tune-gpu", "knowledge",
 dev = [
     { name = "codespell", specifier = "==2.4.3" },
     { name = "commitizen", specifier = "==4.18.0" },
-    { name = "defusedxml", specifier = "==0.7.1" },
     { name = "deptry", specifier = "==0.25.1" },
     { name = "griffe-pydantic", specifier = "==1.3.1" },
     { name = "hypothesis", specifier = "==6.165.10" },
@@ -4680,7 +4679,6 @@ dev = [
     { name = "zensical", specifier = "==0.0.57" },
 ]
 docs = [
-    { name = "defusedxml", specifier = "==0.7.1" },
     { name = "griffe-pydantic", specifier = "==1.3.1" },
     { name = "mkdocs-d2-plugin", specifier = "==1.7.0" },
     { name = "mkdocs-redirects", specifier = "==1.2.3" },

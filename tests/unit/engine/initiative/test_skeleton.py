@@ -17,6 +17,7 @@ from synthorg.engine.initiative.head_stages import (
     is_skeleton_task,
     read_skeleton_state,
     skeleton_task_id,
+    skeleton_task_uuid,
 )
 from synthorg.engine.initiative.skeleton import ACTOR, SkeletonStageService
 from synthorg.engine.initiative.skeleton_brief import MANIFEST_PATH
@@ -396,8 +397,50 @@ class TestReadingWhereItGotTo:
 
         assert state.outcome is StageOutcome.PASSED
 
-    async def test_a_spent_attempt_is_only_stepped_over_on_re_entry(self) -> None:
-        """Otherwise a failed contract is re-run on every event for ever."""
+    async def test_a_foreign_task_on_the_derived_id_reads_as_a_failed_attempt(
+        self,
+    ) -> None:
+        """It is emphatically not evidence that the stage's work was done.
+
+        The rollup routes on this read, so anything but FAILED here skips the
+        contract stage on a row the stage never minted. Asserted on the read
+        rather than only on "it was never dispatched", because a stage that
+        declines to dispatch and reads as ABSENT is re-fired for ever, and one
+        that reads as PASSED lets the units build against nothing.
+        """
+        plan = _plan()
+        _service, backend, _ = await _seed(plan)
+        await backend.tasks.save(
+            Task(
+                id=skeleton_task_uuid(plan, 0),
+                title="Something else entirely",
+                description="a row this stage never minted",
+                type=TaskType.DEVELOPMENT,
+                project=NotBlankStr(str(plan.project)),
+                created_by=NotBlankStr("somebody-else"),
+                plan_id=plan.id,
+            )
+        )
+
+        state = await read_skeleton_state(backend, plan, allow_new_attempt=False)
+
+        assert state.outcome is StageOutcome.FAILED
+
+    async def test_a_failed_contract_stays_failed_however_it_is_read(self) -> None:
+        """The head stage gets one attempt, so nothing is left to step over.
+
+        A failed contract is a statement about the plan, and the answer is a
+        replan, which is a new plan with its own first attempt. Nothing routes
+        back into SKELETON for the plan that failed, so a larger ceiling here
+        would describe attempts no pass could reach: the rollup only steps over
+        a spent attempt when it observed the plan re-entering the stage, and a
+        head status is never re-entered.
+
+        Read both ways deliberately. The flag is the shared machinery's, and it
+        must not turn a definite failure into a fresh attempt on a stage that
+        has none left.
+        """
+        assert MAX_SKELETON_ATTEMPTS == 1
         plan = _plan()
         service, backend, _ = await _seed(plan)
         await _fire(service, plan)
@@ -412,26 +455,5 @@ class TestReadingWhereItGotTo:
 
         assert held.outcome is StageOutcome.FAILED
         assert held.attempt == 0
-        assert stepped.outcome is StageOutcome.ABSENT
-        assert stepped.attempt == 1
-
-    async def test_the_last_attempt_stays_failed_rather_than_reopening(self) -> None:
-        """A contract that will not compile three times over is a plan problem.
-
-        Past the ceiling the initiative routes to a replan or to a person; it
-        does not rewrite the contract for ever.
-        """
-        plan = _plan()
-        service, backend, _ = await _seed(plan)
-        for attempt in range(MAX_SKELETON_ATTEMPTS):
-            await _fire(service, plan, attempt)
-            minted = await backend.tasks.get(skeleton_task_id(plan, attempt))
-            assert minted is not None
-            await backend.tasks.save(
-                minted.model_copy(update={"status": TaskStatus.FAILED})
-            )
-
-        state = await read_skeleton_state(backend, plan, allow_new_attempt=True)
-
-        assert state.outcome is StageOutcome.FAILED
-        assert state.attempt == MAX_SKELETON_ATTEMPTS - 1
+        assert stepped.outcome is StageOutcome.FAILED
+        assert stepped.attempt == 0

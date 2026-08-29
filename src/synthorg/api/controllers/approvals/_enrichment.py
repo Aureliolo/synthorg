@@ -485,7 +485,8 @@ async def resolve_approval_context(
     # The same workspace the enforcing gate reads, so the queue and the gate
     # cannot disagree about a skeleton whose suite fails by design.
     build_test_oracle = BuildTestOracle(
-        workspace_root=agent_workspace_root_of(app_state)
+        workspace_root=agent_workspace_root_of(app_state),
+        plans=backend.plans,
     )
 
     async def _oracle_block_for(task: Task) -> bool:

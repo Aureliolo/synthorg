@@ -28,8 +28,12 @@ from synthorg.engine.completion_oracle.build_test_models import (
 )
 from synthorg.engine.completion_oracle.classifier import classify_grounding_requirement
 from synthorg.engine.completion_oracle.pending_forgiveness import (
+    ContractState,
+    ContractView,
+    approved_vocabulary,
     declared_gates,
     failure_was_declared,
+    load_contract,
     unclaimed_criteria,
 )
 from synthorg.observability import get_logger, safe_error_description
@@ -44,6 +48,7 @@ from synthorg.persistence.code_execution_protocol import (
     CodeExecutionRecord,
     CodeExecutionRecordRepository,
 )
+from synthorg.persistence.plan_protocol import PlanRepository
 
 logger = get_logger(__name__)
 
@@ -68,12 +73,22 @@ class BuildTestOracle:
             by-design red suite reads as a broken build and the contract stage
             can never complete; ``None`` (a boot that resolved no workspace)
             forgives nothing rather than guessing at a directory.
+        plans: Where the approved objective's criteria are read from, which is
+            the vocabulary a manifest entry has to name before it can forgive
+            anything. ``None`` forgives nothing, on the same reasoning as an
+            unresolved workspace: an unknown vocabulary is not a permissive one.
     """
 
-    __slots__ = ("_workspace_root",)
+    __slots__ = ("_plans", "_workspace_root")
 
-    def __init__(self, *, workspace_root: Path | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        workspace_root: Path | None = None,
+        plans: PlanRepository | None = None,
+    ) -> None:
         self._workspace_root = workspace_root
+        self._plans = plans
 
     async def evaluate(
         self,
@@ -166,18 +181,40 @@ class BuildTestOracle:
         if page is None:
             return self._checker_fault_result(requirement)
 
-        evaluation = self._verdict_from_records(task, requirement, page)
+        contract = await load_contract(
+            workspace_root=self._workspace_root, project_id=str(task.project)
+        )
+        if contract.state is ContractState.UNREADABLE:
+            # Blocking rather than waiving. The alternative reads the broken
+            # file as "nothing was declared", which silently drops the pending
+            # set, the clear-your-own-marker rule and every declared gate at
+            # once, and hands back a VERIFIED verdict whose reason is
+            # indistinguishable from a compliant project's.
+            return OracleEvaluation(
+                verdict=OracleVerdict.UNVERIFIED,
+                requirement=requirement,
+                reason=(
+                    "The project's committed manifest will not parse, so what"
+                    " it declares cannot be checked; fix the manifest in the"
+                    " commit that claims this work."
+                ),
+            )
+
+        evaluation = await self._verdict_from_records(task, requirement, page, contract)
         if evaluation.blocks_completion or requirement is not (
             GroundingRequirement.REQUIRED
         ):
             return evaluation
-        return await self._verdict_from_declared_gates(task, records, evaluation)
+        return await self._verdict_from_declared_gates(
+            task, records, evaluation, contract
+        )
 
     async def _verdict_from_declared_gates(
         self,
         task: Task,
         records: CodeExecutionRecordRepository,
         evaluation: OracleEvaluation,
+        contract: ContractView,
     ) -> OracleEvaluation:
         """Require a passing run of every gate the project declares.
 
@@ -190,6 +227,13 @@ class BuildTestOracle:
         a project declares how it lints, an agent never lints, and the operator
         reads a green badge over work no linter ever saw.
 
+        Asked only of a task that implements a plan item, on the same reasoning
+        as :meth:`_outstanding_criteria` and for the same reason: the stage job
+        is where these commands are WRITTEN, and its own brief assigns running
+        them to "every unit after you". Holding the contract to gates that
+        exist because it declared them refuses every skeleton for doing its
+        job, which is a stage that can never pass.
+
         Returns:
             The incoming evaluation, or a blocking one naming the gates that
             produced no passing run.
@@ -197,13 +241,20 @@ class BuildTestOracle:
         Raises:
             asyncio.CancelledError: Propagated when a record query is cancelled.
         """
-        gates = declared_gates(
-            workspace_root=self._workspace_root, project_id=str(task.project)
-        )
+        if task.plan_item_id is None:
+            return evaluation
+        gates = declared_gates(contract)
         unmet: list[str] = []
         for purpose in sorted(gates):
             page = await self._query_records_for(task, purpose, records)
-            if page is None or not page or not page[0].passed:
+            if page is None:
+                # The store raised, which the query already logged as a checker
+                # fault. Folding it in with "the gate never ran" would send the
+                # agent to re-run a command that was never the problem, so it
+                # takes the same UNVERIFIED answer a faulted primary query
+                # takes: still fail-closed, and honest about which one failed.
+                return self._checker_fault_result(evaluation.requirement)
+            if not page or not page[0].passed:
                 unmet.append(purpose.value)
         if not unmet:
             return evaluation
@@ -305,11 +356,12 @@ class BuildTestOracle:
             ),
         )
 
-    def _verdict_from_records(
+    async def _verdict_from_records(
         self,
         task: Task,
         requirement: GroundingRequirement,
         page: tuple[CodeExecutionRecord, ...],
+        contract: ContractView,
     ) -> OracleEvaluation:
         """Apply the LATEST-run decision table over the fetched records.
 
@@ -336,7 +388,9 @@ class BuildTestOracle:
                 reason="Task does not require build/test grounding.",
             )
         latest = page[0]
-        if not latest.passed and not self._declared_failure(task):
+        if not latest.passed and not await self._declared_failure(
+            task, contract, latest
+        ):
             return OracleEvaluation(
                 verdict=OracleVerdict.BUILD_TEST_FAILED,
                 requirement=requirement,
@@ -350,7 +404,7 @@ class BuildTestOracle:
                 tests_seen=tests_seen,
                 tests_failed=tests_failed,
             )
-        outstanding = self._outstanding_criteria(task)
+        outstanding = self._outstanding_criteria(task, contract)
         if outstanding:
             return OracleEvaluation(
                 verdict=OracleVerdict.BUILD_TEST_FAILED,
@@ -376,19 +430,53 @@ class BuildTestOracle:
             tests_failed=tests_failed,
         )
 
-    def _declared_failure(self, task: Task) -> bool:
+    async def _declared_failure(
+        self,
+        task: Task,
+        contract: ContractView,
+        latest: CodeExecutionRecord,
+    ) -> bool:
         """Whether the project declared exactly the failure this run produced.
+
+        The declaration only counts for criteria the plan was approved with,
+        and only against a report at least as new as the run being judged; both
+        narrowings live in :mod:`~synthorg.engine.completion_oracle.
+        pending_forgiveness`, which explains what each one closes.
 
         Returns:
             ``True`` when the manifest's pending set accounts for every
             failing test, which is what a correct skeleton produces.
         """
+        approved = await self._approved_vocabulary(task)
         return failure_was_declared(
-            workspace_root=self._workspace_root,
-            project_id=str(task.project),
+            contract, approved=approved, not_before=latest.executed_at
         )
 
-    def _outstanding_criteria(self, task: Task) -> tuple[str, ...]:
+    async def _approved_vocabulary(self, task: Task) -> frozenset[str]:
+        """The criterion keys *task*'s plan was approved with.
+
+        Read from the plan rather than from the task, because forgiveness has
+        to cover the SIBLING criteria a unit's run legitimately still fails:
+        a project mid-build always has other units' tests pending, and reading
+        only this task's own criterion would forgive none of them.
+
+        Returns:
+            The approved keys, empty when there is no plan or no repository to
+            read one from, which forgives nothing rather than guessing at a
+            vocabulary.
+        """
+        if self._plans is None or task.plan_id is None:
+            return frozenset()
+        plan = await self._plans.get(str(task.plan_id))
+        if plan is None:
+            return frozenset()
+        return approved_vocabulary(
+            str(criterion) for criterion in plan.objective_criteria
+        )
+
+    def _outstanding_criteria(
+        self, task: Task, contract: ContractView
+    ) -> tuple[str, ...]:
         """Which of *task*'s own criteria the manifest still calls pending.
 
         Asked of a run that is otherwise passing, which is the direction an
@@ -407,7 +495,6 @@ class BuildTestOracle:
         if task.plan_item_id is None:
             return ()
         return unclaimed_criteria(
+            contract,
             [str(criterion.description) for criterion in task.acceptance_criteria],
-            workspace_root=self._workspace_root,
-            project_id=str(task.project),
         )

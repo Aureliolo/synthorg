@@ -128,8 +128,15 @@ async def try_plan_review_resume(
     happens next. On approval the durable plan (referenced by ``plan_id``) is
     then loaded, rebuilt into a ``DecompositionResult``, filed, and moved into
     SKELETON; a failure making that graph durable marks the parent task
-    ``FAILED`` (the plan stays APPROVED, since the decision stands). On
-    rejection the parent task is cancelled and nothing builds.
+    ``FAILED`` and drives the plan to ``FAILED`` with it, because a plan left
+    at APPROVED or SKELETON behind a failed parent is a state nothing watches
+    and nothing can move. On rejection the parent task is cancelled and nothing
+    builds.
+
+    One failure deliberately does not fail the plan: the detached recompute
+    that opens the contract stage. By then the graph is durable and the plan is
+    at SKELETON, which the recovery sweep re-drives, so the work is late rather
+    than lost.
 
     Returns:
         ``True`` when this flow owns the decision, ``False`` otherwise.
@@ -201,8 +208,8 @@ async def _resolve_dispatch_inputs(
     rather than return quietly, and doing that per-check inside the body
     buried the one path that actually builds.
 
-    The coordinator is deliberately not among them. Approval no longer runs a
-    wave, so requiring one here would fail an initiative over a subsystem it
+    The coordinator is deliberately not among them. Nothing on this path runs
+    a wave, so requiring one here would fail an initiative over a subsystem it
     never reaches, and the driver that does reach it resolves its own.
 
     Args:
@@ -274,15 +281,15 @@ async def _dispatch_approved_plan(
     decisions recorded, project linked, plan SKELETON, child tasks filed)
     happens here and is finished before the approve response is written.
 
-    Approval no longer dispatches the units. It opens SKELETON and hands the
+    The units are not dispatched here. Approval opens SKELETON and hands the
     plan to the rollup, which is the single owner of "which stage is this plan
     in and what does that stage need now": the contract job runs, and only
     when it passes does the rollup move the plan to EXECUTING and drive the
     waves. Dispatching here as well would be a second owner for that decision,
     and it would dispatch units against a contract that does not exist yet,
-    which is the whole thing the stage was added to prevent.
+    which is exactly what the stage prevents.
 
-    The recompute is still handed to a tracked background task. Awaiting it
+    The recompute is handed to a tracked background task. Awaiting it
     inside the request holds the approve call open for the length of a
     contract job: the client gives up while the server carries on, and the
     operator is told their decision failed when it was recorded and the work
@@ -338,6 +345,38 @@ async def _open_contract_stage(app_state: AppState, plan: Plan) -> None:
     await rollup.recompute(plan.id)
 
 
+async def _record_decisions(
+    app_state: AppState, plan: Plan, *, decided_by: str
+) -> Plan:
+    """Land every decision the approval implies onto the durable plan.
+
+    Ordered, and each ordering is load-bearing. Open questions are retired
+    after the replay above, so a decision already taken lands before its row is
+    closed; past this line the plan's context is stamped onto every child
+    task's brief, and an answer arriving later reaches no task, no agent and no
+    prompt while the operator is told it was sent.
+
+    Returns:
+        The plan carrying its resolved decisions.
+    """
+    await retire_open_questions(app_state.slice(ApprovalStateSlice).store, plan)
+    # Write each decision item's resolved option onto the plan BEFORE anything
+    # reads it. ``decomposition_from_plan`` strips decision ids from the work
+    # items' dependencies because "the decision is already made by approval
+    # time", while ``item_is_done`` asks whether ``chosen_option_id`` is set:
+    # without this write the two disagree, and an initiative whose decision the
+    # operator never clicked can dispatch every item and still never complete.
+    plan = await record_resolved_decisions(
+        persistence_of(app_state).plans, plan, clock=app_state.clock
+    )
+    # Record the plan's decision-items into the brain, so the company's shaping
+    # choices survive the strip-decisions step in ``decomposition_from_plan``
+    # rather than vanishing when only work items build. Downstream of the write
+    # above, so the brain and the plan can never name different options.
+    await record_plan_decisions(app_state, plan, decided_by=decided_by)
+    return plan
+
+
 async def _prepare_dispatch(
     app_state: AppState,
     *,
@@ -378,28 +417,7 @@ async def _prepare_dispatch(
             plan,
             clock=app_state.clock,
         )
-        # Then close whatever nobody answered. Past this line the plan's
-        # context is stamped onto every child task's brief, so an answer
-        # arriving later reaches no task, no agent and no prompt while the
-        # operator is told it was sent. Ordered AFTER the replay so a decision
-        # already taken lands before its row is closed.
-        await retire_open_questions(app_state.slice(ApprovalStateSlice).store, plan)
-        # Write each decision item's resolved option onto the plan BEFORE
-        # anything reads it. ``decomposition_from_plan`` strips decision ids
-        # from the work items' dependencies because "the decision is already
-        # made by approval time", while ``item_is_done`` asks whether
-        # ``chosen_option_id`` is set: without this write the two disagree, and
-        # an initiative whose decision the operator never clicked can dispatch
-        # every item and still never complete.
-        plan = await record_resolved_decisions(
-            persistence_of(app_state).plans, plan, clock=app_state.clock
-        )
-        # Record the plan's decision-items into the brain before dispatch, so
-        # the company's shaping choices survive the strip-decisions step in
-        # ``decomposition_from_plan`` rather than vanishing when only work items
-        # build. Downstream of the write above, so the brain and the plan can
-        # never name different options.
-        await record_plan_decisions(app_state, plan, decided_by=decided_by)
+        plan = await _record_decisions(app_state, plan, decided_by=decided_by)
         # Connect the graph before any task starts: the project points at the
         # plan it is executing and goes ACTIVE, and the plan enters SKELETON.
         # Ordering is load-bearing -- the tree is filed next, so a rollup event
@@ -411,7 +429,7 @@ async def _prepare_dispatch(
                 approval_id,
                 task_id=task_id,
                 plan_id=plan_id,
-                why="project could not be linked to its plan",
+                why="project could not be linked to its plan and staged",
             )
             return None
         # Rebuild from the durable plan so an operator's edits are exactly what
@@ -452,11 +470,18 @@ async def _link_initiative(app_state: AppState, plan: Plan) -> bool:
     that hand-off, so approval's job ends at making the graph durable.
 
     Returns:
-        Whether the project was linked. A failed link must abort the dispatch:
-        proceeding would run the whole task tree against a project that never
-        learned which plan it is executing, so its progress view would report
-        no plan for the life of the initiative and its status would advance
-        from PLANNING only by an illegal jump.
+        Whether the project was linked AND the plan reached SKELETON. A failed
+        link must abort the dispatch: proceeding would run the whole task tree
+        against a project that never learned which plan it is executing, so its
+        progress view would report no plan for the life of the initiative and
+        its status would advance from PLANNING only by an illegal jump.
+
+        The staging write is reported for a sharper reason. It can be lost (a
+        repeated CAS conflict, a deleted plan), and the loss is silent by
+        design at that seam, so treating it as done files the entire task tree
+        behind a plan still reading APPROVED: the contract stage never opens,
+        and nothing downstream can tell that from a plan that simply has not
+        got there yet.
     """
     persistence = persistence_of(app_state)
     linked = await link_project_to_plan(
@@ -467,10 +492,9 @@ async def _link_initiative(app_state: AppState, plan: Plan) -> bool:
     )
     if linked is None:
         return False
-    await sync_plan_status(
+    return await sync_plan_status(
         app_state, str(plan.id), PlanStatus.SKELETON, requested_by=_DISPATCH_ACTOR
     )
-    return True
 
 
 async def _cancel_task(

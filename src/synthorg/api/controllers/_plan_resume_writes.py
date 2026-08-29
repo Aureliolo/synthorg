@@ -431,7 +431,7 @@ async def sync_plan_status(
     *,
     requested_by: str | None = None,
     failure_reason: NotBlankStr | None = None,
-) -> None:
+) -> bool:
     """Reflect an approval decision onto the durable plan's status.
 
     Routed through :class:`PlanService` so the decision transition gets the
@@ -448,12 +448,19 @@ async def sync_plan_status(
         status: The status to reflect onto it.
         requested_by: Who the transition is attributed to.
         failure_reason: The reason carried on the plan for a failure status.
+
+    Returns:
+        Whether the plan is known to carry *status* now. Reported rather than
+        swallowed because one caller stages an initiative with it: a lost write
+        there leaves the plan at APPROVED while the whole task tree is filed
+        behind it, and a caller that cannot see the loss reports success for a
+        plan that never entered the contract stage.
     """
     if not plan_id:
-        return
+        return False
     service = build_plan_service(persistence_of(app_state), clock=app_state.clock)
     if not await _plan_exists_for_sync(service, plan_id, status):
-        return
+        return False
 
     async def read() -> tuple[Plan, int]:
         # Re-read on each attempt so a retry's CAS uses the current version. A
@@ -486,6 +493,7 @@ async def sync_plan_status(
             target_status=status.value,
             note="plan-status sync skipped: durable plan deleted mid-sync",
         )
+        return False
     except VersionConflictError:
         logger.error(
             APPROVAL_GATE_PLAN_STATUS_SYNC_FAILED,
@@ -496,6 +504,7 @@ async def sync_plan_status(
             note="plan-status sync lost repeated version conflicts; "
             "/plans status diverges from the recorded decision",
         )
+        return False
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(
@@ -507,3 +516,5 @@ async def sync_plan_status(
             error=safe_error_description(exc),
             note="plan-status sync failed; /plans status may lag the decision",
         )
+        return False
+    return True

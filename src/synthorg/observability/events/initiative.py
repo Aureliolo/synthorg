@@ -70,21 +70,44 @@ INITIATIVE_STALL_FOREIGN: Final[str] = "initiative.stall.foreign"
 #: decision or wrote the row underneath it.
 INITIATIVE_STALL_STALE_DECISION: Final[str] = "initiative.stall.stale_decision"
 
+#: A stage's derived task id is occupied by a row the stage never minted. Read
+#: as a failed attempt, so the initiative routes to a replan; named separately
+#: because it is a provenance defect rather than an ordinary failed gate, and
+#: the two are otherwise indistinguishable from the outside.
+STAGE_TASK_ID_OCCUPIED: Final[str] = "initiative.stage.task_id_occupied"
+
 INITIATIVE_SKELETON_SCHEDULED: Final[str] = "initiative.skeleton.scheduled"
 INITIATIVE_SKELETON_STARTED: Final[str] = "initiative.skeleton.started"
 INITIATIVE_SKELETON_DISPATCHED: Final[str] = "initiative.skeleton.dispatched"
 INITIATIVE_SKELETON_SKIPPED: Final[str] = "initiative.skeleton.skipped"
 INITIATIVE_SKELETON_FAILED: Final[str] = "initiative.skeleton.failed"
+#: A settings read failed and the stage ran on its built-in default. Nothing
+#: was skipped, so it is kept apart from ``_SKIPPED``: an operator alerting on
+#: skips would otherwise be paged for a stage that dispatched perfectly well.
+INITIATIVE_SKELETON_SETTINGS_DEGRADED: Final[str] = (
+    "initiative.skeleton.settings_degraded"
+)
 
 INITIATIVE_INTEGRATION_SCHEDULED: Final[str] = "initiative.integration.scheduled"
 INITIATIVE_INTEGRATION_STARTED: Final[str] = "initiative.integration.started"
 INITIATIVE_INTEGRATION_DISPATCHED: Final[str] = "initiative.integration.dispatched"
 INITIATIVE_INTEGRATION_SKIPPED: Final[str] = "initiative.integration.skipped"
 INITIATIVE_INTEGRATION_FAILED: Final[str] = "initiative.integration.failed"
+#: The assembly stage's counterpart to the skeleton one above.
+INITIATIVE_INTEGRATION_SETTINGS_DEGRADED: Final[str] = (
+    "initiative.integration.settings_degraded"
+)
 
 INITIATIVE_EVALUATION_SCHEDULED: Final[str] = "initiative.evaluation.scheduled"
 INITIATIVE_EVALUATION_STARTED: Final[str] = "initiative.evaluation.started"
+#: The objective was judged MET and the plan was written COMPLETED. Reserved
+#: for that write, so an operator alerting on "evaluation completed" is not
+#: paged by every unmet verdict as well.
 INITIATIVE_EVALUATION_COMPLETED: Final[str] = "initiative.evaluation.completed"
+#: The evaluation ran and the objective was judged UNMET. A finished judgement
+#: like the one above, and an opposite outcome, so it gets its own name rather
+#: than a kwarg on the completion event.
+INITIATIVE_EVALUATION_UNMET: Final[str] = "initiative.evaluation.unmet"
 INITIATIVE_EVALUATION_SKIPPED: Final[str] = "initiative.evaluation.skipped"
 INITIATIVE_EVALUATION_FAILED: Final[str] = "initiative.evaluation.failed"
 INITIATIVE_EVALUATION_RECORDED: Final[str] = "initiative.evaluation.recorded"

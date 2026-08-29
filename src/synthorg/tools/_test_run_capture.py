@@ -21,7 +21,7 @@ exact forgery this module exists to prevent: an agent whose suite failed could
 run ``echo pytest`` and flip the oracle from blocked to verified.
 
 Whether a compound line's exit status still implies its runner's own is a
-separate question, answered by :mod:`synthorg.tools._command_conjunction`: this
+separate question, answered by :mod:`synthorg.core.shell_semantics`: this
 module asks what each command IS, and asks it only of the commands that question
 has already vouched for.
 
@@ -41,6 +41,7 @@ from typing import Final
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.execution_identity import current_execution_identity
+from synthorg.core.shell_semantics import conjunctive_commands
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.deliverable_receipts import (
     TEST_RUN_RECORD_FAILED,
@@ -51,7 +52,6 @@ from synthorg.persistence.code_execution_protocol import (
     CodeExecutionRecord,
     CodeExecutionRecordRepository,
 )
-from synthorg.tools._command_conjunction import conjunctive_commands
 from synthorg.tools._declared_gate_runs import declared_gate_purpose
 from synthorg.tools.sandbox.result import SandboxResult
 

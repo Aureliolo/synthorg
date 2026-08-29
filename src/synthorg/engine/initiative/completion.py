@@ -296,9 +296,9 @@ ITEM_DERIVED_STALLS: Final[frozenset[StallReason]] = frozenset(
     {StallReason.ALL_FAILED, StallReason.BLOCKED, StallReason.MIXED_DEAD}
 )
 
-#: The tail stage each stage-derived verdict came from. A plan that has left
-#: that stage has been dealt with (a human replanned it, or the stage re-ran),
-#: so the verdict is stale.
+#: The stage each stage-derived verdict came from. A plan that has left that
+#: stage has been dealt with (a human replanned it, or the stage re-ran), so
+#: the verdict is stale.
 #:
 #: Declared here, beside the set that decides which branch applies, because
 #: every re-confirmation of a stall needs both halves and two copies of the
@@ -307,6 +307,7 @@ ITEM_DERIVED_STALLS: Final[frozenset[StallReason]] = frozenset(
 #: "recovered" and silently drops the decision.
 STAGE_OF_STALL_REASON: Final[Mapping[StallReason, PlanStatus]] = MappingProxyType(
     {
+        StallReason.SKELETON_FAILED: PlanStatus.SKELETON,
         StallReason.INTEGRATION_FAILED: PlanStatus.INTEGRATING,
         StallReason.EVALUATION_UNMET: PlanStatus.EVALUATING,
     }

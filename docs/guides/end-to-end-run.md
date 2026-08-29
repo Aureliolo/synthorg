@@ -180,7 +180,9 @@ to reproduce a line you already have.
 | decomposition | one planning session, roster-bound owners, a graph with edges |
 | plan review | a panel with real verdicts, or a recorded reason there were none |
 | approval | the plan reaches `pending_review` with a decidable persisted approval |
-| dispatch | one task per work item, each with a declared artifact, each assigned before its wave |
+| SKELETON | one contract task, `plan_id` set, `plan_item_id` null, created by `initiative-skeleton`; the plan sits at `skeleton` and no unit is dispatched |
+| SKELETON gate | the contract job commits a module layout, one pending test per criterion, and a manifest declaring the project's gates; its suite fails by design and still passes the gate |
+| dispatch | only after the contract passed: one task per work item, each with a declared artifact, each assigned before its wave |
 | execution | artifacts appear; a run that produces none fails rather than passing |
 | review gate | the completion gates run per task, and no agent reviews itself |
 | rollup | every item done drives `executing -> integrating` |

@@ -141,6 +141,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_signing_identity_pins.py` | push | `.github/workflows/` + `.github/actions/` + `.github/scripts/` + `selfupdate/sigstore.go` + `verify/identity.go` | full | no | none | add |
 | `check_single_planning_strategy_writer.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_skeleton_stage_paths.py` | push | `core/plan_transitions.py` + `workspace/environment/manifest.py` | full | no | none | add |
+| `check_stall_reason_maps_total.py` | push | `engine/initiative/completion.py` + `engine/initiative/replan_brief.py` | full | no | none | add |
 | `check_state_slice_immutability.py` | push | `src/synthorg/` | full | no | `_state_slice_immutability_baseline.txt` | harden |
 | `check_strategy_protocol_injection.py` | push | `src/synthorg/` | full | no | `_strategy_protocol_injection_baseline.txt` | harden |
 | `check_subsystem_decline_reason.py` | push | `api/subsystems/registry.py` + activation chain | full | no | none | add |

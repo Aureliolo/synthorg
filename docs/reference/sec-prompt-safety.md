@@ -83,6 +83,30 @@ Never call `lxml.html.fromstring` directly on attacker-controlled input. Use `HT
 
 `sanitize()` catches `XXEDetectedError` explicitly so the pre-scan's `TOOL_HTML_PARSE_XXE_DETECTED` event is the single log entry per rejection (no duplicate `TOOL_HTML_PARSE_ERROR`). Generic parse failures log `error=safe_error_description(exc)` without `exc_info=True` so attacker-controlled payload bytes are not serialised via traceback frame locals.
 
+## Pending-test report parsing
+
+The second XML surface, and the same threat class as the HTML one. The
+build/test oracle classifies a skeleton's declared-pending criteria from a
+machine-readable test report, and both the report's PATH and its BYTES come
+from a file inside a workspace an agent writes, so neither is trusted even
+though the manifest is the authority on what is pending.
+`engine/workspace/environment/pending.py::_read_report` therefore:
+
+1. Resolves the declared path and refuses one that escapes the workspace
+   (`is_relative_to` after `resolve()`, so a symlink out is refused too),
+   logging `ENVIRONMENT_PENDING_REPORT_ESCAPED`.
+2. Refuses anything that is not a regular file. A named pipe passes every path
+   check and then blocks the parse for ever, which on this call path is the
+   API's own event loop.
+3. Refuses a file over `_MAX_REPORT_BYTES`, because the parser builds a tree and
+   an unbounded one is a memory ceiling the agent picks.
+4. Parses with `defusedxml.ElementTree`, never the stdlib parser, so an expanded
+   external entity cannot read the backend's filesystem on the agent's behalf.
+
+Every refusal classifies the run's pending criteria RED and logs
+`ENVIRONMENT_PENDING_REPORT_UNREADABLE` with a `reason`; none of them raises,
+because a report nobody can read is a rework round rather than an outage.
+
 ## Secret-log redaction
 
 NEVER use these patterns, anywhere in the codebase:

@@ -3,14 +3,24 @@
 Two questions the exit status cannot answer, pointing opposite ways: whether a
 failing run is the failure the project declared in advance, and whether a
 passing run left its own criterion still marked unimplemented.
+
+Plus the two narrowings that stop the first question being an escape hatch. The
+declaration only counts for criteria the plan was approved with, and only
+against a report at least as new as the run being judged.
 """
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from synthorg.engine.completion_oracle.pending_forgiveness import (
+    ContractState,
+    ContractView,
+    approved_vocabulary,
+    declared_gates,
     failure_was_declared,
+    load_contract,
     unclaimed_criteria,
 )
 from synthorg.engine.workspace.environment.config import DEFAULT_MANIFEST_FILENAME
@@ -21,6 +31,12 @@ _PROJECT = "proj-1"
 _TEST_ID = "tests/test_score.py::test_a_score_is_recorded"
 _CRITERION = "A score is recorded."
 _REPORT = "reports/junit.xml"
+_APPROVED = approved_vocabulary([_CRITERION])
+
+#: Every report these tests write is stamped now, and the run being judged is
+#: dated before it, so freshness never accidentally decides a case that is
+#: about something else.
+_RAN_AT = datetime(2026, 1, 1, tzinfo=UTC)
 
 _MANIFEST = f"""\
 language: python
@@ -49,6 +65,15 @@ def _write(base: Path, name: str, body: str) -> None:
     path.write_text(body, encoding="utf-8")
 
 
+async def _contract(base: Path | None) -> ContractView:
+    """Read the project's contract the way the oracle does.
+
+    Returns:
+        The contract view every question is answered from.
+    """
+    return await load_contract(workspace_root=base, project_id=_PROJECT)
+
+
 def _report(*cases: str) -> str:
     """Build a JUnit document out of pre-rendered ``testcase`` elements.
 
@@ -58,16 +83,28 @@ def _report(*cases: str) -> str:
     return f'<testsuite name="pytest">{"".join(cases)}</testsuite>'
 
 
+def _case(module: str, name: str, outcome: str) -> str:
+    """Render one ``testcase`` the way pytest writes it.
+
+    ``classname`` is the dotted module path and the file lives in its own
+    attribute, which is what the node id is rebuilt from.
+
+    Returns:
+        One ``testcase`` element.
+    """
+    return (
+        f'<testcase classname="tests.{module}" file="tests/{module}.py" '
+        f'name="{name}">{outcome}</testcase>'
+    )
+
+
 def _pending_case(outcome: str) -> str:
     """Render the declared pending test's case, ending with *outcome*.
 
     Returns:
         One ``testcase`` element.
     """
-    return (
-        '<testcase classname="tests/test_score.py" '
-        f'name="test_a_score_is_recorded">{outcome}</testcase>'
-    )
+    return _case("test_score", "test_a_score_is_recorded", outcome)
 
 
 def _other_case(outcome: str) -> str:
@@ -76,17 +113,14 @@ def _other_case(outcome: str) -> str:
     Returns:
         One ``testcase`` element.
     """
-    return (
-        '<testcase classname="tests/test_other.py" '
-        f'name="test_something_else">{outcome}</testcase>'
-    )
+    return _case("test_other", "test_something_else", outcome)
 
 
 _ASSERTION_FAILURE = '<failure message="assert 0 == 1"/>'
 
 
 class TestWhetherAFailureWasDeclared:
-    def test_a_suite_failing_only_its_pending_tests_is_forgiven(
+    async def test_a_suite_failing_only_its_pending_tests_is_forgiven(
         self, tmp_path: Path
     ) -> None:
         """The whole point: a correct skeleton exits non-zero by design.
@@ -98,9 +132,13 @@ class TestWhetherAFailureWasDeclared:
         _write(base, DEFAULT_MANIFEST_FILENAME, _MANIFEST)
         _write(base, _REPORT, _report(_pending_case(_ASSERTION_FAILURE)))
 
-        assert failure_was_declared(workspace_root=base, project_id=_PROJECT) is True
+        declared = failure_was_declared(
+            await _contract(base), approved=_APPROVED, not_before=_RAN_AT
+        )
 
-    def test_an_ordinary_test_breaking_alongside_them_is_not_forgiven(
+        assert declared is True
+
+    async def test_an_ordinary_test_breaking_alongside_them_is_not_forgiven(
         self, tmp_path: Path
     ) -> None:
         """The exit status cannot say this: the pending failures spent it.
@@ -120,22 +158,36 @@ class TestWhetherAFailureWasDeclared:
             ),
         )
 
-        assert failure_was_declared(workspace_root=base, project_id=_PROJECT) is False
+        declared = failure_was_declared(
+            await _contract(base), approved=_APPROVED, not_before=_RAN_AT
+        )
 
-    def test_a_pending_test_that_errored_is_not_forgiven(self, tmp_path: Path) -> None:
+        assert declared is False
+
+    async def test_a_pending_test_that_errored_is_not_forgiven(
+        self, tmp_path: Path
+    ) -> None:
         """A skeleton that does not import is wrong, not merely unimplemented."""
         base = _workspace(tmp_path)
         _write(base, DEFAULT_MANIFEST_FILENAME, _MANIFEST)
         _write(base, _REPORT, _report(_pending_case('<error message="ImportError"/>')))
 
-        assert failure_was_declared(workspace_root=base, project_id=_PROJECT) is False
+        declared = failure_was_declared(
+            await _contract(base), approved=_APPROVED, not_before=_RAN_AT
+        )
 
-    def test_a_missing_report_forgives_nothing(self, tmp_path: Path) -> None:
+        assert declared is False
+
+    async def test_a_missing_report_forgives_nothing(self, tmp_path: Path) -> None:
         """Without the report nothing was measured, so nothing is evidence."""
         base = _workspace(tmp_path)
         _write(base, DEFAULT_MANIFEST_FILENAME, _MANIFEST)
 
-        assert failure_was_declared(workspace_root=base, project_id=_PROJECT) is False
+        declared = failure_was_declared(
+            await _contract(base), approved=_APPROVED, not_before=_RAN_AT
+        )
+
+        assert declared is False
 
     @pytest.mark.parametrize(
         ("manifest", "reason"),
@@ -152,7 +204,7 @@ class TestWhetherAFailureWasDeclared:
             ),
         ],
     )
-    def test_nothing_to_forgive_leaves_the_failure_standing(
+    async def test_nothing_to_forgive_leaves_the_failure_standing(
         self, tmp_path: Path, manifest: str | None, reason: str
     ) -> None:
         """A present-but-broken manifest is a defect its author has to fix.
@@ -166,15 +218,151 @@ class TestWhetherAFailureWasDeclared:
         if manifest is not None:
             _write(base, DEFAULT_MANIFEST_FILENAME, manifest)
 
-        assert failure_was_declared(workspace_root=base, project_id=_PROJECT) is False
+        declared = failure_was_declared(
+            await _contract(base), approved=_APPROVED, not_before=_RAN_AT
+        )
 
-    def test_an_unwired_workspace_forgives_nothing(self) -> None:
+        assert declared is False
+
+    async def test_an_unwired_workspace_forgives_nothing(self) -> None:
         """Guessing at a workspace is worse than leaving the failure standing."""
-        assert failure_was_declared(workspace_root=None, project_id=_PROJECT) is False
+        declared = failure_was_declared(
+            await _contract(None), approved=_APPROVED, not_before=_RAN_AT
+        )
+
+        assert declared is False
+
+
+class TestForgivenessIsBoundToTheApprovedCriteria:
+    """An entry naming a criterion nobody approved declares nothing.
+
+    The two questions key on different fields, which is what made this
+    exploitable: forgiveness reads the test id, strictness reads the free-form
+    criterion text. So one appended entry naming an invented criterion and the
+    agent's own failing test bought a passing verdict, and it scaled to an
+    arbitrarily red build.
+    """
+
+    async def test_an_invented_criterion_does_not_forgive_its_test(
+        self, tmp_path: Path
+    ) -> None:
+        base = _workspace(tmp_path)
+        _write(
+            base,
+            DEFAULT_MANIFEST_FILENAME,
+            f"""\
+language: python
+test_command: pytest
+test_report_path: {_REPORT}
+pending:
+  - criterion: deferred polish item
+    test_id: tests/test_other.py::test_something_else
+""",
+        )
+        _write(
+            base,
+            _REPORT,
+            _report(_other_case('<failure message="assert 2 == 3"/>')),
+        )
+
+        declared = failure_was_declared(
+            await _contract(base), approved=_APPROVED, not_before=_RAN_AT
+        )
+
+        assert declared is False
+
+    async def test_an_invented_entry_alongside_a_real_one_breaks_the_run(
+        self, tmp_path: Path
+    ) -> None:
+        """Not merely unforgiven: its test becomes an ordinary break.
+
+        Declining to help would still leave the genuine pending failures
+        forgivable, so the forged entry would cost the agent nothing. Read as
+        an unrelated failure, the appended entry makes the whole run
+        un-forgivable, which is what turns the forge into a refusal.
+        """
+        base = _workspace(tmp_path)
+        _write(
+            base,
+            DEFAULT_MANIFEST_FILENAME,
+            f"""\
+language: python
+test_command: pytest
+test_report_path: {_REPORT}
+pending:
+  - criterion: a score is recorded
+    test_id: {_TEST_ID}
+  - criterion: deferred polish item
+    test_id: tests/test_other.py::test_something_else
+""",
+        )
+        _write(
+            base,
+            _REPORT,
+            _report(
+                _pending_case(_ASSERTION_FAILURE),
+                _other_case('<failure message="assert 2 == 3"/>'),
+            ),
+        )
+
+        declared = failure_was_declared(
+            await _contract(base), approved=_APPROVED, not_before=_RAN_AT
+        )
+
+        assert declared is False
+
+    async def test_an_unknown_vocabulary_forgives_nothing(self, tmp_path: Path) -> None:
+        """No plan to read is not permission; it is the absence of one."""
+        base = _workspace(tmp_path)
+        _write(base, DEFAULT_MANIFEST_FILENAME, _MANIFEST)
+        _write(base, _REPORT, _report(_pending_case(_ASSERTION_FAILURE)))
+
+        declared = failure_was_declared(
+            await _contract(base), approved=frozenset(), not_before=_RAN_AT
+        )
+
+        assert declared is False
+
+
+class TestTheReportMustSpeakForThisRun:
+    """One report path is shared by every unit and every attempt.
+
+    Nothing rewrites it when a run dies before producing one, so a unit whose
+    suite timed out would otherwise have the skeleton's own leftover report
+    read against it and its failing run forgiven.
+    """
+
+    async def test_a_report_older_than_the_run_is_not_evidence(
+        self, tmp_path: Path
+    ) -> None:
+        base = _workspace(tmp_path)
+        _write(base, DEFAULT_MANIFEST_FILENAME, _MANIFEST)
+        _write(base, _REPORT, _report(_pending_case(_ASSERTION_FAILURE)))
+
+        declared = failure_was_declared(
+            await _contract(base),
+            approved=_APPROVED,
+            not_before=datetime.now(tz=UTC) + timedelta(hours=1),
+        )
+
+        assert declared is False
+
+    async def test_asking_for_no_correlation_still_reads_the_report(
+        self, tmp_path: Path
+    ) -> None:
+        base = _workspace(tmp_path)
+        _write(base, DEFAULT_MANIFEST_FILENAME, _MANIFEST)
+        _write(base, _REPORT, _report(_pending_case(_ASSERTION_FAILURE)))
+
+        declared = failure_was_declared(
+            await _contract(base), approved=_APPROVED, not_before=None
+        )
+
+        assert declared is True
 
 
 class TestWhichCriteriaAreStillUnclaimed:
-    def test_a_criterion_still_listed_is_reported(self, tmp_path: Path) -> None:
+    async def test_a_criterion_still_listed_is_reported(self, tmp_path: Path) -> None:
         """Clearing the entry in the same commit is the signal a unit is done.
 
         The suite exits zero either way, so nothing but this reading can catch
@@ -184,9 +372,7 @@ class TestWhichCriteriaAreStillUnclaimed:
         base = _workspace(tmp_path)
         _write(base, DEFAULT_MANIFEST_FILENAME, _MANIFEST)
 
-        assert unclaimed_criteria(
-            [_CRITERION], workspace_root=base, project_id=_PROJECT
-        ) == (_CRITERION,)
+        assert unclaimed_criteria(await _contract(base), [_CRITERION]) == (_CRITERION,)
 
     @pytest.mark.parametrize(
         "spelling",
@@ -197,7 +383,7 @@ class TestWhichCriteriaAreStillUnclaimed:
             pytest.param("a score is recorded!", id="trailing_exclamation"),
         ],
     )
-    def test_the_match_survives_a_respelling(
+    async def test_the_match_survives_a_respelling(
         self, tmp_path: Path, spelling: str
     ) -> None:
         """The task's wording and the manifest's have different authors.
@@ -209,11 +395,9 @@ class TestWhichCriteriaAreStillUnclaimed:
         base = _workspace(tmp_path)
         _write(base, DEFAULT_MANIFEST_FILENAME, _MANIFEST)
 
-        assert unclaimed_criteria(
-            [spelling], workspace_root=base, project_id=_PROJECT
-        ) == (spelling,)
+        assert unclaimed_criteria(await _contract(base), [spelling]) == (spelling,)
 
-    def test_another_units_criterion_is_not_this_units_problem(
+    async def test_another_units_criterion_is_not_this_units_problem(
         self, tmp_path: Path
     ) -> None:
         """Judged per criterion, never per project.
@@ -224,36 +408,50 @@ class TestWhichCriteriaAreStillUnclaimed:
         base = _workspace(tmp_path)
         _write(base, DEFAULT_MANIFEST_FILENAME, _MANIFEST)
 
-        assert (
-            unclaimed_criteria(
-                ["something else entirely"],
-                workspace_root=base,
-                project_id=_PROJECT,
-            )
-            == ()
-        )
+        assert unclaimed_criteria(await _contract(base), ["something else"]) == ()
+
+
+class TestWhetherTheContractCouldBeReadAtAll:
+    """Three states, because they need three different answers."""
 
     @pytest.mark.parametrize(
-        ("manifest", "case_id"),
+        ("manifest", "expected"),
         [
-            pytest.param(None, "no_manifest", id="no_manifest"),
-            pytest.param("language: [unclosed", "broken", id="unparseable"),
+            pytest.param(None, ContractState.ABSENT, id="no_manifest"),
+            pytest.param(
+                "language: [unclosed", ContractState.UNREADABLE, id="unparseable"
+            ),
+            pytest.param(
+                "language: python\nnot_a_field: 1",
+                ContractState.UNREADABLE,
+                id="invalid",
+            ),
+            pytest.param(_MANIFEST, ContractState.READ, id="readable"),
         ],
     )
-    def test_nothing_readable_claims_nothing(
-        self, tmp_path: Path, manifest: str | None, case_id: str
+    async def test_the_state_says_which_it_was(
+        self, tmp_path: Path, manifest: str | None, expected: ContractState
     ) -> None:
-        """A broken manifest must not fail every task in the project.
+        """A broken manifest and an absent one are not the same fact.
 
-        It already forgives nothing on the failing side; blocking green runs
-        as well would make one unparseable file a project-wide outage, which
-        is a worse failure than the one it guards against.
+        Collapsing them is what let one unparseable file waive the pending
+        set, the clear-your-own-marker rule and every declared gate at once,
+        under a verdict indistinguishable from a compliant project's.
         """
         base = _workspace(tmp_path)
         if manifest is not None:
             _write(base, DEFAULT_MANIFEST_FILENAME, manifest)
 
-        assert (
-            unclaimed_criteria([_CRITERION], workspace_root=base, project_id=_PROJECT)
-            == ()
-        )
+        assert (await _contract(base)).state is expected
+
+    async def test_an_unreadable_contract_declares_no_gates(
+        self, tmp_path: Path
+    ) -> None:
+        """The caller blocks on the state; these readers simply have nothing."""
+        base = _workspace(tmp_path)
+        _write(base, DEFAULT_MANIFEST_FILENAME, "language: [unclosed")
+
+        contract = await _contract(base)
+
+        assert declared_gates(contract) == {}
+        assert unclaimed_criteria(contract, [_CRITERION]) == ()

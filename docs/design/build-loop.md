@@ -11,11 +11,12 @@ also describes, this page wins.
 
 !!! warning "Status"
 
-    Designed, not built. The charter gate, worktree isolation, the review gate
-    and the reviewer-independence constraints exist today. Reconnaissance, the
-    skeleton stage, slice planning, the gate system, the finding channel and
-    the machinery budget do not. Driven live against real providers, the
-    current loop has never reached assembly.
+    Partly built. The charter gate, worktree isolation, the review gate, the
+    reviewer-independence constraints and the skeleton stage exist today (see
+    "As implemented" below for what the stage does and does not cover).
+    Reconnaissance, slice planning, the rest of the gate system, the finding
+    channel and the machinery budget do not. Driven live against real
+    providers, the loop before the skeleton stage never reached assembly.
 
 ## The problem
 
@@ -258,6 +259,31 @@ run at all. The oracle reads the project's declaration and decides what a failin
 run means: forgiven when every pending test failed its own assertion and nothing
 else broke, and blocking when a unit's own criterion is still listed pending
 after a green run, which is the direction an exit status cannot see.
+
+Forgiveness is narrowed twice, because the manifest lives in a directory the
+agent writes. An entry only counts when its criterion is one the plan was
+approved with, so an appended entry naming an invented criterion forgives
+nothing and its test reads as an ordinary break; and the report only counts
+when it is at least as new as the run being judged, since one report path is
+shared by every unit and nothing rewrites it when a run dies before producing
+one. A manifest that exists and will not parse blocks the task rather than
+waiving what it was meant to declare.
+
+Which outcome a runner recorded is read from the tag AND the message. A runner
+picks between JUnit's `failure` and `error` by PHASE, not by cause: pytest
+writes `error` only for collection, setup and teardown, so a pending test whose
+body raises `KeyError` is tagged exactly as a lost assertion is. Trusting the
+tag alone would forgive a skeleton that crashes, which is the one outcome the
+pending marker must never cover.
+
+| key | default | purpose |
+| --- | --- | --- |
+| `engine.skeleton_stage_timeout_seconds` | 1800 | ceiling on minting + dispatching the contract job |
+
+The stage gets exactly one attempt per plan. A contract that will not compile is
+a statement about the plan rather than about the agent that tried, so it routes
+to a replan, and a replan is a new plan with its own first attempt; there is no
+edge back into `SKELETON` for the plan that failed.
 
 ### Slice planning
 

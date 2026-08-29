@@ -14,12 +14,12 @@ SKELETON and asserts EXECUTING is then unreachable from APPROVED.
 
 **Every gate the manifest declares is a gate something requires evidence of.**
 The gate configuration is a definition of done, and a definition of done nobody
-enforces is not one: four fields shipped declared and unread, so a project could
-state its coverage floor and its dependency policy and have an agent satisfy
-neither, under a green badge. The rule is that a ``*_command`` field on
-``EnvironmentManifest`` appears in ``declared_gates``, which is what the oracle
-derives its requirements from, so adding a field without a reader fails here
-rather than becoming a knob an operator sets and nothing reads.
+enforces is not one: a field an operator fills in that no requirement reads is
+a project stating how it lints under a badge no linter ever earned. The rule is
+that a ``*_command`` field on ``EnvironmentManifest`` appears in
+``declared_gates``, which is what the oracle derives its requirements from, so a
+field added later without extending the derivation fails here rather than
+becoming a knob an operator sets in vain.
 
 Both owners are checked for existence too, and their loss is exit 2 rather than
 a violation: a transition table that stopped declaring these statuses, or a
@@ -221,6 +221,15 @@ def scan_repo(repo_root: Path) -> tuple[str, ...]:
         )
         raise ValueError(msg)
 
+    return (*_graph_violations(graph), *_gate_field_violations(manifest, read_by_gates))
+
+
+def _graph_violations(graph: dict[str, frozenset[str]]) -> tuple[str, ...]:
+    """Check the contract stage is both unskippable and passable.
+
+    Returns:
+        One message per way the stage stops being a gate.
+    """
     violations: list[str] = []
     if _EXECUTING in graph[_APPROVED]:
         violations.append(
@@ -239,14 +248,23 @@ def scan_repo(repo_root: Path) -> tuple[str, ...]:
             f"{_TRANSITIONS_REL}: {_STATUS_ENUM}.{_SKELETON} cannot reach"
             f" {_STATUS_ENUM}.{_EXECUTING}, so a passing contract strands its plan"
         )
-
-    for field in sorted(_command_fields(manifest) - _NOT_A_GATE - read_by_gates):
-        violations.append(  # noqa: PERF401 -- one message per field, read in order
-            f"{_MANIFEST_REL}: {_MANIFEST_MODEL}.{field} is declared and"
-            f" {_GATES_PROPERTY} does not read it, so a project can declare it"
-            " and nothing will ever require evidence that it ran"
-        )
     return tuple(violations)
+
+
+def _gate_field_violations(
+    manifest: ast.Module, read_by_gates: set[str]
+) -> tuple[str, ...]:
+    """Check every declared gate command is one the oracle requires.
+
+    Returns:
+        One message per command field no gate map reads.
+    """
+    return tuple(
+        f"{_MANIFEST_REL}: {_MANIFEST_MODEL}.{field} is declared and"
+        f" {_GATES_PROPERTY} does not read it, so a project can declare it"
+        " and nothing will ever require evidence that it ran"
+        for field in sorted(_command_fields(manifest) - _NOT_A_GATE - read_by_gates)
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

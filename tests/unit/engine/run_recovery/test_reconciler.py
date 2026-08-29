@@ -26,12 +26,14 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.run_ledger import LiveRunLedger
+from synthorg.engine.initiative.head_stages import SKELETON_ACTOR
 from synthorg.engine.initiative.item_progress import TASK_PAGE_SIZE
 from synthorg.engine.initiative.ports import DriveOutcome
 from synthorg.engine.run_recovery.reconciler import (
     AWAITING_HUMAN_STATUSES,
     DRIVEN_STATUSES,
     RECOVERY_ACTOR,
+    STAGING_STATUSES,
     UNFILLED_STATUSES,
     RunRecoveryReconciler,
 )
@@ -208,6 +210,7 @@ class TestEveryPlanStatusHasAnOwner:
             TERMINAL_STATUSES
             | AWAITING_HUMAN_STATUSES
             | UNFILLED_STATUSES
+            | STAGING_STATUSES
             | DRIVEN_STATUSES
             | STAGE_STATUSES
         )
@@ -220,6 +223,7 @@ class TestEveryPlanStatusHasAnOwner:
             TERMINAL_STATUSES,
             AWAITING_HUMAN_STATUSES,
             UNFILLED_STATUSES,
+            STAGING_STATUSES,
             DRIVEN_STATUSES,
             STAGE_STATUSES,
         )
@@ -336,18 +340,51 @@ class TestReconcile:
         assert recomputed == [str(plan.id)]
         assert report.recomputed == 1
 
-    async def test_a_plan_whose_rows_were_never_filed_is_driven(self) -> None:
-        # The other side of the same test: no rows at all means the dispatch
-        # stopped before writing the tree, so the work is not finished, it was
-        # never filed, and only the drive files it.
+    async def test_an_approved_plan_is_staged_never_driven(self) -> None:
+        """An approved plan has no contract yet, so it has nothing to drive.
+
+        This is the shape the contract stage is supposed to make impossible:
+        approval writes APPROVED several awaits before it writes SKELETON, so
+        a restart in that window leaves a durable APPROVED plan with items and
+        no rows. Read as "everything left to dispatch" it went to the driver,
+        which ran every wave against a contract nothing had written, and the
+        transition table refusing APPROVED -> EXECUTING did not stop it,
+        because nothing gates dispatch on the plan's status.
+        """
         plan = _plan(status=PlanStatus.APPROVED)
         driven: list[str] = []
+        recomputed: list[str] = []
+        saved: list[Plan] = []
+
         report = await _reconciler(
-            persistence=_persistence(plans=[plan], tasks=[]),
+            persistence=_persistence(plans=[plan], tasks=[], saved=saved),
             driven=driven,
+            recomputed=recomputed,
         ).reconcile(trigger="boot")
-        assert driven == [str(plan.id)]
-        assert report.resumed == 1
+
+        assert driven == []
+        assert [written.status for written in saved] == [PlanStatus.SKELETON]
+        assert recomputed == [str(plan.id)]
+        assert report.recomputed == 1
+
+    async def test_a_contested_staging_write_leaves_the_plan_alone(self) -> None:
+        """A conflict is the proof an approval request is still running.
+
+        The sweep takes no claim that request would contend with, so the write
+        is guarded on the version it read and a loss means somebody else has
+        the plan. Failing it instead would destroy an initiative whose
+        approval landed a second earlier.
+        """
+        plan = _plan(status=PlanStatus.APPROVED)
+        recomputed: list[str] = []
+
+        report = await _reconciler(
+            persistence=_persistence(plans=[plan], tasks=[], update_conflicts=True),
+            recomputed=recomputed,
+        ).reconcile(trigger="boot")
+
+        assert recomputed == []
+        assert report.skipped == 1
 
     async def test_a_driver_that_declines_is_reported_as_a_skip(self) -> None:
         # Whether the plan was resumed is the DRIVER's answer, not the
@@ -355,7 +392,13 @@ class TestReconcile:
         # plan whose objective task no longer exists was being rescued on
         # every pass, for ever, while nothing touched it: the one report that
         # would have shown the run was stuck said it was being fixed.
-        plan = _plan(status=PlanStatus.APPROVED)
+        plan = _plan(status=PlanStatus.EXECUTING)
+        stranded = _task(
+            "stranded",
+            status=TaskStatus.CREATED,
+            plan_id=plan.id,
+            plan_item_id=as_uuid("item-1"),
+        )
         asked: list[str] = []
 
         async def _decline(plan: Plan) -> DriveOutcome:
@@ -366,7 +409,7 @@ class TestReconcile:
             del plan
 
         report = await RunRecoveryReconciler(
-            persistence=_persistence(plans=[plan], tasks=[]),
+            persistence=_persistence(plans=[plan], tasks=[stranded]),
             task_engine=_engine(),
             ledger=LiveRunLedger(),
             drive_plan=_decline,
@@ -376,6 +419,56 @@ class TestReconcile:
         assert asked == [str(plan.id)]
         assert report.resumed == 0
         assert report.skipped == 1
+
+    async def test_a_stranded_contract_job_is_requeued(self) -> None:
+        """A stage job carries a plan id and no item id, like the assembly one.
+
+        Admitting only the assembly task is what left this row invisible: the
+        stage read its own persisted IN_PROGRESS as still running on every
+        later pass, so the plan sat at SKELETON with nothing driving it and no
+        exit, which is the exact deadlock this module exists to prevent.
+        """
+        plan = _plan(status=PlanStatus.SKELETON)
+        contract = _task(
+            "contract",
+            status=TaskStatus.IN_PROGRESS,
+            plan_id=plan.id,
+            plan_item_id=None,
+            created_by=SKELETON_ACTOR,
+        )
+        moved: list[str] = []
+
+        report = await _reconciler(
+            persistence=_persistence(plans=[plan], tasks=[contract]),
+            engine=_engine(moved=moved),
+        ).reconcile(trigger="boot")
+
+        assert moved == [f"{contract.id}:{TaskStatus.INTERRUPTED.value}"]
+        assert report.requeued == 1
+
+    async def test_a_foreign_row_on_the_derived_id_is_left_alone(self) -> None:
+        """Provenance decides, not the id shape.
+
+        A row carrying a plan id and no item id that this stage did not mint
+        is not the stage's work, and requeueing it would hand somebody else's
+        task back to a pipeline that never dispatched it.
+        """
+        plan = _plan(status=PlanStatus.SKELETON)
+        foreign = _task(
+            "foreign",
+            status=TaskStatus.IN_PROGRESS,
+            plan_id=plan.id,
+            plan_item_id=None,
+            created_by="somebody-else",
+        )
+        moved: list[str] = []
+
+        await _reconciler(
+            persistence=_persistence(plans=[plan], tasks=[foreign]),
+            engine=_engine(moved=moved),
+        ).reconcile(trigger="boot")
+
+        assert moved == []
 
     async def test_a_requeued_row_makes_the_plan_worth_driving(self) -> None:
         plan = _plan(status=PlanStatus.EXECUTING)

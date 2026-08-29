@@ -42,12 +42,14 @@ any stage, including from either tail stage, which is how a failed integration
 or an unmet success criterion is resolved.
 
 FAILED covers a run that could not be delivered at all: decomposition failed,
-parking the approval failed, or an approved plan could not be dispatched. The
-last is why APPROVED and EXECUTING reach it. Dispatch moves the plan to
-EXECUTING before it builds the task tree, so that the rollup never observes a
-project still PLANNING with tasks already running; a dispatch that then fails
-leaves a plan EXECUTING with a failed parent and no children, which is a state
-with no exit and nobody watching. The edge is what gets it out.
+parking the approval failed, or an approved plan could not be staged. The last
+is why APPROVED, SKELETON and EXECUTING all reach it. Approval moves the plan
+to SKELETON before it builds the task tree, so that the rollup never observes a
+project still PLANNING with tasks already running; a preparation that then
+fails leaves a plan at SKELETON with a failed parent and no children, which is
+a state with no exit and nobody watching. The edges are what get it out, and
+they cover APPROVED too, because the staging write itself can be the step that
+fails.
 
 Both tail stages reach FAILED for the same reason: an assembly that will not
 assemble, or a judgement that cannot run, with no replan routing it anywhere.

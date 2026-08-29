@@ -29,9 +29,9 @@ from synthorg.engine.workspace.environment.image_builder import (
     BuildOutcome,
     ImageBuilder,
 )
-from synthorg.engine.workspace.environment.manifest import (
+from synthorg.engine.workspace.environment.manifest import EnvironmentManifest
+from synthorg.engine.workspace.environment.manifest_strategy import (
     BOOTSTRAP_SCRIPT_NAME,
-    EnvironmentManifest,
     ManifestEnvironmentStrategy,
 )
 from synthorg.engine.workspace.environment.nix import NixEnvironmentStrategy

@@ -448,29 +448,43 @@ class ProjectRollupService:
             # status the winning write itself observed, so a project completed
             # between the two reads cannot swallow the retrospective.
             plan = await self._resolve_stall(plan, items)
-            current = await self._project_status(plan)
-            advance = await advance_project_status(
-                self._persistence.projects,
-                project_id=NotBlankStr(str(plan.project)),
-                target=derive_project_status(plan.status, current=current),
-                ledger=ledger_for(self._persistence, clock=self._clock),
-            )
-            project = advance.project
-            before = advance.before if advance.before is not None else current
-            await advance_objective_task(self._task_engine, plan, items)
-            self._maybe_capture_retro(plan, project, before=before)
-            moved = plan.status is not started_as or (
-                project is not None and project.status is not before
-            )
-            emit = logger.info if moved else logger.debug
-            emit(
-                PROJECT_ROLLUP_COMPLETED,
-                plan_id=str(plan_id),
-                plan_status=plan.status.value,
-                project=str(plan.project),
-                project_status=project.status.value if project else None,
-                item_count=item_count,
-            )
+            await self._reconcile_project(plan, items, started_as, item_count)
+
+    async def _reconcile_project(
+        self,
+        plan: Plan,
+        items: tuple[ItemProgress, ...],
+        started_as: PlanStatus,
+        item_count: int,
+    ) -> None:
+        """Bring the plan's project and objective task into line with it.
+
+        The tail of one recompute: the plan's own status is settled by the time
+        this runs, and everything here derives from it.
+        """
+        current = await self._project_status(plan)
+        advance = await advance_project_status(
+            self._persistence.projects,
+            project_id=NotBlankStr(str(plan.project)),
+            target=derive_project_status(plan.status, current=current),
+            ledger=ledger_for(self._persistence, clock=self._clock),
+        )
+        project = advance.project
+        before = advance.before if advance.before is not None else current
+        await advance_objective_task(self._task_engine, plan, items)
+        self._maybe_capture_retro(plan, project, before=before)
+        moved = plan.status is not started_as or (
+            project is not None and project.status is not before
+        )
+        emit = logger.info if moved else logger.debug
+        emit(
+            PROJECT_ROLLUP_COMPLETED,
+            plan_id=str(plan.id),
+            plan_status=plan.status.value,
+            project=str(plan.project),
+            project_status=project.status.value if project else None,
+            item_count=item_count,
+        )
 
     async def _run_stage(self, plan: Plan, *, reopened: bool) -> Plan:
         """Drive whichever staged job *plan* currently sits in.

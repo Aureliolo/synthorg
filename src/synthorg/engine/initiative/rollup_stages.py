@@ -78,10 +78,12 @@ async def _dispatch_units(
 ) -> Plan:
     """Hand a plan whose contract just passed to the coordinator.
 
-    The three outcomes are deliberately not collapsed. An unwired driver and a
-    driver that already holds the plan are both recoverable and neither is the
-    plan's fault: the recovery sweep classifies EXECUTING as driven and re-asks
-    on its cadence, so the cost is a delay somebody can see. A refusal is not
+    An unwired driver is answered before the driver is asked at all, and the
+    driver's own three outcomes are deliberately not collapsed either. An
+    unwired driver and a driver that already holds the plan are both
+    recoverable and neither is the plan's fault: the recovery sweep classifies
+    EXECUTING as driven and re-asks on its cadence, so the cost is a delay
+    somebody can see. A refusal is not
     recoverable, and leaving it as a delay is how a plan sits at EXECUTING with
     nothing running while a sweep reports rescuing it every pass for ever. So a
     refusal routes to a replan or to a person, which is what a dispatch failure

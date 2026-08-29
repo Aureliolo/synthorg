@@ -234,9 +234,9 @@ async def _seed(
 ) -> tuple[AppState, _Configured, FakePersistenceBackend]:
     """Stand up the approval path with nothing wired that it does not use.
 
-    No coordinator, deliberately. Approval runs no wave any more, so wiring one
-    here would let a test pass while the path secretly reached for it, and the
-    tests below could not tell the two shapes apart.
+    No coordinator, deliberately. Approval runs no wave, so wiring one here
+    would let a test pass while the path secretly reached for it, and the tests
+    below could not tell the two shapes apart.
 
     Returns:
         The app state, the task-engine double, and the persistence backend.
@@ -269,9 +269,9 @@ async def _seed(
             Project(id=as_uuid("proj-1"), name=NotBlankStr("Initiative"))
         )
     if filing_error is not None:
-        # Filing the rebuilt tree is the last write the approval path makes and
-        # the only one a test can fail without reaching into a collaborator the
-        # path no longer has: staging is now persistence writes and nothing else.
+        # Filing the rebuilt tree is the last write the approval path makes,
+        # and staging is persistence writes and nothing else, so this is the
+        # one failure a test can inject without a collaborator to reach for.
         backend.tasks.save_many = AsyncMock(  # type: ignore[method-assign]
             side_effect=filing_error
         )
@@ -660,12 +660,11 @@ class TestPlanReviewResume:
         """A stage that could not be opened is late, not lost.
 
         Opening the stage is the one thing approval does not finish before it
-        answers, so its failure is the one that used to need compensating.
-        It does not any more, and failing the plan here would be actively
-        wrong: SKELETON is a stage status, the recovery sweep recomputes every
-        plan sitting in one on its cadence, and FAILED is terminal, so failing
-        it converts a delay somebody can see into an initiative nothing will
-        ever look at again.
+        answers, and failing the plan on it would be actively wrong: SKELETON
+        is a stage status, the recovery sweep recomputes every plan sitting in
+        one on its cadence, and FAILED is terminal, so failing it converts a
+        delay somebody can see into an initiative nothing will ever look at
+        again.
         """
         parent = _task("parent-1")
         state, engine, backend = await _seed(
@@ -690,12 +689,12 @@ class TestPlanReviewResume:
     async def test_a_stage_opening_cancelled_at_shutdown_does_not_strand_the_plan(
         self,
     ) -> None:
-        """Cancellation is the one exit that used to leave nothing behind.
+        """Cancellation needs no compensation of its own.
 
-        It no longer needs its own compensation, and that is the point: the
-        plan is already durable at SKELETON when the background task starts, so
-        a shutdown drain that kills the recompute leaves a plan the recovery
-        sweep picks up and re-drives. Compensating here instead would fail an
+        The plan is already durable at SKELETON when the background task
+        starts, so a shutdown drain that kills the recompute leaves a plan the
+        recovery sweep picks up and re-drives. Compensating here instead would
+        fail an
         initiative for the sake of a restart, which is an ordinary operator
         action.
         """

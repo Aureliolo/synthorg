@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react'
 
-import type { PlanStatus } from '@/api/types/plans'
+import { PLAN_STATUS_VALUES } from '@/api/types/plans'
 
 import { PlanStatusBadge } from './plan-status-badge'
 
@@ -64,23 +64,11 @@ export const Failed: Story = {
 export const AllStatuses: Story = {
   args: { status: 'pending_review' },
   render: () => (
+    // Derived, not listed: a hand-written copy of the enum shows every status
+    // it happened to know about when it was written, so a status added later
+    // is missing from the one view whose whole job is showing all of them.
     <div className="flex flex-wrap gap-4">
-      {(
-        [
-          'planning',
-          'draft',
-          'pending_review',
-          'approved',
-          'skeleton',
-          'executing',
-          'integrating',
-          'evaluating',
-          'completed',
-          'rejected',
-          'superseded',
-          'failed',
-        ] satisfies PlanStatus[]
-      ).map((s) => (
+      {PLAN_STATUS_VALUES.map((s) => (
         <PlanStatusBadge key={s} status={s} />
       ))}
     </div>

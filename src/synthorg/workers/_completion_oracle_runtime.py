@@ -31,6 +31,7 @@ from synthorg.observability.events.completion_oracle import (
 from synthorg.persistence.state import (
     code_execution_records_of,
     completion_oracle_reports_of,
+    plans_of,
     task_repository_of,
 )
 from synthorg.settings.errors import SettingsError
@@ -163,7 +164,10 @@ def attach_completion_oracle_gates(
         return
     if enabled:
         review_gate_service.set_build_test_gate(
-            BuildTestOracle(workspace_root=agent_workspace_root_of(app_state)),
+            BuildTestOracle(
+                workspace_root=agent_workspace_root_of(app_state),
+                plans=plans_of(app_state),
+            ),
             records=code_execution_records_of(app_state),
         )
     else:

@@ -315,7 +315,8 @@ stateDiagram-v2
     PENDING_REVIEW --> APPROVED
     PENDING_REVIEW --> REJECTED
     PENDING_REVIEW --> FAILED: approval-park failed
-    PENDING_REVIEW --> PENDING_REVIEW: edit / request-changes (new revision)
+    PENDING_REVIEW --> DRAFT: request-changes
+    PENDING_REVIEW --> PENDING_REVIEW: edit (new revision)
     DRAFT --> SUPERSEDED: superseded by a re-plan
     PENDING_REVIEW --> SUPERSEDED: superseded by a re-plan
     APPROVED --> SKELETON: staged

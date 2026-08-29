@@ -82,12 +82,18 @@ def build_skeleton_brief(plan: Plan) -> str:
     """Compose the brief the skeleton task runs against.
 
     The plan's own text is agent-authored and reaches an LLM boundary here, so
-    it is fenced rather than interpolated raw.
+    every span of it is fenced rather than interpolated raw. Only those spans:
+    the instructions around them are the system's own and are the only trusted
+    text in the brief, which is the shape the sibling assembly and replan
+    briefs already use. Wrapping the whole body instead fences the instructions
+    inside the same tag the enclosing prompt tells the model not to follow, so
+    the brief ends up telling the model to disregard the brief.
 
     Returns:
         The brief.
     """
-    body = f"""Objective: {plan.objective_title}
+    objective = wrap_untrusted(TAG_TASK_DATA, str(plan.objective_title))
+    return f"""Objective: {objective}
 
 Write the contract for this objective as code, and stop there. Do not implement
 any of it. Every unit that follows is briefed from what you commit, so the value
@@ -102,7 +108,7 @@ Commit exactly three things.
    fails every check below for a reason nobody can act on.
 
    The tracks this layout has to keep apart:
-{_workstream_block(plan)}
+{wrap_untrusted(TAG_TASK_DATA, _workstream_block(plan))}
 
 2. ONE PENDING TEST PER ACCEPTANCE CRITERION.
    Each test asserts its criterion against the contract and therefore FAILS,
@@ -115,7 +121,7 @@ Commit exactly three things.
    job. Write the assertion so it is reached.
 
    The criteria:
-{_criteria_block(plan)}
+{wrap_untrusted(TAG_TASK_DATA, _criteria_block(plan))}
 
 3. THE GATE CONFIGURATION, in `{MANIFEST_PATH}`.
    How a fresh clone is set up and booted, how it runs its tests, how it lints,
@@ -136,4 +142,3 @@ You are done when those three are committed and the suite runs. You are NOT
 done when the criteria pass: making them pass is the work of the units that
 come after you, and a criterion that already passes here means its test is not
 asserting what it claims."""
-    return wrap_untrusted(TAG_TASK_DATA, body)

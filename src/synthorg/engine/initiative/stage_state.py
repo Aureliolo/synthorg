@@ -34,7 +34,11 @@ from synthorg.core.plan import Plan
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger
+from synthorg.observability.events.initiative import STAGE_TASK_ID_OCCUPIED
 from synthorg.persistence.protocol import PersistenceBackend
+
+logger = get_logger(__name__)
 
 
 class StageOutcome(StrEnum):
@@ -70,7 +74,12 @@ _FAILED_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
 #: means it reached the pipeline and the process running it stopped, which run
 #: recovery records on the row. Neither is a verdict, and reading either as
 #: RUNNING parks the initiative for ever.
-_REDISPATCHABLE_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
+#:
+#: Public because the read and the re-dispatch must agree on it. A stage whose
+#: resume accepts a narrower set answers PENDING for a row it then declines to
+#: hand out, which is a loop: the rollup asks on every pass, the stage says
+#: "already minted", and the row never moves.
+REDISPATCHABLE_STATUSES: Final[frozenset[TaskStatus]] = frozenset(
     {TaskStatus.CREATED, TaskStatus.INTERRUPTED}
 )
 
@@ -189,6 +198,19 @@ async def read_stage_state(
             # that the stage's work was done, so it reads as a failed attempt:
             # the initiative surfaces for a replan rather than skipping the
             # stage on a row the stage never minted.
+            #
+            # Logged here rather than only on the redispatch path, because this
+            # read is what routes the plan: an id collision is a provenance
+            # defect, and without a line it reaches a replan indistinguishable
+            # from an ordinary failed review gate.
+            logger.warning(
+                STAGE_TASK_ID_OCCUPIED,
+                plan_id=str(plan.id),
+                task_id=str(task_id),
+                actor=str(binding.actor),
+                attempt=attempt,
+                reason="task_id_occupied_by_foreign_task",
+            )
             return StageState(
                 attempt=attempt, outcome=StageOutcome.FAILED, task_id=task_id
             )
@@ -202,7 +224,7 @@ async def read_stage_state(
             return StageState(
                 attempt=attempt, outcome=StageOutcome.FAILED, task_id=task_id
             )
-        if task.status in _REDISPATCHABLE_STATUSES:
+        if task.status in REDISPATCHABLE_STATUSES:
             return StageState(
                 attempt=attempt, outcome=StageOutcome.PENDING, task_id=task_id
             )
