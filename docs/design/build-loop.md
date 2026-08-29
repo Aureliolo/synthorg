@@ -340,7 +340,7 @@ a deadlock. See [Single-Owner Decisions](../reference/single-owner-decisions.md)
 | Adding a check to a project-local gate | any agent | never |
 | Editing a check a project-local gate already has | operator, at skeleton review | never |
 | Adding a project-local gate | operator, at skeleton review | never |
-| Changing a central profile, an addition and a promotion into one included | the standards role, at catalogue review | never |
+| Changing a central profile, promotion into one included | the standards role, at catalogue review | never |
 | Loosening or removing a gate, profile or project-local | operator only | never |
 | Whether a unit is done | gates, then the reviewer | operator when review stalls, at `supervised` and stricter |
 | Whether it merges | the system | the author, when the merge conflicts or the trunk goes red |
