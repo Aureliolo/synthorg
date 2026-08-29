@@ -24,7 +24,7 @@ runs:
         # Pinned + Renovate-tracked (mirrors D2_VERSION) so the toolchain is
         # reproducible instead of silently following whatever uv is latest.
         # renovate: datasource=github-releases depName=astral-sh/uv
-        UV_VERSION: "0.12.5"
+        UV_VERSION: "0.12.7"
         # UV_UNMANAGED_INSTALL installs uv to this exact dir AND suppresses the
         # installer's shell-profile / self-update mutation, the right posture
         # on an ephemeral CI runner (PATH is threaded via GITHUB_PATH below,

@@ -170,7 +170,7 @@ recursion-depth-record:
 # would trade a legible failure for a base layer nobody chose. Nothing in CI
 # depends on this target, which downloads the release binary instead.
 # renovate: datasource=docker depName=cgr.dev/chainguard/apko
-APKO_IMAGE := cgr.dev/chainguard/apko:latest@sha256:e398a22baba28db345df4b89c3368b9d43e0f1e559f05476249405cece8e8486
+APKO_IMAGE := cgr.dev/chainguard/apko:latest@sha256:b94253818432d013d96ece3fa4d8fa3930d325ec56d901e3e5edd46f83ed2cd5
 SANDBOX_BASE_TAR := .sandbox-base.tar
 APKO_OUT := .apko-out
 build-sandbox-image:
