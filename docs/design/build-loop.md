@@ -756,3 +756,20 @@ discards a plan; a contract change discards work that is already on the trunk
 and green. Deriving the class from the affected set rather than asking someone
 to estimate it keeps a cheap re-scope cheap, and stops an expensive one being
 filed as a cheap one by whoever wanted it to be.
+
+## Open questions
+
+1. **None of this is validated by a completed run.** The design is reasoned from
+   measured failures rather than proven by a success: driven live, the loop it
+   replaces has never reached assembly. Every mechanism here is a hypothesis
+   about a defect that was observed, not a technique that has been seen to work.
+2. **Slice sizing has no rule.** "Sized to be disposable" is a principle, and
+   the number is the one knob deciding how much gets built wrong between one
+   increment and the next.
+3. **The first skeleton has nothing to check it against.** The booting increment
+   is the only detector of work that is correct and unwanted, and the first
+   contract is written before any increment exists, so the riskiest moment in
+   the loop carries the least protection. The likely answer is that slice one is
+   required to be the thinnest end-to-end path that boots, so the contract meets
+   a person before anything is built on it, but that is a claim about sequencing
+   that nothing here has tested.
