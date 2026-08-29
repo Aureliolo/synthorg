@@ -44,7 +44,7 @@ env:
   # renovate: datasource=github-releases depName=aquasecurity/trivy
   TRIVY_VERSION: "0.74.0"
   # renovate: datasource=github-releases depName=chainguard-dev/apko
-  APKO_VERSION: "v1.2.39"
+  APKO_VERSION: "v1.2.41"
 
 jobs:
   # Detect which domains changed so docs-only PRs skip backend/sandbox builds
@@ -647,7 +647,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24.19.0"
+          node-version: "24.20.0"
           package-manager-cache: false
 
       - name: Set up Python + uv (OpenAPI export + docs build)
@@ -677,7 +677,7 @@ jobs:
       - name: Install D2
         env:
           # renovate: datasource=github-releases depName=terrastruct/d2
-          D2_VERSION: v0.7.1
+          D2_VERSION: v0.8.2
         run: |
           curl -fsSL --connect-timeout 30 --retry 8 --retry-all-errors --retry-max-time 300 "https://github.com/terrastruct/d2/releases/download/${D2_VERSION}/d2-${D2_VERSION}-linux-amd64.tar.gz" -o /tmp/d2.tar.gz
           tar -xzf /tmp/d2.tar.gz -C /tmp
@@ -700,7 +700,7 @@ jobs:
         uses: ./.github/actions/setup-melange
         with:
           # renovate: datasource=github-releases depName=chainguard-dev/melange
-          version: v0.59.1
+          version: v0.59.2
 
       - name: Generate melange signing key
         run: melange keygen
@@ -880,7 +880,7 @@ jobs:
 
       - name: Upload SARIF to GitHub Security (web)
         if: always()
-        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           sarif_file: trivy-web.sarif
           category: trivy-web

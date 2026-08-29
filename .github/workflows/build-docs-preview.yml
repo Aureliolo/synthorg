@@ -143,7 +143,7 @@ jobs:
       - name: Install D2
         env:
           # renovate: datasource=github-releases depName=terrastruct/d2
-          D2_VERSION: v0.7.1
+          D2_VERSION: v0.8.2
         run: |
           curl -fsSL --connect-timeout 30 --retry 8 --retry-all-errors --retry-max-time 300 "https://github.com/terrastruct/d2/releases/download/${D2_VERSION}/d2-${D2_VERSION}-linux-amd64.tar.gz" -o d2.tar.gz
           tar -xzf d2.tar.gz
@@ -208,7 +208,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24.19.0"
+          node-version: "24.20.0"
 
       # The composite retries npm ci on a transient registry blip
       # (superseding the prior nick-fields/retry wrapper) and verifies +
@@ -378,7 +378,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24.19.0"
+          node-version: "24.20.0"
 
       # Inline npm ci (not the install-js-deps composite): this job uses a
       # sparse checkout of only .github/package.json + lockfile from main, so

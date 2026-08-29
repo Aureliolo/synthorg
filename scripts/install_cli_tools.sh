@@ -146,7 +146,7 @@ install_golangci_lint() {
   fi
 
   echo "Installing golangci-lint ${golangci_lint_version}..."
-  go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.1
+  go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
 
   # `go install` writes to GOBIN if set, otherwise GOPATH/bin. Record the actual
   # install target so the PATH-error and version-check branches below can both
@@ -394,7 +394,7 @@ install_lychee() {
 # ---------------------------------------------------------------------------
 
 # renovate: datasource=github-releases depName=errata-ai/vale
-VALE_VERSION="v3.18.0"
+VALE_VERSION="v3.19.0"
 
 # vale --version prints "vale version 3.14.2" (no leading v); the comparator
 # below reattaches the v for parity with the upstream tag form.

@@ -61,10 +61,10 @@ To run the link-checker locally:
 uv run pre-commit run lychee --hook-stage pre-push --all-files
 ```
 
-Install `d2` separately (the docs job pins `v0.7.1`). The quickest path is the upstream installer:
+Install `d2` separately (the docs job pins `v0.8.2`). The quickest path is the upstream installer:
 
 ```bash
-curl -fsSL https://d2lang.com/install.sh | sh -s -- --version v0.7.1
+curl -fsSL https://d2lang.com/install.sh | sh -s -- --version v0.8.2
 ```
 
 On Windows, install via `winget install Terrastruct.d2` or download the release archive from `https://github.com/terrastruct/d2/releases`. Either way, ensure the resulting `d2` binary is on `PATH`; the docs build invokes it directly.
