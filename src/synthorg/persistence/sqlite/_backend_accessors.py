@@ -42,6 +42,9 @@ from synthorg.persistence.auth_protocol import (
     RefreshTokenRepository,
     SessionRepository,
 )
+from synthorg.persistence.background_job_protocol import (
+    BackgroundJobRepository,
+)
 from synthorg.persistence.capability_source_status_protocol import (
     CapabilitySourceStatusRepository,
 )
@@ -238,6 +241,7 @@ class _BackendRepositoryAccessors:
     _capability_source_statuses: CapabilitySourceStatusRepository | None
     _provider_failover_events: ProviderFailoverEventRepository | None
     _tracked_containers: TrackedContainerRepository | None
+    _background_jobs: BackgroundJobRepository | None
     _connections: ConnectionRepository | None
     _connection_secrets: ConnectionSecretRepository | None
     _oauth_states: OAuthStateRepository | None
@@ -672,6 +676,14 @@ class _BackendRepositoryAccessors:
         return self._require_connected(
             self._tracked_containers,
             "tracked_containers",
+        )
+
+    @property
+    def background_jobs(self) -> BackgroundJobRepository:
+        """Repository for backgrounded shell job records."""
+        return self._require_connected(
+            self._background_jobs,
+            "background_jobs",
         )
 
     @property

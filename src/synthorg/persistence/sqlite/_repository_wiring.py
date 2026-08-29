@@ -48,6 +48,9 @@ from synthorg.persistence.sqlite.audit_chain_repo import (
 from synthorg.persistence.sqlite.audit_repository import (
     SQLiteAuditRepository,
 )
+from synthorg.persistence.sqlite.background_job_repo import (
+    SQLiteBackgroundJobRepository,
+)
 from synthorg.persistence.sqlite.capability_source_status_repo import (
     SQLiteCapabilitySourceStatusRepository,
 )
@@ -320,6 +323,7 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._capability_source_statuses = None
         self._provider_failover_events = None
         self._tracked_containers = None
+        self._background_jobs = None
         self._project_cost_aggregates = None
         self._fine_tune_checkpoints = None
         self._fine_tune_runs = None
@@ -577,6 +581,10 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._tracked_containers = SQLiteTrackedContainerRepository(
+            self._db,
+            write_context=self.write_context,
+        )
+        self._background_jobs = SQLiteBackgroundJobRepository(
             self._db,
             write_context=self.write_context,
         )
