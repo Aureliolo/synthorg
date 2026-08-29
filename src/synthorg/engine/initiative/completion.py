@@ -37,6 +37,8 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.plan_enums import (
+    HEAD_STATUSES,
+    STAGE_STATUSES,
     TAIL_STATUSES,
     TERMINAL_STATUSES,
     PlanItemKind,
@@ -91,7 +93,14 @@ _DEAD_BY_FAILURE: Final[frozenset[TaskStatus]] = frozenset(
 #: one-for-one so the cockpit distinguishes building from assembling from
 #: scoring; a plan status absent here is not yet dispatched, and leaves the
 #: project where it is.
+#:
+#: SKELETON maps to ACTIVE rather than to a project status of its own. Writing
+#: the contract IS work on the project, and the operator's question at this
+#: point is answered by the plan page rather than by a fourth project state:
+#: the tail's own states earn theirs because a project can sit in them for a
+#: long time with nothing else running, which is not true here.
 _PLAN_TO_PROJECT_STATUS: Final[dict[PlanStatus, ProjectStatus]] = {
+    PlanStatus.SKELETON: ProjectStatus.ACTIVE,
     PlanStatus.EXECUTING: ProjectStatus.ACTIVE,
     PlanStatus.INTEGRATING: ProjectStatus.INTEGRATING,
     PlanStatus.EVALUATING: ProjectStatus.EVALUATING,
@@ -104,12 +113,14 @@ _PLAN_TO_PROJECT_STATUS: Final[dict[PlanStatus, ProjectStatus]] = {
 }
 
 # The mirror is hand-maintained across three files, so it is checked at import
-# rather than only by a test somebody has to remember to run: a tail stage
-# added to PlanStatus without a project counterpart would otherwise park every
-# project one stage behind its plan, silently.
-if not _PLAN_TO_PROJECT_STATUS.keys() >= TAIL_STATUSES:
-    _MISSING = sorted(s.value for s in TAIL_STATUSES - _PLAN_TO_PROJECT_STATUS.keys())
-    _MIRROR_ERROR = f"tail statuses missing a project counterpart: {_MISSING}"
+# rather than only by a test somebody has to remember to run: a stage added to
+# PlanStatus without a project counterpart would otherwise park every project
+# one stage behind its plan, silently. Every stage is covered, head as well as
+# tail: the head stage was added later and would have been the first thing this
+# check did not watch.
+if not _PLAN_TO_PROJECT_STATUS.keys() >= STAGE_STATUSES:
+    _MISSING = sorted(s.value for s in STAGE_STATUSES - _PLAN_TO_PROJECT_STATUS.keys())
+    _MIRROR_ERROR = f"stage statuses missing a project counterpart: {_MISSING}"
     raise ImportError(_MIRROR_ERROR)
 
 #: Project statuses the rollup will not move away from. COMPLETED and
@@ -259,15 +270,21 @@ class StallReason(StrEnum):
     ``BLOCKED``: every outstanding item is stuck behind something the org
     cannot clear itself. ``MIXED_DEAD``: some of each.
 
-    The last two are tail-stage verdicts, invisible to any derivation over
-    items (every item is done in both cases). ``INTEGRATION_FAILED``: the
-    pieces were built but do not assemble into a working whole.
-    ``EVALUATION_UNMET``: the whole runs but does not meet the objective.
+    The last three are stage verdicts, invisible to any derivation over items.
+    ``SKELETON_FAILED``: the contract could not be written as code, which is a
+    statement about the plan rather than about the agent that tried, and it is
+    invisible for the opposite reason to the other two: no item has been
+    dispatched yet, so there is nothing to derive from at all.
+    ``INTEGRATION_FAILED``: the pieces were built but do not assemble into a
+    working whole. ``EVALUATION_UNMET``: the whole runs but does not meet the
+    objective. In both of those every item is done, which is why an
+    item-derived stall cannot see them either.
     """
 
     ALL_FAILED = "all_failed"
     BLOCKED = "blocked"
     MIXED_DEAD = "mixed_dead"
+    SKELETON_FAILED = "skeleton_failed"
     INTEGRATION_FAILED = "integration_failed"
     EVALUATION_UNMET = "evaluation_unmet"
 
@@ -279,9 +296,9 @@ ITEM_DERIVED_STALLS: Final[frozenset[StallReason]] = frozenset(
     {StallReason.ALL_FAILED, StallReason.BLOCKED, StallReason.MIXED_DEAD}
 )
 
-#: The tail stage each stage-derived verdict came from. A plan that has left
-#: that stage has been dealt with (a human replanned it, or the stage re-ran),
-#: so the verdict is stale.
+#: The stage each stage-derived verdict came from. A plan that has left that
+#: stage has been dealt with (a human replanned it, or the stage re-ran), so
+#: the verdict is stale.
 #:
 #: Declared here, beside the set that decides which branch applies, because
 #: every re-confirmation of a stall needs both halves and two copies of the
@@ -290,6 +307,7 @@ ITEM_DERIVED_STALLS: Final[frozenset[StallReason]] = frozenset(
 #: "recovered" and silently drops the decision.
 STAGE_OF_STALL_REASON: Final[Mapping[StallReason, PlanStatus]] = MappingProxyType(
     {
+        StallReason.SKELETON_FAILED: PlanStatus.SKELETON,
         StallReason.INTEGRATION_FAILED: PlanStatus.INTEGRATING,
         StallReason.EVALUATION_UNMET: PlanStatus.EVALUATING,
     }
@@ -452,13 +470,21 @@ def derive_plan_status(
     "every item is done" is vacuously true and must not be treated as
     progress.
 
+    A plan in the head stage is left alone unconditionally. Its items exist but
+    none has been dispatched, and the skeleton stage advances it on its own
+    task's outcome, so deriving anything here would be a second owner for that
+    hop. The guard is explicit rather than left to the fall-through, because
+    the fall-through only holds while ``all_done`` is false: a plan whose items
+    were somehow all already done would otherwise derive ``INTEGRATING`` and
+    skip the contract entirely.
+
     Returns:
         ``INTEGRATING`` when a plan with items has every one done;
         ``EXECUTING`` when a tail-stage plan has an item no longer done;
-        otherwise *current* unchanged (including for a terminal plan, which
-        the rollup never reopens).
+        otherwise *current* unchanged (including for a head-stage plan and for
+        a terminal one, which the rollup never reopens).
     """
-    if current in TERMINAL_STATUSES:
+    if current in TERMINAL_STATUSES or current in HEAD_STATUSES:
         return current
     all_done = bool(items) and all(item_is_done(item) for item in items)
     if current in TAIL_STATUSES:

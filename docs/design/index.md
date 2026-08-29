@@ -183,7 +183,7 @@ configuration reference.
 | **Skill** | A capability an agent possesses (coding, writing, analysis, design, etc.) |
 | **Task** | A unit of work assigned to one or more agents |
 | **Project** | An initiative with a goal, deadline, and assigned team, executing one plan whose items become tasks. Its status advances from that work (see [Project lifecycle](project-lifecycle.md)) |
-| **Plan** | The reviewed decomposition of an objective into ordered items; approving one dispatches its work items as tasks (see [Plan Review](plan-review.md)) |
+| **Plan** | The reviewed decomposition of an objective into ordered items; approving one stages a contract before its work items dispatch as tasks (see [Plan Review](plan-review.md)) |
 | **Artifact** | Any output produced by agents: code, documents, designs, reports, etc. |
 
 ## Entity Relationships

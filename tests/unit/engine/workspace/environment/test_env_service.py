@@ -13,7 +13,9 @@ from synthorg.core.project_environment import ProjectEnvironment
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import EnvironmentConfigError, EnvironmentProvisionError
 from synthorg.engine.workspace.environment.config import EnvironmentConfig
-from synthorg.engine.workspace.environment.manifest import ManifestEnvironmentStrategy
+from synthorg.engine.workspace.environment.manifest_strategy import (
+    ManifestEnvironmentStrategy,
+)
 from synthorg.engine.workspace.environment.protocol import (
     CommandOutcome,
     ProvisionedEnvironment,

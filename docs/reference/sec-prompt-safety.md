@@ -83,6 +83,50 @@ Never call `lxml.html.fromstring` directly on attacker-controlled input. Use `HT
 
 `sanitize()` catches `XXEDetectedError` explicitly so the pre-scan's `TOOL_HTML_PARSE_XXE_DETECTED` event is the single log entry per rejection (no duplicate `TOOL_HTML_PARSE_ERROR`). Generic parse failures log `error=safe_error_description(exc)` without `exc_info=True` so attacker-controlled payload bytes are not serialised via traceback frame locals.
 
+## Pending-test report parsing
+
+The second XML surface, and the same threat class as the HTML one. The
+build/test oracle classifies a skeleton's declared-pending criteria from a
+machine-readable test report, and both the report's PATH and its BYTES come
+from a file inside a workspace an agent writes, so neither is trusted even
+though the manifest is the authority on what is pending.
+`engine/workspace/environment/pending_report.py::read_report` therefore:
+
+1. Resolves the declared path and refuses one that escapes the workspace
+   (`is_relative_to` after `resolve()`, so a symlink out is refused too),
+   logging `ENVIRONMENT_PENDING_REPORT_ESCAPED`.
+2. Opens it by DESCENDING from the workspace root one component at a time, each
+   with `O_DIRECTORY | O_NOFOLLOW`. `O_NOFOLLOW` constrains only the last
+   component of the name it is handed, so opening the resolved path in a single
+   call leaves every directory above the report free to be a symlink the agent
+   swapped in after step 1 read the tree; descending puts each component in that
+   last position in turn. Windows implements no `dir_fd` and degrades to opening
+   the resolved path, which is honest rather than partial: the workspaces an
+   agent writes to are Linux containers, and that is where the swap is
+   reachable at all.
+3. Refuses anything that is not a regular file, asked of the DESCRIPTOR rather
+   than of the path. A named pipe passes every path check and then blocks the
+   parse for ever, which on this call path is the API's own event loop.
+4. Refuses a report over `_MAX_REPORT_BYTES` by bounding the READ at that many
+   bytes plus one, never by measuring the file and then parsing it: a size taken
+   off the descriptor describes the file at that instant and binds nothing the
+   parser goes on to pull from it, so a file appended to in between would be
+   parsed whole. One owner of the limit, and it is the one that cannot be
+   overtaken. The parser builds a tree, and an unbounded one is a memory ceiling
+   the agent picks.
+5. Parses with `defusedxml.ElementTree` from the bytes already taken, never the
+   stdlib parser and never the live descriptor, so an expanded external entity
+   cannot read the backend's filesystem on the agent's behalf and the tree is
+   built from exactly what the ceiling was applied to.
+
+Every refusal classifies the run's pending criteria RED, and none of them
+raises, because a report nobody can read is a rework round rather than an
+outage. Which event carries it depends on the refusal: a path leaving the
+workspace logs `ENVIRONMENT_PENDING_REPORT_ESCAPED`, while everything else logs
+`ENVIRONMENT_PENDING_REPORT_UNREADABLE`, naming a `reason` when this module
+decided (no report declared, not a regular file, too large, older than the run)
+and an `error_type` when the filesystem or the XML parser did.
+
 ## Secret-log redaction
 
 NEVER use these patterns, anywhere in the codebase:

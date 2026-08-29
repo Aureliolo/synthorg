@@ -7,6 +7,8 @@ through whatever wrapper an agent used, and a trivial script must not be
 able to pass itself off as one.
 """
 
+from pathlib import Path
+
 import pytest
 
 from synthorg.core.clock import Clock
@@ -15,6 +17,7 @@ from synthorg.core.execution_identity import (
     execution_identity_scope,
 )
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.workspace.environment.config import DEFAULT_MANIFEST_FILENAME
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionPurpose,
     CodeExecutionRecord,
@@ -29,6 +32,7 @@ pytestmark = pytest.mark.unit
 
 _COMMAND_LIMIT = 500
 _TAIL_LIMIT = 2000
+_PROJECT = "proj-1"
 
 
 def _result(*, returncode: int = 0, timed_out: bool = False) -> SandboxResult:
@@ -51,12 +55,13 @@ async def _capture(
     *,
     clock: Clock | None = None,
     result: SandboxResult | None = None,
+    workspace_root: Path | None = None,
 ) -> None:
     """Run the capture path for *command* inside a bound execution scope."""
     identity = ExecutionIdentity(
         task_id=NotBlankStr("task-1"),
         execution_id=NotBlankStr("exec-1"),
-        project_id=NotBlankStr("proj-1"),
+        project_id=NotBlankStr(_PROJECT),
     )
     with execution_identity_scope(identity):
         await record_if_test_run(
@@ -66,7 +71,99 @@ async def _capture(
             clock=clock or FakeClock(),
             command_repr_limit=_COMMAND_LIMIT,
             output_tail_limit=_TAIL_LIMIT,
+            workspace_root=workspace_root,
         )
+
+
+def _project_declaring_a_lint_gate(tmp_path: Path) -> Path:
+    """Seed a project whose committed manifest declares a lint command.
+
+    Returns:
+        The workspace root the capture path is handed.
+    """
+    workspace = tmp_path / "projects" / _PROJECT
+    workspace.mkdir(parents=True)
+    (workspace / DEFAULT_MANIFEST_FILENAME).write_text(
+        'language: python\ntest_command: pytest\nlint_command: "ruff check ."\n',
+        encoding="utf-8",
+    )
+    return tmp_path
+
+
+class TestADeclaredGateProducesItsOwnEvidence:
+    """The write side of the declared-gate mechanism, end to end.
+
+    The oracle blocks a unit whose project declares a gate with no passing run,
+    so if the workspace stops reaching this path every such project is refused
+    for ever with nothing to act on. That is the failure mode the sandbox
+    category-forwarding incident had verbatim: a parameter threaded through and
+    omitted at every call site, with no test naming it.
+    """
+
+    async def test_a_run_of_the_declared_command_is_recorded_as_that_gate(
+        self, tmp_path: Path
+    ) -> None:
+        store = RecordingCodeExecutionStore()
+
+        await _capture(
+            store,
+            "ruff check .",
+            workspace_root=_project_declaring_a_lint_gate(tmp_path),
+        )
+
+        assert [record.purpose for record in store.records] == [
+            CodeExecutionPurpose.LINT
+        ]
+
+    async def test_the_command_is_found_inside_the_line_an_agent_types(
+        self, tmp_path: Path
+    ) -> None:
+        """``cd x && ruff check . | tail`` is the shape agents actually run.
+
+        Comparing the declaration against the whole line recognises none of
+        them, which withholds the evidence the agent genuinely produced and
+        then refuses the unit for not producing it.
+        """
+        store = RecordingCodeExecutionStore()
+
+        await _capture(
+            store,
+            "cd src && ruff check . 2>&1 | tail -20",
+            workspace_root=_project_declaring_a_lint_gate(tmp_path),
+        )
+
+        assert [record.purpose for record in store.records] == [
+            CodeExecutionPurpose.LINT
+        ]
+
+    async def test_a_line_whose_status_says_nothing_records_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """``|| true`` exits zero whatever the linter did."""
+        store = RecordingCodeExecutionStore()
+
+        await _capture(
+            store,
+            "ruff check . || true",
+            workspace_root=_project_declaring_a_lint_gate(tmp_path),
+        )
+
+        assert store.records == []
+
+    async def test_without_a_workspace_no_gate_is_recognised(
+        self, tmp_path: Path
+    ) -> None:
+        """The regression this class exists for: the parameter stops arriving.
+
+        Nothing raises and nothing looks wrong; the project's declared gate
+        simply never accrues evidence, and every unit under it is blocked.
+        """
+        _project_declaring_a_lint_gate(tmp_path)
+        store = RecordingCodeExecutionStore()
+
+        await _capture(store, "ruff check .", workspace_root=None)
+
+        assert store.records == []
 
 
 class TestIsTestRun:

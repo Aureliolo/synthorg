@@ -94,6 +94,7 @@ class ShellCommandTool(BaseTerminalTool):
         code_execution_records: CodeExecutionRecordRepository | None = None,
         clock: Clock | None = None,
         output_tail_limit: int = _OUTPUT_TAIL_LIMIT,
+        workspace_root: Path | None = None,
     ) -> None:
         """Initialize the shell command tool.
 
@@ -112,6 +113,10 @@ class ShellCommandTool(BaseTerminalTool):
             clock: Clock seam for the receipt's ``executed_at``.
             output_tail_limit: Maximum characters of captured stdout/stderr
                 kept on a test record.
+            workspace_root: Base directory projects live under, so a run of a
+                gate the project's own manifest declares (its linter, its
+                formatter, its dependency check) is captured as the evidence
+                the oracle requires rather than passing unrecorded.
 
         Raises:
             ValueError: When ``output_tail_limit`` is not positive; a
@@ -138,6 +143,7 @@ class ShellCommandTool(BaseTerminalTool):
             )
             raise ValueError(msg)
         self._output_tail_limit = output_tail_limit
+        self._workspace_root = workspace_root
 
     @staticmethod
     def _validate_working_dir(
@@ -352,6 +358,7 @@ class ShellCommandTool(BaseTerminalTool):
             clock=self._clock,
             command_repr_limit=_COMMAND_REPR_LIMIT,
             output_tail_limit=self._output_tail_limit,
+            workspace_root=self._workspace_root,
         )
 
         if result.timed_out:

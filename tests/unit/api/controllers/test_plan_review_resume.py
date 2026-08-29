@@ -1,7 +1,6 @@
-"""Unit tests for the plan-approval resume dispatch branch."""
+"""Unit tests for the plan-approval resume staging branch."""
 
 import asyncio
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Final, NotRequired, TypedDict
 from unittest.mock import AsyncMock
@@ -15,7 +14,6 @@ from synthorg.api.controllers._plan_review_resume import (
     try_plan_review_resume,
 )
 from synthorg.api.lifecycle_helpers.plan_questions import PLAN_ID_METADATA_KEY
-from synthorg.api.lifecycle_helpers.run_recovery_wiring import live_run_ledger_of
 from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.approval.plan_review import PLAN_APPROVAL_ACTION_TYPE
@@ -40,18 +38,11 @@ from synthorg.core.task_enums import (
     TaskType,
 )
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.coordination.attribution import (
-    CoordinationResultWithAttribution,
-)
-from synthorg.engine.coordination.models import (
-    CoordinationPhaseResult,
-    CoordinationResult,
-)
-from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.initiative.rollup import ProjectRollupService
 from synthorg.engine.state import EngineStateSlice
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
+from synthorg.workers.state import RuntimeStateSlice
 from tests._shared import as_uuid, make_app_state, mock_of, sid
 from tests._shared.scripted_provider import make_e2e_identity
 from tests.unit.api.fakes_backend import FakePersistenceBackend
@@ -92,6 +83,24 @@ def _transitions_of(engine: _Configured, task_id: str) -> list[TaskStatus]:
         for call in engine.transition_task.await_args_list
         if call.args[0] == task_id
     ]
+
+
+async def _filed_children(backend: FakePersistenceBackend) -> list[Task]:
+    """Every child row the approval path made durable, in item order.
+
+    Read from the repository rather than from a call argument, because the
+    repository is where the rollup, the recovery sweep and the dashboard all
+    look: a child that exists only inside a call is one that never happened.
+
+    Returns:
+        The filed child tasks, ordered by their plan item.
+    """
+    children = [
+        task
+        for task in await backend.tasks.list_items(limit=_A_FULL_PAGE)
+        if task.plan_item_id is not None
+    ]
+    return sorted(children, key=lambda task: _SUB_IDS.index(str(task.plan_item_id)))
 
 
 def _task(label: str, *, status: TaskStatus = TaskStatus.ASSIGNED) -> Task:
@@ -205,51 +214,11 @@ def _approval(
 _UNSET: Any = object()  # type: ignore[explicit-any]
 
 
-@dataclass(frozen=True, slots=True)
-class _Coordination:
-    """How the seeded coordinator behaves, as one knob rather than three."""
-
-    missing: bool = False
-    error: Exception | None = None
-    succeeded: bool = True
-
-
-_HEALTHY_COORDINATION = _Coordination()
-
-
 class _PreconditionBranch(TypedDict):
-    """One dispatch precondition, as the ``_seed`` overrides that trip it."""
+    """One staging precondition, as the ``_seed`` overrides that trip it."""
 
     task: Task | None
-    coordination: NotRequired[_Coordination]
     save_project: NotRequired[bool]
-
-
-def _coordination_outcome(*, succeeded: bool) -> CoordinationResultWithAttribution:
-    """Build what a real coordinator hands back.
-
-    A run whose waves all failed returns normally with ``is_success`` false, so
-    a double that returns a bare sentinel cannot express the case that left an
-    approved plan EXECUTING with every task dead.
-
-    Returns:
-        The attributed coordination result.
-    """
-    return CoordinationResultWithAttribution(
-        result=CoordinationResult(
-            parent_task_id=NotBlankStr("parent-1"),
-            topology=CoordinationTopology.CENTRALIZED,
-            phases=(
-                CoordinationPhaseResult(
-                    phase=NotBlankStr("execute_wave_0"),
-                    success=succeeded,
-                    duration_seconds=0.5,
-                    error=None if succeeded else "ProviderError: every task died",
-                ),
-            ),
-            total_duration_seconds=0.5,
-        ),
-    )
 
 
 async def _seed(
@@ -258,11 +227,20 @@ async def _seed(
     action_type: str = PLAN_APPROVAL_ACTION_TYPE,
     task: Task | None,
     plan: Plan | None,
-    coordination: _Coordination = _HEALTHY_COORDINATION,
+    filing_error: Exception | None = None,
     approval_task_id: str | None = _UNSET,
     save_plan: bool = True,
     save_project: bool = True,
-) -> tuple[AppState, _Configured, _Configured, FakePersistenceBackend]:
+) -> tuple[AppState, _Configured, FakePersistenceBackend]:
+    """Stand up the approval path with nothing wired that it does not use.
+
+    No coordinator, deliberately. Approval runs no wave, so wiring one here
+    would let a test pass while the path secretly reached for it, and the tests
+    below could not tell the two shapes apart.
+
+    Returns:
+        The app state, the task-engine double, and the persistence backend.
+    """
     resolved_task_id = (
         (str(task.id) if task is not None else None)
         if approval_task_id is _UNSET
@@ -290,20 +268,13 @@ async def _seed(
         await backend.projects.save(
             Project(id=as_uuid("proj-1"), name=NotBlankStr("Initiative"))
         )
-    coordinator = (
-        None
-        if coordination.missing
-        else mock_of[MultiAgentCoordinator](
-            coordinate=AsyncMock(
-                side_effect=coordination.error,
-                return_value=(
-                    None
-                    if coordination.error
-                    else _coordination_outcome(succeeded=coordination.succeeded)
-                ),
-            )
+    if filing_error is not None:
+        # Filing the rebuilt tree is the last write the approval path makes,
+        # and staging is persistence writes and nothing else, so this is the
+        # one failure a test can inject without a collaborator to reach for.
+        backend.tasks.save_many = AsyncMock(  # type: ignore[method-assign]
+            side_effect=filing_error
         )
-    )
     engine = mock_of[TaskEngine](
         get_task=AsyncMock(return_value=task),
         transition_task=AsyncMock(return_value=None),
@@ -313,17 +284,16 @@ async def _seed(
     )
     state = make_app_state(
         approval_store=store,
-        coordinator=coordinator,
         task_engine=engine,
         agent_registry=registry,
         persistence=backend,
     )
-    return state, coordinator, engine, backend
+    return state, engine, backend
 
 
 class TestPlanReviewResume:
     async def test_non_plan_source_is_inert(self) -> None:
-        state, coordinator, _, _ = await _seed(
+        state, _, backend = await _seed(
             source=ApprovalSource.REVIEW_GATE,
             task=_task("parent-1"),
             plan=_durable_plan("parent-1"),
@@ -332,7 +302,7 @@ class TestPlanReviewResume:
             state, sid("appr-1"), approved=True, decided_by="admin"
         )
         assert handled is False
-        coordinator.coordinate.assert_not_called()
+        assert await _filed_children(backend) == []
 
     @pytest.mark.parametrize(
         "question_type", [CLARIFY_ACTION_TYPE, DECISION_ACTION_TYPE]
@@ -352,7 +322,7 @@ class TestPlanReviewResume:
         it: the operator's answer then rolls back with a 409 and reaches
         nothing.
         """
-        state, coordinator, _, backend = await _seed(
+        state, _, backend = await _seed(
             action_type=question_type,
             task=_task("parent-1"),
             plan=_durable_plan("parent-1", open_questions=(_QUESTION,)),
@@ -368,7 +338,7 @@ class TestPlanReviewResume:
 
         assert handled is True
         await state.drain_entry_background_tasks()
-        coordinator.coordinate.assert_not_called()
+        assert await _filed_children(backend) == []
         stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
         assert stored is not None
         assert stored.status is PlanStatus.PENDING_REVIEW
@@ -377,7 +347,7 @@ class TestPlanReviewResume:
 
     async def test_a_declined_question_settles_without_an_answer(self) -> None:
         """A decline is a decision, and the plan records it as one."""
-        state, _, _, backend = await _seed(
+        state, _, backend = await _seed(
             action_type=CLARIFY_ACTION_TYPE,
             task=_task("parent-1"),
             plan=_durable_plan("parent-1", open_questions=(_QUESTION,)),
@@ -407,61 +377,66 @@ class TestPlanReviewResume:
             for a in stored.assumptions
         )
 
-    async def test_approve_dispatches_durable_plan(self) -> None:
+    async def test_approve_stages_the_durable_plan(self) -> None:
         parent = _task("parent-1")
-        state, coordinator, _, backend = await _seed(
-            task=parent, plan=_durable_plan("parent-1")
-        )
+        state, _, backend = await _seed(task=parent, plan=_durable_plan("parent-1"))
+        rollup = mock_of[ProjectRollupService]()
+        state.wire(EngineStateSlice, project_rollup_service=rollup)
+
         handled = await try_plan_review_resume(
             state, sid("appr-1"), approved=True, decided_by="admin"
         )
+
         assert handled is True
-        # The build runs behind the response, so the drain is what makes it
+        # The stage is opened behind the response, so the drain is what makes it
         # observable here; without it the request has already returned.
         await state.drain_entry_background_tasks()
-        coordinator.coordinate.assert_awaited_once()
-        context = coordinator.coordinate.await_args.args[0]
-        precomputed = coordinator.coordinate.await_args.kwargs["precomputed_plan"]
-        assert context.task.id == parent.id
-        # The durable plan's items are rebuilt into the dispatched subtask tree.
-        dispatched_ids = {s.id for s in precomputed.plan.subtasks}
-        assert dispatched_ids == set(_SUB_IDS)
+        # Approval hands the plan to the rollup and nothing else. Dispatching
+        # the units here as well would put them against a contract that does not
+        # exist yet, which is the whole reason the stage was added.
+        rollup.recompute.assert_awaited_once_with(as_uuid(_PLAN_ID))
+        # The durable plan's items are rebuilt into filed child rows, which is
+        # where every later reader looks for a plan's work.
+        filed = await _filed_children(backend)
+        assert {str(child.plan_item_id) for child in filed} == set(_SUB_IDS)
         # Each item's declared deliverable survives the rebuild onto its own
-        # subtask, so the dispatched task's fail-loud zero-artifact guard stays
-        # armed rather than silently disarmed by a dropped or swapped mapping.
+        # row, so the task's fail-loud zero-artifact guard stays armed rather
+        # than silently disarmed by a dropped or swapped mapping.
         assert {
-            subtask.id: tuple(subtask.expected_artifacts)
-            for subtask in precomputed.plan.subtasks
+            str(child.plan_item_id): tuple(
+                expected.path for expected in child.artifacts_expected
+            )
+            for child in filed
         } == {
             subtask_id: (NotBlankStr(f"src/part_{n}.py"),)
             for n, subtask_id in enumerate(_SUB_IDS)
         }
         # Rebuilt child tasks are fresh CREATED work parented on the objective.
-        assert all(t.status is TaskStatus.CREATED for t in precomputed.created_tasks)
-        # Every dispatched task carries its plan linkage, so the rollup can
-        # find a plan's tasks without re-deriving the id mapping.
-        assert all(t.plan_id == as_uuid(_PLAN_ID) for t in precomputed.created_tasks)
-        assert all(t.plan_item_id is not None for t in precomputed.created_tasks)
-        # Approval dispatches the plan, so it moves past the decision into
-        # execution rather than resting on the recorded verdict.
+        assert all(child.status is TaskStatus.CREATED for child in filed)
+        # Every filed task carries its plan linkage, so the rollup can find a
+        # plan's tasks without re-deriving the id mapping.
+        assert all(child.plan_id == as_uuid(_PLAN_ID) for child in filed)
+        # Approval stages the plan: it moves past the decision into the contract
+        # stage rather than resting on the recorded verdict, and it does NOT
+        # reach EXECUTING, which only a passing contract earns.
         stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
         assert stored is not None
-        assert stored.status is PlanStatus.EXECUTING
+        assert stored.status is PlanStatus.SKELETON
 
-    async def test_a_plan_already_being_driven_is_not_driven_again(self) -> None:
-        """A refused claim means somebody else is building this plan.
+    async def test_no_coordinator_is_needed_to_stage_a_plan(self) -> None:
+        """Approval runs no wave, so it must not fail one for a missing driver.
 
-        The design states one driver per plan and names the harm: two drivers
-        assign the same subtasks, the engine refuses the second, and the wave
-        that lost fails the plan it was helping. The claim is the mechanism,
-        so its answer has to be obeyed by both of its callers.
+        The rollup drives the waves once the contract passes, and resolves its
+        own coordinator when it does. Treated as a precondition here, an unwired
+        one would fail an initiative over a subsystem the approval path never
+        reaches. Asserted against the slice so the seed's silence about
+        coordinators is a stated fact rather than an omission a later edit can
+        quietly undo.
         """
-        parent = _task("parent-1")
-        state, coordinator, _, _ = await _seed(
-            task=parent, plan=_durable_plan("parent-1")
+        state, engine, backend = await _seed(
+            task=_task("parent-1"), plan=_durable_plan("parent-1")
         )
-        # The recovery sweep got there first.
-        live_run_ledger_of(state).try_claim(str(as_uuid(_PLAN_ID)))
+        assert state.slice(RuntimeStateSlice).coordinator is None
 
         handled = await try_plan_review_resume(
             state, sid("appr-1"), approved=True, decided_by="admin"
@@ -469,22 +444,25 @@ class TestPlanReviewResume:
         await state.drain_entry_background_tasks()
 
         assert handled is True
-        coordinator.coordinate.assert_not_awaited()
+        stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
+        assert stored is not None
+        assert stored.status is PlanStatus.SKELETON
+        assert _transitions_of(engine, str(as_uuid("parent-1"))) == []
 
     async def test_an_unclicked_decision_is_recorded_on_the_plan_it_dispatches(
         self,
     ) -> None:
         """Approving without picking IS a decision, and the plan must say so.
 
-        Dispatch already treats it as made: ``decomposition_from_plan`` strips
-        the decision out of every dependent's dependencies on those exact
+        The rebuild already treats it as made: ``decomposition_from_plan``
+        strips the decision out of every dependent's dependencies on those exact
         grounds. Completion asks a different question -- is ``chosen_option_id``
         set -- so leaving it unwritten gives one decision two owners that
         disagree, and the initiative can dispatch every item and still never
         finish. Both of run 6's live plans were in that state.
         """
         parent = _task("parent-1")
-        state, coordinator, _, backend = await _seed(
+        state, _, backend = await _seed(
             task=parent, plan=_durable_plan("parent-1", with_decision=True)
         )
 
@@ -497,10 +475,10 @@ class TestPlanReviewResume:
         assert stored is not None
         decision = next(i for i in stored.items if i.kind is PlanItemKind.DECISION)
         assert decision.chosen_option_id == _RECOMMENDED_OPTION
-        # The work items still dispatch, with the decision stripped from their
+        # The work items are still filed, with the decision stripped from their
         # dependencies -- which is only honest now that the plan records it.
-        precomputed = coordinator.coordinate.await_args.kwargs["precomputed_plan"]
-        assert {s.id for s in precomputed.plan.subtasks} == set(_SUB_IDS)
+        filed = await _filed_children(backend)
+        assert {str(child.plan_item_id) for child in filed} == set(_SUB_IDS)
 
     async def test_an_operators_own_pick_is_never_overwritten(self) -> None:
         """The recommendation is the fallback, not the answer."""
@@ -512,7 +490,7 @@ class TestPlanReviewResume:
             else i
             for i in plan.items
         )
-        state, _, _, backend = await _seed(
+        state, _, backend = await _seed(
             task=parent, plan=plan.model_copy(update={"items": chosen})
         )
 
@@ -528,7 +506,7 @@ class TestPlanReviewResume:
     async def test_approve_links_and_activates_the_project(self) -> None:
         """The graph is connected before any dispatched task can run."""
         parent = _task("parent-1")
-        state, _, _, backend = await _seed(task=parent, plan=_durable_plan("parent-1"))
+        state, _, backend = await _seed(task=parent, plan=_durable_plan("parent-1"))
 
         await try_plan_review_resume(
             state, sid("appr-1"), approved=True, decided_by="admin"
@@ -539,35 +517,39 @@ class TestPlanReviewResume:
         assert project.plan_id == as_uuid(_PLAN_ID)
         assert project.status is ProjectStatus.ACTIVE
 
-    async def test_an_unlinkable_project_refuses_the_dispatch(self) -> None:
-        """Dispatching against a project that never learned its plan is worse
-        than not dispatching: the work runs, but its progress view reports no
-        plan and its status can only advance by an illegal jump.
+    async def test_an_unlinkable_project_refuses_the_staging(self) -> None:
+        """Staging against a project that never learned its plan is worse than
+        not staging: the work is filed, but its progress view reports no plan
+        and its status can only advance by an illegal jump.
         """
         parent = _task("parent-1")
-        state, coordinator, _, _ = await _seed(
+        state, _, backend = await _seed(
             task=parent,
             plan=_durable_plan("parent-1"),
             save_project=False,
         )
+        rollup = mock_of[ProjectRollupService]()
+        state.wire(EngineStateSlice, project_rollup_service=rollup)
 
         handled = await try_plan_review_resume(
             state, sid("appr-1"), approved=True, decided_by="admin"
         )
+        await state.drain_entry_background_tasks()
 
         assert handled is True
-        coordinator.coordinate.assert_not_called()
+        assert await _filed_children(backend) == []
+        rollup.recompute.assert_not_awaited()
 
     async def test_reject_cancels_task_and_marks_plan_rejected(self) -> None:
         parent = _task("parent-1")
-        state, coordinator, engine, backend = await _seed(
+        state, engine, backend = await _seed(
             task=parent, plan=_durable_plan("parent-1")
         )
         handled = await try_plan_review_resume(
             state, sid("appr-1"), approved=False, decided_by="admin"
         )
         assert handled is True
-        coordinator.coordinate.assert_not_called()
+        assert await _filed_children(backend) == []
         engine.transition_task.assert_awaited_once()
         call = engine.transition_task.await_args
         assert call.args[0] == str(parent.id)
@@ -582,7 +564,7 @@ class TestPlanReviewResume:
         # not-found rather than spin its retries against the stale plan into a
         # misleading version-conflict error log.
         plan = _durable_plan("parent-1")
-        state, _, _, backend = await _seed(task=_task("parent-1"), plan=plan)
+        state, _, backend = await _seed(task=_task("parent-1"), plan=plan)
         scripted_get = AsyncMock(side_effect=[plan, None])
         backend.plans.get = scripted_get  # type: ignore[method-assign]
         await sync_plan_status(state, str(plan.id), PlanStatus.APPROVED)
@@ -594,7 +576,7 @@ class TestPlanReviewResume:
         # The approval references a task that no longer exists (get_task -> None):
         # the flow owns the decision but the parent task is marked FAILED so the
         # stuck plan surfaces rather than sitting silently in pre-approval status.
-        state, coordinator, engine, _ = await _seed(
+        state, engine, backend = await _seed(
             task=None,
             plan=_durable_plan("parent-1"),
             approval_task_id=str(as_uuid("parent-1")),
@@ -603,7 +585,7 @@ class TestPlanReviewResume:
             state, sid("appr-1"), approved=True, decided_by="admin"
         )
         assert handled is True
-        coordinator.coordinate.assert_not_called()
+        assert await _filed_children(backend) == []
         engine.transition_task.assert_awaited_once()
         assert engine.transition_task.await_args.args[1] is TaskStatus.FAILED
 
@@ -611,7 +593,7 @@ class TestPlanReviewResume:
         # The approval references a plan_id that is not persisted: the flow marks
         # the parent task FAILED rather than returning a silent no-op.
         parent = _task("parent-1")
-        state, _, engine, _ = await _seed(
+        state, engine, _ = await _seed(
             task=parent, plan=_durable_plan("parent-1"), save_plan=False
         )
         handled = await try_plan_review_resume(
@@ -621,41 +603,26 @@ class TestPlanReviewResume:
         engine.transition_task.assert_awaited_once()
         assert engine.transition_task.await_args.args[1] is TaskStatus.FAILED
 
-    async def test_missing_coordinator_marks_task_failed(self) -> None:
-        parent = _task("parent-1")
-        state, _, engine, _ = await _seed(
-            task=parent,
-            plan=_durable_plan("parent-1"),
-            coordination=_Coordination(missing=True),
-        )
-        handled = await try_plan_review_resume(
-            state, sid("appr-1"), approved=True, decided_by="admin"
-        )
-        assert handled is True
-        engine.transition_task.assert_awaited_once()
-        assert engine.transition_task.await_args.args[1] is TaskStatus.FAILED
-
-    async def test_dispatch_failure_fails_both_the_task_and_the_plan(
+    async def test_staging_failure_fails_both_the_task_and_the_plan(
         self,
     ) -> None:
-        # A dispatch failure must not 5xx the approval-decision request: the flow
+        # A staging failure must not 5xx the approval-decision request: the flow
         # still owns the decision (True) and marks the task FAILED. The plan
-        # leaves EXECUTING too: dispatch moves it there before building the task
-        # tree, so a failure would otherwise leave it EXECUTING forever with a
+        # leaves SKELETON too: staging moves it there before filing the task
+        # tree, so a failure would otherwise leave it SKELETON forever with a
         # failed parent and no children, which nothing watches and nothing can
         # move.
         parent = _task("parent-1")
-        state, coordinator, engine, backend = await _seed(
+        state, engine, backend = await _seed(
             task=parent,
             plan=_durable_plan("parent-1"),
-            coordination=_Coordination(error=RuntimeError("boom")),
+            filing_error=RuntimeError("boom"),
         )
         handled = await try_plan_review_resume(
             state, sid("appr-1"), approved=True, decided_by="admin"
         )
         assert handled is True
         await state.drain_entry_background_tasks()
-        coordinator.coordinate.assert_awaited_once()
         assert _transitions_of(engine, str(as_uuid("parent-1"))) == [TaskStatus.FAILED]
         stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
         assert stored is not None
@@ -664,102 +631,18 @@ class TestPlanReviewResume:
         assert stored.failure_reason is not None
         assert "dispatch failed" in stored.failure_reason
 
-    async def test_a_raising_dispatch_leaves_no_child_row_at_created(
-        self,
-    ) -> None:
-        """The rows the dispatch filed before it raised have to be settled.
+    async def test_a_failed_staging_opens_no_contract_stage(self) -> None:
+        """Nothing is handed on once the graph could not be made durable.
 
-        Dispatch files the whole task tree BEFORE handing the plan to the
-        coordinator, so a raise from anywhere ahead of the wave loop (a
-        dependency cycle in an operator-edited item graph, a routing decision
-        naming no created task) leaves those rows at CREATED. The wave loop
-        parks what IT drops, but it was never entered.
-
-        Failing the parent and the plan does not reach them, and FAILED is
-        terminal, so the recovery sweep and the rollup both skip that plan for
-        ever after: the rows would sit at CREATED permanently, under a plan
-        the board shows as closed, with nothing watching them and no exit.
+        The contract job reads the plan's work out of the repository, so
+        opening the stage against a tree that was never filed asks an agent to
+        write a contract for units that do not exist, and the plan is FAILED
+        underneath it while the job runs.
         """
-        parent = _task("parent-1")
-        state, _, engine, backend = await _seed(
-            task=parent,
+        state, _, _ = await _seed(
+            task=_task("parent-1"),
             plan=_durable_plan("parent-1"),
-            coordination=_Coordination(error=RuntimeError("boom")),
-        )
-
-        await try_plan_review_resume(
-            state, sid("appr-1"), approved=True, decided_by="admin"
-        )
-        await state.drain_entry_background_tasks()
-
-        filed = [
-            task
-            for task in await backend.tasks.list_items(limit=_A_FULL_PAGE)
-            if task.plan_item_id is not None
-        ]
-        assert filed, "the dispatch filed no children, so this proves nothing"
-        # Asserted against the engine rather than the stored rows: the engine
-        # is the double here, so it is where a transition is observable.
-        for child in filed:
-            assert _transitions_of(engine, str(child.id)) == [TaskStatus.CANCELLED], (
-                f"child {child.title} was left with no terminal"
-            )
-        # And the parent still goes FAILED, not cancelled with the rest: the
-        # board has to show the initiative failed, and FAILED -> ASSIGNED is
-        # what keeps it re-runnable.
-        assert _transitions_of(engine, str(as_uuid("parent-1"))) == [TaskStatus.FAILED]
-
-    async def test_a_coordination_that_failed_every_wave_fails_the_plan(
-        self,
-    ) -> None:
-        """The failure that returns rather than raising.
-
-        A run where every task died comes back normally with ``is_success``
-        false. The raise-only guard walked past it and left the plan EXECUTING
-        with nothing left to execute, which no later event could repair.
-
-        With no rollup wired there is nothing downstream to look at the plan
-        again, so this path still fails it here rather than let it hang.
-        """
-        parent = _task("parent-1")
-        state, coordinator, engine, backend = await _seed(
-            task=parent,
-            plan=_durable_plan("parent-1"),
-            coordination=_Coordination(succeeded=False),
-        )
-
-        handled = await try_plan_review_resume(
-            state, sid("appr-1"), approved=True, decided_by="admin"
-        )
-
-        assert handled is True
-        await state.drain_entry_background_tasks()
-        coordinator.coordinate.assert_awaited_once()
-        assert _transitions_of(engine, str(as_uuid("parent-1"))) == [TaskStatus.FAILED]
-        stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
-        assert stored is not None
-        assert stored.status is PlanStatus.FAILED
-        assert stored.failure_reason is not None
-        # The reason names the phase that died, not a bare "dispatch failed".
-        assert "execute_wave_0" in stored.failure_reason
-
-    async def test_a_failed_wave_is_handed_to_the_rollup_not_pre_empted(
-        self,
-    ) -> None:
-        """A lost agent is not the same fact as a dead initiative.
-
-        Only one authority may say the second, and the rollup owns it: it
-        derives the plan's status from the items' own states and routes a
-        stall to the replan trigger. Failing the plan from the dispatch path
-        preempted that, so a live run whose rollup had just computed
-        ``next_action=replan`` died anyway and discarded four siblings that
-        were still working.
-        """
-        parent = _task("parent-1")
-        state, _coordinator, _engine, backend = await _seed(
-            task=parent,
-            plan=_durable_plan("parent-1"),
-            coordination=_Coordination(succeeded=False),
+            filing_error=RuntimeError("boom"),
         )
         rollup = mock_of[ProjectRollupService]()
         state.wire(EngineStateSlice, project_rollup_service=rollup)
@@ -769,27 +652,23 @@ class TestPlanReviewResume:
         )
         await state.drain_entry_background_tasks()
 
-        rollup.recompute.assert_awaited_once_with(as_uuid(_PLAN_ID))
-        stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
-        assert stored is not None
-        assert stored.status is not PlanStatus.FAILED
+        rollup.recompute.assert_not_awaited()
 
-    async def test_a_rollup_that_itself_fails_still_settles_the_plan(self) -> None:
-        """Handing the verdict away must not create a new way to hang.
+    async def test_a_rollup_that_fails_leaves_the_plan_for_the_recovery_sweep(
+        self,
+    ) -> None:
+        """A stage that could not be opened is late, not lost.
 
-        Deferring to the rollup removed the pre-emption, and with it the only
-        thing that used to settle a plan on this path. If the rollup raises,
-        nothing downstream has looked at the plan and nothing here has written
-        it: that is the EXECUTING-forever state the deferral was meant to cure,
-        one layer down. The dispatch's outer handler catches it and fails both,
-        which is correct and was entirely unverified, so a later refactor
-        giving this call its own swallow would reintroduce the hang silently.
+        Opening the stage is the one thing approval does not finish before it
+        answers, and failing the plan on it would be actively wrong: SKELETON
+        is a stage status, the recovery sweep recomputes every plan sitting in
+        one on its cadence, and FAILED is terminal, so failing it converts a
+        delay somebody can see into an initiative nothing will ever look at
+        again.
         """
         parent = _task("parent-1")
-        state, _coordinator, engine, backend = await _seed(
-            task=parent,
-            plan=_durable_plan("parent-1"),
-            coordination=_Coordination(succeeded=False),
+        state, engine, backend = await _seed(
+            task=parent, plan=_durable_plan("parent-1")
         )
         rollup = mock_of[ProjectRollupService](
             recompute=AsyncMock(side_effect=QueryError("rollup store offline"))
@@ -802,31 +681,31 @@ class TestPlanReviewResume:
         await state.drain_entry_background_tasks()
 
         rollup.recompute.assert_awaited_once()
-        assert _transitions_of(engine, str(as_uuid("parent-1"))) == [TaskStatus.FAILED]
+        assert _transitions_of(engine, str(as_uuid("parent-1"))) == []
         stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
         assert stored is not None
-        assert stored.status is PlanStatus.FAILED
-        assert stored.failure_reason is not None
+        assert stored.status is PlanStatus.SKELETON
 
-    async def test_a_build_cancelled_at_shutdown_does_not_strand_the_plan(
+    async def test_a_stage_opening_cancelled_at_shutdown_does_not_strand_the_plan(
         self,
     ) -> None:
-        """Cancellation is the one exit that used to leave nothing behind.
+        """Cancellation needs no compensation of its own.
 
-        `CancelledError` is a `BaseException`, so the dispatch's `except
-        Exception` never saw it, and the approval's resume marker is cleared
-        the moment the background task is created. A shutdown drain therefore
-        left the plan EXECUTING with no live dispatch and nothing able to
-        replay it, which is the state every other path on this spine exists to
-        prevent.
+        The plan is already durable at SKELETON when the background task
+        starts, so a shutdown drain that kills the recompute leaves a plan the
+        recovery sweep picks up and re-drives. Compensating here instead would
+        fail an
+        initiative for the sake of a restart, which is an ordinary operator
+        action.
         """
         parent = _task("parent-1")
-        state, coordinator, _engine, backend = await _seed(
-            task=parent,
-            plan=_durable_plan("parent-1"),
-            coordination=_Coordination(succeeded=True),
+        state, engine, backend = await _seed(
+            task=parent, plan=_durable_plan("parent-1")
         )
-        coordinator.coordinate = AsyncMock(side_effect=asyncio.CancelledError())
+        rollup = mock_of[ProjectRollupService](
+            recompute=AsyncMock(side_effect=asyncio.CancelledError())
+        )
+        state.wire(EngineStateSlice, project_rollup_service=rollup)
 
         await try_plan_review_resume(
             state, sid("appr-1"), approved=True, decided_by="admin"
@@ -835,54 +714,43 @@ class TestPlanReviewResume:
 
         stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
         assert stored is not None
-        assert stored.status is PlanStatus.FAILED
-        assert stored.failure_reason is not None
-        assert "cancelled" in stored.failure_reason
+        assert stored.status is PlanStatus.SKELETON
+        assert _transitions_of(engine, str(as_uuid("parent-1"))) == []
 
-    async def test_the_approve_call_returns_before_the_build_finishes(self) -> None:
+    async def test_the_approve_call_returns_before_the_stage_opens(self) -> None:
         """The whole point of backgrounding it.
 
-        Awaiting the wave inside the request holds the approve call open for
-        the length of a build, which runs into the minutes even on a small
-        plan: the client gives up while the server carries on, and the
+        Awaiting the stage inside the request holds the approve call open for
+        the length of a contract job, which runs into the minutes even on a
+        small plan: the client gives up while the server carries on, and the
         operator is told a decision failed that was recorded.
         """
-        state, coordinator, _, backend = await _seed(
+        state, _, backend = await _seed(
             task=_task("parent-1"), plan=_durable_plan("parent-1")
         )
+        rollup = mock_of[ProjectRollupService]()
+        state.wire(EngineStateSlice, project_rollup_service=rollup)
 
         handled = await try_plan_review_resume(
             state, sid("appr-1"), approved=True, decided_by="admin"
         )
 
         assert handled is True
-        coordinator.coordinate.assert_not_awaited()
+        rollup.recompute.assert_not_awaited()
         # The decision's own consequences are durable before the response, so
         # the operator is never told less than the board already knows.
         stored = await backend.plans.get(NotBlankStr(str(as_uuid(_PLAN_ID))))
         assert stored is not None
-        assert stored.status is PlanStatus.EXECUTING
-        filed = [
-            child
-            for child in await backend.tasks.list_items()
-            if child.plan_id == as_uuid(_PLAN_ID)
-        ]
-        assert len(filed) == len(_SUB_IDS)
+        assert stored.status is PlanStatus.SKELETON
+        assert len(await _filed_children(backend)) == len(_SUB_IDS)
 
         await state.drain_entry_background_tasks()
 
-        coordinator.coordinate.assert_awaited_once()
+        rollup.recompute.assert_awaited_once()
 
     @pytest.mark.parametrize(
         "branch",
         [
-            pytest.param(
-                _PreconditionBranch(
-                    task=_task("parent-1"),
-                    coordination=_Coordination(missing=True),
-                ),
-                id="no_coordinator",
-            ),
             pytest.param(_PreconditionBranch(task=None), id="no_parent_task"),
             pytest.param(
                 _PreconditionBranch(task=_task("parent-1"), save_project=False),
@@ -893,15 +761,15 @@ class TestPlanReviewResume:
     async def test_a_precondition_failure_also_fails_the_plan(
         self, branch: _PreconditionBranch
     ) -> None:
-        """A plan that cannot dispatch must not rest in a dispatch status.
+        """A plan that cannot be staged must not rest in a decided status.
 
-        Every precondition branch returns before ``coordinate`` runs, so the
+        Every precondition branch returns before the stage is opened, so the
         plan sits in APPROVED with nothing left to advance it unless it is
-        failed here. Parametrised over all three because they are separate
-        early returns through one helper, and a branch added later that
-        forgets the plan write looks identical from the task's side.
+        failed here. Parametrised over both because they are separate early
+        returns through one helper, and a branch added later that forgets the
+        plan write looks identical from the task's side.
         """
-        state, _, _, backend = await _seed(plan=_durable_plan("parent-1"), **branch)
+        state, _, backend = await _seed(plan=_durable_plan("parent-1"), **branch)
 
         await try_plan_review_resume(
             state, sid("appr-1"), approved=True, decided_by="admin"
@@ -936,7 +804,7 @@ class TestWhoTheLedgerNames:
     """
 
     async def test_the_operator_owns_the_decision_they_made(self) -> None:
-        state, _, _, backend = await _seed(
+        state, _, backend = await _seed(
             task=_task("parent-1"), plan=_durable_plan("parent-1")
         )
 
@@ -948,7 +816,7 @@ class TestWhoTheLedgerNames:
         assert actor == "Aurelio"
 
     async def test_the_operator_owns_a_rejection(self) -> None:
-        state, _, _, backend = await _seed(
+        state, _, backend = await _seed(
             task=_task("parent-1"), plan=_durable_plan("parent-1")
         )
 
@@ -960,8 +828,8 @@ class TestWhoTheLedgerNames:
         assert actor == "Aurelio"
 
     async def test_the_dispatcher_owns_what_follows_the_decision(self) -> None:
-        """Entering execution is the system acting on the greenlight."""
-        state, _, _, backend = await _seed(
+        """Entering the contract stage is the system acting on the greenlight."""
+        state, _, backend = await _seed(
             task=_task("parent-1"), plan=_durable_plan("parent-1")
         )
 
@@ -969,15 +837,15 @@ class TestWhoTheLedgerNames:
             state, sid("appr-1"), approved=True, decided_by="Aurelio"
         )
 
-        actor, _reason = _ledger(backend)[PlanStatus.EXECUTING]
+        actor, _reason = _ledger(backend)[PlanStatus.SKELETON]
         assert actor == _DISPATCH_ACTOR
 
-    async def test_a_failed_dispatch_names_the_dispatcher_and_says_why(self) -> None:
+    async def test_a_failed_staging_names_the_dispatcher_and_says_why(self) -> None:
         """The row an operator reads months later, on the run that died."""
-        state, _, _, backend = await _seed(
+        state, _, backend = await _seed(
             task=_task("parent-1"),
             plan=_durable_plan("parent-1"),
-            coordination=_Coordination(succeeded=False),
+            filing_error=QueryError("task store offline"),
         )
 
         await try_plan_review_resume(
@@ -987,4 +855,4 @@ class TestWhoTheLedgerNames:
 
         actor, reason = _ledger(backend)[PlanStatus.FAILED]
         assert actor == _DISPATCH_ACTOR
-        assert "execute_wave_0" in reason
+        assert "dispatch failed" in reason

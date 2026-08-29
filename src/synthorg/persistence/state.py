@@ -17,6 +17,7 @@ from synthorg.persistence.code_execution_protocol import (
 from synthorg.persistence.completion_oracle_report_protocol import (
     CompletionOracleReportArchiveRepository,
 )
+from synthorg.persistence.plan_protocol import PlanRepository
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.red_team_report_protocol import (
@@ -87,6 +88,24 @@ def code_execution_records_of(
     """
     backend = app_state.slice(PersistenceStateSlice).backend
     return backend.code_execution_records if backend is not None else None
+
+
+def plans_of(app_state: AppStateSliceMixin) -> PlanRepository | None:
+    """Return the plan repository, or ``None`` if unwired.
+
+    Companion to :func:`code_execution_records_of` for the build/test oracle,
+    which reads the approved objective's criteria to know which manifest
+    entries may forgive a red suite. A run with no backend has no plan to read,
+    and an unknown vocabulary forgives nothing rather than everything.
+
+    Args:
+        app_state: The application state (any slice-reader).
+
+    Returns:
+        The plan repository, or ``None`` when no backend is wired.
+    """
+    backend = app_state.slice(PersistenceStateSlice).backend
+    return backend.plans if backend is not None else None
 
 
 def resume_intents_of(

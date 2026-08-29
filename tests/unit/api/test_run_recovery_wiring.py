@@ -35,6 +35,7 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.service import MultiAgentCoordinator
+from synthorg.engine.initiative.ports import DriveOutcome
 from synthorg.engine.initiative.rollup import ProjectRollupService
 from synthorg.engine.run_recovery.scheduler import RunRecoveryScheduler
 from synthorg.engine.state import EngineStateSlice
@@ -264,7 +265,9 @@ class TestTheClaimNeverOutlivesItsDrive:
         ledger = live_run_ledger_of(app_state)
         ledger.try_claim(str(plan.id))
 
-        assert await drive_plan_waves(app_state, plan) is False
+        # HELD, not REFUSED: the plan is being driven, just not by this call,
+        # so a caller must leave it alone rather than route it to a stall.
+        assert await drive_plan_waves(app_state, plan) is DriveOutcome.HELD
         assert app_state.plan_dispatch_background_tasks == set()
 
     async def test_an_absent_coordinator_releases_the_claim_and_says_so(self) -> None:
@@ -274,7 +277,7 @@ class TestTheClaimNeverOutlivesItsDrive:
         parent = _task()
         app_state = _wired_state(persistence=_persistence(parent=parent))
 
-        assert await drive_plan_waves(app_state, _plan(parent)) is False
+        assert await drive_plan_waves(app_state, _plan(parent)) is DriveOutcome.REFUSED
         assert not live_run_ledger_of(app_state).is_driving(str(as_uuid("plan")))
 
     async def test_a_missing_objective_task_releases_the_claim_and_says_so(
@@ -285,7 +288,7 @@ class TestTheClaimNeverOutlivesItsDrive:
             coordinator=mock_of[MultiAgentCoordinator](),
         )
 
-        assert await drive_plan_waves(app_state, _plan(_task())) is False
+        assert await drive_plan_waves(app_state, _plan(_task())) is DriveOutcome.REFUSED
         assert not live_run_ledger_of(app_state).is_driving(str(as_uuid("plan")))
 
     async def test_a_dispatched_drive_releases_the_claim_when_it_ends(self) -> None:
@@ -301,7 +304,7 @@ class TestTheClaimNeverOutlivesItsDrive:
         )
         plan = _plan(parent)
 
-        assert await drive_plan_waves(app_state, plan) is True
+        assert await drive_plan_waves(app_state, plan) is DriveOutcome.DRIVING
         assert live_run_ledger_of(app_state).is_driving(str(plan.id))
         await asyncio.gather(*tuple(app_state.plan_dispatch_background_tasks))
 

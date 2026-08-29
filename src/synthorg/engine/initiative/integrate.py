@@ -44,6 +44,7 @@ from synthorg.engine.initiative.integrate_brief import (
     integration_title,
 )
 from synthorg.engine.initiative.stage_runner import StageRunner
+from synthorg.engine.initiative.stage_state import REDISPATCHABLE_STATUSES
 from synthorg.engine.initiative.tail_stages import (
     INTEGRATION_ACTOR,
     integration_task_id,
@@ -58,6 +59,7 @@ from synthorg.observability.events.initiative import (
     INITIATIVE_INTEGRATION_DISPATCHED,
     INITIATIVE_INTEGRATION_FAILED,
     INITIATIVE_INTEGRATION_SCHEDULED,
+    INITIATIVE_INTEGRATION_SETTINGS_DEGRADED,
     INITIATIVE_INTEGRATION_SKIPPED,
     INITIATIVE_INTEGRATION_STARTED,
 )
@@ -194,9 +196,12 @@ class IntegrationStageService:
 
         The row is persisted before the pipeline is handed the task, and the
         pipeline runs the assembly inline, so a dispatch that died in between
-        leaves a row nothing is driving. A task still at CREATED is exactly
-        that case and is re-dispatchable; anything further along is either
-        under way or finished, and the outcome read owns it from there.
+        leaves a row nothing is driving. Which statuses mean that is
+        :data:`REDISPATCHABLE_STATUSES`, read from the state machine rather
+        than restated here: the read answers PENDING for exactly those, so a
+        narrower condition here declines a row the read keeps offering, and the
+        rollup asks again on every pass for ever. Anything outside that set is
+        either under way or finished, and the outcome read owns it from there.
         """
         if not is_integration_task(existing, plan):
             logger.warning(
@@ -206,7 +211,7 @@ class IntegrationStageService:
                 reason="task_id_occupied_by_foreign_task",
             )
             return
-        if existing.status is not TaskStatus.CREATED:
+        if existing.status not in REDISPATCHABLE_STATUSES:
             logger.debug(
                 INITIATIVE_INTEGRATION_SKIPPED,
                 plan_id=str(plan.id),
@@ -220,7 +225,8 @@ class IntegrationStageService:
             plan_id=str(plan.id),
             project=str(plan.project),
             task_id=str(existing.id),
-            note="re-dispatching an assembly job that never left created",
+            status=existing.status.value,
+            note="re-dispatching an assembly job nothing was driving",
         )
         await self._hand_to_pipeline(plan, objective, existing)
 
@@ -301,7 +307,7 @@ class IntegrationStageService:
             # lint-allow: swallow-ok -- best-effort settings read
             reraise_critical(exc)
             logger.warning(
-                INITIATIVE_INTEGRATION_SKIPPED,
+                INITIATIVE_INTEGRATION_SETTINGS_DEGRADED,
                 key="integration_stage_timeout_seconds",
                 reason="settings_read_degraded",
                 error_type=type(exc).__name__,

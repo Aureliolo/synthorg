@@ -109,6 +109,20 @@ ENVIRONMENT_PROVISION_SKIPPED: Final[str] = "environment.provision.skipped"
 ENVIRONMENT_DOCKERIGNORE_LINE_SKIPPED: Final[str] = (
     "environment.dockerignore.line.skipped"
 )
+# A manifest-declared test report resolved outside the workspace it belongs to.
+# The manifest is committed content an agent can write, so the path is refused
+# rather than followed, and every pending criterion classifies red.
+ENVIRONMENT_PENDING_REPORT_ESCAPED: Final[str] = "environment.pending.report.escaped"
+# A manifest-declared test report was absent, unreadable, or not parseable XML.
+# Nothing was measured, so every pending criterion classifies red rather than
+# falling back to the run's exit status, which cannot say why one test failed.
+ENVIRONMENT_PENDING_REPORT_UNREADABLE: Final[str] = (
+    "environment.pending.report.unreadable"
+)
+# A committed manifest was present and would not parse, so what the project
+# declared pending is unknowable and the test run records as failed. Logged
+# because the fix is the author's and nothing else in the run will say so.
+ENVIRONMENT_PENDING_MANIFEST_UNREAD: Final[str] = "environment.pending.manifest.unread"
 
 # ── Coordinator push-queue events ────────────────────────────────
 WORKSPACE_PUSH_QUEUE_ENQUEUED: Final[str] = "workspace.push_queue.enqueued"

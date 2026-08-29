@@ -21,9 +21,9 @@ from synthorg.engine.initiative.integrate_brief import (
     INTEGRATION_REPORT_PATH,
     INTEGRATION_TEST_OUTPUT_PATH,
 )
+from synthorg.engine.initiative.stage_state import StageOutcome
 from synthorg.engine.initiative.tail_stages import (
     MAX_INTEGRATION_ATTEMPTS,
-    IntegrationOutcome,
     integration_task_id,
     read_integration_state,
 )
@@ -348,7 +348,7 @@ class TestGuards:
 
         assert dispatched.await_count == 0
         state = await read_integration_state(backend, plan, allow_new_attempt=False)
-        assert state.outcome is IntegrationOutcome.FAILED
+        assert state.outcome is StageOutcome.FAILED
 
 
 class TestOutcome:
@@ -376,24 +376,24 @@ class TestOutcome:
 
         state = await read_integration_state(backend, _plan(), allow_new_attempt=False)
 
-        assert state.outcome is IntegrationOutcome.ABSENT
+        assert state.outcome is StageOutcome.ABSENT
         assert state.attempt == 0
 
     @pytest.mark.parametrize(
         ("status", "expected"),
         [
-            (TaskStatus.CREATED, IntegrationOutcome.PENDING),
-            (TaskStatus.IN_PROGRESS, IntegrationOutcome.RUNNING),
-            (TaskStatus.IN_REVIEW, IntegrationOutcome.RUNNING),
-            (TaskStatus.COMPLETED, IntegrationOutcome.PASSED),
-            (TaskStatus.FAILED, IntegrationOutcome.FAILED),
-            (TaskStatus.REJECTED, IntegrationOutcome.FAILED),
-            (TaskStatus.CANCELLED, IntegrationOutcome.FAILED),
+            (TaskStatus.CREATED, StageOutcome.PENDING),
+            (TaskStatus.IN_PROGRESS, StageOutcome.RUNNING),
+            (TaskStatus.IN_REVIEW, StageOutcome.RUNNING),
+            (TaskStatus.COMPLETED, StageOutcome.PASSED),
+            (TaskStatus.FAILED, StageOutcome.FAILED),
+            (TaskStatus.REJECTED, StageOutcome.FAILED),
+            (TaskStatus.CANCELLED, StageOutcome.FAILED),
         ],
         ids=lambda value: str(value.value),
     )
     async def test_outcome_follows_persisted_status(
-        self, status: TaskStatus, expected: IntegrationOutcome
+        self, status: TaskStatus, expected: StageOutcome
     ) -> None:
         """IN_REVIEW is RUNNING: the oracle chain has not ruled on it yet."""
         backend = FakePersistenceBackend()
@@ -413,9 +413,9 @@ class TestOutcome:
             backend, _plan(), allow_new_attempt=True
         )
 
-        assert held.outcome is IntegrationOutcome.FAILED
+        assert held.outcome is StageOutcome.FAILED
         assert held.attempt == 0
-        assert reworked.outcome is IntegrationOutcome.ABSENT
+        assert reworked.outcome is StageOutcome.ABSENT
         assert reworked.attempt == 1
 
     async def test_attempts_are_capped(self) -> None:
@@ -426,5 +426,5 @@ class TestOutcome:
 
         state = await read_integration_state(backend, _plan(), allow_new_attempt=True)
 
-        assert state.outcome is IntegrationOutcome.FAILED
+        assert state.outcome is StageOutcome.FAILED
         assert state.attempt == MAX_INTEGRATION_ATTEMPTS - 1

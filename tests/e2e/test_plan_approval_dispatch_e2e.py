@@ -1,21 +1,25 @@
-"""Acceptance: approving a parked plan dispatches its child tasks.
+"""Acceptance: approving a parked plan files its child tasks.
 
 The loop's headline promise, end to end through the REAL components on
 the seam under test: a durable ``PENDING_REVIEW`` plan, a parked
 ``PLAN_REVIEW`` approval, and the production resume path
-(``try_plan_review_resume``) driving the REAL coordinator built by
-``build_runtime_services``. Nothing on that path is mocked.
+(``try_plan_review_resume``) building the graph against the runtime
+``build_runtime_services`` assembles. Nothing on that path is mocked.
 
 What it pins is the failure the plan's own status cannot express: an
-approved plan reaching ``EXECUTING`` with zero children and no
+approved plan opening its contract stage with zero children and no
 explanation, because workspace provisioning failed before a single task
-was created. So the assertions are the two halves of "the loop executes
-work":
+was created. So the assertions are the two halves of "approval made the
+work durable":
 
 * every WORK item of the approved plan became a persisted child task
   carrying its ``plan_id`` / ``plan_item_id``, and
-* the plan and its project moved to the statuses that say work is
-  running.
+* the plan and its project moved to the statuses that hand the
+  initiative to the rollup.
+
+Running the waves is deliberately not asserted here, because approval no
+longer does it: it opens ``SKELETON`` and the rollup owns every stage
+from there, which is where that half is covered.
 
 The shipped image's half of that criterion cannot live here: this test
 passes on any machine with ``git`` on PATH, which is every developer
@@ -232,7 +236,7 @@ async def test_approving_a_plan_dispatches_its_child_tasks(
     task_engine: TaskEngine,
     tmp_path: Path,
 ) -> None:
-    """An approved plan leaves persisted children, not an empty EXECUTING."""
+    """An approved plan leaves persisted children, not an empty SKELETON."""
     await persistence.projects.create(
         Project(name=NotBlankStr("Board"), id=as_uuid(_PROJECT))
     )
@@ -280,7 +284,11 @@ async def test_approving_a_plan_dispatches_its_child_tasks(
         cost_tracker=CostTracker(),
     )
     runtime = await build_runtime_services(app_state, workspace_root=tmp_path)
-    assert runtime.coordinator is not None, "the coordinator is the seam under test"
+    # Wired even though approval runs no wave, because the app state the
+    # resume path reads is the production one and a coordinator missing here
+    # would mean the runtime failed to assemble rather than that this seam
+    # stopped needing it.
+    assert runtime.coordinator is not None, "the runtime failed to assemble"
     app_state.set_coordinator_if_absent(runtime.coordinator)
 
     handled = await try_plan_review_resume(
@@ -288,16 +296,16 @@ async def test_approving_a_plan_dispatches_its_child_tasks(
     )
 
     assert handled is True
-    # The resume returns once the graph is connected; the waves run on a
-    # background task it registers, and the plan's terminal status is written
-    # at the end of that. Drained through the app's own seam rather than
-    # waited out, so this asserts on a dispatch that finished rather than on
-    # whichever half of it won a race.
+    # The resume returns once the graph is connected; asking the rollup to
+    # drive the contract stage happens on a background task it registers.
+    # Drained through the app's own seam rather than waited out, so this
+    # asserts on a hand-off that finished rather than on whichever half of it
+    # won a race.
     await app_state.drain_entry_background_tasks()
 
     # The headline assertion: the approved items became real work. A plan
-    # that reaches EXECUTING with no children is the failure this guards,
-    # and it is invisible from the plan's status alone.
+    # that opens its contract stage with no children is the failure this
+    # guards, and it is invisible from the plan's status alone.
     children = await persistence.tasks.query(TaskFilterSpec(plan=plan.id))
     assert len(children) == len(plan.items), await _why_no_children(
         persistence, str(parent.id), str(plan.id)
@@ -311,24 +319,28 @@ async def test_approving_a_plan_dispatches_its_child_tasks(
     }
     assert all(task.parent_task_id == str(parent.id) for task in children)
 
-    # The plan reached EXECUTING, which is the half that says work was
-    # dispatched. Read from the transition ledger rather than the plan's
-    # final status: the scripted agents produce none of the artifacts their
-    # items declare, so the zero-artifact guard fails every child and the
-    # plan correctly ends FAILED. Asserting the final status instead would
-    # pass only while an all-failed dispatch was being swallowed, which is
-    # the collapse this branch fixes.
+    # The plan reached SKELETON, which is the half that says the contract
+    # stage is open and the graph behind it is durable. Read from the
+    # transition ledger as well as the row: the hop is what approval owes,
+    # and a row written straight to SKELETON without it leaves the stage
+    # unobservable to everything that reads the ledger.
     reached = await persistence.lifecycle_transitions.query(
         LifecycleTransitionFilterSpec(
             entity_kind=LifecycleEntityKind.PLAN,
             entity_id=NotBlankStr(str(plan.id)),
         )
     )
-    assert PlanStatus.EXECUTING.value in {row.to_status for row in reached}
+    to_statuses = {row.to_status for row in reached}
+    assert PlanStatus.APPROVED.value in to_statuses
+    assert PlanStatus.SKELETON.value in to_statuses
     dispatched = await persistence.plans.get(NotBlankStr(str(plan.id)))
     assert dispatched is not None
-    assert dispatched.status is PlanStatus.FAILED
-    assert dispatched.failure_reason is not None
+    assert dispatched.status is PlanStatus.SKELETON
+    # Nothing failed the plan on the way. The runtime this test builds is
+    # tailless, so the rollup that fires the contract job is absent and the
+    # recovery sweep is what re-asks; a plan that arrives here FAILED means
+    # approval broke the graph rather than handing it over.
+    assert dispatched.failure_reason is None
     project = await persistence.projects.get(sid(_PROJECT))
     assert project is not None
     assert project.plan_id == plan.id

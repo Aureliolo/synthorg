@@ -167,6 +167,8 @@ Impls
 Inlining
 Inngest
 Inspectable
+JUnit
+JUnit's
 JWTs
 Jaccard
 Jira

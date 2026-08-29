@@ -20,45 +20,32 @@ never the line as text. A substring search would accept ``echo pytest``,
 exact forgery this module exists to prevent: an agent whose suite failed could
 run ``echo pytest`` and flip the oracle from blocked to verified.
 
-What a compound command is judged on is whether the line's exit status
-still implies the runner's own. ``pytest || true`` and ``pytest; echo done``
-both exit 0 whatever the suite did, so they are refused: the recorded
-``passed`` would describe the tail rather than the tests.
+Whether a compound line's exit status still implies its runner's own is a
+separate question, answered by :mod:`synthorg.core.shell_semantics`: this
+module asks what each command IS, and asks it only of the commands that question
+has already vouched for.
 
-``&&`` and ``|`` are different, and refusing them cost the gate everything
-it was for. A line built only of those two exits zero only when EVERY
-command in it exited zero: ``&&`` short-circuits by definition, and ``|``
-does the same because :mod:`synthorg.tools._shell_invocation` runs every
-agent line under ``pipefail``. So ``cd /workspace && npm test 2>&1 | tail``
-is exactly as trustworthy as a bare ``npm test``, and it is the shape agents
-actually type. Refusing it meant a live run produced 181 shell commands,
-several genuinely green suites, and zero evidence, and the oracle correctly
-blocked every one of them for a build that passed.
-
-That theorem is about the shell WE start, so it stops at the first shell the
-line starts itself: ``pipefail`` is a shell option and a fresh shell does not
-inherit it. Inside a ``bash -c`` payload a pipeline is therefore back to
-reporting its last command's status, and ``|`` is refused there.
-
-Redirections are noise: they move file descriptors and leave the exit status
-alone. Command substitution, backgrounding and subshells are refused, since
-each can run a program the parse never sees. A statement separator is refused
-against the raw line rather than the token stream, because :mod:`shlex` lists
-newline in its whitespace and hands back tokens with the separator already
-eaten: a line running ``pytest -q``, then a newline, then ``echo ok`` would
-otherwise read as one command headed by the runner, while the status recorded
-for it is the one ``echo`` exited with.
+A test suite is one gate among several. How a project lints, formats and checks
+its own dependencies is the project's decision, written into its committed
+manifest by the contract stage, so those runs are recognised from the
+declaration rather than from a fixed list of programs no such list could hold.
+The purpose a run is stamped with is decided here either way, because the
+build/test oracle reads the stamp and one module has to own what it means.
 """
 
-import shlex
 from collections.abc import Mapping, Sequence
-from pathlib import PurePosixPath, PureWindowsPath
+from pathlib import Path
 from types import MappingProxyType
 from typing import Final
 
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.execution_identity import current_execution_identity
+from synthorg.core.shell_semantics import (
+    conjunctive_commands,
+    program_name,
+    shell_payload,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.deliverable_receipts import (
     TEST_RUN_RECORD_FAILED,
@@ -69,100 +56,10 @@ from synthorg.persistence.code_execution_protocol import (
     CodeExecutionRecord,
     CodeExecutionRecordRepository,
 )
+from synthorg.tools._declared_gate_runs import declared_gate_purposes
 from synthorg.tools.sandbox.result import SandboxResult
 
 logger = get_logger(__name__)
-
-#: Operators joining commands whose statuses the line's status still
-#: implies: ``&&`` short-circuits, and ``|`` is conjunctive under the
-#: ``pipefail`` every agent line runs with.
-_CONJUNCTIVE_SEPARATORS: Final[frozenset[str]] = frozenset({"&&", "|"})
-
-#: Operators that make the line's exit status stop being the runner's own
-#: (``;``, ``||``, backgrounding) or that run a program the parse never
-#: sees (subshells, substitution).
-_STATUS_MASKING_TOKENS: Final[frozenset[str]] = frozenset(
-    {";", ";;", "||", "&", "|&", "(", ")", "$", "{", "}"}
-)
-
-#: Redirection operators. They move file descriptors and leave the exit
-#: status alone, so both the operator and its target are dropped.
-_REDIRECTIONS: Final[frozenset[str]] = frozenset(
-    {">", ">>", ">|", ">&", "<", "<<", "<<<", "<&", "&>", "&>>"}
-)
-
-#: Characters no token may contain. A backtick runs a command the parse
-#: never sees. Statement separators are NOT here: :mod:`shlex` lists them
-#: in ``whitespace``, so it consumes them as token boundaries and no token
-#: can ever hold one. They are checked against the raw line instead, by
-#: :data:`_STATEMENT_SEPARATORS`.
-_FORBIDDEN_IN_TOKEN: Final[tuple[str, ...]] = ("`",)
-
-#: Characters that end a statement, checked against the unlexed line.
-#: A second statement's exit status is the line's, so ``pytest -q\necho ok``
-#: reports the status of ``echo``: the runner could have failed and the
-#: line still exits zero, which is a passing record for a red suite.
-_STATEMENT_SEPARATORS: Final[tuple[str, ...]] = ("\n", "\r")
-
-#: The pipe, whose conjunctive reading holds only under ``pipefail``.
-_PIPE: Final[str] = "|"
-
-#: The builtin that toggles ``pipefail``, and the signs that do it.
-#: ``set -o`` enables, ``set +o`` disables, which is the opposite of the
-#: convention most flags follow.
-_SET_BUILTIN: Final[str] = "set"
-_UNSET_SIGN: Final[str] = "+"
-_SET_SIGN: Final[str] = "-"
-#: The letter ``-o`` / ``+o`` ends with. Read as the LAST character of the
-#: token rather than the whole token, because a shell bundles short flags:
-#: ``set -euo pipefail`` is one token ``-euo`` whose trailing ``o`` takes
-#: ``pipefail`` as its argument, exactly as a lone ``-o`` would.
-_OPTION_FLAG: Final[str] = "o"
-_PIPEFAIL_OPTION: Final[str] = "pipefail"
-
-
-def _pipefail_toggle(command: Sequence[str]) -> bool | None:
-    """Read a ``set`` builtin's effect on ``pipefail``.
-
-    Both directions, not just the disable. Tracking only ``set +o`` makes the
-    option a one-way latch: a line that turns it off and back on before its
-    pipeline is refused, and refusing a line whose pipeline IS protected
-    withholds the evidence a genuine test run produced, which is the failure
-    this module's whole conjunctive reading exists to avoid.
-
-    The flag is matched on its shape rather than against ``-o`` and ``+o``
-    literally, because ``set -euo pipefail`` is the ordinary way to write this
-    line and bundles the option letter into one token. Reading only the exact
-    spellings answers "says nothing" for it, so ``set +eo pipefail`` before a
-    pipe leaves the option believed ON while the shell has turned it OFF, and
-    a pipeline whose exit status is its last command's is then read as
-    evidence its first command passed.
-
-    Returns:
-        ``True`` when the command enables ``pipefail``, ``False`` when it
-        disables it, and ``None`` when it says nothing about it.
-    """
-    if not command or command[0] != _SET_BUILTIN:
-        return None
-    # A single command can carry both (``set +o errexit -o pipefail``), so the
-    # answer is the flag immediately preceding each option name rather than
-    # whichever flag appears anywhere in the line. It can also name the option
-    # twice (``set -o pipefail +o pipefail``), and the shell applies them in
-    # order, so the LAST one is the state the command leaves behind: reading
-    # the first inverts the answer on exactly that line.
-    state: bool | None = None
-    for index, token in enumerate(command):
-        if index == 0 or token != _PIPEFAIL_OPTION:
-            continue
-        preceding = command[index - 1]
-        if not preceding.endswith(_OPTION_FLAG):
-            continue
-        if preceding.startswith(_SET_SIGN):
-            state = True
-        elif preceding.startswith(_UNSET_SIGN):
-            state = False
-    return state
-
 
 #: Prefixes that run another program without changing what is being run.
 #: Each entry is matched then dropped, repeatedly, until the head is the
@@ -240,26 +137,6 @@ _PACKAGE_MANAGER_RUNNERS: Final[frozenset[str]] = frozenset(
 _TEST_TARGET: Final[str] = "test"
 _RUN_SUBCOMMAND: Final[str] = "run"
 
-#: Shells whose ``-c`` argument is itself a command line, so the question
-#: recurses into it once. ``bash -c "pytest -q"`` really did run the suite,
-#: and its exit status is the suite's.
-_SHELLS: Final[frozenset[str]] = frozenset({"bash", "sh", "zsh", "dash", "ash"})
-_SHELL_COMMAND_FLAG: Final[str] = "-c"
-#: ``<shell> -c <one command string>`` and nothing else.
-_SHELL_INVOCATION_TOKENS: Final[int] = 3
-
-
-def _program_name(token: str) -> str:
-    """Reduce an argv head to the bare program name.
-
-    Returns:
-        The lowercased basename with any ``.exe`` suffix removed, so an
-        absolute or Windows-style path resolves to the same name a bare
-        invocation would.
-    """
-    name = PurePosixPath(PureWindowsPath(token).name).name.lower()
-    return name.removesuffix(".exe")
-
 
 def _strip_wrappers(tokens: Sequence[str]) -> tuple[str, ...]:
     """Drop leading environment assignments and wrapper invocations.
@@ -271,7 +148,7 @@ def _strip_wrappers(tokens: Sequence[str]) -> tuple[str, ...]:
     changed = True
     while changed and remaining:
         changed = False
-        head = _program_name(remaining[0])
+        head = program_name(remaining[0])
         if "=" in remaining[0] and not remaining[0].startswith("="):
             remaining = remaining[1:]
             changed = True
@@ -282,91 +159,13 @@ def _strip_wrappers(tokens: Sequence[str]) -> tuple[str, ...]:
             continue
         for wrapper in _WRAPPERS:
             if len(remaining) > len(wrapper) and all(
-                _program_name(remaining[index]) == part
+                program_name(remaining[index]) == part
                 for index, part in enumerate(wrapper)
             ):
                 remaining = remaining[len(wrapper) :]
                 changed = True
                 break
     return remaining
-
-
-def _conjunctive_commands(
-    command: str, *, pipefail: bool
-) -> tuple[tuple[str, ...], ...] | None:
-    """Split *command* into the commands its exit status speaks for.
-
-    Args:
-        command: The full command line as it was executed.
-        pipefail: Whether the shell running this line has ``pipefail`` set.
-            Without it a pipeline's status is its LAST command's, so ``|``
-            stops being conjunctive and the line proves nothing about the
-            runner to its left.
-
-    Returns:
-        The argv of every command in the line when a zero exit status
-        proves each of them exited zero, or ``None`` when any part of the
-        line breaks that implication.
-    """
-    if any(char in command for char in _STATEMENT_SEPARATORS):
-        return None
-    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
-    lexer.whitespace_split = True
-    try:
-        tokens = list(lexer)
-    except ValueError:
-        return None
-
-    segments: list[tuple[str, ...]] = []
-    current: list[str] = []
-    preceding_separator: str | None = None
-    skip_target = False
-    for token in tokens:
-        if skip_target:
-            skip_target = False
-            continue
-        if any(char in token for char in _FORBIDDEN_IN_TOKEN):
-            return None
-        if token in _STATUS_MASKING_TOKENS:
-            return None
-        if token in _REDIRECTIONS:
-            # The descriptor number preceding the operator is part of the
-            # redirection, not an argument: ``npm test 2>&1`` lexes as
-            # ``npm test 2 >& 1``.
-            if current and current[-1].isdigit():
-                current.pop()
-            skip_target = True
-            continue
-        if token in _CONJUNCTIVE_SEPARATORS:
-            if token == _PIPE and not pipefail:
-                return None
-            if current:
-                # A line may revoke the option the pipe's trustworthiness
-                # rests on: after ``set +o pipefail`` a pipeline reports its
-                # LAST command's status again, so ``pytest | tail`` exits 0
-                # whatever the suite did. Read per segment rather than once
-                # up front, because the toggle and the pipeline are separate
-                # commands and only a pipe AFTER the toggle is affected.
-                #
-                # A toggle only reaches the shell running the LINE when it
-                # ran there itself. Every component of a pipeline runs in a
-                # subshell, so ``set +o pipefail | cat`` changes that
-                # subshell and exits, leaving the line's own option untouched
-                # and a later pipeline still protected. Persisting it would
-                # refuse the evidence that later pipeline legitimately
-                # produced.
-                in_pipeline = _PIPE in (token, preceding_separator)
-                toggled = None if in_pipeline else _pipefail_toggle(current)
-                if toggled is not None:
-                    pipefail = toggled
-                segments.append(tuple(current))
-            preceding_separator = token
-            current = []
-            continue
-        current.append(token)
-    if current:
-        segments.append(tuple(current))
-    return tuple(segments)
 
 
 def is_test_run(command: str, *, _shell_depth: int = 0, _pipefail: bool = True) -> bool:
@@ -387,7 +186,7 @@ def is_test_run(command: str, *, _shell_depth: int = 0, _pipefail: bool = True) 
         ``True`` only when a test runner is invoked and the line's exit
         status implies that runner's own.
     """
-    segments = _conjunctive_commands(command, pipefail=_pipefail)
+    segments = conjunctive_commands(command, pipefail=_pipefail)
     if segments is None:
         return False
     return any(
@@ -408,18 +207,14 @@ def _segment_is_test_run(parsed: Sequence[str], *, _shell_depth: int) -> bool:
     tokens = _strip_wrappers(parsed)
     if not tokens:
         return False
-    program = _program_name(tokens[0])
-    if (
-        program in _SHELLS
-        and _shell_depth == 0
-        and len(tokens) == _SHELL_INVOCATION_TOKENS
-        and tokens[1] == _SHELL_COMMAND_FLAG
-    ):
+    program = program_name(tokens[0])
+    payload = shell_payload(tokens) if _shell_depth == 0 else None
+    if payload is not None:
         # The payload runs in a shell this invocation just started, and
         # ``pipefail`` does not cross that boundary: our own wrapper set it
         # on the OUTER shell only. So a pipeline in here proves nothing,
         # and ``bash -c "npm test | tail -5"`` reports tail's zero.
-        return is_test_run(tokens[2], _shell_depth=1, _pipefail=False)
+        return is_test_run(payload, _shell_depth=1, _pipefail=False)
     if program in _DIRECT_RUNNERS:
         return True
     selecting_flags = _FLAG_RUNNERS.get(program)
@@ -461,6 +256,41 @@ def _is_package_manager_test(arguments: tuple[str, ...]) -> bool:
     )
 
 
+def _gate_purposes(
+    command: str,
+    *,
+    workspace_root: Path | None,
+    project_id: str,
+) -> tuple[CodeExecutionPurpose, ...]:
+    """Which gates *command* ran.
+
+    The single owner of that decision. The test suite is answered here from the
+    command alone; every other gate is the project's own declaration, read by
+    :mod:`synthorg.tools._declared_gate_runs`, and the stamping stays here so
+    one module decides what a run counts as.
+
+    All of them, because one line can be several: an agent that types
+    ``pytest -q && ruff check .`` ran the suite AND the project's lint gate,
+    and answering with either alone withholds the evidence for the other.
+
+    Returns:
+        Each purpose to record under, empty when the line ran no gate.
+    """
+    declared = declared_gate_purposes(
+        command, workspace_root=workspace_root, project_id=project_id
+    )
+    if not is_test_run(command):
+        return declared
+    # The suite is recognised from the invoked program rather than from the
+    # manifest, so it can coincide with a declaration only by a project
+    # declaring its own test command; deduplicated here so that never doubles
+    # the receipt.
+    return (
+        CodeExecutionPurpose.TESTS,
+        *(purpose for purpose in declared if purpose is not CodeExecutionPurpose.TESTS),
+    )
+
+
 async def record_if_test_run(
     result: SandboxResult,
     *,
@@ -469,13 +299,28 @@ async def record_if_test_run(
     clock: Clock,
     command_repr_limit: int,
     output_tail_limit: int,
+    workspace_root: Path | None = None,
 ) -> None:
-    """Persist *result* as test evidence when *command* ran a test suite.
+    """Persist *result* as gate evidence when *command* ran one.
 
-    No-ops when the command is not a test run, when no repository is wired,
-    or when called outside a bound execution scope. Best-effort: a capture
-    failure logs and returns rather than failing the tool call, because
-    losing the receipt must not lose the run.
+    A test suite is one gate and the others are the project's own: how it lints,
+    formats and checks its dependencies, each declared in its committed manifest
+    and each required by the build/test oracle. The suite is recognised from the
+    invoked program because the runners are a known set; the rest are recognised
+    from the declaration, because they are the project's decision and no list of
+    programs could hold them.
+
+    No-ops when the command ran no gate, when no repository is wired, or when
+    called outside a bound execution scope. Best-effort: a capture failure logs
+    and returns rather than failing the tool call, because losing the receipt
+    must not lose the run.
+
+    The record is a MEASUREMENT: ``passed`` says the command exited zero and
+    nothing else, which a validator and a database CHECK both hold it to. What
+    a failing run MEANS is the build/test oracle's question, and a project that
+    declares tests pending answers it differently, because a correct skeleton's
+    suite fails by design. That reading lives with the verdict rather than here,
+    so a row can never claim a pass the process did not report.
 
     Args:
         result: The finished sandbox execution.
@@ -487,32 +332,46 @@ async def record_if_test_run(
         clock: Clock seam stamping the record.
         command_repr_limit: Characters of *command* kept on the record.
         output_tail_limit: Characters of stdout/stderr kept on the record.
+        workspace_root: Base directory projects live under, needed to read the
+            project's declared gates. ``None`` recognises the test suite alone,
+            which is what a caller with no workspace can honestly claim.
     """
-    if records is None or not is_test_run(command):
+    if records is None:
         return
     identity = current_execution_identity()
     if identity is None or identity.project_id is None:
         return
+    purposes = _gate_purposes(
+        command, workspace_root=workspace_root, project_id=identity.project_id
+    )
+    if not purposes:
+        return
+    executed_at = clock.now()
     try:
-        await records.append(
-            CodeExecutionRecord(
-                task_id=identity.task_id,
-                execution_id=identity.execution_id,
-                project_id=identity.project_id,
-                purpose=CodeExecutionPurpose.TESTS,
-                command=command[:command_repr_limit],
-                returncode=result.returncode,
-                passed=result.success,
-                timed_out=result.timed_out,
-                stdout_tail=(
-                    result.stdout[-output_tail_limit:] if result.stdout else None
-                ),
-                stderr_tail=(
-                    result.stderr[-output_tail_limit:] if result.stderr else None
-                ),
-                executed_at=clock.now(),
+        for purpose in purposes:
+            # One row per gate the line satisfied, each carrying the whole
+            # command: the row says which gate this run is evidence for, and a
+            # compound line is evidence for each of them. They share one
+            # timestamp because they share one execution.
+            await records.append(
+                CodeExecutionRecord(
+                    task_id=identity.task_id,
+                    execution_id=identity.execution_id,
+                    project_id=identity.project_id,
+                    purpose=purpose,
+                    command=command[:command_repr_limit],
+                    returncode=result.returncode,
+                    passed=result.success,
+                    timed_out=result.timed_out,
+                    stdout_tail=(
+                        result.stdout[-output_tail_limit:] if result.stdout else None
+                    ),
+                    stderr_tail=(
+                        result.stderr[-output_tail_limit:] if result.stderr else None
+                    ),
+                    executed_at=executed_at,
+                )
             )
-        )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- the receipt is a side channel; losing it
         # must never lose the run it describes. Losing one can only withhold

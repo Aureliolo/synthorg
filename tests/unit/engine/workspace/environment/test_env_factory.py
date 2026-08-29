@@ -11,7 +11,9 @@ from synthorg.engine.workspace.environment.devcontainer import (
     DevcontainerEnvironmentStrategy,
 )
 from synthorg.engine.workspace.environment.factory import build_environment_strategy
-from synthorg.engine.workspace.environment.manifest import ManifestEnvironmentStrategy
+from synthorg.engine.workspace.environment.manifest_strategy import (
+    ManifestEnvironmentStrategy,
+)
 from synthorg.engine.workspace.environment.nix import NixEnvironmentStrategy
 from synthorg.engine.workspace.environment.protocol import EnvironmentStrategy
 from tests._shared import FakeClock

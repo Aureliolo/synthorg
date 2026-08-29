@@ -37,7 +37,7 @@ from synthorg.api.lifecycle_helpers.finetune_wiring import (
     wire_fine_tune_orchestrator,
 )
 from synthorg.api.lifecycle_helpers.startup_steps import _publish_red_team_runtime
-from synthorg.api.lifecycle_runner_support import _wire_task_activity_observer
+from synthorg.api.lifecycle_task_activity_wiring import wire_task_activity_observer
 from synthorg.api.state import AppState
 from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.api.task_activity_observer import TaskActivityObserver
@@ -963,7 +963,7 @@ class TestWireTaskActivityObserver:
         persistence = FakePersistenceBackend()
 
         with structlog.testing.capture_logs() as captured, suppress_type_checks():
-            _wire_task_activity_observer(
+            wire_task_activity_observer(
                 task_engine,
                 persistence,
                 state,
@@ -994,7 +994,7 @@ class TestWireTaskActivityObserver:
         state = self._state_with_tracker(tracker=PerformanceTracker())
 
         with suppress_type_checks():
-            _wire_task_activity_observer(
+            wire_task_activity_observer(
                 task_engine,
                 FakePersistenceBackend(),
                 state,
@@ -1024,7 +1024,7 @@ class TestWireTaskActivityObserver:
         )
 
         with suppress_type_checks():
-            _wire_task_activity_observer(
+            wire_task_activity_observer(
                 task_engine,
                 persistence,
                 state,
@@ -1045,7 +1045,7 @@ class TestWireTaskActivityObserver:
         state = self._state_with_tracker(tracker=PerformanceTracker())
 
         with suppress_type_checks():
-            _wire_task_activity_observer(
+            wire_task_activity_observer(
                 task_engine,
                 FakePersistenceBackend(),
                 state,
@@ -1065,7 +1065,7 @@ class TestWireTaskActivityObserver:
 
         with structlog.testing.capture_logs() as captured, suppress_type_checks():
             # ``object()`` is not a ChannelsPlugin, so wiring must skip.
-            _wire_task_activity_observer(
+            wire_task_activity_observer(
                 task_engine,
                 FakePersistenceBackend(),
                 state,
@@ -1086,7 +1086,7 @@ class TestWireTaskActivityObserver:
         state = self._state_with_tracker(tracker=None)
 
         with structlog.testing.capture_logs() as captured, suppress_type_checks():
-            _wire_task_activity_observer(
+            wire_task_activity_observer(
                 task_engine,
                 FakePersistenceBackend(),
                 state,
@@ -1108,7 +1108,7 @@ class TestWireTaskActivityObserver:
         state = self._state_with_tracker(tracker=PerformanceTracker())
 
         with suppress_type_checks():
-            _wire_task_activity_observer(
+            wire_task_activity_observer(
                 task_engine,
                 FakePersistenceBackend(),
                 state,

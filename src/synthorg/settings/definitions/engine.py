@@ -1332,6 +1332,24 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
+        key="skeleton_stage_timeout_seconds",
+        type=SettingType.FLOAT,
+        default="1800.0",
+        description=(
+            "Wall-clock ceiling on minting and dispatching one skeleton job."
+            " This bounds the dispatch, not the writing of the contract, which"
+            " runs as an ordinary task under the pipeline's own budgets."
+        ),
+        group="Initiative Head",
+        level=SettingLevel.ADVANCED,
+        min_value=60.0,
+        max_value=7200.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
         key="integration_stage_timeout_seconds",
         type=SettingType.FLOAT,
         default="1800.0",

@@ -2317,7 +2317,7 @@ CREATE TABLE code_execution_record (
     task_id TEXT NOT NULL,
     execution_id TEXT NOT NULL,
     project_id TEXT NOT NULL,
-    purpose TEXT NOT NULL CHECK (purpose IN ('general', 'tests')),
+    purpose TEXT NOT NULL CHECK (purpose IN ('general', 'tests', 'lint', 'format', 'dependency')),
     command TEXT NOT NULL,
     returncode INTEGER NOT NULL,
     passed INTEGER NOT NULL CHECK (passed IN (0, 1)),
@@ -2675,9 +2675,9 @@ CREATE TABLE plans (
     coordination_topology TEXT NOT NULL DEFAULT 'auto',
     status TEXT NOT NULL DEFAULT 'draft'
     CHECK (status IN (
-        'planning', 'draft', 'pending_review', 'approved', 'executing',
-        'integrating', 'evaluating', 'completed', 'rejected', 'superseded',
-        'failed'
+        'planning', 'draft', 'pending_review', 'approved', 'skeleton',
+        'executing', 'integrating', 'evaluating', 'completed', 'rejected',
+        'superseded', 'failed'
     )),
     failure_reason TEXT CHECK (failure_reason IS NULL OR LENGTH(TRIM(failure_reason)) > 0),
     forecast_id TEXT,

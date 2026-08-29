@@ -11,8 +11,16 @@ class PlanStatus(StrEnum):
     A plan is PLANNING while it is a persisted-at-greenlight shell whose items
     the decomposer has not filled in yet, DRAFT while it is being shaped, and
     PENDING_REVIEW once it is parked for the operator's decision. APPROVED
-    records the operator's yes and dispatches the plan; EXECUTING covers the
-    window where its items' tasks are in flight.
+    records the operator's yes. SKELETON is where the contract becomes code
+    before any unit builds against it: module layout, one pending test per
+    acceptance criterion, and the project's gate configuration, committed as
+    one reviewable change. EXECUTING then covers the window where its items'
+    tasks are in flight.
+
+    APPROVED does not reach EXECUTING. A unit briefed in prose has no
+    mechanical definition of done, so the units would be building against a
+    contract that exists only in paragraphs; routing every dispatch through
+    SKELETON is what makes the contract a signature and a failing test instead.
 
     Every item being done is the start of the tail, not the end of the plan.
     INTEGRATING is where the verified pieces are assembled into one running
@@ -41,6 +49,7 @@ class PlanStatus(StrEnum):
     DRAFT = "draft"
     PENDING_REVIEW = "pending_review"
     APPROVED = "approved"
+    SKELETON = "skeleton"
     EXECUTING = "executing"
     INTEGRATING = "integrating"
     EVALUATING = "evaluating"
@@ -52,7 +61,7 @@ class PlanStatus(StrEnum):
 
 #: Statuses from which an operator rework / request-changes is accepted. A
 #: transient PLANNING shell (no items yet), a dispatched plan (APPROVED /
-#: EXECUTING), and every terminal plan are excluded; edits on them are rejected
+#: SKELETON / EXECUTING), and every terminal plan are excluded; edits are rejected
 #: with a conflict. Reworking a dispatched plan is a re-plan, which supersedes
 #: the current revision rather than editing it in place.
 REWORKABLE_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
@@ -61,7 +70,7 @@ REWORKABLE_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
 
 #: Terminal statuses: the plan has been delivered, declined, retired, or failed
 #: to decompose, and has no remaining lifecycle hops. APPROVED is deliberately
-#: absent: it dispatches into EXECUTING and is therefore mid-lifecycle.
+#: absent: it opens SKELETON and is therefore mid-lifecycle.
 TERMINAL_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
     {
         PlanStatus.COMPLETED,
@@ -78,15 +87,36 @@ TAIL_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
     {PlanStatus.INTEGRATING, PlanStatus.EVALUATING}
 )
 
+#: The head stage, before any item's task is in flight: the contract is written
+#: as code and reviewed once, so the units below it build against signatures and
+#: failing tests rather than paragraphs. Kept apart from :data:`TAIL_STATUSES`
+#: rather than folded into it. The two share a mechanism (a stage keyed on a
+#: derived task id, re-driven by one rollup pass) and nothing else: the tail set
+#: also answers which statuses map to a finished project, which a re-plan may
+#: retire, and which a delete route refuses, and none of those answers is the
+#: same at the head. One frozenset carrying both would have to be wrong about
+#: one of them.
+HEAD_STATUSES: Final[frozenset[PlanStatus]] = frozenset({PlanStatus.SKELETON})
+
+#: Every stage that owns its own advance: a derived task id it mints, reads back
+#: and acts on, rather than a status a derivation over plan items computes. The
+#: rollup re-drives any of these with a single recompute, which is what makes a
+#: restart mid-stage resumable without minting a second job.
+STAGE_STATUSES: Final[frozenset[PlanStatus]] = HEAD_STATUSES | TAIL_STATUSES
+
 #: Statuses a re-plan accepts. A dispatched plan cannot be edited in place (its
 #: items are already building), so revising it retires the current revision and
 #: opens a successor. The tail stages are included: a failed integration or an
-#: unmet success criterion is exactly the case a re-plan exists for. A plan
+#: unmet success criterion is exactly the case a re-plan exists for. SKELETON is
+#: included for the same reason and it is the cheapest of them: a contract that
+#: will not compile is wrong about the plan, and catching that before any unit
+#: has built against it is the whole point of writing the contract first. A plan
 #: still under review is edited instead, and a terminal plan has nothing left
 #: to revise.
 REPLANNABLE_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
     {
         PlanStatus.APPROVED,
+        PlanStatus.SKELETON,
         PlanStatus.EXECUTING,
         PlanStatus.INTEGRATING,
         PlanStatus.EVALUATING,

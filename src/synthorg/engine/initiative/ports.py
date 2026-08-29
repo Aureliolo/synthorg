@@ -10,6 +10,8 @@ one.
 """
 
 from collections.abc import Callable
+from dataclasses import dataclass
+from enum import StrEnum
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
@@ -144,6 +146,32 @@ class ReplanTriggerPort(Protocol):
 
 
 @runtime_checkable
+class SkeletonPort(Protocol):
+    """The SKELETON stage, as the rollup needs it.
+
+    Structurally satisfied by
+    ``engine.initiative.skeleton.SkeletonStageService``. The rollup calls this
+    while a plan reads as SKELETON; the stage itself is idempotent (its task id
+    is derived from the plan id), so a repeated call is a no-op. It must not
+    block or raise: the call schedules detached work and returns.
+
+    Separate from :class:`IntegrationPort` rather than one "stage port" both
+    satisfy, because the rollup holds them in different fields and an unwired
+    one has a different consequence at each end: unwired here parks a plan
+    before anything is built, which is safe; unwired there parks one after
+    everything is, which is not.
+    """
+
+    def schedule(self, *, plan: Plan, attempt: int = 0) -> None:
+        """Schedule contract attempt *attempt* for a plan in SKELETON."""
+        ...
+
+    async def drain(self, *, timeout_sec: float) -> None:
+        """Await outstanding dispatches at shutdown, bounded by *timeout_sec*."""
+        ...
+
+
+@runtime_checkable
 class IntegrationPort(Protocol):
     """The INTEGRATE stage, as the rollup needs it.
 
@@ -181,6 +209,74 @@ class EvaluationPort(Protocol):
     async def drain(self, *, timeout_sec: float) -> None:
         """Await outstanding judgements at shutdown, bounded by *timeout_sec*."""
         ...
+
+
+class DriveOutcome(StrEnum):
+    """What happened when a plan was handed to a driver.
+
+    Three values rather than a boolean, because the two ways of not driving
+    demand opposite responses and a boolean cannot tell them apart. ``HELD``
+    means somebody else already owns the plan, which is correct and needs
+    nothing. ``REFUSED`` means this deployment cannot drive the plan at all,
+    which is a dead end: the recovery sweep logged a rescue on every pass for a
+    plan whose objective task was gone, so a permanently undrivable run read as
+    being saved every ten minutes for ever.
+
+    ``DRIVING``: a drive now owns the plan. ``HELD``: one already did.
+    ``REFUSED``: nothing can, and the caller owns what to do about it.
+    """
+
+    DRIVING = "driving"
+    HELD = "held"
+    REFUSED = "refused"
+
+
+@runtime_checkable
+class PlanDriver(Protocol):
+    """Runs a dispatched plan's remaining waves.
+
+    A port rather than a call, because driving a plan needs the coordinator,
+    the agent roster and the objective task, which are assembled in the API
+    layer. Stating it here keeps the engine's own dependencies to the graph it
+    reads.
+
+    Two callers, and they ask the same question at different moments. The
+    rollup asks it once, when the skeleton passes and the plan's units become
+    dispatchable for the first time. The recovery sweep asks it on a cadence,
+    for a plan whose driver died with the process that held it. One protocol,
+    because a plan being driven is a plan being driven; what differs is only
+    what each caller does with a refusal.
+    """
+
+    async def __call__(self, plan: Plan) -> DriveOutcome:
+        """Drive *plan*'s remaining waves to whatever they reach.
+
+        Returns:
+            Which of the three things happened.
+        """
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class StagePorts:
+    """The staged jobs a plan can sit in, as one argument.
+
+    Bundled rather than passed one by one because they are one concept and they
+    arrive together: each is resolved in the same later boot phase, each is
+    optional for the same reason, and an unwired one parks the plan in its own
+    status. Passing them separately also put the rollup's constructor over the
+    argument cap the moment a third stage existed, which is the cap doing its
+    job: three parameters that are always handled identically are one.
+
+    Attributes:
+        skeleton: The SKELETON stage, or ``None`` to park before dispatch.
+        integration: The INTEGRATE stage, or ``None`` to park before assembly.
+        evaluation: The EVALUATE stage, or ``None`` to park before delivery.
+    """
+
+    skeleton: SkeletonPort | None = None
+    integration: IntegrationPort | None = None
+    evaluation: EvaluationPort | None = None
 
 
 #: Reads whichever replan trigger the rollup is holding *now*. The EVALUATE

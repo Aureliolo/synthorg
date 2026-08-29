@@ -6,7 +6,8 @@ Defines the valid state transitions for a durable plan::
     PLANNING -> DRAFT | PENDING_REVIEW | SUPERSEDED | FAILED
     DRAFT -> PENDING_REVIEW | SUPERSEDED | FAILED
     PENDING_REVIEW -> DRAFT | APPROVED | REJECTED | SUPERSEDED | FAILED
-    APPROVED -> EXECUTING | SUPERSEDED | FAILED
+    APPROVED -> SKELETON | SUPERSEDED | FAILED
+    SKELETON -> EXECUTING | SUPERSEDED | FAILED
     EXECUTING -> INTEGRATING | SUPERSEDED | FAILED
     INTEGRATING -> EVALUATING | EXECUTING | SUPERSEDED | FAILED
     EVALUATING -> COMPLETED | EXECUTING | SUPERSEDED | FAILED
@@ -18,6 +19,16 @@ dispatches the plan, and EXECUTING covers the window where its items' tasks are
 in flight. Every item being done ends EXECUTING, not the plan: the work is then
 INTEGRATING (assembled into one running deliverable and checked end to end) and
 EVALUATING (scored against the objective's success criteria).
+
+**EXECUTING is reachable only from SKELETON.** There is deliberately no
+``APPROVED -> EXECUTING`` edge, and it is the same argument as the missing
+``EXECUTING -> COMPLETED`` one hop later. A unit briefed in prose carries no
+definition of done a machine can decide, so units dispatched straight off an
+approved plan build against a contract that exists only in paragraphs and the
+first thing that reconciles them is the assembly at the end. Routing every
+dispatch through SKELETON makes the contract a signature plus a failing test
+before anything is built on it, and makes that ordering the machine's rather
+than whichever service happens to be wired.
 
 **COMPLETED is reachable only from EVALUATING.** There is deliberately no
 ``EXECUTING -> COMPLETED`` edge: an initiative that delivered a pile of
@@ -31,12 +42,14 @@ any stage, including from either tail stage, which is how a failed integration
 or an unmet success criterion is resolved.
 
 FAILED covers a run that could not be delivered at all: decomposition failed,
-parking the approval failed, or an approved plan could not be dispatched. The
-last is why APPROVED and EXECUTING reach it. Dispatch moves the plan to
-EXECUTING before it builds the task tree, so that the rollup never observes a
-project still PLANNING with tasks already running; a dispatch that then fails
-leaves a plan EXECUTING with a failed parent and no children, which is a state
-with no exit and nobody watching. The edge is what gets it out.
+parking the approval failed, or an approved plan could not be staged. The last
+is why APPROVED, SKELETON and EXECUTING all reach it. Approval moves the plan
+to SKELETON before it builds the task tree, so that the rollup never observes a
+project still PLANNING with tasks already running; a preparation that then
+fails leaves a plan at SKELETON with a failed parent and no children, which is
+a state with no exit and nobody watching. The edges are what get it out, and
+they cover APPROVED too, because the staging write itself can be the step that
+fails.
 
 Both tail stages reach FAILED for the same reason: an assembly that will not
 assemble, or a judgement that cannot run, with no replan routing it anywhere.
@@ -82,6 +95,13 @@ VALID_TRANSITIONS: dict[PlanStatus, frozenset[PlanStatus]] = {
         }
     ),
     PlanStatus.APPROVED: frozenset(
+        {PlanStatus.SKELETON, PlanStatus.SUPERSEDED, PlanStatus.FAILED}
+    ),
+    # FAILED here is the head stage's own dead end: a contract that will not
+    # compile, or a skeleton whose review never approved it. It is the cheapest
+    # place in the lifecycle to fail, because nothing has been built against the
+    # contract yet.
+    PlanStatus.SKELETON: frozenset(
         {PlanStatus.EXECUTING, PlanStatus.SUPERSEDED, PlanStatus.FAILED}
     ),
     PlanStatus.EXECUTING: frozenset(
@@ -157,8 +177,8 @@ def transition_path(
     """Return the shortest valid hop sequence from *current* to *target*.
 
     Used by the rollup to advance a plan that is several valid hops away from
-    its derived status (e.g. APPROVED to INTEGRATING via EXECUTING, when a
-    plan's dispatch-time status write lost its race). COMPLETED is never a
+    its derived status (e.g. APPROVED to INTEGRATING via SKELETON and EXECUTING,
+    when a plan's dispatch-time status write lost its race). COMPLETED is never a
     target here: the evaluate stage writes it directly, as the single hop out
     of EVALUATING that its verdict earns.
 

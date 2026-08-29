@@ -27,6 +27,7 @@ from synthorg.engine.initiative.ports import (
     IntegrationPort,
     ReplanTriggerPort,
     RetroCapturePort,
+    StagePorts,
 )
 from synthorg.engine.initiative.rollup import ProjectRollupService
 from synthorg.engine.initiative.stall_escalation import StallEscalationService
@@ -152,7 +153,7 @@ async def seed(
         task_engine=task_engine,
         ship_retro_capture=ship_retro_capture,
         replan_trigger=replan_trigger,
-        integration=integration,
+        stages=StagePorts(integration=integration),
     )
     if approvals is not None:
         service.attach_tail(

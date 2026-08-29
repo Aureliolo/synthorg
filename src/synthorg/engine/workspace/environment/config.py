@@ -21,7 +21,11 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.workspace.environment.image_builder import ImageBuilder
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
-_DEFAULT_MANIFEST_FILENAME: Final[str] = "synthorg.env.yaml"
+#: The committed declaration's filename. Public because three places have to
+#: agree on it and a second copy is how they stop: the strategy provisions from
+#: it, the skeleton brief tells an agent to write it, and the test-run capture
+#: reads its pending set to decide what a failing suite means.
+DEFAULT_MANIFEST_FILENAME: Final[str] = "synthorg.env.yaml"
 _DEFAULT_PROVISION_TIMEOUT_SECONDS: Final[float] = 900.0
 _DEFAULT_DOCKER_BUILD_TIMEOUT_SECONDS: Final[float] = 1800.0
 _DEFAULT_DOCKER_BUILD_MAX_ATTEMPTS: Final[int] = 3
@@ -45,7 +49,7 @@ class EnvironmentConfig(BaseModel):
     auto_seed: bool = True
     # MANIFEST: the committed declaration filename.
     manifest_filename: NotBlankStr = Field(
-        default=_DEFAULT_MANIFEST_FILENAME,
+        default=DEFAULT_MANIFEST_FILENAME,
     )
     # Maximum seconds a single setup command (bootstrap path) may run.
     provision_timeout_seconds: float = Field(

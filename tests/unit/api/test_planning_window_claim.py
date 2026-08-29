@@ -36,6 +36,7 @@ from synthorg.engine.decomposition.models import (
     DecompositionResult,
     SubtaskDefinition,
 )
+from synthorg.engine.initiative.ports import DriveOutcome
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
 from synthorg.engine.run_recovery.reconciler import RunRecoveryReconciler
 from synthorg.engine.task_engine import TaskEngine
@@ -120,9 +121,9 @@ def _reconciler(
     *,
     driven: list[str],
 ) -> RunRecoveryReconciler:
-    async def _drive(plan: Plan) -> bool:
+    async def _drive(plan: Plan) -> DriveOutcome:
         driven.append(str(plan.id))
-        return True
+        return DriveOutcome.DRIVING
 
     async def _recompute(plan: Plan) -> None:
         driven.append(str(plan.id))

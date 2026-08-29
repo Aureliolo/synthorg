@@ -48,12 +48,12 @@ from synthorg.api.lifecycle_runner_support import (
     _drain_resume_intents,
     _LifecycleTasks,
     _wire_approval_gate,
-    _wire_task_activity_observer,
     _wire_webhook_request_services,
     _wire_workflow_execution_service,
     _wire_workflow_observer,
 )
 from synthorg.api.lifecycle_shared import _cleanup_on_failure
+from synthorg.api.lifecycle_task_activity_wiring import wire_task_activity_observer
 from synthorg.api.state import AppState
 from synthorg.api.webhook_cleanup import _webhook_receipt_cleanup_loop
 from synthorg.backup.service import BackupService
@@ -461,7 +461,7 @@ async def _run_startup(  # noqa: PLR0913
             # Pass the plugin (or None) through unconditionally so a missing
             # bridge is logged by the observer's own guard rather than skipped
             # silently here.
-            _wire_task_activity_observer(
+            wire_task_activity_observer(
                 task_engine,
                 persistence,
                 app_state,

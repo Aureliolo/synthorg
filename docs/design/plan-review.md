@@ -315,12 +315,16 @@ stateDiagram-v2
     PENDING_REVIEW --> APPROVED
     PENDING_REVIEW --> REJECTED
     PENDING_REVIEW --> FAILED: approval-park failed
-    PENDING_REVIEW --> PENDING_REVIEW: edit / request-changes (new revision)
+    PENDING_REVIEW --> DRAFT: request-changes
+    PENDING_REVIEW --> PENDING_REVIEW: edit (new revision)
     DRAFT --> SUPERSEDED: superseded by a re-plan
     PENDING_REVIEW --> SUPERSEDED: superseded by a re-plan
-    APPROVED --> EXECUTING: dispatched
-    APPROVED --> FAILED: dispatch precondition failed
+    APPROVED --> SKELETON: staged
+    APPROVED --> FAILED: staging precondition failed
     APPROVED --> SUPERSEDED: superseded by a re-plan
+    SKELETON --> EXECUTING: contract job passed its review gate
+    SKELETON --> FAILED: the contract will not compile
+    SKELETON --> SUPERSEDED: superseded by a re-plan
     EXECUTING --> INTEGRATING: every item done
     EXECUTING --> FAILED: dispatch failed
     EXECUTING --> SUPERSEDED: superseded by a re-plan
@@ -352,18 +356,20 @@ decomposition succeeded, if parking the approval fails: it is then FAILED with i
 items intact, so `FAILED` permits (but does not require) an empty item list.
 
 `FAILED` therefore means "could not be delivered", not the narrower "never
-reached a review decision". Four routes land here: decomposition, the approval
-park, dispatch, and a project teardown over a plan with no items (superseding an
-itemless plan is what the `items` CHECK forbids, so the cascade fails it with
-"project deleted" instead).
+reached a review decision". Six routes land here: decomposition, the approval
+park, staging (a precondition failure from `APPROVED`), the contract stage (a
+skeleton that will not compile), dispatch, and a project teardown over a plan
+with no items (superseding an itemless plan is what the `items` CHECK forbids,
+so the cascade fails it with "project deleted" instead).
 
-Dispatch reaches `FAILED` from either side of one line. An approved plan is
-moved to `EXECUTING` *before* `coordinate(...)` runs (load-bearing ordering, so
-the rollup never encounters a `PLANNING` project with tasks running), so a raise from
-`coordinate` fails an `EXECUTING` plan, while the precondition branches that
-return before it (no coordinator, no parent task, a project that cannot be
-linked) fail an `APPROVED` one. Both carry the redacted cause, so a plan never
-sits dispatched with no children and no explanation.
+Staging reaches `FAILED` from either side of one line. An approved plan is moved
+to `SKELETON` *before* its task tree is filed (load-bearing ordering, so the
+rollup never encounters a `PLANNING` project with a staged plan under it), so a
+raise while filing fails a `SKELETON` plan, while the precondition branches that
+return before it (no parent task, a project that cannot be linked) fail an
+`APPROVED` one. Both carry the redacted cause, so a plan never sits staged with
+no children and no explanation. A coordinator is deliberately not a precondition:
+approval runs no wave, and the driver that does resolves its own.
 
 The `PLANNING` and `FAILED` statuses are the only ones permitted to carry an empty item
 list (enforced by the model validator and the SQLite / Postgres `items` CHECK);
@@ -401,9 +407,12 @@ existed, because the rework carried the superseded premises forward. The plan
 contradicted itself, and the false assumption the operator had just refuted was
 the one left standing.
 
-**Approval is not the end of the plan's life.** `APPROVED` dispatches the plan and
-hands it to `EXECUTING`, where its items' tasks are in flight. Every item being
-done opens the tail rather than completing the plan: `INTEGRATING` assembles the
+**Approval is not the end of the plan's life.** `APPROVED` stages the plan into
+`SKELETON`, where one accountable job writes the contract its units build
+against, and only a contract that passes its review gate reaches `EXECUTING`,
+where the items' tasks are in flight. There is no `APPROVED -> EXECUTING` edge,
+which is what stops the contract from being skipped. Every item being done then
+opens the tail rather than completing the plan: `INTEGRATING` assembles the
 verified pieces into one running deliverable, `EVALUATING` scores that whole
 against the objective's success criteria, and only then is `COMPLETED` reachable.
 There is no `EXECUTING -> COMPLETED` edge, which is what stops the tail from
@@ -708,14 +717,21 @@ Approve/reject route through the existing idempotent `/approvals/{id}` path into
        dependencies because the decision is made by approval time, while
        `item_is_done` asks whether `chosen_option_id` is set: unwritten, the two
        disagree and an initiative can dispatch every item and never complete.
-- Then the project is linked and the plan moves to `EXECUTING`, the durable plan
-  is rebuilt via `decomposition_from_plan`
-  and dispatched through `coordinate(precomputed_plan=...)`. A dispatch failure
-  (missing coordinator, missing task, missing plan, or a coordinator error) marks
-  the parent task `FAILED` so the stuck plan surfaces on the board, and moves the
-  plan to `FAILED` carrying the redacted cause. The decision stands, but the plan
-  does not: leaving it `APPROVED` would show a plan the operator greenlit with
-  nothing running under it and nothing saying why.
+- Then the project is linked, the plan moves to `SKELETON`, and the durable plan
+  is rebuilt via `decomposition_from_plan` and filed. Filing is where every later
+  reader looks for a plan's work, so it happens before the stage is opened. A
+  staging failure (missing task, missing plan, a project that cannot be linked,
+  or a repository error) marks the parent task `FAILED` so the stuck plan
+  surfaces on the board, and moves the plan to `FAILED` carrying the redacted
+  cause. The decision stands, but the plan does not: leaving it `APPROVED` would
+  show a plan the operator greenlit with nothing running under it and nothing
+  saying why.
+- Approval does not dispatch the units. It asks the rollup to recompute, on a
+  tracked background task so the approve call is not held open for the length of
+  a contract job, and the rollup is the single owner of which stage a plan is in
+  and what that stage needs next. A recompute that dies leaves the plan at
+  `SKELETON`, which the recovery sweep re-drives on its cadence: late rather than
+  lost, and failing it here would convert a delay into a dead initiative.
 - On reject, the parent task is cancelled and nothing builds.
 - The gate persists the plan before parking the approval; if the approval write
   fails, the filled plan is marked `FAILED` (carrying the reason) rather than

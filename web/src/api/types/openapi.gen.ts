@@ -14428,8 +14428,16 @@ export type components = {
          *     A plan is PLANNING while it is a persisted-at-greenlight shell whose items
          *     the decomposer has not filled in yet, DRAFT while it is being shaped, and
          *     PENDING_REVIEW once it is parked for the operator's decision. APPROVED
-         *     records the operator's yes and dispatches the plan; EXECUTING covers the
-         *     window where its items' tasks are in flight.
+         *     records the operator's yes. SKELETON is where the contract becomes code
+         *     before any unit builds against it: module layout, one pending test per
+         *     acceptance criterion, and the project's gate configuration, committed as
+         *     one reviewable change. EXECUTING then covers the window where its items'
+         *     tasks are in flight.
+         *
+         *     APPROVED does not reach EXECUTING. A unit briefed in prose has no
+         *     mechanical definition of done, so the units would be building against a
+         *     contract that exists only in paragraphs; routing every dispatch through
+         *     SKELETON is what makes the contract a signature and a failing test instead.
          *
          *     Every item being done is the start of the tail, not the end of the plan.
          *     INTEGRATING is where the verified pieces are assembled into one running
@@ -14455,7 +14463,7 @@ export type components = {
          * @default draft
          * @enum {string}
          */
-        readonly PlanStatus: "planning" | "draft" | "pending_review" | "approved" | "executing" | "integrating" | "evaluating" | "completed" | "rejected" | "superseded" | "failed";
+        readonly PlanStatus: "planning" | "draft" | "pending_review" | "approved" | "skeleton" | "executing" | "integrating" | "evaluating" | "completed" | "rejected" | "superseded" | "failed";
         /** PlanVersionSnapshot */
         readonly PlanVersionSnapshot: {
             /**
@@ -14723,7 +14731,7 @@ export type components = {
              * @description Status of the executing plan
              * @enum {string|null}
              */
-            readonly plan_status: "planning" | "draft" | "pending_review" | "approved" | "executing" | "integrating" | "evaluating" | "completed" | "rejected" | "superseded" | "failed" | null;
+            readonly plan_status: "planning" | "draft" | "pending_review" | "approved" | "skeleton" | "executing" | "integrating" | "evaluating" | "completed" | "rejected" | "superseded" | "failed" | null;
             /**
              * Format: uuid
              * @description Project identifier

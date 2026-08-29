@@ -234,8 +234,9 @@ question, and every plan status gets an answer.
 | `COMPLETED` / `REJECTED` / `SUPERSEDED` / `FAILED` | nothing; the plan is finished |
 | `DRAFT` / `PENDING_REVIEW` | nothing; it is parked on a person, correctly |
 | `PLANNING` | fails it with a reason: its items were being written by the intake pipeline, and the brief they were written from is not recoverable |
-| `APPROVED` / `EXECUTING` | requeues the orphaned rows, re-judges any task left `IN_REVIEW` that no open human decision is waiting on, then hands the remaining waves back to the coordinator. A plan with nothing left awaiting dispatch is recomputed instead: its rows are finished, dead, or parked on somebody, so driving it would gate every wave out and change nothing, on every cadence |
-| `INTEGRATING` / `EVALUATING` | one rollup pass; the tail stages key on an id derived from the plan and read their own state, so they re-drive themselves |
+| `APPROVED` | moves it to `SKELETON` and recomputes. Approval writes `APPROVED` several awaits before it writes `SKELETON`, so a restart in that window leaves a plan that was approved and never staged; finishing that one hop is the whole recovery, and the rollup owns everything after it. Guarded on the version the sweep read, because an approval request may still be running and a conflict is the proof of it. Deliberately not driven: an approved plan has no contract yet, so there is nothing its units could correctly build against |
+| `EXECUTING` | requeues the orphaned rows, re-judges any task left `IN_REVIEW` that no open human decision is waiting on, then hands the remaining waves back to the coordinator. A plan with nothing left awaiting dispatch is recomputed instead: its rows are finished, dead, or parked on somebody, so driving it would gate every wave out and change nothing, on every cadence |
+| `SKELETON` / `INTEGRATING` / `EVALUATING` | one rollup pass; every stage, head and tail alike, keys on an id derived from the plan and reads its own state, so they re-drive themselves. The stage's own task is requeued along with the plan's work, because it carries a plan id and no item id exactly as the assembly task does |
 
 Every pass also retires **orphaned approvals**, which the table above cannot
 cover: an approval names a task, and a plan-status walk only ever reaches

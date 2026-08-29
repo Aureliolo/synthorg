@@ -8,9 +8,12 @@ must detach them, and a persistence-less boot (no review gate) is a no-op.
 """
 
 from types import SimpleNamespace
+from typing import cast, override
 
 import pytest
 
+from synthorg._core.features import BaseFeatureStateSlice
+from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.core.task_enums import Stakes
 from synthorg.engine.completion_oracle.builder import CompletionOracleRuntime
@@ -24,6 +27,8 @@ from synthorg.engine.completion_oracle.tools.submit_verdict import (
     SubmitCompletionOracleVerdictTool,
 )
 from synthorg.engine.review_gate import ReviewGateService
+from synthorg.engine.workspace.state import WorkspaceStateSlice
+from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.workers import _completion_oracle_runtime
 from synthorg.workers._completion_oracle_runtime import (
     attach_completion_oracle_gates,
@@ -33,16 +38,29 @@ from tests._shared.mock_of import mock_of
 pytestmark = pytest.mark.unit
 
 
-class _FakeAppState:
-    """Duck-typed ``AppState`` exposing only the review-gate slice lookup."""
+class _FakeAppState(AppStateSliceMixin):
+    """Duck-typed ``AppState`` exposing the slices the attach reads.
+
+    The workspace slice is here because the build/test gate is wired with the
+    project root: a skeleton's suite fails by design, so the gate reads what
+    the project declared pending before calling that a broken build. The
+    persistence slice is here because the same gate reads the plan's approved
+    criteria, which is the vocabulary a pending entry has to name.
+
+    Subclasses the mixin rather than duck-typing it, because the accessors this
+    attach reaches are typed against it and typeguard checks the argument.
+    """
 
     def __init__(self, review_gate: object) -> None:
-        self._slices: dict[type, SimpleNamespace] = {
-            ApprovalStateSlice: SimpleNamespace(review_gate=review_gate)
+        self._fakes: dict[type, SimpleNamespace] = {
+            ApprovalStateSlice: SimpleNamespace(review_gate=review_gate),
+            WorkspaceStateSlice: SimpleNamespace(agent_workspace_root=None),
+            PersistenceStateSlice: SimpleNamespace(backend=None),
         }
 
-    def slice(self, slice_type: type) -> SimpleNamespace:
-        return self._slices[slice_type]
+    @override
+    def slice[SliceT: BaseFeatureStateSlice](self, slice_type: type[SliceT]) -> SliceT:
+        return cast("SliceT", self._fakes[slice_type])
 
 
 def _runtime(*, shadow_mode: bool, min_stakes: Stakes) -> CompletionOracleRuntime:

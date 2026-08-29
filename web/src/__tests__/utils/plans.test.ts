@@ -454,6 +454,7 @@ describe('planSolicitsReview', () => {
   it.each([
     'planning',
     'approved',
+    'skeleton',
     'executing',
     'integrating',
     'evaluating',
@@ -467,7 +468,13 @@ describe('planSolicitsReview', () => {
 })
 
 describe('planIsRunning', () => {
-  it.each(['approved', 'executing', 'integrating', 'evaluating'] as const)(
+  it.each([
+    'approved',
+    'skeleton',
+    'executing',
+    'integrating',
+    'evaluating',
+  ] as const)(
     'offers the run to watch on a %s plan',
     (status) => {
       expect(planIsRunning(status)).toBe(true)

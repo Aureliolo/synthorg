@@ -33,7 +33,7 @@ it. The answers are deliberately different in kind:
 """
 
 from collections.abc import Awaitable, Callable, Sequence
-from typing import Final, NamedTuple, Protocol, runtime_checkable
+from typing import Final, NamedTuple
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -43,8 +43,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import (
-    TAIL_STATUSES,
-    TERMINAL_STATUSES,
+    STAGE_STATUSES,
     PlanStatus,
 )
 from synthorg.core.task import Task
@@ -52,8 +51,9 @@ from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination._dependency_gate import awaits_dispatch
 from synthorg.engine.coordination.run_ledger import LiveRunLedger
-from synthorg.engine.initiative.item_progress import TASK_PAGE_SIZE
-from synthorg.engine.initiative.tail_stages import is_integration_task
+from synthorg.engine.initiative.ports import DriveOutcome, PlanDriver
+from synthorg.engine.initiative.stage_registry import is_any_stage_task
+from synthorg.engine.run_recovery._reads import plan_tasks, unfinished_plans
 from synthorg.engine.run_recovery.orphan_approvals import retire_orphaned_approvals
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TransitionTaskMutation
@@ -67,9 +67,7 @@ from synthorg.observability.events.run_recovery import (
     RUN_RECOVERY_SWEEP_STARTED,
     RUN_RECOVERY_TASK_REQUEUED,
 )
-from synthorg.persistence.plan_protocol import PlanFilterSpec
 from synthorg.persistence.protocol import PersistenceBackend
-from synthorg.persistence.task_protocol import TaskFilterSpec
 
 logger = get_logger(__name__)
 
@@ -78,13 +76,28 @@ logger = get_logger(__name__)
 RECOVERY_ACTOR: Final[str] = "run-recovery"
 
 #: Statuses whose plan has a dispatch that somebody has to be driving.
-#: ``APPROVED`` is here beside ``EXECUTING`` because the window between the
-#: two is exactly where a dispatch dies without having written anything: the
-#: approval returned, the background task was created, and the process went
-#: away before the first wave moved the plan on.
-DRIVEN_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
-    {PlanStatus.APPROVED, PlanStatus.EXECUTING}
-)
+#:
+#: ``APPROVED`` is deliberately NOT here. It was, back when approval dispatched
+#: the units itself and the window between the two statuses was where a
+#: dispatch died. It is now the window before the contract exists, and driving
+#: a plan in it runs every wave against a contract that was never written:
+#: nothing gates dispatch on the plan's status, so the transition table
+#: refusing ``APPROVED -> EXECUTING`` does not stop it. The route is real
+#: rather than theoretical, because approval persists ``APPROVED`` several
+#: awaits before it writes ``SKELETON``, and a plan with no rows yet reads as
+#: having everything left to dispatch.
+DRIVEN_STATUSES: Final[frozenset[PlanStatus]] = frozenset({PlanStatus.EXECUTING})
+
+#: Statuses whose plan was approved but never staged. The approval decision is
+#: durable and correct; what died is the request that was meant to move the
+#: plan into the contract stage, so the answer is to finish that one step and
+#: hand the plan to the rollup, which owns everything after it.
+#:
+#: Completing the step rather than failing the plan, because this sweep takes
+#: no claim the approval request would contend with: a request still running
+#: writes the same status, so re-doing it is idempotent, while failing the plan
+#: would destroy an initiative whose approval landed a second earlier.
+STAGING_STATUSES: Final[frozenset[PlanStatus]] = frozenset({PlanStatus.APPROVED})
 
 #: Statuses whose plan is parked on a person. Nothing is wrong with these and
 #: nothing is done to them: the operator's decision is the trigger.
@@ -132,30 +145,6 @@ class _RevivedRows(NamedTuple):
     requeued: int
     rejudged: int
     dispatchable: bool
-
-
-@runtime_checkable
-class PlanDriver(Protocol):
-    """Runs a dispatched plan's remaining waves.
-
-    A port rather than a call, because driving a plan needs the coordinator,
-    the agent roster and the objective task, which are assembled in the API
-    layer. Stating it here keeps the sweep's own dependencies to the graph it
-    reads.
-    """
-
-    async def __call__(self, plan: Plan) -> bool:
-        """Drive *plan*'s remaining waves to whatever they reach.
-
-        Returns:
-            Whether a drive now owns the plan. ``False`` says the driver
-            declined and nothing is running, which the sweep must report as a
-            skip: the driver is the only one that knows, and a caller that
-            assumed a resume logged one on every pass for a plan whose
-            objective task was gone, so a permanently undrivable run read as
-            being rescued every ten minutes for ever.
-        """
-        ...
 
 
 class RunRecoveryReport(BaseModel):
@@ -288,7 +277,7 @@ class RunRecoveryReconciler:
             What the pass found and did.
         """
         logger.info(RUN_RECOVERY_SWEEP_STARTED, trigger=trigger)
-        plans = await self._unfinished_plans()
+        plans = await unfinished_plans(self._persistence)
         resumed = recomputed = requeued = rejudged = failed = skipped = 0
         for plan in plans:
             try:
@@ -369,6 +358,13 @@ class RunRecoveryReconciler:
         if plan.status in UNFILLED_STATUSES:
             failed = await self._fail_unfilled(plan)
             return _one(failed=1) if failed else _one(skipped=1)
+        if plan.status in STAGING_STATUSES:
+            # Answered before the rows are read, because the rows are exactly
+            # what this plan has none of yet: reading it as "everything left to
+            # dispatch" is what sent it to the driver, which ran every wave
+            # against a contract nothing had written.
+            staged = await self._stage_approved(plan)
+            return _one(recomputed=1) if staged else _one(skipped=1)
         revived = await self._revive_rows(plan)
         requeued, rejudged = revived.requeued, revived.rejudged
         # A dispatched plan with nothing left to dispatch is not stranded: its
@@ -376,10 +372,12 @@ class RunRecoveryReconciler:
         # whatever the rollup derives from them. Driving it anyway spends a
         # whole coordination pass to gate every wave out and change nothing,
         # every tick, for as long as the plan sits there.
-        if plan.status in TAIL_STATUSES or not revived.dispatchable:
-            # The tail stages key their work on an id derived from the plan
-            # and read their own state, so one rollup pass re-drives whichever
-            # stage the plan sits in without minting a second job.
+        if plan.status in STAGE_STATUSES or not revived.dispatchable:
+            # Every stage, head and tail alike, keys its work on an id derived
+            # from the plan and reads its own state, so one rollup pass
+            # re-drives whichever stage the plan sits in without minting a
+            # second job. Driving one instead would dispatch its waves while
+            # the stage's own task is still running.
             await self._recompute_plan(plan)
             logger.info(
                 RUN_RECOVERY_PLAN_RESUMED,
@@ -387,7 +385,9 @@ class RunRecoveryReconciler:
                 plan_status=plan.status.value,
                 requeued=requeued,
                 rejudged=rejudged,
-                how="tail-recompute" if plan.status in TAIL_STATUSES else "recompute",
+                how=(
+                    "stage-recompute" if plan.status in STAGE_STATUSES else "recompute"
+                ),
             )
             return _one(recomputed=1, requeued=requeued, rejudged=rejudged)
         if plan.status not in DRIVEN_STATUSES:
@@ -403,17 +403,20 @@ class RunRecoveryReconciler:
                 reason="status-classified-nowhere",
             )
             return _one(skipped=1)
-        if not await self._drive_plan(plan):
-            # The driver declined, so nothing is running. Reported as a skip
-            # because that is what happened: counting it a resume told the
-            # operator a plan whose objective task no longer exists was being
-            # rescued on every pass, for ever, while nothing touched it. The
-            # condition itself is named by the driver's own log line.
+        outcome = await self._drive_plan(plan)
+        if outcome is not DriveOutcome.DRIVING:
+            # The driver did not take the plan, so nothing is running. Reported
+            # as a skip because that is what happened: counting it a resume
+            # told the operator a plan whose objective task no longer exists
+            # was being rescued on every pass, for ever, while nothing touched
+            # it. The reason distinguishes a plan somebody else holds, which is
+            # correct and will finish, from one nothing here can drive, which
+            # will read the same on every future pass.
             logger.info(
                 RUN_RECOVERY_PLAN_SKIPPED,
                 plan_id=plan_id,
                 plan_status=plan.status.value,
-                reason="driver-declined",
+                reason=f"driver-{outcome.value}",
             )
             return _one(skipped=1, requeued=requeued, rejudged=rejudged)
         logger.info(
@@ -426,50 +429,6 @@ class RunRecoveryReconciler:
         )
         return _one(resumed=1, requeued=requeued, rejudged=rejudged)
 
-    async def _unfinished_plans(self) -> Sequence[Plan]:
-        """Read every plan that has not reached a terminal status.
-
-        Asked per unfinished status rather than by reading every row and
-        discarding the terminal ones. The sweep runs on a cadence for the life
-        of the deployment and terminal plans only accumulate, so a full scan
-        makes each pass cost what the deployment has ever done rather than
-        what it still owes. The filter is a single status, so the set is
-        DERIVED from the enum minus the terminal ones: a member added later is
-        swept because it is not terminal, which is the opposite default from
-        a hand-listed set that would silently stop covering it.
-
-        Returns:
-            The unfinished plans, oldest page first within each status.
-        """
-        found: list[Plan] = []
-        for status in sorted(set(PlanStatus) - TERMINAL_STATUSES):
-            found.extend(await self._plans_with_status(status))
-        return found
-
-    async def _plans_with_status(self, status: PlanStatus) -> Sequence[Plan]:
-        """Page through every plan currently at *status*.
-
-        Args:
-            status: The lifecycle status to enumerate.
-
-        Returns:
-            The matching plans, oldest page first.
-        """
-        spec = PlanFilterSpec(status=status)
-        found: list[Plan] = []
-        offset = 0
-        # lint-allow: long-running-loop-kill-switch -- bounded by plan count
-        while True:
-            page = await self._persistence.plans.query(
-                spec,
-                limit=TASK_PAGE_SIZE,
-                offset=offset,
-            )
-            found.extend(page)
-            if len(page) < TASK_PAGE_SIZE:
-                return found
-            offset += TASK_PAGE_SIZE
-
     async def _revive_rows(self, plan: Plan) -> _RevivedRows:
         """Give *plan*'s stranded rows something watching them again.
 
@@ -480,9 +439,14 @@ class RunRecoveryReconciler:
         asking the gates again is what replaces that.
 
         The rows are the plan's own work: the tasks implementing its items,
-        and its assembly task. The objective task is deliberately left alone,
-        because its status is derived from the items by the rollup and writing
-        it here would be a second author of one value.
+        and every stage job it minted. Stage jobs are read from the declared
+        set rather than named one at a time, because naming them is what went
+        stale: the assembly task was admitted here and the contract task was
+        not, so a restart mid-contract requeued nothing, the stage read its own
+        stranded row as still running on every later pass, and the plan sat at
+        SKELETON with nothing driving it. The objective task is deliberately
+        left alone, because its status is derived from the items by the rollup
+        and writing it here would be a second author of one value.
 
         Args:
             plan: The plan whose rows to revive.
@@ -492,8 +456,8 @@ class RunRecoveryReconciler:
         """
         tasks = [
             task
-            for task in await self._plan_tasks(plan)
-            if task.plan_item_id is not None or is_integration_task(task, plan)
+            for task in await plan_tasks(self._persistence, plan)
+            if task.plan_item_id is not None or is_any_stage_task(task, plan)
         ]
         if self._defers_to_queue:
             logger.debug(
@@ -573,26 +537,6 @@ class RunRecoveryReconciler:
             )
         return asked
 
-    async def _plan_tasks(self, plan: Plan) -> Sequence[Task]:
-        """Read every task filed against *plan*.
-
-        Returns:
-            The plan's tasks.
-        """
-        found: list[Task] = []
-        offset = 0
-        # lint-allow: long-running-loop-kill-switch -- bounded by plan size
-        while True:
-            page = await self._persistence.tasks.query(
-                TaskFilterSpec(plan=plan.id),
-                limit=TASK_PAGE_SIZE,
-                offset=offset,
-            )
-            found.extend(page)
-            if len(page) < TASK_PAGE_SIZE:
-                return found
-            offset += TASK_PAGE_SIZE
-
     async def _requeue(self, task: Task) -> bool:
         """Move one orphaned row to INTERRUPTED.
 
@@ -630,6 +574,44 @@ class RunRecoveryReconciler:
             plan_id=str(task.plan_id) if task.plan_id else None,
             from_status=task.status.value,
         )
+        return True
+
+    async def _stage_approved(self, plan: Plan) -> bool:
+        """Finish the one step an interrupted approval did not reach.
+
+        Approval's job ends at making the graph durable and moving the plan to
+        SKELETON; everything after that belongs to the rollup. So a plan left
+        at APPROVED is missing exactly that hop, and completing it is the whole
+        recovery: the rollup then mints the contract job, and the units are
+        filed by the driver the contract hands the plan to.
+
+        Guarded on the version the sweep read, for the same reason the unfilled
+        path is: an approval request may still be running, and a conflict is
+        the proof that it is.
+
+        Returns:
+            Whether the plan was staged by this pass.
+        """
+        staged = plan.model_copy(update={"status": PlanStatus.SKELETON})
+        try:
+            await self._persistence.plans.update(staged, expected_version=plan.version)
+        except PersistenceVersionConflictError:
+            logger.info(
+                RUN_RECOVERY_PLAN_SKIPPED,
+                plan_id=str(plan.id),
+                plan_status=plan.status.value,
+                reason="another-writer-moved-it",
+            )
+            return False
+        logger.info(
+            RUN_RECOVERY_PLAN_RESUMED,
+            plan_id=str(plan.id),
+            plan_status=PlanStatus.SKELETON.value,
+            requeued=0,
+            rejudged=0,
+            how="staged",
+        )
+        await self._recompute_plan(staged)
         return True
 
     async def _fail_unfilled(self, plan: Plan) -> bool:

@@ -29,7 +29,6 @@ gates decide from there; nothing in this service can write ``COMPLETED`` onto a
 plan.
 """
 
-from typing import Final
 from uuid import UUID
 
 from synthorg.core.clock import Clock
@@ -52,19 +51,24 @@ from synthorg.engine.initiative.item_progress import collect_item_progress
 from synthorg.engine.initiative.ports import (
     EvaluationPort,
     IntegrationPort,
+    PlanDriver,
     PlanStatusWriter,
     ReplanTriggerPort,
     RetroCapturePort,
+    SkeletonPort,
+    StagePorts,
 )
 from synthorg.engine.initiative.project_writes import advance_project_status
 from synthorg.engine.initiative.rollup_parent_task import advance_objective_task
 from synthorg.engine.initiative.rollup_plan_advance import advance_plan
+from synthorg.engine.initiative.rollup_stages import (
+    StallRoute,
+    drive_evaluation,
+    drive_integration,
+    drive_skeleton,
+)
 from synthorg.engine.initiative.stall_escalation import StallEscalationService
 from synthorg.engine.initiative.stall_route import escalate_stall, route_stall
-from synthorg.engine.initiative.tail_stages import (
-    IntegrationOutcome,
-    read_integration_state,
-)
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TaskStateChanged
 from synthorg.observability import get_logger, log_exception_redacted
@@ -78,12 +82,6 @@ from synthorg.persistence.lifecycle_ledger import ledger_for
 from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
-
-#: Integration outcomes the stage can act on by dispatching: no attempt yet, or
-#: one whose row was persisted and then never handed to the pipeline.
-_DISPATCHABLE_OUTCOMES: Final[frozenset[IntegrationOutcome]] = frozenset(
-    {IntegrationOutcome.ABSENT, IntegrationOutcome.PENDING}
-)
 
 
 class ProjectRollupService:
@@ -102,12 +100,12 @@ class ProjectRollupService:
             It answers with a disposition rather than acting silently, and its
             two refusals (the master switch, the generation cap) route to the
             escalation exactly as its absence does.
-        integration: Optional INTEGRATE stage. ``None`` parks a plan that has
-            built everything at INTEGRATING rather than completing it: an
-            initiative whose pieces were never assembled has not delivered.
-        evaluation: Optional EVALUATE stage, which owns the only transition
-            that completes a plan. ``None`` parks a plan at EVALUATING: an
-            initiative nobody scored has not been shown to meet its objective.
+        stages: The staged jobs a plan can sit in. Any of them unwired parks
+            the plan in that status rather than advancing past it: an
+            initiative whose contract was never written has not been built, and
+            one whose pieces were never assembled has not delivered. Each
+            arrives in a later boot phase, so a rollup built before them has
+            none and fills them through :meth:`attach_tail`.
 
     The stall escalation, the owner of "this initiative has no automatic route
     left", is attached later through :meth:`attach_tail` because it needs the
@@ -122,9 +120,11 @@ class ProjectRollupService:
         "_integration",
         "_locks",
         "_persistence",
+        "_plan_driver",
         "_plan_writer",
         "_replan_trigger",
         "_ship_retro_capture",
+        "_skeleton",
         "_stall_escalation",
         "_task_engine",
     )
@@ -138,8 +138,7 @@ class ProjectRollupService:
         task_engine: TaskEngine | None = None,
         ship_retro_capture: RetroCapturePort | None = None,
         replan_trigger: ReplanTriggerPort | None = None,
-        integration: IntegrationPort | None = None,
-        evaluation: EvaluationPort | None = None,
+        stages: StagePorts | None = None,
     ) -> None:
         self._persistence = persistence
         self._plan_writer = plan_status_writer
@@ -147,11 +146,15 @@ class ProjectRollupService:
         self._task_engine = task_engine
         self._ship_retro_capture = ship_retro_capture
         self._replan_trigger = replan_trigger
-        self._integration = integration
-        self._evaluation = evaluation
+        resolved = stages if stages is not None else StagePorts()
+        self._skeleton = resolved.skeleton
+        self._integration = resolved.integration
+        self._evaluation = resolved.evaluation
         # Attached only through ``attach_tail``: it needs the approval store,
         # which the boot phase that builds this service has not reached.
         self._stall_escalation: StallEscalationService | None = None
+        # Likewise: driving a plan needs the coordinator and the agent roster.
+        self._plan_driver: PlanDriver | None = None
         # The observer dispatch is sequential, so events alone cannot overlap
         # two recomputes for one plan. The tail stages can: each calls back in
         # once its verdict lands, from its own detached task. Cross-process
@@ -162,12 +165,14 @@ class ProjectRollupService:
         self,
         *,
         replan_trigger: ReplanTriggerPort | None = None,
+        skeleton: SkeletonPort | None = None,
         integration: IntegrationPort | None = None,
         evaluation: EvaluationPort | None = None,
         ship_retro_capture: RetroCapturePort | None = None,
         stall_escalation: StallEscalationService | None = None,
+        plan_driver: PlanDriver | None = None,
     ) -> None:
-        """Fill in tail collaborators that a later boot phase resolved.
+        """Fill in stage collaborators that a later boot phase resolved.
 
         The rollup is wired as soon as persistence and the task engine exist,
         which is before setup has configured a provider, so the first wire can
@@ -187,6 +192,10 @@ class ProjectRollupService:
         """
         if self._replan_trigger is None:
             self._replan_trigger = replan_trigger
+        if self._plan_driver is None:
+            self._plan_driver = plan_driver
+        if self._skeleton is None:
+            self._skeleton = skeleton
         if self._integration is None:
             self._integration = integration
         if self._evaluation is None:
@@ -242,6 +251,14 @@ class ProjectRollupService:
             ``True`` once the trigger is present.
         """
         return self._replan_trigger is not None
+
+    def has_skeleton(self) -> bool:
+        """Whether the SKELETON stage is attached.
+
+        Returns:
+            ``True`` once the stage is present.
+        """
+        return self._skeleton is not None
 
     def has_integration(self) -> bool:
         """Whether the INTEGRATE stage is attached.
@@ -307,6 +324,19 @@ class ProjectRollupService:
         if self._replan_trigger is None:
             return
         await self._replan_trigger.drain(timeout_sec=timeout_sec)
+
+    async def drain_skeleton(self, *, timeout_sec: float) -> None:
+        """Drain in-flight contract dispatches at shutdown, if wired.
+
+        The same exposure the assembly stage has, one stage earlier: the
+        dispatch persists the contract job and hands it to the work spine, so
+        an abandoned one leaves a task minted and routed to nobody, on the very
+        stage every unit below is briefed from. A no-op when the stage is
+        unwired.
+        """
+        if self._skeleton is None:
+            return
+        await self._skeleton.drain(timeout_sec=timeout_sec)
 
     async def drain_integration(self, *, timeout_sec: float) -> None:
         """Drain in-flight integration dispatches at shutdown, if wired.
@@ -420,7 +450,7 @@ class ProjectRollupService:
                     # last known status; the project still reconciles against
                     # that below rather than being skipped for this event.
                     plan = await self._advance_plan(plan, derived) or plan
-                plan = await self._run_tail_stage(
+                plan = await self._run_stage(
                     plan, reopened=plan.status is not started_as
                 )
             # A terminal plan still reconciles its project. The project write
@@ -431,127 +461,103 @@ class ProjectRollupService:
             # status the winning write itself observed, so a project completed
             # between the two reads cannot swallow the retrospective.
             plan = await self._resolve_stall(plan, items)
-            current = await self._project_status(plan)
-            advance = await advance_project_status(
-                self._persistence.projects,
-                project_id=NotBlankStr(str(plan.project)),
-                target=derive_project_status(plan.status, current=current),
-                ledger=ledger_for(self._persistence, clock=self._clock),
-            )
-            project = advance.project
-            before = advance.before if advance.before is not None else current
-            await advance_objective_task(self._task_engine, plan, items)
-            self._maybe_capture_retro(plan, project, before=before)
-            moved = plan.status is not started_as or (
-                project is not None and project.status is not before
-            )
-            emit = logger.info if moved else logger.debug
-            emit(
-                PROJECT_ROLLUP_COMPLETED,
-                plan_id=str(plan_id),
-                plan_status=plan.status.value,
-                project=str(plan.project),
-                project_status=project.status.value if project else None,
-                item_count=item_count,
-            )
+            await self._reconcile_project(plan, items, started_as, item_count)
 
-    async def _run_tail_stage(self, plan: Plan, *, reopened: bool) -> Plan:
-        """Drive the tail stage *plan* currently sits in.
+    async def _reconcile_project(
+        self,
+        plan: Plan,
+        items: tuple[ItemProgress, ...],
+        started_as: PlanStatus,
+        item_count: int,
+    ) -> None:
+        """Bring the plan's project and objective task into line with it.
 
-        The tail is where an initiative stops being a set of finished items and
-        starts being a delivered thing, and each stage owns its own verdict:
-        this only reads where the stage got to and moves the plan accordingly.
-        Nothing here can complete a plan; only the evaluate stage's verdict
-        can, which is what makes the tail unskippable.
+        The tail of one recompute: the plan's own status is settled by the time
+        this runs, and everything here derives from it.
+        """
+        current = await self._project_status(plan)
+        advance = await advance_project_status(
+            self._persistence.projects,
+            project_id=NotBlankStr(str(plan.project)),
+            target=derive_project_status(plan.status, current=current),
+            ledger=ledger_for(self._persistence, clock=self._clock),
+        )
+        project = advance.project
+        before = advance.before if advance.before is not None else current
+        await advance_objective_task(self._task_engine, plan, items)
+        self._maybe_capture_retro(plan, project, before=before)
+        moved = plan.status is not started_as or (
+            project is not None and project.status is not before
+        )
+        emit = logger.info if moved else logger.debug
+        emit(
+            PROJECT_ROLLUP_COMPLETED,
+            plan_id=str(plan.id),
+            plan_status=plan.status.value,
+            project=str(plan.project),
+            project_status=project.status.value if project else None,
+            item_count=item_count,
+        )
 
-        A stage that is unwired leaves the plan parked in that status with a
-        warning on every recompute, deliberately: an initiative that cannot be
-        integrated has not been integrated, and auto-completing it would report
-        a delivery nobody assembled.
+    async def _run_stage(self, plan: Plan, *, reopened: bool) -> Plan:
+        """Drive whichever staged job *plan* currently sits in.
 
-        The two stages run in sequence rather than one per recompute, so a
-        passing integration opens evaluation in the same pass: waiting for
-        another task event would leave a delivered initiative idle until one
-        happened to arrive.
+        A stage owns its own verdict, so this only reads where the stage got to
+        and moves the plan accordingly. Nothing here can complete a plan; only
+        the evaluate stage's verdict can, which is what makes the tail
+        unskippable, and nothing here can dispatch a unit; only the skeleton
+        passing can, which is what makes the contract unskippable.
+
+        The stages run in sequence rather than one per recompute, so a passing
+        integration opens evaluation in the same pass: waiting for another task
+        event would leave a delivered initiative idle until one happened to
+        arrive. The head is checked first and the plan leaves it in the same
+        pass, so a passing skeleton reaches EXECUTING without a second event.
 
         Returns:
             The plan, advanced when a stage produced a verdict.
         """
+        if plan.status is PlanStatus.SKELETON:
+            plan = await drive_skeleton(
+                plan,
+                persistence=self._persistence,
+                skeleton=self._skeleton,
+                reopened=reopened,
+                advance=self._advance_plan,
+                stall=self._stall_on_stage_failure(StallReason.SKELETON_FAILED),
+                drive=self._plan_driver,
+            )
         if plan.status is PlanStatus.INTEGRATING:
-            plan = await self._run_integration(plan, reopened=reopened)
+            plan = await drive_integration(
+                plan,
+                persistence=self._persistence,
+                integration=self._integration,
+                reopened=reopened,
+                advance=self._advance_plan,
+                stall=self._stall_on_stage_failure(StallReason.INTEGRATION_FAILED),
+            )
         if plan.status is PlanStatus.EVALUATING:
-            self._run_evaluation(plan)
+            drive_evaluation(plan, evaluation=self._evaluation)
         return plan
 
-    async def _run_integration(self, plan: Plan, *, reopened: bool) -> Plan:
-        """Fire or read the INTEGRATE stage for a plan sitting in it.
-
-        *reopened* says whether this recompute is what put the plan into
-        INTEGRATING. Only then may a spent assembly attempt be stepped over:
-        that is the difference between reworking an item and re-running the
-        same failed assembly on every event.
+    def _stall_on_stage_failure(self, reason: StallReason) -> StallRoute:
+        """Bind the stall route to one stage's failure reason.
 
         Returns:
-            The plan, advanced to EVALUATING when the assembly job passed.
+            A callable routing a plan to a replan or to the operator.
         """
-        if self._integration is None:
-            logger.warning(
-                PROJECT_ROLLUP_SKIPPED,
-                plan_id=str(plan.id),
-                reason="integration_stage_unwired",
-                note="plan parked at integrating; it will not auto-complete",
-            )
-            return plan
-        state = await read_integration_state(
-            self._persistence, plan, allow_new_attempt=reopened
-        )
-        if state.outcome in _DISPATCHABLE_OUTCOMES:
-            self._integration.schedule(plan=plan, attempt=state.attempt)
-            return plan
-        if state.outcome is IntegrationOutcome.PASSED:
-            return await self._advance_plan(plan, PlanStatus.EVALUATING) or plan
-        if state.outcome is IntegrationOutcome.FAILED:
-            # The pieces work and the whole does not, which no derivation over
-            # items can see: every item is COMPLETED here. Asked rather than
-            # assumed, so a refusal reaches the operator instead of being
-            # rescheduled on every recompute for the life of the process.
+
+        async def _route(plan: Plan) -> Plan:
             return await route_stall(
                 plan,
-                StallReason.INTEGRATION_FAILED,
+                reason,
                 items=None,
                 trigger=self._replan_trigger,
                 escalation=self._stall_escalation,
                 fail_plan=self._fail_plan,
             )
-        if state.outcome is IntegrationOutcome.RUNNING:
-            # Logged rather than passed over in silence: an assembly job that
-            # is genuinely working and one that died without terminalising its
-            # row look identical from here, and this line is the only place an
-            # operator can tell how long the plan has been waiting.
-            logger.debug(
-                PROJECT_ROLLUP_STARTED,
-                plan_id=str(plan.id),
-                plan_status=plan.status.value,
-                note="integration job still running",
-            )
-        return plan
 
-    def _run_evaluation(self, plan: Plan) -> None:
-        """Fire the EVALUATE stage, or park the plan visibly.
-
-        The stage owns the only transition that can complete a plan, so this
-        never advances anything itself: it either hands the plan to the
-        judgement or says loudly that no judgement can happen.
-        """
-        if self._evaluation is None:
-            logger.warning(
-                PROJECT_ROLLUP_SKIPPED,
-                plan_id=str(plan.id),
-                reason="evaluation_stage_unwired",
-                note="plan parked at evaluating; it will not auto-complete",
-            )
-            return
-        self._evaluation.schedule(plan=plan)
+        return _route
 
     async def _resolve_stall(
         self,

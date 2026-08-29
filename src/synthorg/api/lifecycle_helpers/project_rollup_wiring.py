@@ -182,6 +182,44 @@ async def attach_stall_escalation(app_state: AppState) -> None:
     _log_attached("initiative_stall_escalation")
 
 
+async def attach_skeleton_stage(app_state: AppState) -> None:
+    """Attach the SKELETON stage onto the wired rollup.
+
+    The activation the ``initiative_skeleton`` subsystem declares. Its own
+    dependency is the work pipeline, because the contract job is an ordinary
+    task; without it a plan parks at ``SKELETON`` and no unit is dispatched.
+
+    Raises:
+        SubsystemDeclinedError: No work pipeline to dispatch the contract
+            task through.
+    """
+    from synthorg.api.lifecycle_helpers.initiative_tail_wiring import (  # noqa: PLC0415
+        build_skeleton_stage,
+    )
+    from synthorg.api.lifecycle_helpers.run_recovery_wiring import (  # noqa: PLC0415
+        drive_plan_waves,
+    )
+
+    resolved = _tail_target(app_state, ProjectRollupService.has_skeleton)
+    if resolved is None:
+        return
+    persistence, rollup = resolved
+    stage = build_skeleton_stage(app_state, persistence)
+    if stage is None:
+        msg = "no work pipeline; the contract job is an ordinary task"
+        raise SubsystemDeclinedError(msg)
+    # The driver rides with the stage rather than arriving on its own, because
+    # a passing contract is the moment the units become dispatchable and the
+    # stage is the only thing that reaches that edge. Attached separately, a
+    # stage without a driver would write EXECUTING and leave every plan waiting
+    # on a recovery sweep to start work the contract had already unblocked.
+    rollup.attach_tail(
+        skeleton=stage,
+        plan_driver=lambda plan: drive_plan_waves(app_state, plan),
+    )
+    _log_attached("initiative_skeleton_stage")
+
+
 async def attach_integration_stage(app_state: AppState) -> None:
     """Attach the INTEGRATE stage onto the wired rollup.
 

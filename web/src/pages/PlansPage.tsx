@@ -20,8 +20,11 @@ import { PlansSkeleton } from './plans/PlansSkeleton'
 // Plans awaiting a decision surface first, then failed plans (which need the
 // operator's attention / a re-run), then in-flight and decided plans by recency.
 // The tail stages rank above executing: a plan being assembled or scored is the
-// closest to delivery and the likeliest to need a look. Approved-but-not-yet-
-// dispatched follows, and completed plans sink below every live status.
+// closest to delivery and the likeliest to need a look. The skeleton ranks just
+// below executing and above approved: it is running work rather than a plan
+// waiting to start, and it is the furthest of the running statuses from
+// delivery. Approved-but-not-yet-dispatched follows, and completed plans sink
+// below every live status.
 const STATUS_ORDER: Record<PlanStatus, number> = {
   pending_review: 0,
   failed: 1,
@@ -30,10 +33,11 @@ const STATUS_ORDER: Record<PlanStatus, number> = {
   evaluating: 4,
   integrating: 5,
   executing: 6,
-  approved: 7,
-  rejected: 8,
-  superseded: 9,
-  completed: 10,
+  skeleton: 7,
+  approved: 8,
+  rejected: 9,
+  superseded: 10,
+  completed: 11,
 }
 
 function sortForReview(plans: readonly Plan[]): readonly Plan[] {

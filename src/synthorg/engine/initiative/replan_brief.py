@@ -39,6 +39,14 @@ _REASON_GUIDANCE: Final[dict[StallReason, str]] = {
         "Some outstanding items failed and others are blocked. Treat both: the "
         "successor must not inherit either the failing approach or the blocker."
     ),
+    StallReason.SKELETON_FAILED: (
+        "The contract could not be written as code: the module layout, the "
+        "pending tests and the gate configuration never reached a state the "
+        "review gate would take. Nothing has been built yet, so this is a "
+        "statement about the plan rather than about any unit. Re-shape the "
+        "objective so its criteria can each be asserted by one test, and keep "
+        "the tracks far enough apart that a signature can separate them."
+    ),
     StallReason.INTEGRATION_FAILED: (
         "Every piece was built and passed its own review, but assembling them "
         "into one running deliverable failed. The gap is between the pieces, "

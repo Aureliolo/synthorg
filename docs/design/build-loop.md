@@ -11,11 +11,12 @@ also describes, this page wins.
 
 !!! warning "Status"
 
-    Designed, not built. The charter gate, worktree isolation, the review gate
-    and the reviewer-independence constraints exist today. Reconnaissance, the
-    skeleton stage, slice planning, the gate system, the finding channel and
-    the machinery budget do not. Driven live against real providers, the
-    current loop has never reached assembly.
+    Partly built. The charter gate, worktree isolation, the review gate, the
+    reviewer-independence constraints and the skeleton stage exist today (see
+    "As implemented" below for what the stage does and does not cover).
+    Reconnaissance, slice planning, the rest of the gate system, the finding
+    channel and the machinery budget do not. Driven live against real
+    providers, the loop before the skeleton stage never reached assembly.
 
 ## The problem
 
@@ -219,10 +220,74 @@ defect, caught at skeleton review while the whole contract is being read.
 
 The gate configuration is part of the skeleton because a definition of done
 with nowhere to live is a definition of done nobody enforces. It carries the
-linter, the formatter, the test runner, the coverage floor, the dependency
-policy, and the command that boots the result.
+test runner, the linter, the formatter, the dependency check, and the command
+that boots the result.
+
+**Every gate is a command, and every gate is required.** The build/test oracle
+asks for a passing recorded run of each declared command before it accepts a
+unit, and the set it asks for is derived from the manifest rather than listed
+anywhere, so a field added without a reader fails its own gate instead of
+becoming a knob an operator sets in vain. The evidence is confined to the
+execution the test verdict was drawn from: a receipt vouches for the code its
+own run saw, so a session that linted, failed its tests, then passed them on a
+later run that only ran tests would otherwise complete on a lint receipt for a
+file the linter never read. A coverage floor is declared inside
+the test command, where the runner enforces it by exit status: a separate
+number would be a second owner of one figure, and the one that nothing reads is
+always the one somebody sets.
 
 The skeleton is small by construction, which is what makes it reviewable.
+
+#### As implemented
+
+The stage is `PlanStatus.SKELETON`, between `APPROVED` and `EXECUTING`, plus an
+ordinary forced-`LEAF` task doing the work. That pairing is what makes it
+legible in `GET /plans`, recoverable across a restart, and reviewable by the
+existing chain: the task is minted with a deterministic id derived from the
+plan and the attempt index, carries `plan_id` with no `plan_item_id`, and runs
+through `WorkPipeline`, so it inherits `run_completion_gates` whole and no
+second oracle is written. `APPROVED -> EXECUTING` does not exist, which is what
+makes the stage unskippable rather than optional, and
+`check_skeleton_stage_paths.py` holds that as a graph property rather than as
+one absent edge.
+
+Approval's job ends at making the graph durable. It files the rebuilt task tree,
+moves the plan to `SKELETON`, and hands it to the rollup, which is the single
+owner of which stage a plan is in and what that stage needs next; only a passing
+contract moves the plan to `EXECUTING` and dispatches its units.
+
+The pending reading lives with the **verdict**, not on the row.
+`CodeExecutionRecord.passed` means the command exited zero, held there by a
+validator and a database `CHECK`, so a caller cannot mint a green build from any
+run at all. The oracle reads the project's declaration and decides what a failing
+run means: forgiven when every pending test failed its own assertion and nothing
+else broke, and blocking when a unit's own criterion is still listed pending
+after a green run, which is the direction an exit status cannot see.
+
+Forgiveness is narrowed twice, because the manifest lives in a directory the
+agent writes. An entry only counts when its criterion is one the plan was
+approved with, so an appended entry naming an invented criterion forgives
+nothing and its test reads as an ordinary break; and the report only counts
+when it is at least as new as the run being judged, since one report path is
+shared by every unit and nothing rewrites it when a run dies before producing
+one. A manifest that exists and will not parse blocks the task rather than
+waiving what it was meant to declare.
+
+Which outcome a runner recorded is read from the tag AND the message. A runner
+picks between JUnit's `failure` and `error` by PHASE, not by cause: pytest
+writes `error` only for collection, setup and teardown, so a pending test whose
+body raises `KeyError` is tagged exactly as a lost assertion is. Trusting the
+tag alone would forgive a skeleton that crashes, which is the one outcome the
+pending marker must never cover.
+
+| key | default | purpose |
+| --- | --- | --- |
+| `engine.skeleton_stage_timeout_seconds` | 1800 | ceiling on minting + dispatching the contract job |
+
+The stage gets exactly one attempt per plan. A contract that will not compile is
+a statement about the plan rather than about the agent that tried, so it routes
+to a replan, and a replan is a new plan with its own first attempt; there is no
+edge back into `SKELETON` for the plan that failed.
 
 ### Slice planning
 

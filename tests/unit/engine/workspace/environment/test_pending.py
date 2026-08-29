@@ -1,0 +1,550 @@
+"""Unit tests for pending-criterion classification.
+
+The five-way table is the whole point of the module, so it is parametrised
+row by row: every row is a separate way a test can end, and four of the five
+have to stay red or a skeleton that never loaded ships as a green trunk.
+"""
+
+import errno
+import os
+import re
+from pathlib import Path
+
+import pytest
+
+from synthorg.core.types import NotBlankStr
+from synthorg.engine.workspace.environment import pending_report
+from synthorg.engine.workspace.environment.manifest import PendingTest
+from synthorg.engine.workspace.environment.pending import (
+    PendingVerdict,
+    classify_pending,
+)
+
+pytestmark = pytest.mark.unit
+
+_TEST_ID = "tests/test_score.py::test_a_score_is_recorded"
+_CRITERION = "a score is recorded"
+_REPORT = "reports/junit.xml"
+
+
+def _pending() -> tuple[PendingTest, ...]:
+    """The one-criterion pending set every case below classifies.
+
+    Returns:
+        A single pending declaration.
+    """
+    return (
+        PendingTest(
+            criterion=NotBlankStr(_CRITERION),
+            test_id=NotBlankStr(_TEST_ID),
+        ),
+    )
+
+
+def _write_report(workspace: Path, body: str) -> None:
+    """Put a JUnit report at the manifest-declared path under *workspace*."""
+    report = workspace / _REPORT
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text(body, encoding="utf-8")
+
+
+def _case(outcome: str) -> str:
+    """Build a one-case JUnit document whose case ends with *outcome*.
+
+    Args:
+        outcome: The XML for the outcome child, empty for a pass.
+
+    Returns:
+        The report body.
+    """
+    return (
+        '<testsuite name="pytest" tests="1">'
+        '<testcase classname="tests.test_score" file="tests/test_score.py" '
+        f'name="test_a_score_is_recorded">{outcome}</testcase>'
+        "</testsuite>"
+    )
+
+
+class TestTheFiveWayTable:
+    """Only the declared assertion failure is green.
+
+    Each other row is its own reason a skeleton is not merely unimplemented,
+    and collapsing any of them into the green row turns the pending marker
+    from a contract into a mute button.
+    """
+
+    @pytest.mark.parametrize(
+        ("outcome", "verdict", "reason_fragment"),
+        [
+            pytest.param(
+                '<failure message="assert 0 == 1">assert 0 == 1</failure>',
+                PendingVerdict.GREEN,
+                "declared assertion",
+                id="declared_assertion_failure",
+            ),
+            pytest.param(
+                '<error message="ImportError">No module named scoring</error>',
+                PendingVerdict.RED,
+                "raised before it could assert",
+                id="collection_error",
+            ),
+            pytest.param(
+                '<failure message="KeyError: total">KeyError: total</failure>',
+                PendingVerdict.RED,
+                "raised rather than asserting",
+                id="unexpected_exception",
+            ),
+            pytest.param(
+                '<skipped message="no backend"/>',
+                PendingVerdict.RED,
+                "was skipped",
+                id="skipped",
+            ),
+            pytest.param(
+                "",
+                PendingVerdict.RED,
+                "clear its manifest entry",
+                id="passed_while_pending",
+            ),
+        ],
+    )
+    def test_each_outcome_gets_its_own_verdict(
+        self,
+        tmp_path: Path,
+        outcome: str,
+        verdict: PendingVerdict,
+        reason_fragment: str,
+    ) -> None:
+        _write_report(tmp_path, _case(outcome))
+
+        report = classify_pending(
+            _pending(), workspace_path=tmp_path, test_report_path=_REPORT
+        )
+
+        assert report.report_read is True
+        assert [entry.verdict for entry in report.outcomes] == [verdict]
+        assert reason_fragment in report.outcomes[0].reason
+        assert report.green is (verdict is PendingVerdict.GREEN)
+
+    @pytest.mark.parametrize(
+        ("message", "verdict"),
+        [
+            pytest.param("assert 0 == 1", PendingVerdict.GREEN, id="bare_assert"),
+            pytest.param(
+                "AssertionError: not implemented",
+                PendingVerdict.GREEN,
+                id="assertion_error",
+            ),
+            pytest.param(
+                "expect(received).toBe(expected)",
+                PendingVerdict.GREEN,
+                id="jest_expect",
+            ),
+            pytest.param("KeyError: 'total'", PendingVerdict.RED, id="key_error"),
+            pytest.param(
+                "TypeError: unsupported operand",
+                PendingVerdict.RED,
+                id="type_error",
+            ),
+            pytest.param("", PendingVerdict.RED, id="no_message"),
+        ],
+    )
+    def test_a_failure_is_read_from_its_message_not_its_tag(
+        self, tmp_path: Path, message: str, verdict: PendingVerdict
+    ) -> None:
+        """A runner picks ``failure`` over ``error`` by phase, not by cause.
+
+        pytest writes ``failure`` for anything that reaches the test body, so a
+        pending test raising ``KeyError`` is tagged exactly as a lost assertion
+        is. Trusting the tag alone forgives a skeleton that crashes, which is
+        the one outcome the marker must never cover.
+        """
+        _write_report(tmp_path, _case(f'<failure message="{message}"/>'))
+
+        report = classify_pending(
+            _pending(), workspace_path=tmp_path, test_report_path=_REPORT
+        )
+
+        assert report.outcomes[0].verdict is verdict
+        assert report.green is (verdict is PendingVerdict.GREEN)
+
+    @pytest.mark.parametrize(
+        ("raised", "message", "verdict"),
+        [
+            pytest.param(
+                "AssertionError",
+                "assert 1 == 2",
+                PendingVerdict.GREEN,
+                id="declared_assertion",
+            ),
+            pytest.param(
+                "ValueError",
+                "cannot assert on an empty input",
+                PendingVerdict.RED,
+                id="exception_whose_message_says_assert",
+            ),
+            pytest.param(
+                "KeyError",
+                "'score'",
+                PendingVerdict.RED,
+                id="plain_exception",
+            ),
+        ],
+    )
+    def test_the_class_the_runner_named_beats_the_message_text(
+        self, tmp_path: Path, raised: str, message: str, verdict: PendingVerdict
+    ) -> None:
+        """A crash whose message merely contains the word is not an assertion.
+
+        The message is prose the raised exception chose, so a substring test
+        reads ``ValueError: cannot assert on an empty input`` as the declared
+        failure and turns a skeleton that crashes green. The class the runner
+        recorded is the structured answer, and it wins wherever there is one.
+        """
+        _write_report(
+            tmp_path,
+            _case(f'<failure message="{message}" type="{raised}"/>'),
+        )
+
+        report = classify_pending(
+            _pending(), workspace_path=tmp_path, test_report_path=_REPORT
+        )
+
+        assert report.outcomes[0].verdict is verdict
+
+    def test_a_message_opening_with_its_class_needs_no_type_attribute(
+        self, tmp_path: Path
+    ) -> None:
+        """pytest writes the raised class into the message, not a ``type``.
+
+        Its ``reprcrash.message`` opens with the class name, so the prefix is
+        the same structured answer arriving by another route: without reading
+        it, every pytest failure falls back to the substring test this rule
+        exists to replace.
+        """
+        _write_report(
+            tmp_path,
+            _case('<failure message="ValueError: cannot assert on empty input"/>'),
+        )
+
+        report = classify_pending(
+            _pending(), workspace_path=tmp_path, test_report_path=_REPORT
+        )
+
+        assert report.outcomes[0].verdict is PendingVerdict.RED
+
+    def test_a_test_the_report_never_names_is_red(self, tmp_path: Path) -> None:
+        """A timeout or a runner crash looks exactly like this from here.
+
+        The runner died before writing the case, so nothing was measured. The
+        report parses, so the fail-closed path below does not cover it: the
+        absent case has to be red on its own.
+        """
+        _write_report(tmp_path, '<testsuite name="pytest" tests="0"></testsuite>')
+
+        report = classify_pending(
+            _pending(), workspace_path=tmp_path, test_report_path=_REPORT
+        )
+
+        assert report.outcomes[0].verdict is PendingVerdict.RED
+        assert "names no such test" in report.outcomes[0].reason
+
+
+class TestWhenNothingCanBeRead:
+    """A report that cannot be read measured nothing, and says so.
+
+    Reported apart from a criterion that was measured and lost, because the
+    two demand opposite responses: one is a rework round on the contract, the
+    other is a broken runner nobody has noticed.
+    """
+
+    @pytest.mark.parametrize(
+        ("declared_path", "body"),
+        [
+            pytest.param(None, None, id="no_report_declared"),
+            pytest.param(_REPORT, None, id="report_missing"),
+            pytest.param(_REPORT, "<testsuite><testcase", id="report_unparseable"),
+            pytest.param("../escaped.xml", None, id="report_outside_workspace"),
+        ],
+    )
+    def test_every_criterion_is_red_and_flagged_unread(
+        self, tmp_path: Path, declared_path: str | None, body: str | None
+    ) -> None:
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        if body is not None:
+            _write_report(workspace, body)
+
+        report = classify_pending(
+            _pending(), workspace_path=workspace, test_report_path=declared_path
+        )
+
+        assert report.report_read is False
+        assert report.green is False
+        assert [entry.verdict for entry in report.outcomes] == [PendingVerdict.RED]
+
+    def test_a_report_outside_the_workspace_is_never_opened(
+        self, tmp_path: Path
+    ) -> None:
+        """The manifest is committed content an agent writes, so its path is
+        untrusted input: a relative escape must be refused rather than followed,
+        or a green verdict can be bought with a file the agent never ran.
+        """
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        (tmp_path / "escaped.xml").write_text(
+            _case('<failure message="assert 0 == 1"/>'), encoding="utf-8"
+        )
+
+        report = classify_pending(
+            _pending(), workspace_path=workspace, test_report_path="../escaped.xml"
+        )
+
+        assert report.report_read is False
+        assert report.outcomes[0].verdict is PendingVerdict.RED
+
+
+class TestWhatTheReadItselfRefuses:
+    """Guards that hold against the tree changing under the read.
+
+    The workspace is a directory the agent writes, so the path checked and the
+    bytes parsed are two separate facts about it unless the read forces them
+    together.
+    """
+
+    @pytest.mark.skipif(
+        os.open not in os.supports_dir_fd,
+        reason="the component descent needs dir_fd, which this platform lacks",
+    )
+    def test_a_directory_swapped_after_the_boundary_check_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """``O_NOFOLLOW`` binds the last component only, so each must be last.
+
+        Resolving the path proves where it pointed, which is the state the
+        workspace-boundary check reads. The agent writes in this tree, so it
+        can replace an intermediate directory with a symlink out of it
+        afterwards, and the open would then reach a report from outside the
+        workspace that nobody had to run for. Driven through the descent
+        directly, because the swap has to land BETWEEN the check and the open
+        and that gap is exactly what the descent closes.
+        """
+        workspace = tmp_path / "workspace"
+        (workspace / "reports").mkdir(parents=True)
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "junit.xml").write_text(_case(""), encoding="utf-8")
+        root = workspace.resolve()
+        resolved = (root / _REPORT).resolve()
+
+        (workspace / "reports").rmdir()
+        (workspace / "reports").symlink_to(outside, target_is_directory=True)
+
+        # The assertion is that the open was REFUSED, not which code carried
+        # the refusal: the descent asks for O_DIRECTORY and O_NOFOLLOW at once
+        # and a symlinked directory violates both, so whether the kernel
+        # answers ENOTDIR or ELOOP is its own evaluation order. Pinning one
+        # would fail on a platform that refuses just as firmly by the other.
+        # The messages come from the platform, so they match what it raises.
+        refusals = "|".join(
+            re.escape(os.strerror(code)) for code in (errno.ENOTDIR, errno.ELOOP)
+        )
+        with pytest.raises(OSError, match=refusals):
+            pending_report._open_within(root, resolved)
+
+    def test_a_report_past_the_ceiling_is_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The ceiling is enforced by the read, so it binds what is parsed."""
+        monkeypatch.setattr(pending_report, "_MAX_REPORT_BYTES", 8)
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        _write_report(workspace, _case(""))
+
+        report = classify_pending(
+            _pending(), workspace_path=workspace, test_report_path=_REPORT
+        )
+
+        assert report.report_read is False
+        assert report.outcomes[0].verdict is PendingVerdict.RED
+
+
+class TestAnEmptyPendingSet:
+    def test_declares_nothing_outstanding_rather_than_nothing_measured(
+        self, tmp_path: Path
+    ) -> None:
+        """Green with no report, which is not the same claim as a lost report.
+
+        A skeleton whose criteria are all implemented has no pending entries
+        left, and asking it for a report it has no reason to declare would fail
+        every finished project.
+        """
+        report = classify_pending((), workspace_path=tmp_path, test_report_path=None)
+
+        assert report.outcomes == ()
+        assert report.report_read is True
+        assert report.green is True
+
+
+class TestHowARunnerSpellsTheNodeId:
+    """Runners disagree on where the file goes, and the manifest may use either.
+
+    A skeleton whose manifest names the test one way while the runner writes it
+    the other reads as "the report names no such test", which is red, so an
+    author is sent to fix a contract that is correct.
+
+    The node id is the spelling that matters most, because it is the one the
+    manifest is documented to carry and the one no classname-derived form can
+    produce: pytest writes the classname as a dotted module path and keeps the
+    file in its own attribute, so the two share no boundary to build it from.
+    """
+
+    @pytest.mark.parametrize(
+        "test_id",
+        [
+            pytest.param("test_a_score_is_recorded", id="bare_name"),
+            pytest.param(
+                "tests/test_score.py::test_a_score_is_recorded", id="pytest_node_id"
+            ),
+            pytest.param(
+                "tests.test_score::test_a_score_is_recorded", id="classname_qualified"
+            ),
+            pytest.param("tests.test_score.test_a_score_is_recorded", id="dotted"),
+        ],
+    )
+    def test_every_spelling_reaches_the_same_case(
+        self, tmp_path: Path, test_id: str
+    ) -> None:
+        _write_report(tmp_path, _case('<failure message="assert 0 == 1"/>'))
+
+        report = classify_pending(
+            (
+                PendingTest(
+                    criterion=NotBlankStr(_CRITERION),
+                    test_id=NotBlankStr(test_id),
+                ),
+            ),
+            workspace_path=tmp_path,
+            test_report_path=_REPORT,
+        )
+
+        assert report.green is True
+
+    def test_a_method_test_keeps_its_class_hop(self, tmp_path: Path) -> None:
+        """``classname`` carries the class beyond the module the file names.
+
+        Dropping that segment would build ``file::name`` for a method test,
+        which is not what the runner calls it, so the manifest entry a skeleton
+        actually writes would match nothing.
+        """
+        _write_report(
+            tmp_path,
+            '<testsuite name="pytest" tests="1">'
+            '<testcase classname="tests.test_score.TestScore" '
+            'file="tests/test_score.py" name="test_a_score_is_recorded">'
+            '<failure message="assert 0 == 1"/>'
+            "</testcase></testsuite>",
+        )
+
+        report = classify_pending(
+            (
+                PendingTest(
+                    criterion=NotBlankStr(_CRITERION),
+                    test_id=NotBlankStr(
+                        "tests/test_score.py::TestScore::test_a_score_is_recorded"
+                    ),
+                ),
+            ),
+            workspace_path=tmp_path,
+            test_report_path=_REPORT,
+        )
+
+        assert report.green is True
+
+
+class TestWhenTwoCasesShareASpelling:
+    """A name naming two tests names neither, and cannot make either green.
+
+    The bare test name is a spelling a manifest may use, and two files may hold
+    the same one. Letting the last case parsed win means a declared assertion
+    failure anywhere in the suite decides the verdict for a criterion that
+    meant the other test.
+    """
+
+    @staticmethod
+    def _two_files_one_name(first: str, second: str) -> str:
+        """Two cases sharing a bare name, each with its own outcome.
+
+        Returns:
+            The report body.
+        """
+        return (
+            '<testsuite name="pytest" tests="2">'
+            '<testcase classname="tests.test_score" file="tests/test_score.py" '
+            f'name="test_a_score_is_recorded">{first}</testcase>'
+            '<testcase classname="tests.test_other" file="tests/test_other.py" '
+            f'name="test_a_score_is_recorded">{second}</testcase>'
+            "</testsuite>"
+        )
+
+    def test_an_ambiguous_bare_name_is_red(self, tmp_path: Path) -> None:
+        """The other file's declared failure must not answer for this one.
+
+        Its case crashes; the unrelated one asserts. Reading either as "the"
+        case turns a crashing skeleton green on evidence about a different test.
+        """
+        _write_report(
+            tmp_path,
+            self._two_files_one_name(
+                '<failure message="KeyError" type="KeyError"/>',
+                '<failure message="assert 0 == 1" type="AssertionError"/>',
+            ),
+        )
+
+        report = classify_pending(
+            (
+                PendingTest(
+                    criterion=NotBlankStr(_CRITERION),
+                    test_id=NotBlankStr("test_a_score_is_recorded"),
+                ),
+            ),
+            workspace_path=tmp_path,
+            test_report_path=_REPORT,
+        )
+
+        assert report.outcomes[0].verdict is PendingVerdict.RED
+        assert "more than one test" in report.outcomes[0].reason
+
+    def test_an_unambiguous_node_id_still_resolves(self, tmp_path: Path) -> None:
+        """Naming the file is what makes the criterion answerable again.
+
+        The ambiguity is in the bare name alone, so the full node id has to
+        keep working or the refusal above would cost every project the feature
+        rather than the one spelling that cannot be resolved.
+
+        The run is still not green, and that is the second half of the rule:
+        the other file's crash is an unrelated break, and a shared bare name
+        must not excuse it. Sharing the criterion's spelling is exactly how it
+        would, so it is counted rather than waived.
+        """
+        _write_report(
+            tmp_path,
+            self._two_files_one_name(
+                '<failure message="assert 0 == 1" type="AssertionError"/>',
+                '<failure message="KeyError" type="KeyError"/>',
+            ),
+        )
+
+        report = classify_pending(
+            (
+                PendingTest(
+                    criterion=NotBlankStr(_CRITERION),
+                    test_id=NotBlankStr(_TEST_ID),
+                ),
+            ),
+            workspace_path=tmp_path,
+            test_report_path=_REPORT,
+        )
+
+        assert report.outcomes[0].verdict is PendingVerdict.GREEN
+        assert report.other_failures == 1

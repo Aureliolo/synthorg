@@ -27,6 +27,7 @@ from synthorg.engine.coordination.models import CoordinationContext
 from synthorg.engine.coordination.run_ledger import LiveRunLedger
 from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.decomposition.plan_mapping import decomposition_from_plan
+from synthorg.engine.initiative.ports import DriveOutcome
 from synthorg.engine.review.factory import build_review_pipeline
 from synthorg.engine.review_staffing.rejudge import rejudge_released_task
 from synthorg.engine.run_recovery.reconciler import (
@@ -73,7 +74,7 @@ def live_run_ledger_of(app_state: AppState) -> LiveRunLedger:
     return ledger
 
 
-async def drive_plan_waves(app_state: AppState, plan: Plan) -> bool:
+async def drive_plan_waves(app_state: AppState, plan: Plan) -> DriveOutcome:
     """Hand *plan*'s remaining waves back to the coordinator.
 
     Returns as soon as the drive is under way: resuming a plan runs agents,
@@ -84,22 +85,22 @@ async def drive_plan_waves(app_state: AppState, plan: Plan) -> bool:
         plan: The plan to resume.
 
     Returns:
-        Whether a drive now owns the plan. ``False`` covers both a plan
-        somebody else is already driving and one this process cannot drive at
-        all, and the sweep reports it as a skip rather than as a resume it did
-        not perform.
+        ``HELD`` when the ledger says somebody else already owns the plan,
+        ``REFUSED`` when this deployment cannot drive it at all, and
+        ``DRIVING`` once a drive owns it. The two ways of not driving are kept
+        apart because a caller must escalate one and ignore the other.
     """
     ledger = live_run_ledger_of(app_state)
     plan_id = str(plan.id)
     if not ledger.try_claim(plan_id):
-        return False
+        return DriveOutcome.HELD
     started = False
     try:
         started = await _start_drive(app_state, plan)
     finally:
         if not started:
             ledger.release(plan_id)
-    return started
+    return DriveOutcome.DRIVING if started else DriveOutcome.REFUSED
 
 
 async def _file_missing_children(

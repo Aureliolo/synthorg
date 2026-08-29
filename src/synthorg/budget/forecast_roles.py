@@ -3,8 +3,9 @@
 
 At the work-entry seam a brief has not yet been decomposed into concrete
 role assignments, so the :class:`~synthorg.engine.pipeline.forecast_gate.ForecastGate`
-historically forecast over a single ``"default"`` role -- which systematically
-under-estimates a multi-agent run. This provider sources the company's live role
+has no per-role breakdown to forecast over, and forecasting a single
+``"default"`` role systematically under-estimates a multi-agent run. This
+provider sources the company's live role
 roster (distinct roles + the model each role predominantly runs) from the
 registry so the forecast spans every role that could participate, with each
 role's tier feeding the forecaster's per-role prior. It over- rather than

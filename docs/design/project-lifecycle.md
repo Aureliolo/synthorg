@@ -346,17 +346,22 @@ unable to block or fail it:
 
 ## Where linkage is written
 
-At dispatch, in `_dispatch_approved_plan`
-(`api/controllers/_plan_review_resume.py`), and **before** the coordinator runs:
+At approval, in `_dispatch_approved_plan`
+(`api/controllers/_plan_review_resume.py`), and **before** any task is filed:
 
 1. `Project.plan_id` is repointed and the project goes `PLANNING -> ACTIVE`.
-2. The plan goes `APPROVED -> EXECUTING`.
+2. The plan goes `APPROVED -> SKELETON`.
 3. `decomposition_from_plan` stamps `plan_id` + `plan_item_id` onto every child
    task it builds.
 
-The ordering is load-bearing: `coordinate()` awaits the whole subtask tree, so a
-rollup event fired mid-dispatch would otherwise observe a project still
-`PLANNING` with its tasks already running.
+The ordering is load-bearing: a rollup event fired mid-preparation would
+otherwise observe a project still `PLANNING` with its plan already staged.
+
+The coordinator is **not** called here. Approval's job ends at making the graph
+durable; it then asks the rollup to recompute, and the rollup opens the contract
+stage. Only when that contract job passes its review gate does the plan reach
+`EXECUTING` and its units get dispatched, so nothing builds against a contract
+that does not exist yet.
 
 `Task.plan_item_id` makes the previously implicit correlation explicit. The child
 task id is still minted deterministically from the plan item id

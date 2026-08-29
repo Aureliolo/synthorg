@@ -71,6 +71,7 @@ from synthorg.observability.events.initiative import (
     INITIATIVE_EVALUATION_RECORDED,
     INITIATIVE_EVALUATION_SCHEDULED,
     INITIATIVE_EVALUATION_SKIPPED,
+    INITIATIVE_EVALUATION_UNMET,
 )
 from synthorg.persistence.evaluation_report_protocol import (
     EvaluationReportRecord,
@@ -406,7 +407,7 @@ class EvaluationStageService:
             v for v in report.verdicts if v.outcome is not CriterionOutcome.MET
         )
         logger.info(
-            INITIATIVE_EVALUATION_COMPLETED,
+            INITIATIVE_EVALUATION_UNMET,
             plan_id=str(plan.id),
             project=str(plan.project),
             objective_met=False,

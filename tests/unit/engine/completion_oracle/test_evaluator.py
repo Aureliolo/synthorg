@@ -1,12 +1,16 @@
 """Unit tests for the Layer 1 build/test oracle (classifier + evaluator)."""
 
+import os
 from datetime import datetime
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 import structlog.testing
 
 from synthorg.core.artifact import ArtifactType, ExpectedArtifact
-from synthorg.core.task import Task
+from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import TaskType
 from synthorg.engine.completion_oracle.build_test_models import (
     GroundingRequirement,
@@ -14,17 +18,24 @@ from synthorg.engine.completion_oracle.build_test_models import (
 )
 from synthorg.engine.completion_oracle.classifier import classify_grounding_requirement
 from synthorg.engine.completion_oracle.evaluator import BuildTestOracle
+from synthorg.engine.workspace.environment.config import DEFAULT_MANIFEST_FILENAME
 from synthorg.observability.events.completion_oracle import BUILD_TEST_GATE_EVALUATED
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionFilterSpec,
     CodeExecutionPurpose,
     CodeExecutionRecord,
 )
-from tests._shared import FakeClock
+from synthorg.persistence.plan_protocol import PlanRepository
+from tests._shared import FakeClock, as_pk, as_uuid, mock_of, sid
 
 pytestmark = pytest.mark.unit
 
 _CLOCK = FakeClock()
+_PROJECT = sid("proj-1")
+
+#: Virtual seconds between two records, so "the newest one decides" has an
+#: ordering to decide from.
+_RECORD_GAP = 1.0
 
 
 def _task(
@@ -44,13 +55,28 @@ def _task(
     )
 
 
-def _record(*, passed: bool, task_id: str) -> CodeExecutionRecord:
+def _record(
+    *,
+    passed: bool,
+    task_id: str,
+    purpose: CodeExecutionPurpose = CodeExecutionPurpose.TESTS,
+    command: str = "pytest",
+    execution_id: str = "exec-1",
+) -> CodeExecutionRecord:
+    """Build one record, each later than the last.
+
+    The clock advances per record because the oracle decides the pass/fail axis
+    from the NEWEST one. Minted at a single frozen instant they all tie, the
+    fake store's ordering has nothing to order by, and a test seeding a pass
+    after a failure would prove only that the two arrived in that order.
+    """
+    _CLOCK.advance(_RECORD_GAP)
     return CodeExecutionRecord(
         task_id=task_id,
-        execution_id="exec-1",
+        execution_id=execution_id,
         project_id="p",
-        purpose=CodeExecutionPurpose.TESTS,
-        command="pytest",
+        purpose=purpose,
+        command=command,
         returncode=0 if passed else 1,
         passed=passed,
         timed_out=False,
@@ -59,7 +85,20 @@ def _record(*, passed: bool, task_id: str) -> CodeExecutionRecord:
 
 
 class _FakeRecords:
-    """Minimal in-memory ``CodeExecutionRecordRepository`` for the oracle."""
+    """Minimal in-memory ``CodeExecutionRecordRepository`` for the oracle.
+
+    Honours newest-first ordering, ``limit`` and ``offset`` as well as the
+    purpose filter, because the oracle's whole pass/fail axis is "the newest
+    record decides". A double that returned insertion order would let a test
+    seed a passing row after a failing one and still watch the oracle read the
+    failure, so every "latest run wins" assertion would hold for the wrong
+    reason and keep holding if the ordering contract were dropped.
+
+    It honours ``execution_id`` for the same reason: the gate evidence the
+    oracle accepts is confined to one run, and a double that ignored the
+    filter would answer every such query with the task's whole history, which
+    is exactly the state the confinement exists to refuse.
+    """
 
     def __init__(
         self,
@@ -83,7 +122,17 @@ class _FakeRecords:
         if self._raises:
             msg = "record store unavailable"
             raise RuntimeError(msg)
-        return self._records
+        matching = [
+            record
+            for record in self._records
+            if (filter_spec.purpose is None or record.purpose is filter_spec.purpose)
+            and (
+                filter_spec.execution_id is None
+                or record.execution_id == filter_spec.execution_id
+            )
+        ]
+        matching.sort(key=lambda record: record.executed_at, reverse=True)
+        return tuple(matching[offset : offset + limit])
 
     async def purge_before(self, threshold: datetime, /) -> int:
         raise NotImplementedError
@@ -157,12 +206,15 @@ class TestBuildTestOracle:
         assert result.blocks_completion
 
     async def test_latest_run_wins_after_rework(self) -> None:
-        # Newest-first: a passing latest run supersedes an earlier failure.
+        # A passing latest run supersedes an earlier failure. Built in the
+        # order they ran, so the store has to sort them: written the other way
+        # round the assertion would hold for any store that returned its input
+        # unchanged, which is what it used to do.
         task = _task(ArtifactType.CODE)
         records = _FakeRecords(
             (
-                _record(passed=True, task_id=str(task.id)),
                 _record(passed=False, task_id=str(task.id)),
+                _record(passed=True, task_id=str(task.id)),
             )
         )
         result = await BuildTestOracle().evaluate(task, records=records)
@@ -230,3 +282,370 @@ class TestReadingIsNotDeciding:
         # Exactly one, not merely present: the name says the deciding call
         # records ONE, and a membership check passes for any number above zero.
         assert decided_events.count(BUILD_TEST_GATE_EVALUATED) == 1
+
+
+_MANIFEST = """\
+language: python
+test_command: pytest
+test_report_path: junit.xml
+pending:
+  - criterion: a score is recorded
+    test_id: tests/test_score.py::test_a_score_is_recorded
+"""
+
+_PENDING_CASE = (
+    '<testcase classname="tests.test_score" file="tests/test_score.py" '
+    'name="test_a_score_is_recorded">'
+    '<failure message="assert 0 == 1"/></testcase>'
+)
+
+#: The criterion the seeded manifest declares pending, in the objective's own
+#: wording. Forgiveness is bound to the criteria the plan was approved with,
+#: so a plan carrying this is what makes the declaration count.
+_APPROVED_CRITERION = "A score is recorded."
+
+
+def _oracle_for(
+    workspace_root: Path,
+    *,
+    criteria: tuple[str, ...] = (_APPROVED_CRITERION,),
+) -> BuildTestOracle:
+    """Build the oracle wired the way boot wires it.
+
+    The plan is what carries the criteria the operator approved, and
+    forgiveness is bound to them, so an oracle with no plan to read forgives
+    nothing and every declared-pending case below would pass for that reason
+    rather than the one it is testing.
+
+    Returns:
+        An oracle reading *workspace_root* against an approved plan.
+    """
+    plans = mock_of[PlanRepository](
+        get=AsyncMock(
+            spec=PlanRepository.get,
+            return_value=SimpleNamespace(objective_criteria=criteria),
+        ),
+    )
+    return BuildTestOracle(workspace_root=workspace_root, plans=plans)
+
+
+def _project_with_manifest(tmp_path: Path, *, report: str | None) -> Path:
+    """Seed a project workspace carrying a manifest and optionally a report.
+
+    Returns:
+        The base root the oracle is wired with.
+    """
+    workspace = tmp_path / "projects" / _PROJECT
+    workspace.mkdir(parents=True)
+    (workspace / DEFAULT_MANIFEST_FILENAME).write_text(_MANIFEST, encoding="utf-8")
+    if report is not None:
+        written = workspace / "junit.xml"
+        written.write_text(report, encoding="utf-8")
+        # Stamped from the same fake clock the records are minted from. The
+        # oracle refuses a report older than the run it is offered as evidence
+        # about, and the filesystem clock is not the one these tests advance,
+        # so leaving the real mtime decides the verdict from the machine's wall
+        # clock rather than from anything the test set up.
+        stamped = _CLOCK.now().timestamp()
+        os.utime(written, (stamped, stamped))
+    return tmp_path
+
+
+def _unit_task(*criteria: str) -> Task:
+    """A task implementing one plan item, declaring *criteria*.
+
+    Returns:
+        The unit task, keyed to the seeded project.
+    """
+    return Task(
+        title="t",
+        description="d",
+        type=TaskType.DEVELOPMENT,
+        project=_PROJECT,
+        plan_id=as_uuid("plan-1"),
+        plan_item_id=as_pk("item-a"),
+        created_by="c",
+        acceptance_criteria=tuple(
+            AcceptanceCriterion(description=criterion) for criterion in criteria
+        ),
+    )
+
+
+class TestWhatAProjectDeclaredPending:
+    """A skeleton's suite fails by design, so the exit status is not the verdict.
+
+    Read here rather than written onto the record: ``CodeExecutionRecord``
+    answers "did this exit zero" and a validator holds it to that, so the row
+    keeps saying what happened and the oracle says what it means.
+    """
+
+    async def test_a_failure_the_project_declared_does_not_block(
+        self, tmp_path: Path
+    ) -> None:
+        task = _unit_task()
+        records = _FakeRecords((_record(passed=False, task_id=str(task.id)),))
+        oracle = _oracle_for(
+            _project_with_manifest(
+                tmp_path, report=f"<testsuite>{_PENDING_CASE}</testsuite>"
+            )
+        )
+
+        result = await oracle.evaluate(task, records=records)
+
+        assert result.verdict is OracleVerdict.VERIFIED
+        assert not result.blocks_completion
+
+    async def test_a_failure_it_did_not_declare_still_blocks(
+        self, tmp_path: Path
+    ) -> None:
+        """Forgiveness is the declaration's, so an undeclared break keeps its own."""
+        task = _unit_task()
+        records = _FakeRecords((_record(passed=False, task_id=str(task.id)),))
+        oracle = _oracle_for(
+            _project_with_manifest(
+                tmp_path,
+                report=(
+                    f"<testsuite>{_PENDING_CASE}"
+                    '<testcase classname="tests/test_other.py" name="test_other">'
+                    '<failure message="assert 2 == 3"/></testcase></testsuite>'
+                ),
+            )
+        )
+
+        result = await oracle.evaluate(task, records=records)
+
+        assert result.verdict is OracleVerdict.BUILD_TEST_FAILED
+        assert result.blocks_completion
+
+    async def test_a_unit_that_left_its_own_marker_behind_blocks(
+        self, tmp_path: Path
+    ) -> None:
+        """Clearing the entry in the same commit is the signal a unit is done.
+
+        The suite exits zero, so nothing else in the chain can see that the
+        next unit is about to inherit a criterion the manifest calls
+        unimplemented.
+        """
+        task = _unit_task("A score is recorded.")
+        records = _FakeRecords((_record(passed=True, task_id=str(task.id)),))
+        oracle = _oracle_for(_project_with_manifest(tmp_path, report=None))
+
+        result = await oracle.evaluate(task, records=records)
+
+        assert result.verdict is OracleVerdict.BUILD_TEST_FAILED
+        assert result.blocks_completion
+        assert "still listed pending" in result.reason
+
+    async def test_another_units_marker_does_not_block_this_one(
+        self, tmp_path: Path
+    ) -> None:
+        """A project mid-build always has other units' entries outstanding."""
+        task = _unit_task("something else entirely")
+        records = _FakeRecords((_record(passed=True, task_id=str(task.id)),))
+        oracle = _oracle_for(_project_with_manifest(tmp_path, report=None))
+
+        result = await oracle.evaluate(task, records=records)
+
+        assert result.verdict is OracleVerdict.VERIFIED
+
+    async def test_a_stage_job_is_never_held_to_the_markers_it_writes(
+        self, tmp_path: Path
+    ) -> None:
+        """The skeleton's job IS to leave them, so holding it to them refuses it.
+
+        Told apart by ``plan_item_id``: a task carrying a plan id and no item
+        id implements no plan item, which is what every stage job looks like.
+        """
+        task = Task(
+            title="Skeleton: ship it",
+            description="write the contract",
+            type=TaskType.DEVELOPMENT,
+            project=_PROJECT,
+            plan_id=as_uuid("plan-1"),
+            created_by="initiative-skeleton",
+            acceptance_criteria=(
+                AcceptanceCriterion(description="A score is recorded."),
+            ),
+        )
+        records = _FakeRecords((_record(passed=True, task_id=str(task.id)),))
+        oracle = _oracle_for(_project_with_manifest(tmp_path, report=None))
+
+        result = await oracle.evaluate(task, records=records)
+
+        assert result.verdict is OracleVerdict.VERIFIED
+
+    async def test_a_stage_job_is_never_held_to_the_gates_it_declares(
+        self, tmp_path: Path
+    ) -> None:
+        """Same reasoning as the markers, and the same defect without it.
+
+        The contract job WRITES the gate commands, and its own brief assigns
+        running them to "every unit after you". Requiring a passing lint run
+        against the skeleton's own task id refuses every contract for doing its
+        job, so the stage could never pass and no initiative could get past it.
+        """
+        task = Task(
+            title="Skeleton: ship it",
+            description="write the contract",
+            type=TaskType.DEVELOPMENT,
+            project=_PROJECT,
+            plan_id=as_uuid("plan-1"),
+            created_by="initiative-skeleton",
+        )
+        workspace = tmp_path / "projects" / _PROJECT
+        workspace.mkdir(parents=True)
+        (workspace / DEFAULT_MANIFEST_FILENAME).write_text(
+            "language: python\ntest_command: pytest\nlint_command: ruff check .\n",
+            encoding="utf-8",
+        )
+        records = _FakeRecords((_record(passed=True, task_id=str(task.id)),))
+
+        result = await _oracle_for(tmp_path).evaluate(task, records=records)
+
+        assert result.verdict is OracleVerdict.VERIFIED
+
+    async def test_a_manifest_that_will_not_parse_blocks_rather_than_waiving(
+        self, tmp_path: Path
+    ) -> None:
+        """Reading a broken manifest as "nothing declared" is the worse answer.
+
+        It silently drops the pending set, the clear-your-own-marker rule and
+        every declared gate at once, and hands back a verdict whose reason is
+        indistinguishable from a compliant project's.
+        """
+        task = _unit_task()
+        workspace = tmp_path / "projects" / _PROJECT
+        workspace.mkdir(parents=True)
+        (workspace / DEFAULT_MANIFEST_FILENAME).write_text(
+            "language: [unclosed", encoding="utf-8"
+        )
+        records = _FakeRecords((_record(passed=True, task_id=str(task.id)),))
+
+        result = await _oracle_for(tmp_path).evaluate(task, records=records)
+
+        assert result.verdict is OracleVerdict.UNVERIFIED
+        assert result.blocks_completion
+        assert "will not parse" in result.reason
+
+    async def test_a_declared_gate_with_no_passing_run_blocks(
+        self, tmp_path: Path
+    ) -> None:
+        """A definition of done nobody enforces is not a definition of done.
+
+        Before anything read these fields a project could declare how it lints,
+        never lint, and show a green badge over work no linter ever saw.
+        """
+        task = _unit_task()
+        workspace = tmp_path / "projects" / _PROJECT
+        workspace.mkdir(parents=True)
+        (workspace / DEFAULT_MANIFEST_FILENAME).write_text(
+            "language: python\ntest_command: pytest\nlint_command: ruff check .\n",
+            encoding="utf-8",
+        )
+        records = _FakeRecords((_record(passed=True, task_id=str(task.id)),))
+
+        result = await BuildTestOracle(workspace_root=tmp_path).evaluate(
+            task, records=records
+        )
+
+        assert result.verdict is OracleVerdict.BUILD_TEST_FAILED
+        assert "lint" in result.reason
+
+    async def test_a_declared_gate_that_ran_and_passed_does_not_block(
+        self, tmp_path: Path
+    ) -> None:
+        task = _unit_task()
+        workspace = tmp_path / "projects" / _PROJECT
+        workspace.mkdir(parents=True)
+        (workspace / DEFAULT_MANIFEST_FILENAME).write_text(
+            "language: python\ntest_command: pytest\nlint_command: ruff check .\n",
+            encoding="utf-8",
+        )
+        records = _FakeRecords(
+            (
+                _record(passed=True, task_id=str(task.id)),
+                _record(
+                    passed=True,
+                    task_id=str(task.id),
+                    purpose=CodeExecutionPurpose.LINT,
+                    command="ruff check .",
+                ),
+            )
+        )
+
+        result = await BuildTestOracle(workspace_root=tmp_path).evaluate(
+            task, records=records
+        )
+
+        assert result.verdict is OracleVerdict.VERIFIED
+
+    async def test_a_gate_receipt_from_an_earlier_run_does_not_count(
+        self, tmp_path: Path
+    ) -> None:
+        """A linter's word about code the run being judged has since changed.
+
+        The refusal already tells the agent to run each command "in the session
+        that claims the work"; unscoped evidence let a run that only ran tests
+        complete on a lint receipt an earlier session left behind.
+        """
+        task = _unit_task()
+        workspace = tmp_path / "projects" / _PROJECT
+        workspace.mkdir(parents=True)
+        (workspace / DEFAULT_MANIFEST_FILENAME).write_text(
+            "language: python\ntest_command: pytest\nlint_command: ruff check .\n",
+            encoding="utf-8",
+        )
+        records = _FakeRecords(
+            (
+                _record(
+                    passed=True,
+                    task_id=str(task.id),
+                    purpose=CodeExecutionPurpose.LINT,
+                    command="ruff check .",
+                    execution_id="exec-earlier",
+                ),
+                _record(passed=True, task_id=str(task.id), execution_id="exec-current"),
+            )
+        )
+
+        result = await BuildTestOracle(workspace_root=tmp_path).evaluate(
+            task, records=records
+        )
+
+        assert result.verdict is OracleVerdict.BUILD_TEST_FAILED
+        assert "lint" in result.reason
+
+    async def test_a_failing_suite_is_reported_before_a_missing_gate(
+        self, tmp_path: Path
+    ) -> None:
+        """Naming the linter alongside a red suite buries what actually broke."""
+        task = _unit_task()
+        workspace = tmp_path / "projects" / _PROJECT
+        workspace.mkdir(parents=True)
+        (workspace / DEFAULT_MANIFEST_FILENAME).write_text(
+            "language: python\ntest_command: pytest\nlint_command: ruff check .\n",
+            encoding="utf-8",
+        )
+        records = _FakeRecords((_record(passed=False, task_id=str(task.id)),))
+
+        result = await BuildTestOracle(workspace_root=tmp_path).evaluate(
+            task, records=records
+        )
+
+        assert result.verdict is OracleVerdict.BUILD_TEST_FAILED
+        assert "Latest test run failed" in result.reason
+
+    async def test_an_unwired_workspace_keeps_the_pre_pending_behaviour(self) -> None:
+        """A boot that resolved no workspace forgives nothing and blocks nothing."""
+        task = _unit_task("A score is recorded.")
+        oracle = BuildTestOracle()
+
+        failing = await oracle.evaluate(
+            task, records=_FakeRecords((_record(passed=False, task_id=str(task.id)),))
+        )
+        passing = await oracle.evaluate(
+            task, records=_FakeRecords((_record(passed=True, task_id=str(task.id)),))
+        )
+
+        assert failing.verdict is OracleVerdict.BUILD_TEST_FAILED
+        assert passing.verdict is OracleVerdict.VERIFIED

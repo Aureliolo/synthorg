@@ -31,8 +31,10 @@ class TestValidTransitions:
             (PlanStatus.PENDING_REVIEW, PlanStatus.DRAFT),
             (PlanStatus.PENDING_REVIEW, PlanStatus.APPROVED),
             (PlanStatus.PENDING_REVIEW, PlanStatus.REJECTED),
-            # Execution: approval dispatches the plan, and its items roll up.
-            (PlanStatus.APPROVED, PlanStatus.EXECUTING),
+            # The head: approval stages the plan, and only a contract that
+            # passed its review gate lets its units dispatch.
+            (PlanStatus.APPROVED, PlanStatus.SKELETON),
+            (PlanStatus.SKELETON, PlanStatus.EXECUTING),
             # The tail: every item done opens it, and only it delivers.
             (PlanStatus.EXECUTING, PlanStatus.INTEGRATING),
             (PlanStatus.INTEGRATING, PlanStatus.EVALUATING),
@@ -152,6 +154,7 @@ class TestTransitionPath:
     def test_path_to_the_tail_still_routes(self) -> None:
         """The intermediate tail hops the rollup relies on are unaffected."""
         assert transition_path(PlanStatus.APPROVED, PlanStatus.EVALUATING) == (
+            PlanStatus.SKELETON,
             PlanStatus.EXECUTING,
             PlanStatus.INTEGRATING,
             PlanStatus.EVALUATING,
