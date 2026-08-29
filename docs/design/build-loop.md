@@ -435,6 +435,29 @@ Thresholds are tiered rather than flat. A single number applied everywhere
 flags the harmless and passes the harmful; a gate declares what property it
 proxies for and both of its failure modes.
 
+### Retiring a profile
+
+The dismissal rule above is per gate and per project. A whole profile that has
+stopped earning its cost is a different question, because it charges every
+project declaring that capability, and no single project accumulates enough
+evidence to judge it.
+
+Two triggers, and the second is the one that matters. A profile raises a
+catalogue-level meta-finding when its gates are dismissed across many projects,
+exactly as a single gate does. It also raises one every **N slices that declared
+its capability**, so the review arrives on accumulated use rather than on a
+calendar.
+
+The unit is deliberately work rather than time. A cadence in days reviews a repo
+that has been idle for a month and under-reviews one running hundreds of
+sessions a week, and neither has anything to do with whether the profile is
+still right. Counting declarations makes the review rate proportional to how
+much the profile is actually costing: a heavily-used profile is examined often,
+and a profile nobody declares is never examined at all, which is correct because
+it is charging nobody.
+
+Retirement itself is the operator's, like every other loosening.
+
 ## The finding channel
 
 One stream, two producers, one shape. A lint error already carries a file and a
@@ -716,16 +739,20 @@ are:
   between one increment and the next.
 
 An operator who looks at an increment and does not recognise it raises a
-`misaligned` finding. It routes to the charter and the slice planner, never to
-the author: the code did what it was asked, and what it was asked was wrong.
-That is a scope decision, so it is the operator's at every autonomy level.
+`misaligned` finding. It never routes to the author: the code did what it was
+asked, and what it was asked was wrong. Raising it is a scope decision, so it is
+the operator's at every autonomy level.
 
-## Open questions
+Where it routes is **derived, not judged**, from which units the changed
+criteria reach:
 
-1. **How a `misaligned` finding prices what it invalidates.** Re-slicing is
-   cheap; a contract change that invalidates merged work is not, and the loop
-   does not yet distinguish them when routing one.
-2. **Whether a capability profile can be retired.** Gates ratchet one way per
-   project, but a profile that has stopped earning its cost across every project
-   is a different question, and the meta-finding rule is written per gate rather
-   than per profile.
+| What the changed criteria touch | Class | Owner |
+| --- | --- | --- |
+| Only slices not yet built | `re-slice` | the slice planner |
+| Any unit already merged to trunk | `contract-wrong` | the skeleton owner |
+
+The split matters because the two cost wildly different amounts. Re-slicing
+discards a plan; a contract change discards work that is already on the trunk
+and green. Deriving the class from the affected set rather than asking someone
+to estimate it keeps a cheap re-scope cheap, and stops an expensive one being
+filed as a cheap one by whoever wanted it to be.
