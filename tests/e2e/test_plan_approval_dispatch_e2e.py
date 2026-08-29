@@ -296,11 +296,11 @@ async def test_approving_a_plan_dispatches_its_child_tasks(
     )
 
     assert handled is True
-    # The resume returns once the graph is connected; the waves run on a
-    # background task it registers, and the plan's terminal status is written
-    # at the end of that. Drained through the app's own seam rather than
-    # waited out, so this asserts on a dispatch that finished rather than on
-    # whichever half of it won a race.
+    # The resume returns once the graph is connected; asking the rollup to
+    # drive the contract stage happens on a background task it registers.
+    # Drained through the app's own seam rather than waited out, so this
+    # asserts on a hand-off that finished rather than on whichever half of it
+    # won a race.
     await app_state.drain_entry_background_tasks()
 
     # The headline assertion: the approved items became real work. A plan
