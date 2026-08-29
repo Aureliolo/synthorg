@@ -184,12 +184,20 @@ class BuildTestOracle:
         contract = await load_contract(
             workspace_root=self._workspace_root, project_id=str(task.project)
         )
-        if contract.state is ContractState.UNREADABLE:
+        if (
+            contract.state is ContractState.UNREADABLE
+            and requirement is GroundingRequirement.REQUIRED
+        ):
             # Blocking rather than waiving. The alternative reads the broken
             # file as "nothing was declared", which silently drops the pending
             # set, the clear-your-own-marker rule and every declared gate at
             # once, and hands back a VERIFIED verdict whose reason is
             # indistinguishable from a compliant project's.
+            #
+            # Only where grounding is REQUIRED, though: the manifest declares
+            # what CODE is checked against, so a docs or design task carries
+            # none of it and would otherwise inherit a block for a file the
+            # code task that broke it is the one able to fix.
             return OracleEvaluation(
                 verdict=OracleVerdict.UNVERIFIED,
                 requirement=requirement,

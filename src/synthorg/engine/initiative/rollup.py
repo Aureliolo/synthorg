@@ -325,6 +325,19 @@ class ProjectRollupService:
             return
         await self._replan_trigger.drain(timeout_sec=timeout_sec)
 
+    async def drain_skeleton(self, *, timeout_sec: float) -> None:
+        """Drain in-flight contract dispatches at shutdown, if wired.
+
+        The same exposure the assembly stage has, one stage earlier: the
+        dispatch persists the contract job and hands it to the work spine, so
+        an abandoned one leaves a task minted and routed to nobody, on the very
+        stage every unit below is briefed from. A no-op when the stage is
+        unwired.
+        """
+        if self._skeleton is None:
+            return
+        await self._skeleton.drain(timeout_sec=timeout_sec)
+
     async def drain_integration(self, *, timeout_sec: float) -> None:
         """Drain in-flight integration dispatches at shutdown, if wired.
 

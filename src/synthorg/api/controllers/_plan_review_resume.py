@@ -126,8 +126,8 @@ async def try_plan_review_resume(
     The decision is reflected onto the durable plan first (APPROVED / REJECTED)
     so the ``/plans`` view matches the recorded decision regardless of what
     happens next. On approval the durable plan (referenced by ``plan_id``) is
-    then loaded, rebuilt into a ``DecompositionResult``, filed, and moved into
-    SKELETON; a failure making that graph durable marks the parent task
+    then loaded, moved into SKELETON, and rebuilt into a ``DecompositionResult``
+    that is filed; a failure making that graph durable marks the parent task
     ``FAILED`` and drives the plan to ``FAILED`` with it, because a plan left
     at APPROVED or SKELETON behind a failed parent is a state nothing watches
     and nothing can move. On rejection the parent task is cancelled and nothing

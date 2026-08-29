@@ -225,7 +225,8 @@ class IntegrationStageService:
             plan_id=str(plan.id),
             project=str(plan.project),
             task_id=str(existing.id),
-            note="re-dispatching an assembly job that never left created",
+            status=existing.status.value,
+            note="re-dispatching an assembly job nothing was driving",
         )
         await self._hand_to_pipeline(plan, objective, existing)
 

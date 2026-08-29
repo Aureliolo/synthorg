@@ -38,7 +38,16 @@ one command headed by the runner, while the status recorded for it is the one
 
 import shlex
 from collections.abc import Sequence
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import Final
+
+#: Shells whose ``-c`` argument is itself a command line. Its trustworthiness is
+#: a separate question from the outer line's, because ``pipefail`` is a shell
+#: option and a shell this line starts does not inherit ours.
+_SHELLS: Final[frozenset[str]] = frozenset({"bash", "sh", "zsh", "dash", "ash"})
+_SHELL_COMMAND_FLAG: Final[str] = "-c"
+#: ``<shell> -c <one command string>`` and nothing else.
+_SHELL_INVOCATION_TOKENS: Final[int] = 3
 
 #: Operators joining commands whose statuses the line's status still
 #: implies: ``&&`` short-circuits, and ``|`` is conjunctive under the
@@ -209,6 +218,48 @@ def conjunctive_commands(
     return tuple(segments)
 
 
+def program_name(token: str) -> str:
+    """Reduce an argv head to the bare program name.
+
+    Returns:
+        The lowercased basename with any ``.exe`` suffix removed, so an
+        absolute or Windows-style path resolves to the same name a bare
+        invocation would.
+    """
+    name = PurePosixPath(PureWindowsPath(token).name).name.lower()
+    return name.removesuffix(".exe")
+
+
+def shell_payload(argv: Sequence[str]) -> str | None:
+    """The command line a ``<shell> -c <payload>`` invocation runs, if it is one.
+
+    Args:
+        argv: One command's argv, as :func:`conjunctive_commands` split it.
+
+    Returns:
+        The payload, or ``None`` when this argv is not that exact shape.
+    """
+    if len(argv) != _SHELL_INVOCATION_TOKENS:
+        return None
+    if program_name(argv[0]) not in _SHELLS or argv[1] != _SHELL_COMMAND_FLAG:
+        return None
+    return argv[2]
+
+
+def _starts_a_shell(argv: Sequence[str]) -> bool:
+    """Whether *argv* hands a command line to a shell it starts.
+
+    Returns:
+        Whether the head is a shell and the argv carries ``-c`` at all, which
+        is broader than :func:`shell_payload` on purpose: it is the question
+        "is there a payload here", asked so a shape this module cannot read
+        can be refused rather than trusted whole.
+    """
+    if not argv or program_name(argv[0]) not in _SHELLS:
+        return False
+    return _SHELL_COMMAND_FLAG in argv
+
+
 def trustworthy_segments(command: str) -> frozenset[tuple[str, ...]] | None:
     """Split *command* into the commands its exit status still speaks for.
 
@@ -220,6 +271,15 @@ def trustworthy_segments(command: str) -> frozenset[tuple[str, ...]] | None:
     readings would mean a gate a project may declare but never satisfy, or the
     reverse.
 
+    A ``-c`` payload is descended into, once, because the outer parse sees it
+    as a single quoted token: ``bash -c 'ruff check . || true'`` otherwise
+    reads as one trustworthy command whose zero exit vouches for a linter that
+    failed. The nested line is parsed with ``pipefail=False``, since the shell
+    running it is one this line just started and the option does not cross that
+    boundary. Anything that still invokes a shell after that descent is refused
+    rather than returned, because a second level is a payload this module did
+    not read and a segment nobody read cannot vouch for anything.
+
     Args:
         command: The command line, as declared or as executed.
 
@@ -229,7 +289,26 @@ def trustworthy_segments(command: str) -> frozenset[tuple[str, ...]] | None:
         zero.
     """
     segments = conjunctive_commands(command, pipefail=True)
-    return None if segments is None else frozenset(segments)
+    if segments is None:
+        return None
+    expanded: list[tuple[str, ...]] = []
+    for segment in segments:
+        payload = shell_payload(segment)
+        if payload is None:
+            if _starts_a_shell(segment):
+                return None
+            expanded.append(segment)
+            continue
+        nested = conjunctive_commands(payload, pipefail=False)
+        if nested is None or any(_starts_a_shell(inner) for inner in nested):
+            return None
+        expanded.extend(nested)
+    return frozenset(expanded)
 
 
-__all__ = ["conjunctive_commands", "trustworthy_segments"]
+__all__ = [
+    "conjunctive_commands",
+    "program_name",
+    "shell_payload",
+    "trustworthy_segments",
+]

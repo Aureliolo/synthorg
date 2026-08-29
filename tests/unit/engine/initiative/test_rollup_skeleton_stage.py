@@ -250,7 +250,10 @@ class TestWhenTheContractPasses:
 
         assert replan.fired == [(str(as_uuid(_PLAN_ID)), StallReason.SKELETON_FAILED)]
         plan_status, _project_status = await _statuses(backend)
-        assert plan_status is not PlanStatus.SKELETON
+        # The contract passed, so the plan left SKELETON before the driver
+        # refused; naming the status it reached is what separates this from a
+        # regression that advanced it and then dispatched anyway.
+        assert plan_status is PlanStatus.EXECUTING
 
     async def test_a_driver_that_already_holds_the_plan_changes_nothing(self) -> None:
         """Two drivers on one plan assign the same subtasks and the second loses.

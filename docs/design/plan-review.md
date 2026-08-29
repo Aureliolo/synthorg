@@ -356,10 +356,11 @@ decomposition succeeded, if parking the approval fails: it is then FAILED with i
 items intact, so `FAILED` permits (but does not require) an empty item list.
 
 `FAILED` therefore means "could not be delivered", not the narrower "never
-reached a review decision". Four routes land here: decomposition, the approval
-park, dispatch, and a project teardown over a plan with no items (superseding an
-itemless plan is what the `items` CHECK forbids, so the cascade fails it with
-"project deleted" instead).
+reached a review decision". Six routes land here: decomposition, the approval
+park, staging (a precondition failure from `APPROVED`), the contract stage (a
+skeleton that will not compile), dispatch, and a project teardown over a plan
+with no items (superseding an itemless plan is what the `items` CHECK forbids,
+so the cascade fails it with "project deleted" instead).
 
 Staging reaches `FAILED` from either side of one line. An approved plan is moved
 to `SKELETON` *before* its task tree is filed (load-bearing ordering, so the

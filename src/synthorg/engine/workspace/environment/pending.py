@@ -33,12 +33,14 @@ recorded exactly as a lost assertion is. The tag answers "did the test run at
 all"; the message is what answers "did it assert", and both are read.
 """
 
+import os
+import re
 import stat
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Final, NamedTuple
+from typing import BinaryIO, Final, NamedTuple
 from xml.etree.ElementTree import Element, ParseError
 
 from defusedxml.common import DefusedXmlException
@@ -84,6 +86,15 @@ _ASSERTION_MARKERS: Final[tuple[str, ...]] = (
     "expect(",
 )
 
+#: What an assertion's exception class is called, matched as a SUFFIX so a
+#: framework subclass of it counts too.
+_ASSERTION_TYPE_SUFFIX: Final[str] = "assertionerror"
+
+#: A dotted exception class name, used to read the class off a message that
+#: opens with one. Anchored to the whole candidate so ordinary prose before a
+#: colon ("cannot open file: no such file") is not mistaken for a class.
+_TYPE_NAME: Final[re.Pattern[str]] = re.compile(r"[A-Za-z_][A-Za-z0-9_.]*")
+
 #: The JUnit child element a runner writes when the test did not run. A pending
 #: test that was skipped measured nothing, so it cannot be evidence that the
 #: contract is merely unimplemented.
@@ -95,6 +106,19 @@ _SKIPPED_TAG: Final[str] = "skipped"
 #: the parse happens on the API's own event loop, where an unbounded tree is a
 #: memory ceiling somebody else picks.
 _MAX_REPORT_BYTES: Final[int] = 32 * 1024 * 1024
+
+#: Flags the report is opened with, so the descriptor validated below is the
+#: one parsed. ``O_NONBLOCK`` keeps a FIFO from blocking the open itself (the
+#: refusal comes from the ``fstat`` after it), ``O_NOFOLLOW`` refuses a symlink
+#: swapped in after the path was resolved, and ``O_BINARY`` keeps Windows from
+#: translating line endings under the parser. Each is absent on the platforms
+#: that do not have it, where zero leaves the flag set unchanged.
+_REPORT_OPEN_FLAGS: Final[int] = (
+    os.O_RDONLY
+    | getattr(os, "O_NONBLOCK", 0)  # lint-allow: ghost-attribute-read -- POSIX-only
+    | getattr(os, "O_NOFOLLOW", 0)  # lint-allow: ghost-attribute-read -- POSIX-only
+    | getattr(os, "O_BINARY", 0)  # lint-allow: ghost-attribute-read -- Windows-only
+)
 
 
 class PendingVerdict(StrEnum):
@@ -176,28 +200,35 @@ class PendingReport(BaseModel):
 class _CaseOutcome(NamedTuple):
     """What a runner recorded against one test case.
 
-    The message travels with the tag because the tag alone does not separate an
-    assertion from an unrelated exception; see :data:`_ASSERTION_MARKERS`.
+    The message and the raised type both travel with the tag because the tag
+    alone does not separate an assertion from an unrelated exception; see
+    :data:`_ASSERTION_MARKERS`.
     """
 
     #: The outcome element's tag, or ``None`` for a pass.
     tag: str | None
     #: The outcome's ``message`` attribute, empty when it carries none.
     message: str
+    #: The outcome's ``type`` attribute, empty when it carries none.
+    raised: str = ""
 
 
 def _outcome_of(case: Element) -> _CaseOutcome:
     """Return the JUnit outcome recorded inside *case*.
 
     Returns:
-        The first recognised outcome child's tag and message, or a tag of
-        ``None`` when the case carries none, which is how a runner records a
-        pass.
+        The first recognised outcome child's tag, message and raised type, or a
+        tag of ``None`` when the case carries none, which is how a runner
+        records a pass.
     """
     for tag in (_ERROR_TAG, _FAILURE_TAG, _SKIPPED_TAG):
         element = case.find(tag)
         if element is not None:
-            return _CaseOutcome(tag=tag, message=element.get("message", ""))
+            return _CaseOutcome(
+                tag=tag,
+                message=element.get("message", ""),
+                raised=element.get("type", ""),
+            )
     return _CaseOutcome(tag=None, message="")
 
 
@@ -245,11 +276,19 @@ def _node_id(case: Element, *, classname: str, name: str) -> tuple[str, ...]:
     return (f"{file}::{segments}::{name}",) if segments else (f"{file}::{name}",)
 
 
-def _count_other_failures(root: Element, pending_ids: frozenset[str]) -> int:
+def _count_other_failures(
+    root: Element, pending_ids: frozenset[str], ambiguous: frozenset[str]
+) -> int:
     """Count failing cases the manifest did not declare pending.
 
     Counted from the cases rather than from the index, because the index holds
     each case under three spellings and would treble every failure.
+
+    A spelling two cases share excuses neither: it names both, so "this failure
+    is the declared one" is exactly what cannot be established, and letting it
+    excuse them hides an unrelated break behind a pending marker. The criterion
+    that named it is red on the same reasoning, so counting these costs a run
+    that was already being refused.
 
     Returns:
         How many non-pending cases failed or errored. A skip is not one: a
@@ -259,37 +298,91 @@ def _count_other_failures(root: Element, pending_ids: frozenset[str]) -> int:
         1
         for case in root.iter("testcase")
         if (spellings := _spellings(case))
-        and not pending_ids.intersection(spellings)
+        and not pending_ids.intersection(set(spellings) - ambiguous)
         and _outcome_of(case).tag in {_FAILURE_TAG, _ERROR_TAG}
     )
 
 
-def _case_index(root: Element) -> Mapping[str, _CaseOutcome]:
+class _CaseIndex(NamedTuple):
+    """Every case in a report, and the spellings that name more than one."""
+
+    #: Node id to outcome, holding only spellings that resolve to one case.
+    by_spelling: Mapping[str, _CaseOutcome]
+    #: Spellings two or more cases share, which therefore resolve to none.
+    ambiguous: frozenset[str]
+
+
+def _case_index(root: Element) -> _CaseIndex:
     """Index every test case in *root* by its node id.
 
     A runner may write a flat ``testsuite`` or a ``testsuites`` wrapper, so the
     search is over descendants rather than direct children.
 
+    A spelling is dropped rather than overwritten when a second case claims it.
+    The bare test name is one of the spellings a manifest may use, and two
+    files may hold the same name, so the last case parsed would otherwise
+    decide the verdict for a criterion naming the other: a declared assertion
+    failure anywhere in the suite could turn a crashing pending test green.
+
     Returns:
-        A mapping of node id to its outcome, whose tag is ``None`` for a pass.
+        The resolvable spellings and the ambiguous ones, kept apart so a
+        caller can refuse the second rather than silently read one of them.
     """
     index: dict[str, _CaseOutcome] = {}
+    ambiguous: set[str] = set()
     for case in root.iter("testcase"):
         # Runners disagree on whether the file is a classname or part of the
         # name, so every spelling is indexed and the manifest may use any.
         outcome = _outcome_of(case)
         for spelling in _spellings(case):
+            if spelling in index:
+                ambiguous.add(spelling)
+                continue
             index[spelling] = outcome
-    return index
+    for spelling in ambiguous:
+        del index[spelling]
+    return _CaseIndex(by_spelling=index, ambiguous=frozenset(ambiguous))
 
 
-def _asserted(message: str) -> bool:
-    """Whether a ``failure``'s message reads as an assertion the test made.
+def _raised_type(outcome: _CaseOutcome) -> str | None:
+    """The exception class a runner recorded against *outcome*, if it named one.
+
+    Read from the ``type`` attribute where a runner writes one, and otherwise
+    from the message's own leading ``ClassName:`` prefix, which is the shape
+    pytest produces: its ``reprcrash.message`` opens with the raised class, so
+    a lost assertion reads ``AssertionError: assert 1 == 2`` and a crash reads
+    ``KeyError: 'x'``.
 
     Returns:
-        Whether any declared marker appears in *message*.
+        The bare class name, lowercased, or ``None`` when the outcome names no
+        class at all (a runner whose messages are free-form prose).
     """
-    lowered = message.lower()
+    if outcome.raised:
+        return outcome.raised.rsplit(".", maxsplit=1)[-1].strip().lower()
+    head, separator, _ = outcome.message.partition(":")
+    candidate = head.strip()
+    if not separator or not _TYPE_NAME.fullmatch(candidate):
+        return None
+    return candidate.rsplit(".", maxsplit=1)[-1].lower()
+
+
+def _asserted(outcome: _CaseOutcome) -> bool:
+    """Whether a ``failure`` reads as an assertion the test made.
+
+    The class the runner named wins whenever there is one, because it is the
+    structured answer and the message text is not: an unrelated exception
+    whose message merely CONTAINS the word ("cannot assert on an empty input")
+    reads as a declared failure under a substring test, which turns a crashing
+    skeleton green. The markers stay as the fallback for runners that name no
+    class, where free-form text is the only signal there is.
+
+    Returns:
+        Whether the outcome records a failed assertion.
+    """
+    raised = _raised_type(outcome)
+    if raised is not None:
+        return raised.endswith(_ASSERTION_TYPE_SUFFIX)
+    lowered = outcome.message.lower()
     return any(marker in lowered for marker in _ASSERTION_MARKERS)
 
 
@@ -309,7 +402,7 @@ def _verdict_for(outcome: _CaseOutcome | None) -> tuple[PendingVerdict, str]:
             "the report names no such test, so nothing was measured",
         )
     if outcome.tag == _FAILURE_TAG:
-        if not _asserted(outcome.message):
+        if not _asserted(outcome):
             return (
                 PendingVerdict.RED,
                 "raised rather than asserting, so the skeleton is wrong not absent",
@@ -376,7 +469,9 @@ def classify_pending(
     return PendingReport(
         outcomes=tuple(_classify_one(entry, index=index) for entry in pending),
         other_failures=_count_other_failures(
-            root, frozenset(str(entry.test_id) for entry in pending)
+            root,
+            frozenset(str(entry.test_id) for entry in pending),
+            index.ambiguous,
         ),
     )
 
@@ -384,14 +479,25 @@ def classify_pending(
 def _classify_one(
     entry: PendingTest,
     *,
-    index: Mapping[str, _CaseOutcome],
+    index: _CaseIndex,
 ) -> CriterionOutcome:
     """Classify a single pending declaration against the indexed report.
 
     Returns:
         The criterion's outcome.
     """
-    verdict, reason = _verdict_for(index.get(entry.test_id))
+    if entry.test_id in index.ambiguous:
+        return CriterionOutcome(
+            criterion=entry.criterion,
+            test_id=entry.test_id,
+            verdict=PendingVerdict.RED,
+            reason=(
+                "the report holds more than one test under this name, so which"
+                " one the criterion means cannot be established; name it by its"
+                " full node id"
+            ),
+        )
+    verdict, reason = _verdict_for(index.by_spelling.get(entry.test_id))
     return CriterionOutcome(
         criterion=entry.criterion,
         test_id=entry.test_id,
@@ -449,9 +555,16 @@ def _read_report(
         )
         return None
     try:
-        if not _is_usable_evidence(resolved, test_report_path, not_before):
-            return None
-        return parse_xml(resolved).getroot()
+        # Opened ONCE, and every check below asks the descriptor rather than
+        # the name. Validating the path and then handing the name to the parser
+        # is two lookups of a path inside a directory the agent writes, and the
+        # gap between them is enough to swap a validated regular file for a
+        # FIFO (which blocks this parse, on the API's own event loop) or for a
+        # symlink out of the workspace.
+        with os.fdopen(os.open(resolved, _REPORT_OPEN_FLAGS), "rb") as handle:
+            if not _is_usable_evidence(handle, test_report_path, not_before):
+                return None
+            return parse_xml(handle).getroot()
     except (OSError, ValueError, ParseError, DefusedXmlException) as exc:
         logger.warning(
             ENVIRONMENT_PENDING_REPORT_UNREADABLE,
@@ -462,11 +575,14 @@ def _read_report(
 
 
 def _is_usable_evidence(
-    resolved: Path,
+    handle: BinaryIO,
     declared: str,
     not_before: datetime | None,
 ) -> bool:
-    """Whether the file at *resolved* can stand as evidence about this run.
+    """Whether the open file *handle* can stand as evidence about this run.
+
+    Asks the descriptor rather than the path, so what is measured here is what
+    the parser goes on to read: nothing can be substituted in between.
 
     Returns:
         Whether it is a regular file, within the size ceiling, and no older
@@ -476,7 +592,7 @@ def _is_usable_evidence(
         OSError: Propagated from the stat, and handled by the caller alongside
             every other way the file can refuse to be read.
     """
-    info = resolved.stat()
+    info = os.fstat(handle.fileno())
     if not stat.S_ISREG(info.st_mode):
         logger.warning(
             ENVIRONMENT_PENDING_REPORT_UNREADABLE,

@@ -1,13 +1,14 @@
 # module-kind: code
 """Shutdown drains for the initiative loop's detached tails.
 
-The rollup schedules four kinds of detached work (an integration dispatch, a
-judgement, an auto-replan, and the SHIP retrospective), each on its own tracked
-registry. All four must finish, or be bounded, before the stores they write to
-are disconnected: a retrospective stranded mid-write loses the learning, an
-abandoned replan or integration dispatch leaves exactly the partial graph their
-compensated ordering exists to prevent, and a judgement abandoned mid-flight
-loses the only verdict that can complete the initiative.
+The rollup schedules five kinds of detached work (a contract dispatch, an
+integration dispatch, a judgement, an auto-replan, and the SHIP retrospective),
+each on its own tracked registry. All five must finish, or be bounded, before
+the stores they write to are disconnected: a retrospective stranded mid-write
+loses the learning, an abandoned replan, contract or integration dispatch
+leaves exactly the partial graph their compensated ordering exists to prevent,
+and a judgement abandoned mid-flight loses the only verdict that can complete
+the initiative.
 
 **Order is producer-before-consumer, and the sequence runs twice.** A
 judgement that lands during its own drain schedules a replan, and a replan
@@ -62,6 +63,11 @@ def _drain_plan(
     """
     timeout = DEFAULT_DRAIN_TIMEOUT_SECONDS
     return (
+        (
+            lambda: rollup.drain_skeleton(timeout_sec=timeout),
+            "Failed to drain in-flight contract dispatches",
+            "initiative_skeleton_drain",
+        ),
         (
             lambda: rollup.drain_integration(timeout_sec=timeout),
             "Failed to drain in-flight integration dispatches",

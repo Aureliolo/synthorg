@@ -38,7 +38,7 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.engine.completion_oracle.evaluator import BuildTestOracle
 from synthorg.engine.state import EngineStateSlice
-from synthorg.engine.workspace.state import agent_workspace_root_of
+from synthorg.engine.workspace.state import agent_workspace_root_path
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APPROVAL_ENRICH_FAILED
 from synthorg.persistence.artifact_protocol import ArtifactFilterSpec
@@ -483,9 +483,11 @@ async def resolve_approval_context(
     # oracle reads the repo directly here as it does for the deliverable receipts.
     records_repo = backend.code_execution_records
     # The same workspace the enforcing gate reads, so the queue and the gate
-    # cannot disagree about a skeleton whose suite fails by design.
+    # cannot disagree about a skeleton whose suite fails by design. Resolved
+    # without creating it: this is a dashboard-polled read, and the creating
+    # accessor is a mkdir plus a chmod on the event loop per poll.
     build_test_oracle = BuildTestOracle(
-        workspace_root=agent_workspace_root_of(app_state),
+        workspace_root=agent_workspace_root_path(app_state),
         plans=backend.plans,
     )
 

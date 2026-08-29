@@ -52,13 +52,19 @@ from synthorg.persistence.code_execution_protocol import CodeExecutionPurpose
 logger = get_logger(__name__)
 
 
-def declared_gate_purpose(
+def declared_gate_purposes(
     command: str,
     *,
     workspace_root: Path | None,
     project_id: str,
-) -> CodeExecutionPurpose | None:
-    """Which declared gate *command* is a run of, if any.
+) -> tuple[CodeExecutionPurpose, ...]:
+    """Which declared gates *command* is a run of.
+
+    Every one it satisfies, not the first: one line may run several of them,
+    and ``ruff check . && ruff format --check .`` genuinely proves both. Ending
+    at the first match records one receipt, leaves the oracle finding no
+    evidence for the other, and refuses a unit whose author ran exactly what
+    the project declared.
 
     Args:
         command: The command line as it was executed.
@@ -68,13 +74,14 @@ def declared_gate_purpose(
         project_id: The project whose manifest declares the gates.
 
     Returns:
-        The gate's purpose, or ``None`` when the line matches no declaration.
+        Each matched gate's purpose in declaration order, empty when the line
+        matches no declaration.
     """
     if workspace_root is None:
-        return None
+        return ()
     workspace = project_workspace_dir(workspace_root, project_id)
     if not (workspace / DEFAULT_MANIFEST_FILENAME).is_file():
-        return None
+        return ()
     try:
         manifest = read_manifest(workspace, filename=DEFAULT_MANIFEST_FILENAME)
     except EnvironmentConfigError as exc:
@@ -93,15 +100,15 @@ def declared_gate_purpose(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return None
+        return ()
     ran = trustworthy_segments(command)
     if ran is None:
-        return None
-    for purpose, declared in manifest.declared_gates.items():
-        wanted = trustworthy_segments(declared)
-        if wanted is not None and wanted <= ran:
-            return purpose
-    return None
+        return ()
+    return tuple(
+        purpose
+        for purpose, declared in manifest.declared_gates.items()
+        if (wanted := trustworthy_segments(declared)) is not None and wanted <= ran
+    )
 
 
-__all__ = ["declared_gate_purpose"]
+__all__ = ["declared_gate_purposes"]

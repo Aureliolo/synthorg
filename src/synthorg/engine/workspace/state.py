@@ -43,6 +43,25 @@ class WorkspaceStateSlice(BaseFeatureStateSlice):
     agent_workspace_root: Path | None = None
 
 
+def agent_workspace_root_path(app_state: AppStateSliceMixin) -> Path:
+    """Resolve the agent workspace root WITHOUT creating it.
+
+    The read-only half of :func:`agent_workspace_root_of`, and the single owner
+    of how the path is derived, so the two can never disagree about where the
+    tree is. For callers that only look INSIDE it: creating the root is a
+    wiring concern, and ``ensure_shared_dir`` is a mkdir plus a chmod, which on
+    a dashboard-polled read path is filesystem work on the API's own event loop
+    once per poll for a directory boot already made.
+
+    Returns:
+        The agent workspace root directory, which may not exist yet.
+    """
+    root = app_state.slice(WorkspaceStateSlice).agent_workspace_root
+    if root is None:
+        return Path(tempfile.gettempdir()) / _DEFAULT_WORKSPACE_TEMP_SUBDIR
+    return root
+
+
 def agent_workspace_root_of(app_state: AppStateSliceMixin) -> Path:
     """Resolve the agent filesystem workspace root.
 
@@ -64,8 +83,6 @@ def agent_workspace_root_of(app_state: AppStateSliceMixin) -> Path:
     Returns:
         The agent workspace root directory (existing).
     """
-    root = app_state.slice(WorkspaceStateSlice).agent_workspace_root
-    if root is None:
-        root = Path(tempfile.gettempdir()) / _DEFAULT_WORKSPACE_TEMP_SUBDIR
+    root = agent_workspace_root_path(app_state)
     ensure_shared_dir(root)
     return root

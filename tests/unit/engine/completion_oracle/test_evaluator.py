@@ -1,5 +1,6 @@
 """Unit tests for the Layer 1 build/test oracle (classifier + evaluator)."""
 
+import os
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -328,7 +329,15 @@ def _project_with_manifest(tmp_path: Path, *, report: str | None) -> Path:
     workspace.mkdir(parents=True)
     (workspace / DEFAULT_MANIFEST_FILENAME).write_text(_MANIFEST, encoding="utf-8")
     if report is not None:
-        (workspace / "junit.xml").write_text(report, encoding="utf-8")
+        written = workspace / "junit.xml"
+        written.write_text(report, encoding="utf-8")
+        # Stamped from the same fake clock the records are minted from. The
+        # oracle refuses a report older than the run it is offered as evidence
+        # about, and the filesystem clock is not the one these tests advance,
+        # so leaving the real mtime decides the verdict from the machine's wall
+        # clock rather than from anything the test set up.
+        stamped = _CLOCK.now().timestamp()
+        os.utime(written, (stamped, stamped))
     return tmp_path
 
 

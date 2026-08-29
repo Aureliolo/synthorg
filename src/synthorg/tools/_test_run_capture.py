@@ -34,14 +34,18 @@ build/test oracle reads the stamp and one module has to own what it means.
 """
 
 from collections.abc import Mapping, Sequence
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path
 from types import MappingProxyType
 from typing import Final
 
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.execution_identity import current_execution_identity
-from synthorg.core.shell_semantics import conjunctive_commands
+from synthorg.core.shell_semantics import (
+    conjunctive_commands,
+    program_name,
+    shell_payload,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.deliverable_receipts import (
     TEST_RUN_RECORD_FAILED,
@@ -52,7 +56,7 @@ from synthorg.persistence.code_execution_protocol import (
     CodeExecutionRecord,
     CodeExecutionRecordRepository,
 )
-from synthorg.tools._declared_gate_runs import declared_gate_purpose
+from synthorg.tools._declared_gate_runs import declared_gate_purposes
 from synthorg.tools.sandbox.result import SandboxResult
 
 logger = get_logger(__name__)
@@ -133,26 +137,6 @@ _PACKAGE_MANAGER_RUNNERS: Final[frozenset[str]] = frozenset(
 _TEST_TARGET: Final[str] = "test"
 _RUN_SUBCOMMAND: Final[str] = "run"
 
-#: Shells whose ``-c`` argument is itself a command line, so the question
-#: recurses into it once. ``bash -c "pytest -q"`` really did run the suite,
-#: and its exit status is the suite's.
-_SHELLS: Final[frozenset[str]] = frozenset({"bash", "sh", "zsh", "dash", "ash"})
-_SHELL_COMMAND_FLAG: Final[str] = "-c"
-#: ``<shell> -c <one command string>`` and nothing else.
-_SHELL_INVOCATION_TOKENS: Final[int] = 3
-
-
-def _program_name(token: str) -> str:
-    """Reduce an argv head to the bare program name.
-
-    Returns:
-        The lowercased basename with any ``.exe`` suffix removed, so an
-        absolute or Windows-style path resolves to the same name a bare
-        invocation would.
-    """
-    name = PurePosixPath(PureWindowsPath(token).name).name.lower()
-    return name.removesuffix(".exe")
-
 
 def _strip_wrappers(tokens: Sequence[str]) -> tuple[str, ...]:
     """Drop leading environment assignments and wrapper invocations.
@@ -164,7 +148,7 @@ def _strip_wrappers(tokens: Sequence[str]) -> tuple[str, ...]:
     changed = True
     while changed and remaining:
         changed = False
-        head = _program_name(remaining[0])
+        head = program_name(remaining[0])
         if "=" in remaining[0] and not remaining[0].startswith("="):
             remaining = remaining[1:]
             changed = True
@@ -175,7 +159,7 @@ def _strip_wrappers(tokens: Sequence[str]) -> tuple[str, ...]:
             continue
         for wrapper in _WRAPPERS:
             if len(remaining) > len(wrapper) and all(
-                _program_name(remaining[index]) == part
+                program_name(remaining[index]) == part
                 for index, part in enumerate(wrapper)
             ):
                 remaining = remaining[len(wrapper) :]
@@ -223,18 +207,14 @@ def _segment_is_test_run(parsed: Sequence[str], *, _shell_depth: int) -> bool:
     tokens = _strip_wrappers(parsed)
     if not tokens:
         return False
-    program = _program_name(tokens[0])
-    if (
-        program in _SHELLS
-        and _shell_depth == 0
-        and len(tokens) == _SHELL_INVOCATION_TOKENS
-        and tokens[1] == _SHELL_COMMAND_FLAG
-    ):
+    program = program_name(tokens[0])
+    payload = shell_payload(tokens) if _shell_depth == 0 else None
+    if payload is not None:
         # The payload runs in a shell this invocation just started, and
         # ``pipefail`` does not cross that boundary: our own wrapper set it
         # on the OUTER shell only. So a pipeline in here proves nothing,
         # and ``bash -c "npm test | tail -5"`` reports tail's zero.
-        return is_test_run(tokens[2], _shell_depth=1, _pipefail=False)
+        return is_test_run(payload, _shell_depth=1, _pipefail=False)
     if program in _DIRECT_RUNNERS:
         return True
     selecting_flags = _FLAG_RUNNERS.get(program)
@@ -276,26 +256,38 @@ def _is_package_manager_test(arguments: tuple[str, ...]) -> bool:
     )
 
 
-def _gate_purpose(
+def _gate_purposes(
     command: str,
     *,
     workspace_root: Path | None,
     project_id: str,
-) -> CodeExecutionPurpose | None:
-    """Which gate *command* ran, if any.
+) -> tuple[CodeExecutionPurpose, ...]:
+    """Which gates *command* ran.
 
     The single owner of that decision. The test suite is answered here from the
     command alone; every other gate is the project's own declaration, read by
     :mod:`synthorg.tools._declared_gate_runs`, and the stamping stays here so
     one module decides what a run counts as.
 
+    All of them, because one line can be several: an agent that types
+    ``pytest -q && ruff check .`` ran the suite AND the project's lint gate,
+    and answering with either alone withholds the evidence for the other.
+
     Returns:
-        The purpose to record under, or ``None`` when the line ran no gate.
+        Each purpose to record under, empty when the line ran no gate.
     """
-    if is_test_run(command):
-        return CodeExecutionPurpose.TESTS
-    return declared_gate_purpose(
+    declared = declared_gate_purposes(
         command, workspace_root=workspace_root, project_id=project_id
+    )
+    if not is_test_run(command):
+        return declared
+    # The suite is recognised from the invoked program rather than from the
+    # manifest, so it can coincide with a declaration only by a project
+    # declaring its own test command; deduplicated here so that never doubles
+    # the receipt.
+    return (
+        CodeExecutionPurpose.TESTS,
+        *(purpose for purpose in declared if purpose is not CodeExecutionPurpose.TESTS),
     )
 
 
@@ -349,31 +341,37 @@ async def record_if_test_run(
     identity = current_execution_identity()
     if identity is None or identity.project_id is None:
         return
-    purpose = _gate_purpose(
+    purposes = _gate_purposes(
         command, workspace_root=workspace_root, project_id=identity.project_id
     )
-    if purpose is None:
+    if not purposes:
         return
+    executed_at = clock.now()
     try:
-        await records.append(
-            CodeExecutionRecord(
-                task_id=identity.task_id,
-                execution_id=identity.execution_id,
-                project_id=identity.project_id,
-                purpose=purpose,
-                command=command[:command_repr_limit],
-                returncode=result.returncode,
-                passed=result.success,
-                timed_out=result.timed_out,
-                stdout_tail=(
-                    result.stdout[-output_tail_limit:] if result.stdout else None
-                ),
-                stderr_tail=(
-                    result.stderr[-output_tail_limit:] if result.stderr else None
-                ),
-                executed_at=clock.now(),
+        for purpose in purposes:
+            # One row per gate the line satisfied, each carrying the whole
+            # command: the row says which gate this run is evidence for, and a
+            # compound line is evidence for each of them. They share one
+            # timestamp because they share one execution.
+            await records.append(
+                CodeExecutionRecord(
+                    task_id=identity.task_id,
+                    execution_id=identity.execution_id,
+                    project_id=identity.project_id,
+                    purpose=purpose,
+                    command=command[:command_repr_limit],
+                    returncode=result.returncode,
+                    passed=result.success,
+                    timed_out=result.timed_out,
+                    stdout_tail=(
+                        result.stdout[-output_tail_limit:] if result.stdout else None
+                    ),
+                    stderr_tail=(
+                        result.stderr[-output_tail_limit:] if result.stderr else None
+                    ),
+                    executed_at=executed_at,
+                )
             )
-        )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- the receipt is a side channel; losing it
         # must never lose the run it describes. Losing one can only withhold

@@ -164,6 +164,71 @@ class TestTheFiveWayTable:
         assert report.outcomes[0].verdict is verdict
         assert report.green is (verdict is PendingVerdict.GREEN)
 
+    @pytest.mark.parametrize(
+        ("raised", "message", "verdict"),
+        [
+            pytest.param(
+                "AssertionError",
+                "assert 1 == 2",
+                PendingVerdict.GREEN,
+                id="declared_assertion",
+            ),
+            pytest.param(
+                "ValueError",
+                "cannot assert on an empty input",
+                PendingVerdict.RED,
+                id="exception_whose_message_says_assert",
+            ),
+            pytest.param(
+                "KeyError",
+                "'score'",
+                PendingVerdict.RED,
+                id="plain_exception",
+            ),
+        ],
+    )
+    def test_the_class_the_runner_named_beats_the_message_text(
+        self, tmp_path: Path, raised: str, message: str, verdict: PendingVerdict
+    ) -> None:
+        """A crash whose message merely contains the word is not an assertion.
+
+        The message is prose the raised exception chose, so a substring test
+        reads ``ValueError: cannot assert on an empty input`` as the declared
+        failure and turns a skeleton that crashes green. The class the runner
+        recorded is the structured answer, and it wins wherever there is one.
+        """
+        _write_report(
+            tmp_path,
+            _case(f'<failure message="{message}" type="{raised}"/>'),
+        )
+
+        report = classify_pending(
+            _pending(), workspace_path=tmp_path, test_report_path=_REPORT
+        )
+
+        assert report.outcomes[0].verdict is verdict
+
+    def test_a_message_opening_with_its_class_needs_no_type_attribute(
+        self, tmp_path: Path
+    ) -> None:
+        """pytest writes the raised class into the message, not a ``type``.
+
+        Its ``reprcrash.message`` opens with the class name, so the prefix is
+        the same structured answer arriving by another route: without reading
+        it, every pytest failure falls back to the substring test this rule
+        exists to replace.
+        """
+        _write_report(
+            tmp_path,
+            _case('<failure message="ValueError: cannot assert on empty input"/>'),
+        )
+
+        report = classify_pending(
+            _pending(), workspace_path=tmp_path, test_report_path=_REPORT
+        )
+
+        assert report.outcomes[0].verdict is PendingVerdict.RED
+
     def test_a_test_the_report_never_names_is_red(self, tmp_path: Path) -> None:
         """A timeout or a runner crash looks exactly like this from here.
 
@@ -326,3 +391,91 @@ class TestHowARunnerSpellsTheNodeId:
         )
 
         assert report.green is True
+
+
+class TestWhenTwoCasesShareASpelling:
+    """A name naming two tests names neither, and cannot make either green.
+
+    The bare test name is a spelling a manifest may use, and two files may hold
+    the same one. Letting the last case parsed win means a declared assertion
+    failure anywhere in the suite decides the verdict for a criterion that
+    meant the other test.
+    """
+
+    @staticmethod
+    def _two_files_one_name(first: str, second: str) -> str:
+        """Two cases sharing a bare name, each with its own outcome.
+
+        Returns:
+            The report body.
+        """
+        return (
+            '<testsuite name="pytest" tests="2">'
+            '<testcase classname="tests.test_score" file="tests/test_score.py" '
+            f'name="test_a_score_is_recorded">{first}</testcase>'
+            '<testcase classname="tests.test_other" file="tests/test_other.py" '
+            f'name="test_a_score_is_recorded">{second}</testcase>'
+            "</testsuite>"
+        )
+
+    def test_an_ambiguous_bare_name_is_red(self, tmp_path: Path) -> None:
+        """The other file's declared failure must not answer for this one.
+
+        Its case crashes; the unrelated one asserts. Reading either as "the"
+        case turns a crashing skeleton green on evidence about a different test.
+        """
+        _write_report(
+            tmp_path,
+            self._two_files_one_name(
+                '<failure message="KeyError" type="KeyError"/>',
+                '<failure message="assert 0 == 1" type="AssertionError"/>',
+            ),
+        )
+
+        report = classify_pending(
+            (
+                PendingTest(
+                    criterion=NotBlankStr(_CRITERION),
+                    test_id=NotBlankStr("test_a_score_is_recorded"),
+                ),
+            ),
+            workspace_path=tmp_path,
+            test_report_path=_REPORT,
+        )
+
+        assert report.outcomes[0].verdict is PendingVerdict.RED
+        assert "more than one test" in report.outcomes[0].reason
+
+    def test_an_unambiguous_node_id_still_resolves(self, tmp_path: Path) -> None:
+        """Naming the file is what makes the criterion answerable again.
+
+        The ambiguity is in the bare name alone, so the full node id has to
+        keep working or the refusal above would cost every project the feature
+        rather than the one spelling that cannot be resolved.
+
+        The run is still not green, and that is the second half of the rule:
+        the other file's crash is an unrelated break, and a shared bare name
+        must not excuse it. Sharing the criterion's spelling is exactly how it
+        would, so it is counted rather than waived.
+        """
+        _write_report(
+            tmp_path,
+            self._two_files_one_name(
+                '<failure message="assert 0 == 1" type="AssertionError"/>',
+                '<failure message="KeyError" type="KeyError"/>',
+            ),
+        )
+
+        report = classify_pending(
+            (
+                PendingTest(
+                    criterion=NotBlankStr(_CRITERION),
+                    test_id=NotBlankStr(_TEST_ID),
+                ),
+            ),
+            workspace_path=tmp_path,
+            test_report_path=_REPORT,
+        )
+
+        assert report.outcomes[0].verdict is PendingVerdict.GREEN
+        assert report.other_failures == 1

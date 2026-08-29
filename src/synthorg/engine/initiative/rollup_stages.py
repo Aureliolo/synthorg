@@ -153,7 +153,13 @@ async def drive_skeleton(
         skeleton.schedule(plan=plan, attempt=state.attempt)
         return plan
     if state.outcome is StageOutcome.PASSED:
-        advanced = await advance(plan, PlanStatus.EXECUTING) or plan
+        advanced = await advance(plan, PlanStatus.EXECUTING)
+        if advanced is None:
+            # A refused transition or an exhausted retry budget, and the plan is
+            # still at SKELETON. Falling back to the input here would dispatch
+            # the units against a status that never moved, which is the one
+            # thing the stage exists to prevent; the next pass re-asks.
+            return plan
         return await _dispatch_units(advanced, drive=drive, stall=stall)
     if state.outcome is StageOutcome.FAILED:
         # A contract that will not compile is a statement about the plan rather

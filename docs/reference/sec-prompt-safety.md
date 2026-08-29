@@ -103,9 +103,13 @@ though the manifest is the authority on what is pending.
 4. Parses with `defusedxml.ElementTree`, never the stdlib parser, so an expanded
    external entity cannot read the backend's filesystem on the agent's behalf.
 
-Every refusal classifies the run's pending criteria RED and logs
-`ENVIRONMENT_PENDING_REPORT_UNREADABLE` with a `reason`; none of them raises,
-because a report nobody can read is a rework round rather than an outage.
+Every refusal classifies the run's pending criteria RED, and none of them
+raises, because a report nobody can read is a rework round rather than an
+outage. Which event carries it depends on the refusal: a path leaving the
+workspace logs `ENVIRONMENT_PENDING_REPORT_ESCAPED`, while everything else logs
+`ENVIRONMENT_PENDING_REPORT_UNREADABLE`, naming a `reason` when this module
+decided (no report declared, not a regular file, too large, older than the run)
+and an `error_type` when the filesystem or the XML parser did.
 
 ## Secret-log redaction
 
