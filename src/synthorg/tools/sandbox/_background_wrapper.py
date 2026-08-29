@@ -1,0 +1,284 @@
+"""Shell text for starting, polling, reading, and killing a background job.
+
+Pure string-building: nothing here touches Docker or the filesystem, so
+every function is testable without a daemon. The one contract that
+matters is that the job's own argv reaches ``bash -c`` exactly as
+:func:`synthorg.tools._shell_invocation.shell_invocation` would build it
+for a foreground call -- backgrounding must not change how the command
+text is parsed, or a command safe in the foreground becomes unsafe (or
+simply different) once backgrounded.
+
+Output is capped at READ time (:func:`build_read_output_command`), not write time.
+An earlier design piped the command's own stdout through a byte-capping
+``dd``/FIFO stage so a runaway job could never grow past the cap on
+disk; it was dropped; both routes hit a real failure mode a foreground
+truncation never has to consider: the writer exceeding the cap receives
+SIGPIPE (or, via a ulimit, SIGXFSZ) and is killed by it, which is a job
+DYING at the cap rather than being read back capped, indistinguishable
+from a real crash. The write-time-cap concern (tmpfs exhaustion) is
+answered by the per-owner job-count cap and each job's own
+``max_duration_seconds`` ceiling instead -- a bound on how much a job
+CAN write, not a bound enforced by killing it while it writes. Read a
+job's own PID is a genuine per-command process, never a pipeline stage,
+because ``$!`` after a pipeline names the LAST stage, not the command a
+caller might need to kill.
+"""
+
+from pathlib import PurePosixPath
+from typing import Final
+
+from synthorg.tools._shell_invocation import SHELL_ARGS_PREFIX, SHELL_PROGRAM
+
+#: Container-side directory a job's own files live under, scoped by job
+#: id. Under ``/tmp`` (a separate tmpfs mount, never the workspace bind)
+#: so a job's log droppings are structurally invisible to
+#: ``workspace_fingerprint.py``'s zero-artifact scan.
+JOBS_ROOT: Final[str] = "/tmp/.synthorg-jobs"  # noqa: S108
+
+#: Polling cadence and bound for the start command's own wait for the
+#: PID file. The write it waits for is a `cd` + `setsid` + `echo` away,
+#: so this resolves in low single-digit milliseconds in practice; the
+#: cap only exists so a pathological failure (e.g. a full tmpfs) fails
+#: the exec with empty stdout after a bounded time rather than hanging
+#: the caller's exec indefinitely.
+_PID_POLL_INTERVAL_SECONDS: Final[float] = 0.02
+_PID_POLL_MAX_ITERATIONS: Final[int] = 500
+
+
+def job_dir(job_id: str) -> str:
+    """Return the container-side directory for *job_id*.
+
+    Returns:
+        The POSIX directory path.
+    """
+    return str(PurePosixPath(JOBS_ROOT) / job_id)
+
+
+def output_path(job_id: str) -> str:
+    """Return the container-side captured-output file path for *job_id*.
+
+    Returns:
+        The POSIX file path.
+    """
+    return str(PurePosixPath(job_dir(job_id)) / "output")
+
+
+def pid_path(job_id: str) -> str:
+    """Return the container-side PID file path for *job_id*.
+
+    Returns:
+        The POSIX file path.
+    """
+    return str(PurePosixPath(job_dir(job_id)) / "pid")
+
+
+def exit_code_path(job_id: str) -> str:
+    """Return the container-side exit-code sentinel path for *job_id*.
+
+    Returns:
+        The POSIX file path.
+    """
+    return str(PurePosixPath(job_dir(job_id)) / "exit_code")
+
+
+def _quote(text: str) -> str:
+    """Single-quote *text* for embedding in a shell command.
+
+    Returns:
+        A shell-safe single-quoted token. Never interpolate *text* into
+        a shell string any other way: this is the one escaping rule the
+        rest of this module depends on.
+    """
+    return "'" + text.replace("'", "'\\''") + "'"
+
+
+def build_start_command(
+    job_id: str,
+    command: str,
+    *,
+    container_cwd: str,
+) -> tuple[str, tuple[str, ...]]:
+    """Build the ``(program, args)`` that start *command* detached.
+
+    The returned exec is fast-returning: everything up to and including
+    the ``echo`` of the child PID runs in the wrapper's own foreground,
+    and only the real command (plus the small subshell that waits on it
+    to record its exit code) is backgrounded. The exec's own stdout is
+    therefore just the child PID, which the caller parses to persist the
+    job record.
+
+    Args:
+        job_id: This job's id; scopes every file it owns.
+        command: The agent's own shell line, unmodified. Reaches
+            ``bash -c`` exactly as it would for a foreground
+            ``shell_command`` call.
+        container_cwd: Working directory the real command runs in.
+
+    Returns:
+        The ``(program, args)`` pair to pass to the sandbox's attached
+        exec, e.g. ``container.exec(cmd=[program, *args], ...)``.
+    """
+    directory = job_dir(job_id)
+    out = output_path(job_id)
+    pid_file = pid_path(job_id)
+    exit_file = exit_code_path(job_id)
+    inner = " ".join((SHELL_PROGRAM, *SHELL_ARGS_PREFIX, _quote(command)))
+    # `setsid TARGET` only makes TARGET's own pid double as its process
+    # group id when `setsid` execs directly into TARGET with no
+    # intervening fork. Bash silently declines that exec-replacement
+    # (forking a child instead, which then gets a group of its OWN,
+    # divorced from the one `setsid` established) whenever the
+    # would-be-replaced command carries `cd ... &&` before it or I/O
+    # redirection on its own invocation -- confirmed empirically against
+    # the sandbox's own base image: both shapes left the tracked pid
+    # process-group-orphaned, so a later `kill -TERM -<pid>` (see
+    # build_kill_command) signalled nobody. `cd`, the redirect, and the
+    # real command are therefore folded into ONE setsid'd bash script
+    # using explicit `exec`s: a bare `exec` never forks (that is its
+    # entire defined purpose, not a heuristic bash can decline), and
+    # `exec` with only redirections mutates the current process's fds in
+    # place. Nothing in this chain forks, so the pid setsid assigned a
+    # fresh session/group to is the exact pid that ends up running the
+    # command, all the way down.
+    setup = (
+        f"cd {_quote(container_cwd)} && "
+        f"exec > {_quote(out)} 2>&1 < /dev/null; "
+        f"exec {inner}"
+    )
+    detached = " ".join((SHELL_PROGRAM, *SHELL_ARGS_PREFIX, _quote(setup)))
+    # `mkdir` runs synchronously, before anything is backgrounded, so the
+    # directory is guaranteed to exist before the poll loop below ever
+    # looks for the PID file inside it.
+    #
+    # The command-plus-wait live in ONE background job (one fork): `wait`
+    # can only wait on the current process's OWN children, so the process
+    # that backgrounds the real command via `setsid ... &` must be the
+    # same process that later `wait`s on it. A separate `( wait $pid ) &`
+    # subshell is a SIBLING of that job, not its parent, and always fails
+    # with "not a child of this shell".
+    #
+    # That background job's own `echo "$child_pid"` write is therefore
+    # not observable by the exec's own (already-returned) foreground, so
+    # the foreground instead polls for the PID file the job writes and
+    # cats it once it appears -- the file, not a pipe, is the hand-off.
+    script = (
+        f"mkdir -p {_quote(directory)}; "
+        f"{{ setsid {detached} & "
+        f'child_pid=$!; echo "$child_pid" > {_quote(pid_file)}; '
+        f'wait "$child_pid"; echo $? > {_quote(exit_file)}; '
+        f"}} & disown -a; "
+        f"i=0; "
+        f"while [ ! -s {_quote(pid_file)} ] && "
+        f'[ "$i" -lt {_PID_POLL_MAX_ITERATIONS} ]; do '
+        f"sleep {_PID_POLL_INTERVAL_SECONDS}; i=$((i+1)); done; "
+        f"cat {_quote(pid_file)} 2>/dev/null"
+    )
+    return SHELL_PROGRAM, (*SHELL_ARGS_PREFIX, script)
+
+
+def build_liveness_command(job_id: str) -> tuple[str, tuple[str, ...]]:
+    """Build the ``(program, args)`` that check whether a job has finished.
+
+    Prints the exit-code sentinel's content if the job has already
+    finished (the sentinel-write race is over: ``wait`` observed the
+    process exit and the code is on disk), otherwise prints ``RUNNING``.
+    Checking the sentinel rather than the PID is deliberate: a PID can
+    be recycled by an unrelated process started later in the same
+    container, and a dead PID with no sentinel yet is a real, narrow
+    race (the recording subshell has not finished its own write) rather
+    than evidence the job never ran; either way "not exited yet" is the
+    honest answer until the sentinel says otherwise.
+
+    Args:
+        job_id: The job to check.
+
+    Returns:
+        The ``(program, args)`` pair for the sandbox's attached exec.
+    """
+    exit_file = exit_code_path(job_id)
+    script = (
+        f"if [ -s {_quote(exit_file)} ]; then "
+        f"cat {_quote(exit_file)}; "
+        f"else "
+        f'echo "RUNNING"; '
+        f"fi"
+    )
+    return SHELL_PROGRAM, (*SHELL_ARGS_PREFIX, script)
+
+
+def build_read_output_command(
+    job_id: str, *, byte_cap: int
+) -> tuple[str, tuple[str, ...]]:
+    """Build the ``(program, args)`` that read a job's captured output.
+
+    Truncated to the first *byte_cap* bytes, mirroring
+    ``ShellCommandTool``'s own existing head-truncation convention for a
+    foreground result (kept from the start, not the tail, plus a marker
+    when the file is larger). The exec reads the file directly, so a
+    file smaller than the cap is returned whole with no marker.
+
+    Args:
+        job_id: The job whose output to read.
+        byte_cap: Maximum bytes to return.
+
+    Returns:
+        The ``(program, args)`` pair for the sandbox's attached exec.
+
+    Raises:
+        ValueError: If *byte_cap* is not positive.
+    """
+    if byte_cap <= 0:
+        msg = f"byte_cap must be positive, got {byte_cap!r}"
+        raise ValueError(msg)
+    out = output_path(job_id)
+    script = f"head -c {byte_cap} {_quote(out)}"
+    return SHELL_PROGRAM, (*SHELL_ARGS_PREFIX, script)
+
+
+def build_kill_command(
+    pid: int, *, grace_seconds: float
+) -> tuple[str, tuple[str, ...]]:
+    """Build the ``(program, args)`` that terminate a job's process group.
+
+    ``setsid`` made the job's own process a new session and process
+    group leader, so its PID doubles as its process-group id: signalling
+    the negative PID reaches the job and anything it forked, not just
+    the one process. Sends TERM, waits *grace_seconds*, then KILLs
+    anything still standing; both signals are best-effort (a process
+    that already exited answers with an ordinary "no such process",
+    swallowed here rather than surfaced, since cancelling an already-
+    finished job is not an error).
+
+    Args:
+        pid: The job's own PID (also its process-group id).
+        grace_seconds: How long to wait between TERM and KILL.
+
+    Returns:
+        The ``(program, args)`` pair for the sandbox's attached exec.
+
+    Raises:
+        ValueError: If *pid* is not positive.
+    """
+    if pid <= 0:
+        msg = f"pid must be positive, got {pid!r}"
+        raise ValueError(msg)
+    script = (
+        f"kill -TERM -{pid} 2>/dev/null; "
+        f"sleep {grace_seconds}; "
+        f"kill -KILL -{pid} 2>/dev/null; "
+        f"true"
+    )
+    return SHELL_PROGRAM, (*SHELL_ARGS_PREFIX, script)
+
+
+__all__ = [
+    "JOBS_ROOT",
+    "build_kill_command",
+    "build_liveness_command",
+    "build_read_output_command",
+    "build_start_command",
+    "exit_code_path",
+    "job_dir",
+    "output_path",
+    "pid_path",
+]
