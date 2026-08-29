@@ -2675,9 +2675,9 @@ CREATE TABLE plans (
     coordination_topology TEXT NOT NULL DEFAULT 'auto',
     status TEXT NOT NULL DEFAULT 'draft'
     CHECK (status IN (
-        'planning', 'draft', 'pending_review', 'approved', 'executing',
-        'integrating', 'evaluating', 'completed', 'rejected', 'superseded',
-        'failed'
+        'planning', 'draft', 'pending_review', 'approved', 'skeleton',
+        'executing', 'integrating', 'evaluating', 'completed', 'rejected',
+        'superseded', 'failed'
     )),
     failure_reason TEXT CHECK (failure_reason IS NULL OR LENGTH(TRIM(failure_reason)) > 0),
     forecast_id TEXT,
