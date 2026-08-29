@@ -16,6 +16,7 @@ unreadable test evidence fails CLOSED, because shipping unverified code as
 """
 
 import asyncio
+from pathlib import Path
 from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
@@ -26,6 +27,10 @@ from synthorg.engine.completion_oracle.build_test_models import (
     OracleVerdict,
 )
 from synthorg.engine.completion_oracle.classifier import classify_grounding_requirement
+from synthorg.engine.completion_oracle.pending_forgiveness import (
+    failure_was_declared,
+    unclaimed_criteria,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.completion_oracle import (
     BUILD_TEST_CHECKER_FAULT,
@@ -53,9 +58,21 @@ telemetry counts, mirroring the receipt validator's signal-query ceiling.
 class BuildTestOracle:
     """Deterministic build/test verdict over persisted execution records.
 
-    Stateless: every input arrives through :meth:`evaluate`, so a single
-    boot-wired instance serves every completing task.
+    One boot-wired instance serves every completing task: the only state is
+    where projects live on disk, which the whole deployment shares.
+
+    Args:
+        workspace_root: Base directory projects live under, so the verdict can
+            read what a project declared pending. Without it a skeleton's
+            by-design red suite reads as a broken build and the contract stage
+            can never complete; ``None`` (a boot that resolved no workspace)
+            forgives nothing rather than guessing at a directory.
     """
+
+    __slots__ = ("_workspace_root",)
+
+    def __init__(self, *, workspace_root: Path | None = None) -> None:
+        self._workspace_root = workspace_root
 
     async def evaluate(
         self,
@@ -148,7 +165,7 @@ class BuildTestOracle:
         if page is None:
             return self._checker_fault_result(requirement)
 
-        return self._verdict_from_records(requirement, page)
+        return self._verdict_from_records(task, requirement, page)
 
     async def _query_records(
         self,
@@ -219,8 +236,9 @@ class BuildTestOracle:
             ),
         )
 
-    @staticmethod
     def _verdict_from_records(
+        self,
+        task: Task,
         requirement: GroundingRequirement,
         page: tuple[CodeExecutionRecord, ...],
     ) -> OracleEvaluation:
@@ -249,7 +267,7 @@ class BuildTestOracle:
                 reason="Task does not require build/test grounding.",
             )
         latest = page[0]
-        if not latest.passed:
+        if not latest.passed and not self._declared_failure(task):
             return OracleEvaluation(
                 verdict=OracleVerdict.BUILD_TEST_FAILED,
                 requirement=requirement,
@@ -259,6 +277,19 @@ class BuildTestOracle:
                 reason=(
                     f"Latest test run failed (exit {latest.returncode}"
                     f"{', timed out' if latest.timed_out else ''})."
+                ),
+                tests_seen=tests_seen,
+                tests_failed=tests_failed,
+            )
+        outstanding = self._outstanding_criteria(task)
+        if outstanding:
+            return OracleEvaluation(
+                verdict=OracleVerdict.BUILD_TEST_FAILED,
+                requirement=requirement,
+                reason=(
+                    f"{len(outstanding)} of this task's criteria are still"
+                    " listed pending in the project manifest; clear each"
+                    " entry in the commit that implements it."
                 ),
                 tests_seen=tests_seen,
                 tests_failed=tests_failed,
@@ -274,4 +305,40 @@ class BuildTestOracle:
             reason=(f"Latest test run passed; {tests_seen} test run(s) inspected."),
             tests_seen=tests_seen,
             tests_failed=tests_failed,
+        )
+
+    def _declared_failure(self, task: Task) -> bool:
+        """Whether the project declared exactly the failure this run produced.
+
+        Returns:
+            ``True`` when the manifest's pending set accounts for every
+            failing test, which is what a correct skeleton produces.
+        """
+        return failure_was_declared(
+            workspace_root=self._workspace_root,
+            project_id=str(task.project),
+        )
+
+    def _outstanding_criteria(self, task: Task) -> tuple[str, ...]:
+        """Which of *task*'s own criteria the manifest still calls pending.
+
+        Asked of a run that is otherwise passing, which is the direction an
+        exit status cannot see: a unit that implemented its criterion and left
+        the marker behind exits zero, and the next unit inherits a criterion
+        the manifest calls unimplemented.
+
+        Asked only of a task that implements a plan item. A task carrying a
+        plan id and no item id implements none: it is a stage job, and the
+        skeleton stage is the one that WRITES these entries, so holding it to
+        them would refuse every contract for doing its job.
+
+        Returns:
+            The task's criteria still listed pending.
+        """
+        if task.plan_item_id is None:
+            return ()
+        return unclaimed_criteria(
+            [str(criterion.description) for criterion in task.acceptance_criteria],
+            workspace_root=self._workspace_root,
+            project_id=str(task.project),
         )

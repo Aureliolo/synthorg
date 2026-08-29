@@ -1,12 +1,13 @@
 """Unit tests for the Layer 1 build/test oracle (classifier + evaluator)."""
 
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 import structlog.testing
 
 from synthorg.core.artifact import ArtifactType, ExpectedArtifact
-from synthorg.core.task import Task
+from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import TaskType
 from synthorg.engine.completion_oracle.build_test_models import (
     GroundingRequirement,
@@ -14,17 +15,19 @@ from synthorg.engine.completion_oracle.build_test_models import (
 )
 from synthorg.engine.completion_oracle.classifier import classify_grounding_requirement
 from synthorg.engine.completion_oracle.evaluator import BuildTestOracle
+from synthorg.engine.workspace.environment.config import DEFAULT_MANIFEST_FILENAME
 from synthorg.observability.events.completion_oracle import BUILD_TEST_GATE_EVALUATED
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionFilterSpec,
     CodeExecutionPurpose,
     CodeExecutionRecord,
 )
-from tests._shared import FakeClock
+from tests._shared import FakeClock, as_pk, as_uuid, sid
 
 pytestmark = pytest.mark.unit
 
 _CLOCK = FakeClock()
+_PROJECT = sid("proj-1")
 
 
 def _task(
@@ -230,3 +233,177 @@ class TestReadingIsNotDeciding:
         # Exactly one, not merely present: the name says the deciding call
         # records ONE, and a membership check passes for any number above zero.
         assert decided_events.count(BUILD_TEST_GATE_EVALUATED) == 1
+
+
+_MANIFEST = """\
+language: python
+test_command: pytest
+test_report_path: junit.xml
+pending:
+  - criterion: a score is recorded
+    test_id: tests/test_score.py::test_a_score_is_recorded
+"""
+
+_PENDING_CASE = (
+    '<testcase classname="tests/test_score.py" name="test_a_score_is_recorded">'
+    '<failure message="assert 0 == 1"/></testcase>'
+)
+
+
+def _project_with_manifest(tmp_path: Path, *, report: str | None) -> Path:
+    """Seed a project workspace carrying a manifest and optionally a report.
+
+    Returns:
+        The base root the oracle is wired with.
+    """
+    workspace = tmp_path / "projects" / _PROJECT
+    workspace.mkdir(parents=True)
+    (workspace / DEFAULT_MANIFEST_FILENAME).write_text(_MANIFEST, encoding="utf-8")
+    if report is not None:
+        (workspace / "junit.xml").write_text(report, encoding="utf-8")
+    return tmp_path
+
+
+def _unit_task(*criteria: str) -> Task:
+    """A task implementing one plan item, declaring *criteria*.
+
+    Returns:
+        The unit task, keyed to the seeded project.
+    """
+    return Task(
+        title="t",
+        description="d",
+        type=TaskType.DEVELOPMENT,
+        project=_PROJECT,
+        plan_id=as_uuid("plan-1"),
+        plan_item_id=as_pk("item-a"),
+        created_by="c",
+        acceptance_criteria=tuple(
+            AcceptanceCriterion(description=criterion) for criterion in criteria
+        ),
+    )
+
+
+class TestWhatAProjectDeclaredPending:
+    """A skeleton's suite fails by design, so the exit status is not the verdict.
+
+    Read here rather than written onto the record: ``CodeExecutionRecord``
+    answers "did this exit zero" and a validator holds it to that, so the row
+    keeps saying what happened and the oracle says what it means.
+    """
+
+    async def test_a_failure_the_project_declared_does_not_block(
+        self, tmp_path: Path
+    ) -> None:
+        task = _unit_task()
+        records = _FakeRecords((_record(passed=False, task_id=str(task.id)),))
+        oracle = BuildTestOracle(
+            workspace_root=_project_with_manifest(
+                tmp_path, report=f"<testsuite>{_PENDING_CASE}</testsuite>"
+            )
+        )
+
+        result = await oracle.evaluate(task, records=records)
+
+        assert result.verdict is OracleVerdict.VERIFIED
+        assert not result.blocks_completion
+
+    async def test_a_failure_it_did_not_declare_still_blocks(
+        self, tmp_path: Path
+    ) -> None:
+        """Forgiveness is the declaration's, so an undeclared break keeps its own."""
+        task = _unit_task()
+        records = _FakeRecords((_record(passed=False, task_id=str(task.id)),))
+        oracle = BuildTestOracle(
+            workspace_root=_project_with_manifest(
+                tmp_path,
+                report=(
+                    f"<testsuite>{_PENDING_CASE}"
+                    '<testcase classname="tests/test_other.py" name="test_other">'
+                    '<failure message="assert 2 == 3"/></testcase></testsuite>'
+                ),
+            )
+        )
+
+        result = await oracle.evaluate(task, records=records)
+
+        assert result.verdict is OracleVerdict.BUILD_TEST_FAILED
+        assert result.blocks_completion
+
+    async def test_a_unit_that_left_its_own_marker_behind_blocks(
+        self, tmp_path: Path
+    ) -> None:
+        """Clearing the entry in the same commit is the signal a unit is done.
+
+        The suite exits zero, so nothing else in the chain can see that the
+        next unit is about to inherit a criterion the manifest calls
+        unimplemented.
+        """
+        task = _unit_task("A score is recorded.")
+        records = _FakeRecords((_record(passed=True, task_id=str(task.id)),))
+        oracle = BuildTestOracle(
+            workspace_root=_project_with_manifest(tmp_path, report=None)
+        )
+
+        result = await oracle.evaluate(task, records=records)
+
+        assert result.verdict is OracleVerdict.BUILD_TEST_FAILED
+        assert result.blocks_completion
+        assert "still listed pending" in result.reason
+
+    async def test_another_units_marker_does_not_block_this_one(
+        self, tmp_path: Path
+    ) -> None:
+        """A project mid-build always has other units' entries outstanding."""
+        task = _unit_task("something else entirely")
+        records = _FakeRecords((_record(passed=True, task_id=str(task.id)),))
+        oracle = BuildTestOracle(
+            workspace_root=_project_with_manifest(tmp_path, report=None)
+        )
+
+        result = await oracle.evaluate(task, records=records)
+
+        assert result.verdict is OracleVerdict.VERIFIED
+
+    async def test_a_stage_job_is_never_held_to_the_markers_it_writes(
+        self, tmp_path: Path
+    ) -> None:
+        """The skeleton's job IS to leave them, so holding it to them refuses it.
+
+        Told apart by ``plan_item_id``: a task carrying a plan id and no item
+        id implements no plan item, which is what every stage job looks like.
+        """
+        task = Task(
+            title="Skeleton: ship it",
+            description="write the contract",
+            type=TaskType.DEVELOPMENT,
+            project=_PROJECT,
+            plan_id=as_uuid("plan-1"),
+            created_by="initiative-skeleton",
+            acceptance_criteria=(
+                AcceptanceCriterion(description="A score is recorded."),
+            ),
+        )
+        records = _FakeRecords((_record(passed=True, task_id=str(task.id)),))
+        oracle = BuildTestOracle(
+            workspace_root=_project_with_manifest(tmp_path, report=None)
+        )
+
+        result = await oracle.evaluate(task, records=records)
+
+        assert result.verdict is OracleVerdict.VERIFIED
+
+    async def test_an_unwired_workspace_keeps_the_pre_pending_behaviour(self) -> None:
+        """A boot that resolved no workspace forgives nothing and blocks nothing."""
+        task = _unit_task("A score is recorded.")
+        oracle = BuildTestOracle()
+
+        failing = await oracle.evaluate(
+            task, records=_FakeRecords((_record(passed=False, task_id=str(task.id)),))
+        )
+        passing = await oracle.evaluate(
+            task, records=_FakeRecords((_record(passed=True, task_id=str(task.id)),))
+        )
+
+        assert failing.verdict is OracleVerdict.BUILD_TEST_FAILED
+        assert passing.verdict is OracleVerdict.VERIFIED

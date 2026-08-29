@@ -24,6 +24,7 @@ from synthorg.engine.completion_oracle.tools.submit_verdict import (
     SubmitCompletionOracleVerdictTool,
 )
 from synthorg.engine.review_gate import ReviewGateService
+from synthorg.engine.workspace.state import WorkspaceStateSlice
 from synthorg.workers import _completion_oracle_runtime
 from synthorg.workers._completion_oracle_runtime import (
     attach_completion_oracle_gates,
@@ -34,11 +35,17 @@ pytestmark = pytest.mark.unit
 
 
 class _FakeAppState:
-    """Duck-typed ``AppState`` exposing only the review-gate slice lookup."""
+    """Duck-typed ``AppState`` exposing the slices the attach reads.
+
+    The workspace slice is here because the build/test gate is wired with the
+    project root: a skeleton's suite fails by design, so the gate reads what
+    the project declared pending before calling that a broken build.
+    """
 
     def __init__(self, review_gate: object) -> None:
         self._slices: dict[type, SimpleNamespace] = {
-            ApprovalStateSlice: SimpleNamespace(review_gate=review_gate)
+            ApprovalStateSlice: SimpleNamespace(review_gate=review_gate),
+            WorkspaceStateSlice: SimpleNamespace(agent_workspace_root=None),
         }
 
     def slice(self, slice_type: type) -> SimpleNamespace:

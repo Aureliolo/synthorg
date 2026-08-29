@@ -325,7 +325,6 @@ def _build_database_tools(
 def _build_terminal_tools(
     *,
     terminal: TerminalWiring,
-    workspace: Path,
     code_execution_records: CodeExecutionRecordRepository | None = None,
     output_tail_limit: int = _DEFAULT_CODE_RUNNER_OUTPUT_TAIL_LIMIT,
 ) -> tuple[BaseTool, ...]:
@@ -343,11 +342,6 @@ def _build_terminal_tools(
     install can finish at all, and an operator who raises it should not have
     to restart anything to learn whether the new value was enough.
 
-    The workspace rides along with the receipt store for the same reason both
-    producers share that store: it is what lets the receipt read a project's
-    pending declaration, and a skeleton's suite fails by design, so a producer
-    without it would record a correct contract as a broken build.
-
     Returns:
         Tuple of ``BaseTool``.
     """
@@ -360,7 +354,6 @@ def _build_terminal_tools(
             config_resolver=terminal.config_resolver,
             code_execution_records=code_execution_records,
             output_tail_limit=output_tail_limit,
-            workspace_root=workspace,
         ),
     )
 
@@ -487,7 +480,6 @@ def _build_async_task_tools(
 def _build_code_execution_tools(
     *,
     sandbox: SandboxBackend | None,
-    workspace: Path,
     code_execution_records: CodeExecutionRecordRepository | None = None,
     output_tail_limit: int = _DEFAULT_CODE_RUNNER_OUTPUT_TAIL_LIMIT,
 ) -> tuple[BaseTool, ...]:
@@ -507,7 +499,6 @@ def _build_code_execution_tools(
             sandbox=sandbox,
             code_execution_records=code_execution_records,
             output_tail_limit=output_tail_limit,
-            workspace_root=workspace,
         ),
     )
 
@@ -690,13 +681,11 @@ def _build_execution_cohort(
     return (
         *_build_terminal_tools(
             terminal=terminal,
-            workspace=workspace,
             code_execution_records=code_execution_records,
             output_tail_limit=output_tail_limit,
         ),
         *_build_code_execution_tools(
             sandbox=code_execution_sandbox,
-            workspace=workspace,
             code_execution_records=code_execution_records,
             output_tail_limit=output_tail_limit,
         ),

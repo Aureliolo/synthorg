@@ -19,6 +19,7 @@ from synthorg.engine.completion_oracle.builder import (
 )
 from synthorg.engine.completion_oracle.config import CompletionOracleConfig
 from synthorg.engine.completion_oracle.evaluator import BuildTestOracle
+from synthorg.engine.workspace.state import agent_workspace_root_of
 from synthorg.hr.role_staffing import RoleStaffingService
 from synthorg.hr.state import agent_registry_of
 from synthorg.observability import get_logger, safe_error_description
@@ -162,7 +163,7 @@ def attach_completion_oracle_gates(
         return
     if enabled:
         review_gate_service.set_build_test_gate(
-            BuildTestOracle(),
+            BuildTestOracle(workspace_root=agent_workspace_root_of(app_state)),
             records=code_execution_records_of(app_state),
         )
     else:

@@ -250,6 +250,9 @@ def _wire_task_activity_observer(
     from synthorg.engine.completion_oracle.evaluator import (  # noqa: PLC0415
         BuildTestOracle,
     )
+    from synthorg.engine.workspace.state import (  # noqa: PLC0415
+        agent_workspace_root_of,
+    )
     from synthorg.hr.performance.oracle_quality import (  # noqa: PLC0415
         quality_score_for,
     )
@@ -288,7 +291,11 @@ def _wire_task_activity_observer(
     async def _list_artifacts(task_id: str) -> Sequence[Artifact]:
         return await persistence.artifacts.query(ArtifactFilterSpec(task_id=task_id))
 
-    _build_test_oracle = BuildTestOracle()
+    # The same workspace the enforcing gate reads, so a badge and the gate
+    # cannot disagree about a skeleton whose suite fails by design.
+    _build_test_oracle = BuildTestOracle(
+        workspace_root=agent_workspace_root_of(app_state)
+    )
 
     async def _oracle_block_for(task: Task) -> bool:
         # Re-source the run outcome for the live feed the same way the approvals
