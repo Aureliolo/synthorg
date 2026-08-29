@@ -490,11 +490,14 @@ stateDiagram-v2
     Retired --> [*]
 ```
 
-Gates leave only through the operator their scope names. Entering is free in
-exactly one
-direction and within exactly one scope, and the definitions are what make the
-ratchet hold: **tightening means ADDING a check, never editing one, and the
-free addition is a project-local gate's alone.** A brand-new project-local gate
+**Retiring** a gate goes only through an operator, the project's for a
+project-local gate and the catalogue operator's for a profile; every other exit
+takes the authority its scope and direction name, so a central profile's
+tightening and its promotion are the standards role's at catalogue review and
+never any operator's. Entering is free in exactly one direction and within
+exactly one scope, and the definitions are what make the ratchet hold:
+**tightening means ADDING a check, never editing one, and the free addition is
+a project-local gate's alone.** A brand-new project-local gate
 is drafted rather than activated and reaches `Local` only once the operator
 approves it at skeleton review. A profile reaches `Profile` only through
 `Proposed`, which is catalogue review, and so does every later change to one,
@@ -575,15 +578,17 @@ calendar.
 
 `N` is a field of the profile itself, not a global, because a profile that
 charges four checks and one that charges forty do not earn the same review
-rate. It is a **positive integer** and it defaults to 50, and both halves are
-load-bearing: the trigger is machine-computed, so a profile whose `N` is
-missing, zero or negative has no cadence at all and is the one profile nothing
-ever reviews, silently, which is the failure this whole section exists to catch.
-A profile carrying an unusable `N` is therefore refused rather than run at some
-inferred rate, and the default covers the ordinary case of nobody having an
-opinion.
+rate. A profile that states no `N` gets 50, so the ordinary case of nobody
+having an opinion needs no decision. A profile that states one must state a
+**positive integer**, and anything else, zero, a negative, a non-integer, is
+refused rather than run at some inferred rate. The order is what makes that
+unambiguous: the default is applied first, and validation then runs on the
+value the profile actually carries, so exactly one behaviour is reachable for
+each case. It matters because the trigger is machine-computed, and a profile
+with no usable cadence is the one profile nothing ever reviews, silently, which
+is the failure this whole section exists to catch.
 
-Being a field of a central profile, `N` changes where every change to one does,
+Being a field of a central profile, `N` changes where every change to it goes,
 at catalogue review, and the ratchet decides which of that venue's two seats
 settles it. Raising it reviews the profile less often, which is a loosening, so
 the **catalogue operator** settles it and the standards role brings it; lowering
