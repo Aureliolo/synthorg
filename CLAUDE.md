@@ -110,7 +110,7 @@ PYTHONPATH=. uv run zensical build                  # docs
 
 ## Diagrams
 
-`d2` for architecture / nested containers, `mermaid` for flowcharts / sequence / pipelines, Markdown tables for tabular data. D2 theme 200 (Dark Mauve), CLI pinned to v0.7.1 in CI.
+`d2` for architecture / nested containers, `mermaid` for flowcharts / sequence / pipelines, Markdown tables for tabular data. D2 theme 200 (Dark Mauve), CLI pinned to v0.8.2 in CI.
 
 ## Code conventions (detail in [conventions.md](docs/reference/conventions.md))
 
