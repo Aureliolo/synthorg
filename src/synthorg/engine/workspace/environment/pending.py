@@ -47,6 +47,7 @@ from xml.etree.ElementTree import Element
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.workspace.environment.manifest import PendingTest
 from synthorg.engine.workspace.environment.pending_report import read_report
@@ -339,12 +340,12 @@ def _raised_type(outcome: _CaseOutcome) -> str | None:
         class at all (a runner whose messages are free-form prose).
     """
     if outcome.raised:
-        return outcome.raised.rsplit(".", maxsplit=1)[-1].strip().lower()
+        return normalize_ascii_lowercase(outcome.raised.rsplit(".", maxsplit=1)[-1])
     head, separator, _ = outcome.message.partition(":")
     candidate = head.strip()
     if not separator or not _TYPE_NAME.fullmatch(candidate):
         return None
-    return candidate.rsplit(".", maxsplit=1)[-1].lower()
+    return normalize_ascii_lowercase(candidate.rsplit(".", maxsplit=1)[-1])
 
 
 def _asserted(outcome: _CaseOutcome) -> bool:

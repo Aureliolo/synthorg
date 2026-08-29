@@ -43,6 +43,8 @@ class TestAGateMustBeAskable:
             pytest.param("ruff check . || true", id="or_true"),
             pytest.param("ruff check . ; echo done", id="statement_separator"),
             pytest.param("ruff check . &", id="backgrounded"),
+            pytest.param("# deferred", id="comment_runs_nothing"),
+            pytest.param("sh -c ''", id="empty_shell_payload"),
         ],
     )
     def test_a_command_whose_status_says_nothing_is_refused(self, command: str) -> None:

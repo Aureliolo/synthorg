@@ -5,11 +5,15 @@ row by row: every row is a separate way a test can end, and four of the five
 have to stay red or a skeleton that never loaded ships as a green trunk.
 """
 
+import errno
+import os
+import re
 from pathlib import Path
 
 import pytest
 
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.workspace.environment import pending_report
 from synthorg.engine.workspace.environment.manifest import PendingTest
 from synthorg.engine.workspace.environment.pending import (
     PendingVerdict,
@@ -294,6 +298,64 @@ class TestWhenNothingCanBeRead:
 
         report = classify_pending(
             _pending(), workspace_path=workspace, test_report_path="../escaped.xml"
+        )
+
+        assert report.report_read is False
+        assert report.outcomes[0].verdict is PendingVerdict.RED
+
+
+class TestWhatTheReadItselfRefuses:
+    """Guards that hold against the tree changing under the read.
+
+    The workspace is a directory the agent writes, so the path checked and the
+    bytes parsed are two separate facts about it unless the read forces them
+    together.
+    """
+
+    @pytest.mark.skipif(
+        os.open not in os.supports_dir_fd,
+        reason="the component descent needs dir_fd, which this platform lacks",
+    )
+    def test_a_directory_swapped_after_the_boundary_check_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """``O_NOFOLLOW`` binds the last component only, so each must be last.
+
+        Resolving the path proves where it pointed, which is the state the
+        workspace-boundary check reads. The agent writes in this tree, so it
+        can replace an intermediate directory with a symlink out of it
+        afterwards, and the open would then reach a report from outside the
+        workspace that nobody had to run for. Driven through the descent
+        directly, because the swap has to land BETWEEN the check and the open
+        and that gap is exactly what the descent closes.
+        """
+        workspace = tmp_path / "workspace"
+        (workspace / "reports").mkdir(parents=True)
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "junit.xml").write_text(_case(""), encoding="utf-8")
+        root = workspace.resolve()
+        resolved = (root / _REPORT).resolve()
+
+        (workspace / "reports").rmdir()
+        (workspace / "reports").symlink_to(outside, target_is_directory=True)
+
+        # ELOOP is what POSIX gives O_NOFOLLOW on a symlink, and the message
+        # comes from the platform so it matches whatever the OSError carries.
+        with pytest.raises(OSError, match=re.escape(os.strerror(errno.ELOOP))):
+            pending_report._open_within(root, resolved)
+
+    def test_a_report_past_the_ceiling_is_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The ceiling is enforced by the read, so it binds what is parsed."""
+        monkeypatch.setattr(pending_report, "_MAX_REPORT_BYTES", 8)
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        _write_report(workspace, _case(""))
+
+        report = classify_pending(
+            _pending(), workspace_path=workspace, test_report_path=_REPORT
         )
 
         assert report.report_read is False

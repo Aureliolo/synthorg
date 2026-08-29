@@ -213,8 +213,10 @@ class BuildTestOracle:
             GroundingRequirement.REQUIRED
         ):
             return evaluation
+        # A non-blocking verdict under REQUIRED means a test run decided it, so
+        # page[0] exists: an empty page fails closed to UNVERIFIED above.
         return await self._verdict_from_declared_gates(
-            task, records, evaluation, contract
+            task, records, evaluation, contract, execution_id=page[0].execution_id
         )
 
     async def _verdict_from_declared_gates(
@@ -223,6 +225,8 @@ class BuildTestOracle:
         records: CodeExecutionRecordRepository,
         evaluation: OracleEvaluation,
         contract: ContractView,
+        *,
+        execution_id: str,
     ) -> OracleEvaluation:
         """Require a passing run of every gate the project declares.
 
@@ -234,6 +238,13 @@ class BuildTestOracle:
         alternative is what the manifest fields were before anything read them:
         a project declares how it lints, an agent never lints, and the operator
         reads a green badge over work no linter ever saw.
+
+        Evidence is confined to the execution the test verdict was drawn from,
+        which is what the refusal below already tells the agent to do. A gate
+        receipt from an earlier run vouches for code that run saw, and the run
+        being judged has changed it: a session that lints once, fails its
+        tests, then passes them on a later run that only ran tests would
+        otherwise complete on a linter's word about a file it never read.
 
         Asked only of a task that implements a plan item, on the same reasoning
         as :meth:`_outstanding_criteria` and for the same reason: the stage job
@@ -254,7 +265,9 @@ class BuildTestOracle:
         gates = declared_gates(contract)
         unmet: list[str] = []
         for purpose in sorted(gates):
-            page = await self._query_records_for(task, purpose, records)
+            page = await self._query_records_for(
+                task, purpose, records, execution_id=execution_id
+            )
             if page is None:
                 # The store raised, which the query already logged as a checker
                 # fault. Folding it in with "the gate never ran" would send the
@@ -304,8 +317,19 @@ class BuildTestOracle:
         records: CodeExecutionRecordRepository,
         *,
         requirement: GroundingRequirement = GroundingRequirement.REQUIRED,
+        execution_id: str | None = None,
     ) -> tuple[CodeExecutionRecord, ...] | None:
         """Fetch the task's records for one gate, newest-first.
+
+        Args:
+            task: The task whose records to read.
+            purpose: The gate the records must be runs of.
+            records: The execution-record store.
+            requirement: Grounding requirement, for the fault log line.
+            execution_id: Confine the answer to one run, for a caller asking
+                what a single execution proved. ``None`` reads the task's
+                whole history, which is what the primary test verdict wants:
+                it counts every run the task has made.
 
         Returns:
             The records tuple, or ``None`` when the query raised.
@@ -313,7 +337,9 @@ class BuildTestOracle:
         Raises:
             asyncio.CancelledError: Propagated when the query is cancelled.
         """
-        spec = CodeExecutionFilterSpec(task_id=str(task.id), purpose=purpose)
+        spec = CodeExecutionFilterSpec(
+            task_id=str(task.id), purpose=purpose, execution_id=execution_id
+        )
         try:
             return await records.query(spec, limit=_TEST_RECORD_QUERY_LIMIT)
         except asyncio.CancelledError:

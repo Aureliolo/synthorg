@@ -184,3 +184,26 @@ class TestWhenThereIsNoDeclaration:
             )
             == ()
         )
+
+
+class TestALineThatRunsNothing:
+    @pytest.mark.parametrize(
+        "command",
+        [
+            pytest.param("# ran nothing", id="comment"),
+            pytest.param("sh -c ''", id="empty_shell_payload"),
+        ],
+    )
+    def test_it_is_a_run_of_no_gate(self, tmp_path: Path, command: str) -> None:
+        """It lexes to no command, and no command is a subset of every gate.
+
+        Read as an empty set it would satisfy each declaration vacuously, so
+        every gate the project declares would take a receipt off a line that
+        ran nothing at all.
+        """
+        assert (
+            declared_gate_purposes(
+                command, workspace_root=_seeded(tmp_path), project_id=_PROJECT
+            )
+            == ()
+        )

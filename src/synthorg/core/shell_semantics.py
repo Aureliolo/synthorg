@@ -286,7 +286,7 @@ def trustworthy_segments(command: str) -> frozenset[tuple[str, ...]] | None:
     Returns:
         Every command in the line as its argv, or ``None`` when any part of the
         line breaks the implication that a zero exit means each of them exited
-        zero.
+        zero, or when the line runs no command at all.
     """
     segments = conjunctive_commands(command, pipefail=True)
     if segments is None:
@@ -303,6 +303,15 @@ def trustworthy_segments(command: str) -> frozenset[tuple[str, ...]] | None:
         if nested is None or any(_starts_a_shell(inner) for inner in nested):
             return None
         expanded.extend(nested)
+    if not expanded:
+        # A line that lexes to nothing runs nothing, and the empty set is a
+        # subset of every other, so the caller's ``wanted <= ran`` test passes
+        # against ANY run. ``# deferred`` as a declared gate would then mint a
+        # passing receipt off whatever the agent happened to type, and an empty
+        # ``-c`` payload does the same one level down. Both sides of that
+        # comparison come through here, so refusing once covers a declaration
+        # that runs nothing and a run that does.
+        return None
     return frozenset(expanded)
 
 

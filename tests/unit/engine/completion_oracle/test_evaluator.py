@@ -61,6 +61,7 @@ def _record(
     task_id: str,
     purpose: CodeExecutionPurpose = CodeExecutionPurpose.TESTS,
     command: str = "pytest",
+    execution_id: str = "exec-1",
 ) -> CodeExecutionRecord:
     """Build one record, each later than the last.
 
@@ -72,7 +73,7 @@ def _record(
     _CLOCK.advance(_RECORD_GAP)
     return CodeExecutionRecord(
         task_id=task_id,
-        execution_id="exec-1",
+        execution_id=execution_id,
         project_id="p",
         purpose=purpose,
         command=command,
@@ -92,6 +93,11 @@ class _FakeRecords:
     seed a passing row after a failing one and still watch the oracle read the
     failure, so every "latest run wins" assertion would hold for the wrong
     reason and keep holding if the ordering contract were dropped.
+
+    It honours ``execution_id`` for the same reason: the gate evidence the
+    oracle accepts is confined to one run, and a double that ignored the
+    filter would answer every such query with the task's whole history, which
+    is exactly the state the confinement exists to refuse.
     """
 
     def __init__(
@@ -119,7 +125,11 @@ class _FakeRecords:
         matching = [
             record
             for record in self._records
-            if filter_spec.purpose is None or record.purpose is filter_spec.purpose
+            if (filter_spec.purpose is None or record.purpose is filter_spec.purpose)
+            and (
+                filter_spec.execution_id is None
+                or record.execution_id == filter_spec.execution_id
+            )
         ]
         matching.sort(key=lambda record: record.executed_at, reverse=True)
         return tuple(matching[offset : offset + limit])
@@ -568,6 +578,42 @@ class TestWhatAProjectDeclaredPending:
         )
 
         assert result.verdict is OracleVerdict.VERIFIED
+
+    async def test_a_gate_receipt_from_an_earlier_run_does_not_count(
+        self, tmp_path: Path
+    ) -> None:
+        """A linter's word about code the run being judged has since changed.
+
+        The refusal already tells the agent to run each command "in the session
+        that claims the work"; unscoped evidence let a run that only ran tests
+        complete on a lint receipt an earlier session left behind.
+        """
+        task = _unit_task()
+        workspace = tmp_path / "projects" / _PROJECT
+        workspace.mkdir(parents=True)
+        (workspace / DEFAULT_MANIFEST_FILENAME).write_text(
+            "language: python\ntest_command: pytest\nlint_command: ruff check .\n",
+            encoding="utf-8",
+        )
+        records = _FakeRecords(
+            (
+                _record(
+                    passed=True,
+                    task_id=str(task.id),
+                    purpose=CodeExecutionPurpose.LINT,
+                    command="ruff check .",
+                    execution_id="exec-earlier",
+                ),
+                _record(passed=True, task_id=str(task.id), execution_id="exec-current"),
+            )
+        )
+
+        result = await BuildTestOracle(workspace_root=tmp_path).evaluate(
+            task, records=records
+        )
+
+        assert result.verdict is OracleVerdict.BUILD_TEST_FAILED
+        assert "lint" in result.reason
 
     async def test_a_failing_suite_is_reported_before_a_missing_gate(
         self, tmp_path: Path
