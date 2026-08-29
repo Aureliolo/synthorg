@@ -337,10 +337,11 @@ a deadlock. See [Single-Owner Decisions](../reference/single-owner-decisions.md)
 | What a slice contains | slice planner | operator when a finding empties it |
 | Which gates apply | derived from the declared capability's profile | operator at skeleton review, when no profile fits and a project-local gate is drafted |
 | Whether this is what was wanted | operator, at the increment | never delegated; no machine makes this one |
-| Adding a check to an existing gate | any agent | never |
-| Editing a check an existing gate already has | operator, at skeleton review | never |
+| Adding a check to a project-local gate | any agent | never |
+| Editing a check a project-local gate already has | operator, at skeleton review | never |
 | Adding a project-local gate | operator, at skeleton review | never |
-| Loosening or removing a gate | operator only | never |
+| Changing a central profile, an addition and a promotion into one included | the standards role, at catalogue review | never |
+| Loosening or removing a gate, profile or project-local | operator only | never |
 | Whether a unit is done | gates, then the reviewer | operator when review stalls, at `supervised` and stricter |
 | Whether it merges | the system | the author, when the merge conflicts or the trunk goes red |
 | Whether the machinery is healthy | the standards role | operator on a budget breach |
@@ -354,6 +355,18 @@ admits strictly less than it did; editing is not, because "this replacement is
 no weaker" is not a property the system can decide for arbitrary checks. The
 two operator rows are the ones an agent could otherwise use to walk the ratchet
 backwards: rewriting a check, and drafting a new gate nobody has read.
+
+Scope bounds the free direction as tightly as the direction does. A
+project-local gate belongs to one project, so an agent adding a check to one
+costs that project a check its own operator reads at the next skeleton review.
+A central profile is not one project's: it is in force for every project that
+declares the capability, and none of those operators is in the room. So the
+addition rule stops at the project boundary, and every change to a profile, an
+addition included, is the standards role's at catalogue review. Promotion is
+the one path from a project into the catalogue, which is why a local gate that
+keeps recurring is promoted rather than an agent editing the catalogue from
+inside a build. Loosening runs the other way and stays the operator's on both
+sides, because a ratchet that turns one way is what this whole section is for.
 
 ### Decisions are durable
 
@@ -413,10 +426,12 @@ No catalogue anticipates every shape of project, so the loop does not pretend
 to one. Gate configuration is layered.
 
 **Central profiles** cover the shapes that recur: a web interface, an HTTP
-service, a command-line tool, a data pipeline. Each is authored and reviewed
-once, centrally, and reused by every project that declares its capability. This
-is where the weight sits, and it is why most projects need no gate authoring at
-all.
+service, a command-line tool, a data pipeline. Each is authored by the
+standards role and reviewed once, at catalogue review, then reused by every
+project that declares its capability. This is where the weight sits, and it is
+why most projects need no gate authoring at all. It is also why nothing inside
+a build reaches one: a profile is shared, so a change to it is settled where
+every project it charges is in view, never at one project's skeleton review.
 
 **Project-local gates** cover what no profile does. A project needing a check
 the catalogue has never seen gets one drafted by an agent and approved by the
@@ -429,33 +444,43 @@ something the profile already refused. That is what stops "an agent can author
 gates" from meaning "an agent can author its way out of them".
 
 **Promotion closes the loop.** A project-local gate that recurs across projects
-is promoted into a profile, so the catalogue grows from what projects actually
-needed rather than from what somebody anticipated. A profile nobody could have
-written in advance is exactly the one worth having, and the only way to know
-which those are is to watch which local gates keep getting drafted.
+is promoted into a profile by the standards role at catalogue review, so the
+catalogue grows from what projects actually needed rather than from what
+somebody anticipated. A profile nobody could have written in advance is exactly
+the one worth having, and the only way to know which those are is to watch
+which local gates keep getting drafted.
 
 ### The ratchet
 
 ```mermaid
 stateDiagram-v2
     [*] --> Drafted: project-local gate drafted by an agent
-    [*] --> Active: profile gate, reviewed once centrally
-    Drafted --> Active: operator approves at skeleton review
     Drafted --> [*]: operator declines
-    Active --> Active: any agent ADDS a check
-    Active --> Drafted: any edit to an existing check
-    Active --> Retired: operator loosens or removes
-    Active --> UnderReview: meta-finding, dismissal rate high
-    UnderReview --> Active: operator keeps it
+    Drafted --> Local: operator approves at skeleton review
+    Local --> Local: any agent ADDS a check
+    Local --> Drafted: any edit to an existing check
+    Local --> Proposed: standards role puts it up for promotion
+    [*] --> Proposed: a profile, or a change to one, is drafted
+    Proposed --> Profile: standards role settles it, at catalogue review
+    Profile --> Proposed: every change, an addition included
+    Local --> UnderReview: meta-finding, dismissal rate high
+    Profile --> UnderReview: meta-finding, or N slices declared
+    UnderReview --> Local: operator keeps it
+    UnderReview --> Profile: operator keeps it
+    Local --> Retired: operator loosens or removes
+    Profile --> Retired: operator loosens or removes
     UnderReview --> Retired: operator retunes or drops it
     Retired --> [*]
 ```
 
 Gates leave only through an operator. Entering is free in exactly one
-direction, and the definition is what makes the ratchet hold: **tightening
-means ADDING a check, never editing one.** A profile gate arrives already
-reviewed; a brand-new project-local gate is drafted rather than activated and
-reaches `Active` only once the operator approves it at skeleton review.
+direction and within exactly one scope, and the definitions are what make the
+ratchet hold: **tightening means ADDING a check, never editing one, and the
+free addition is a project-local gate's alone.** A brand-new project-local gate
+is drafted rather than activated and reaches `Local` only once the operator
+approves it at skeleton review. A profile reaches `Profile` only through
+`Proposed`, which is catalogue review, and so does every later change to one,
+whether it is an addition, an edit or a local gate being promoted.
 
 The restriction to addition is deliberate, and it is the alternative to a
 mechanism that cannot exist. "Prove the replacement is stricter than what it
@@ -465,10 +490,17 @@ gate could rewrite it into something weaker that still passes for a tightening.
 Addition needs no such proof: a gate configuration that only ever grows admits
 strictly less than it did before, which a diff shows and nothing has to infer.
 
-So an edit to an existing check is not a tightening at all. It returns to
-`Drafted` and takes the same operator approval a new gate does, because
-replacing a check is indistinguishable from relaxing one without reading both.
-A gate that blocks work is doing its job; an agent that could rewrite it would.
+So an edit to an existing check is not a tightening at all. It goes back for
+the same approval a new gate takes, to `Drafted` for a project-local gate and
+to `Proposed` for a profile, because replacing a check is indistinguishable
+from relaxing one without reading both. A gate that blocks work is doing its
+job; an agent that could rewrite it would.
+
+An addition to a profile takes that same route for a different reason. It is a
+genuine tightening, so nothing has to be proven about it, but it is one every
+project declaring the capability inherits, and a project's operator approving
+work for projects they cannot see is the two-owner shape rather than the free
+direction. Catalogue review is where that reader exists.
 
 ### Gates are memories of mistakes
 
