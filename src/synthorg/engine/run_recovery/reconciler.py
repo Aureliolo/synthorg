@@ -33,7 +33,7 @@ it. The answers are deliberately different in kind:
 """
 
 from collections.abc import Awaitable, Callable, Sequence
-from typing import Final, NamedTuple, Protocol, runtime_checkable
+from typing import Final, NamedTuple
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -53,6 +53,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination._dependency_gate import awaits_dispatch
 from synthorg.engine.coordination.run_ledger import LiveRunLedger
 from synthorg.engine.initiative.item_progress import TASK_PAGE_SIZE
+from synthorg.engine.initiative.ports import DriveOutcome, PlanDriver
 from synthorg.engine.initiative.tail_stages import is_integration_task
 from synthorg.engine.run_recovery.orphan_approvals import retire_orphaned_approvals
 from synthorg.engine.task_engine import TaskEngine
@@ -132,30 +133,6 @@ class _RevivedRows(NamedTuple):
     requeued: int
     rejudged: int
     dispatchable: bool
-
-
-@runtime_checkable
-class PlanDriver(Protocol):
-    """Runs a dispatched plan's remaining waves.
-
-    A port rather than a call, because driving a plan needs the coordinator,
-    the agent roster and the objective task, which are assembled in the API
-    layer. Stating it here keeps the sweep's own dependencies to the graph it
-    reads.
-    """
-
-    async def __call__(self, plan: Plan) -> bool:
-        """Drive *plan*'s remaining waves to whatever they reach.
-
-        Returns:
-            Whether a drive now owns the plan. ``False`` says the driver
-            declined and nothing is running, which the sweep must report as a
-            skip: the driver is the only one that knows, and a caller that
-            assumed a resume logged one on every pass for a plan whose
-            objective task was gone, so a permanently undrivable run read as
-            being rescued every ten minutes for ever.
-        """
-        ...
 
 
 class RunRecoveryReport(BaseModel):
@@ -407,17 +384,20 @@ class RunRecoveryReconciler:
                 reason="status-classified-nowhere",
             )
             return _one(skipped=1)
-        if not await self._drive_plan(plan):
-            # The driver declined, so nothing is running. Reported as a skip
-            # because that is what happened: counting it a resume told the
-            # operator a plan whose objective task no longer exists was being
-            # rescued on every pass, for ever, while nothing touched it. The
-            # condition itself is named by the driver's own log line.
+        outcome = await self._drive_plan(plan)
+        if outcome is not DriveOutcome.DRIVING:
+            # The driver did not take the plan, so nothing is running. Reported
+            # as a skip because that is what happened: counting it a resume
+            # told the operator a plan whose objective task no longer exists
+            # was being rescued on every pass, for ever, while nothing touched
+            # it. The reason distinguishes a plan somebody else holds, which is
+            # correct and will finish, from one nothing here can drive, which
+            # will read the same on every future pass.
             logger.info(
                 RUN_RECOVERY_PLAN_SKIPPED,
                 plan_id=plan_id,
                 plan_status=plan.status.value,
-                reason="driver-declined",
+                reason=f"driver-{outcome.value}",
             )
             return _one(skipped=1, requeued=requeued, rejudged=rejudged)
         logger.info(

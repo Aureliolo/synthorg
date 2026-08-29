@@ -2,11 +2,11 @@
 """Plan-approval resume flow for the approvals controller.
 
 Owns the plan's own approval: on approval, the durable plan the approval
-references is rebuilt into a dispatchable subtask tree and handed to the
-coordinator (so an operator's edits are exactly what builds), and the plan's
-status is synced to APPROVED; on rejection the parent task is cancelled and the
-plan is marked REJECTED. Kept separate from the other resume flows so each stays
-within its module-size tier.
+references is rebuilt into a subtask tree and filed (so an operator's edits are
+exactly what builds), and the plan is moved into SKELETON, where the rollup
+takes over; on rejection the parent task is cancelled and the plan is marked
+REJECTED. Kept separate from the other resume flows so each stays within its
+module-size tier.
 
 Routing is deterministic off the persisted :attr:`ApprovalItem.source`, as the
 sibling flows are, AND off the action type, which they do not need: the
@@ -18,7 +18,6 @@ gate.
 import asyncio
 from collections.abc import Sequence
 from typing import Final
-from uuid import UUID
 
 from synthorg.api.controllers._conversational_resume import _reread_approval_item
 from synthorg.api.controllers._plan_decision_record import record_plan_decisions
@@ -35,7 +34,6 @@ from synthorg.api.lifecycle_helpers.plan_questions import (
     replay_decided_questions,
     retire_open_questions,
 )
-from synthorg.api.lifecycle_helpers.run_recovery_wiring import live_run_ledger_of
 from synthorg.api.state import AppState
 from synthorg.approval.plan_review import is_plan_approval
 from synthorg.approval.questions import is_question
@@ -47,17 +45,10 @@ from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.coordination.models import (
-    CoordinationContext,
-    CoordinationResult,
-)
-from synthorg.engine.coordination.run_ledger import LiveRunLedger
-from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.decomposition.models import DecompositionResult
 from synthorg.engine.decomposition.plan_mapping import decomposition_from_plan
 from synthorg.engine.initiative.project_writes import link_project_to_plan
 from synthorg.engine.state import EngineStateSlice, task_engine_of
-from synthorg.hr.state import agent_registry_of
 from synthorg.observability import get_logger
 from synthorg.observability.background_tasks import log_task_exceptions
 from synthorg.observability.events.approval_gate import (
@@ -67,7 +58,6 @@ from synthorg.observability.events.approval_gate import (
 )
 from synthorg.persistence.lifecycle_ledger import ledger_for
 from synthorg.persistence.state import persistence_of
-from synthorg.workers.state import RuntimeStateSlice
 
 logger = get_logger(__name__)
 
@@ -121,7 +111,7 @@ async def try_plan_review_resume(
 
     Deterministic routing off ``ApprovalItem.source`` AND ``action_type``. Both
     of the things a plan review parks are owned here, and they do opposite
-    things: the plan's own approval dispatches or cancels the build, while a
+    things: the plan's own approval stages or cancels the build, while a
     question settles onto the durable plan and builds nothing. Everything else
     returns ``False`` so the caller falls through to the parked-context /
     review-gate flows. Once owned, the decision is fully resolved on this path
@@ -136,9 +126,9 @@ async def try_plan_review_resume(
     The decision is reflected onto the durable plan first (APPROVED / REJECTED)
     so the ``/plans`` view matches the recorded decision regardless of what
     happens next. On approval the durable plan (referenced by ``plan_id``) is
-    then loaded and rebuilt into a ``DecompositionResult`` dispatched via
-    ``coordinate(precomputed_plan=...)``; a dispatch failure marks the parent
-    task ``FAILED`` (the plan stays APPROVED, since the decision stands). On
+    then loaded, rebuilt into a ``DecompositionResult``, filed, and moved into
+    SKELETON; a failure making that graph durable marks the parent task
+    ``FAILED`` (the plan stays APPROVED, since the decision stands). On
     rejection the parent task is cancelled and nothing builds.
 
     Returns:
@@ -202,14 +192,18 @@ async def _resolve_dispatch_inputs(
     approval_id: str,
     task_id: str | None,
     plan_id: str | None,
-) -> tuple[MultiAgentCoordinator, Task, Plan] | None:
-    """Resolve the three things a dispatch cannot proceed without.
+) -> tuple[Task, Plan] | None:
+    """Resolve the two things making the graph durable cannot proceed without.
 
     Each absence is the same outcome reported differently, so they are
     settled together and before anything is written: the approval already
     stands, so a precondition that fails has to fail the task and the plan
-    rather than return quietly, and doing that per-check inside the dispatch
-    body buried the one path that actually builds.
+    rather than return quietly, and doing that per-check inside the body
+    buried the one path that actually builds.
+
+    The coordinator is deliberately not among them. Approval no longer runs a
+    wave, so requiring one here would fail an initiative over a subsystem it
+    never reaches, and the driver that does reach it resolves its own.
 
     Args:
         app_state: Application state.
@@ -219,24 +213,23 @@ async def _resolve_dispatch_inputs(
         plan_id: The durable plan, if the approval named one.
 
     Returns:
-        The ``(coordinator, task, plan)`` triple, or ``None`` when one was
-        missing and the failure has already been recorded.
+        The ``(task, plan)`` pair, or ``None`` when one was missing and the
+        failure has already been recorded.
     """
-    coordinator = app_state.slice(RuntimeStateSlice).coordinator
     task = (
         await task_engine_of(app_state).get_task(task_id)
-        if coordinator is not None and task_id is not None
+        if task_id is not None
         else None
     )
     plan = await persistence_of(app_state).plans.get(plan_id) if plan_id else None
-    if coordinator is None or task_id is None:
-        why = "coordinator/task missing"
+    if task_id is None:
+        why = "no parent task named by the approval"
     elif task is None:
         why = "parent task no longer exists"
     elif plan is None:
         why = "durable plan not found"
     else:
-        return coordinator, task, plan
+        return task, plan
     await fail_dispatch(
         app_state, approval_id, task_id=task_id, plan_id=plan_id, why=why
     )
@@ -275,27 +268,32 @@ async def _dispatch_approved_plan(
     plan_id: str | None,
     decided_by: str,
 ) -> None:
-    """Connect the graph for an approved plan, then build it in the background.
+    """Connect the graph for an approved plan, then open the contract stage.
 
-    Split in two because the two halves take different amounts of time and the
-    operator is only waiting on one of them. Everything the decision implies
-    for the durable graph (answers replayed, decisions recorded, project
-    linked, plan EXECUTING, child tasks filed) happens here and is finished
-    before the approve response is written. The build itself is handed to a
-    tracked background task.
+    Everything the decision implies for the durable graph (answers replayed,
+    decisions recorded, project linked, plan SKELETON, child tasks filed)
+    happens here and is finished before the approve response is written.
 
-    That split is not a preference. Awaiting the whole wave inside the request
-    holds the approve call open for the length of a build, which on a
-    three-item plan runs into the minutes: the client gives up while the server
-    carries on, and the operator is told their decision failed when it was
-    recorded and the work is running.
+    Approval no longer dispatches the units. It opens SKELETON and hands the
+    plan to the rollup, which is the single owner of "which stage is this plan
+    in and what does that stage need now": the contract job runs, and only
+    when it passes does the rollup move the plan to EXECUTING and drive the
+    waves. Dispatching here as well would be a second owner for that decision,
+    and it would dispatch units against a contract that does not exist yet,
+    which is the whole thing the stage was added to prevent.
+
+    The recompute is still handed to a tracked background task. Awaiting it
+    inside the request holds the approve call open for the length of a
+    contract job: the client gives up while the server carries on, and the
+    operator is told their decision failed when it was recorded and the work
+    is running.
     """
     resolved = await _resolve_dispatch_inputs(
         app_state, approval_id=approval_id, task_id=task_id, plan_id=plan_id
     )
     if resolved is None:
         return
-    coordinator, task, plan = resolved
+    task, plan = resolved
     prepared = await _prepare_dispatch(
         app_state,
         approval_id=approval_id,
@@ -307,17 +305,7 @@ async def _dispatch_approved_plan(
     )
     if prepared is None:
         return
-    background = asyncio.create_task(
-        _build_approved_plan(
-            app_state,
-            coordinator=coordinator,
-            decomposition=prepared,
-            task=task,
-            approval_id=approval_id,
-            task_id=task_id,
-            plan_id=plan_id,
-        )
-    )
+    background = asyncio.create_task(_open_contract_stage(app_state, plan))
     background.add_done_callback(
         log_task_exceptions(
             logger,
@@ -328,6 +316,26 @@ async def _dispatch_approved_plan(
     )
     app_state.plan_dispatch_background_tasks.add(background)
     background.add_done_callback(app_state.plan_dispatch_background_tasks.discard)
+
+
+async def _open_contract_stage(app_state: AppState, plan: Plan) -> None:
+    """Ask the rollup to drive the plan now sitting in SKELETON.
+
+    One recompute, not a dispatch: the rollup reads the stage the plan is in
+    and fires it. A rollup that is not wired leaves the plan at SKELETON, which
+    the recovery sweep re-asks on its cadence, so the initiative is late rather
+    than lost.
+    """
+    rollup = app_state.slice(EngineStateSlice).project_rollup_service
+    if rollup is None:
+        logger.warning(
+            APPROVAL_GATE_PLAN_DISPATCH_FAILED,
+            plan_id=str(plan.id),
+            reason="rollup_unwired",
+            note="plan left at skeleton; the recovery sweep will re-ask",
+        )
+        return
+    await rollup.recompute(plan.id)
 
 
 async def _prepare_dispatch(
@@ -345,11 +353,11 @@ async def _prepare_dispatch(
     The approval is already recorded APPROVED and the plan already synced, so
     any failure here marks the parent task ``FAILED`` and drives the plan out
     of its dispatch status rather than silently returning. Both writes matter:
-    ``_link_initiative`` moves the plan to EXECUTING before the task tree is
-    built (so a rollup mid-dispatch never sees a PLANNING project with tasks
-    running), and a dispatch that then fails would otherwise leave the plan
-    EXECUTING forever with a failed parent and no children, which nothing
-    watches and nothing can move.
+    ``_link_initiative`` moves the plan to SKELETON before the task tree is
+    built (so a rollup mid-preparation never sees a PLANNING project with a
+    plan already staged), and a preparation that then fails would otherwise
+    leave the plan SKELETON forever with a failed parent and no children,
+    which nothing watches and nothing can move.
 
     Returns:
         The decomposition the build runs, or ``None`` when preparation failed
@@ -393,10 +401,10 @@ async def _prepare_dispatch(
         # never name different options.
         await record_plan_decisions(app_state, plan, decided_by=decided_by)
         # Connect the graph before any task starts: the project points at the
-        # plan it is executing and goes ACTIVE, and the plan enters EXECUTING.
-        # Ordering is load-bearing -- the build awaits the whole subtask tree,
-        # so a rollup event fired mid-dispatch would otherwise observe a
-        # project still PLANNING with tasks already running.
+        # plan it is executing and goes ACTIVE, and the plan enters SKELETON.
+        # Ordering is load-bearing -- the tree is filed next, so a rollup event
+        # fired mid-preparation would otherwise observe a project still
+        # PLANNING with a staged plan under it.
         if not await _link_initiative(app_state, plan):
             await fail_dispatch(
                 app_state,
@@ -406,20 +414,19 @@ async def _prepare_dispatch(
                 why="project could not be linked to its plan",
             )
             return None
-        # Dispatch from the durable plan so an operator's edits are exactly
-        # what builds; the child task tree is rebuilt deterministically from
-        # its items (see ``decomposition_from_plan``).
+        # Rebuild from the durable plan so an operator's edits are exactly what
+        # builds; the child task tree is derived deterministically from its
+        # items (see ``decomposition_from_plan``).
         decomposition = decomposition_from_plan(plan, parent_task=task)
-        # Filed BEFORE dispatch, and the reason is the failure this whole
-        # path exists to remove: ``coordinate`` takes the rebuilt tasks by
-        # value and never writes them, so an approved plan reached EXECUTING
-        # with the children existing only inside the call. Everything that
-        # asks afterwards -- the parent rollup reading each subtask's status,
-        # the initiative rollup querying a plan's tasks, the dashboard -- goes
-        # to the repository, so an unwritten child is one that never
-        # happened. Before rather than after so a dispatch that dies partway
-        # still leaves the tree it was working on, which is what an operator
-        # needs to see to know anything was attempted at all.
+        # Filed here, and the reason is the failure this whole path exists to
+        # remove: ``coordinate`` takes the rebuilt tasks by value and never
+        # writes them, so an approved plan reached EXECUTING with the children
+        # existing only inside the call. Everything that asks afterwards -- the
+        # parent rollup reading each subtask's status, the initiative rollup
+        # querying a plan's tasks, the dashboard -- goes to the repository, so
+        # an unwritten child is one that never happened. The contract stage is
+        # opened only once they exist, since the driver it eventually hands to
+        # reads the plan's work out of the repository.
         await _file_child_tasks(app_state, decomposition.all_tasks)
     except MemoryError, RecursionError:
         raise
@@ -432,226 +439,17 @@ async def _prepare_dispatch(
     return decomposition
 
 
-async def _build_approved_plan(
-    app_state: AppState,
-    *,
-    coordinator: MultiAgentCoordinator,
-    decomposition: DecompositionResult,
-    task: Task,
-    approval_id: str,
-    task_id: str | None,
-    plan_id: str | None,
-) -> None:
-    """Run the approved plan's waves, off the request path.
-
-    Every outcome is written to the graph rather than returned: the operator
-    who approved this is no longer waiting on it, so the plan's status and the
-    task's status are the only places the answer can appear.
-
-    Raises:
-        MemoryError: Re-raised uncaught so a genuine OOM is never masked.
-        RecursionError: Re-raised uncaught alongside ``MemoryError``.
-        CancelledError: Re-raised after the plan is settled, so a shutdown
-            drain still completes promptly.
-    """
-    ledger = live_run_ledger_of(app_state)
-    claimed = _claim_drive(ledger, plan_id, approval_id=approval_id)
-    if claimed is None:
-        return
-    try:
-        agents = await agent_registry_of(app_state).list_active()
-        result = await coordinator.coordinate(
-            CoordinationContext(
-                task=task,
-                available_agents=agents,
-                # Names who owns the parent's status. This run is one wave
-                # sweep over one plan; the initiative rollup re-derives the
-                # objective on every task event and holds it open until the
-                # plan itself completes, so coordination must not walk it.
-                plan_id=None if plan_id is None else NotBlankStr(plan_id),
-            ),
-            precomputed_plan=decomposition,
-        )
-        # A coordination that fails every wave returns normally, so reading the
-        # verdict is the only way to see it. Watching for a raise alone lets a
-        # run whose every task died walk past, leaving the plan EXECUTING with
-        # nothing left to execute.
-        if not result.result.is_success:
-            await _hand_failure_to_rollup(
-                app_state,
-                approval_id,
-                task_id=task_id,
-                plan_id=plan_id,
-                why=_coordination_failure_detail(result.result),
-            )
-    except asyncio.CancelledError:
-        await _settle_cancelled_dispatch(
-            app_state, approval_id, task_id=task_id, plan_id=plan_id
-        )
-        raise
-    except MemoryError, RecursionError:
-        raise
-    except Exception as exc:  # noqa: BLE001 -- dispatch failure: surface, don't 5xx
-        reraise_critical(exc)
-        await record_dispatch_failure(
-            app_state, exc, approval_id=approval_id, task_id=task_id, plan_id=plan_id
-        )
-    finally:
-        if claimed and plan_id is not None:
-            ledger.release(plan_id)
-
-
-def _claim_drive(
-    ledger: LiveRunLedger, plan_id: str | None, *, approval_id: str
-) -> bool | None:
-    """Claim this plan for this drive, or report that somebody else holds it.
-
-    A refusal ENDS the caller. The ledger answers "is somebody already
-    driving this plan", and a refusal means yes, so building anyway puts two
-    drivers on one plan: both assign the same subtasks, the engine refuses
-    the second, and the wave that lost fails the plan it was helping. Nothing
-    is stranded by giving up, because the driver holding the claim is the one
-    running the work.
-
-    Args:
-        ledger: The in-process record of which plans are being driven.
-        plan_id: The plan being driven, or ``None`` for an unscoped run,
-            which claims nothing and proceeds.
-        approval_id: The approval this drive came from, for the log.
-
-    Returns:
-        Whether a claim is held and must be released, or ``None`` when
-        another driver holds it and this one must stop.
-    """
-    if plan_id is None:
-        return False
-    if ledger.try_claim(plan_id):
-        return True
-    logger.info(
-        APPROVAL_GATE_PLAN_DISPATCH_FAILED,
-        approval_id=approval_id,
-        plan_id=plan_id,
-        note="already being driven; left to the driver that holds it",
-    )
-    return None
-
-
-async def _settle_cancelled_dispatch(
-    app_state: AppState,
-    approval_id: str,
-    *,
-    task_id: str | None,
-    plan_id: str | None,
-) -> None:
-    """Decide what a cancelled drive owes the plan before it unwinds.
-
-    Shutdown cancels this task, and ``except Exception`` does not see it
-    because ``CancelledError`` is a ``BaseException``. Leaving silently is
-    the one exit that strands the plan: the approval's resume marker is
-    cleared once the task is created, so nothing is left to replay from and
-    the plan sits EXECUTING with no live dispatch for ever.
-
-    Which of the two exits is right turns on WHY the cancellation arrived,
-    and there is exactly one signal for that. A stopping process leaves the
-    plan alone: run recovery reads a dispatched plan with nobody driving it
-    on the next boot and resumes it, so failing it here would destroy an
-    initiative for the sake of a restart, and a restart is an ordinary
-    operator action. Any other cancellation has nothing coming for it, and
-    keeps the compensation.
-
-    Args:
-        app_state: Application state carrying the shutdown signal.
-        approval_id: The approval whose dispatch was cancelled.
-        task_id: The objective task.
-        plan_id: The plan being dispatched.
-    """
-    if app_state.shutdown_requested.is_set():
-        logger.info(
-            APPROVAL_GATE_PLAN_DISPATCH_FAILED,
-            approval_id=approval_id,
-            plan_id=plan_id,
-            note="cancelled at shutdown; left for run recovery to resume",
-        )
-        return
-    # Shielded, because the compensation is itself an await inside an
-    # already-cancelled task and would otherwise be cancelled too.
-    await asyncio.shield(
-        fail_dispatch(
-            app_state,
-            approval_id,
-            task_id=task_id,
-            plan_id=plan_id,
-            why="dispatch cancelled before the waves finished",
-        )
-    )
-
-
-async def _hand_failure_to_rollup(
-    app_state: AppState,
-    approval_id: str,
-    *,
-    task_id: str | None,
-    plan_id: str | None,
-    why: str,
-) -> None:
-    """Report a failed wave and let the rollup decide what it means.
-
-    A wave that loses one agent is not the same fact as an initiative that
-    is dead, and only one authority can be allowed to say the second. The
-    rollup already owns it: it derives the plan's status from the items'
-    own states, runs the tail stage, and routes a stall to the replan
-    trigger. Failing the plan from here instead preempted all of that, so
-    a run whose rollup had just computed ``next_action=replan`` died anyway
-    and discarded four siblings that were still working.
-
-    The property this must not lose is the one that put the check here: a
-    coordination that fails without raising used to leave the plan
-    EXECUTING with nothing left to execute, which no later event repaired.
-    A rollup pass answers that better than a status write does, because it
-    reads what actually happened rather than which wave index reported it.
-
-    Args:
-        app_state: Application state holding the rollup and persistence.
-        approval_id: The approval whose dispatch this was, for the log.
-        task_id: The objective task, failed only when nothing can roll up.
-        plan_id: The plan to recompute.
-        why: Which phases failed, for the operator.
-    """
-    rollup = app_state.slice(EngineStateSlice).project_rollup_service
-    if rollup is None or plan_id is None:
-        # No rollup means nothing downstream will ever look at this plan
-        # again, so the pre-emption this function exists to remove is the
-        # only thing standing between the operator and a plan parked at
-        # EXECUTING for good. Named in the log, because it is a fallback
-        # for an unwired subsystem rather than a second routine owner.
-        logger.warning(
-            APPROVAL_GATE_PLAN_DISPATCH_FAILED,
-            approval_id=approval_id,
-            plan_id=plan_id,
-            why=why,
-            note="no rollup service; failing the plan here so it cannot hang",
-        )
-        await fail_dispatch(
-            app_state, approval_id, task_id=task_id, plan_id=plan_id, why=why
-        )
-        return
-    logger.info(
-        APPROVAL_GATE_PLAN_DISPATCH_FAILED,
-        approval_id=approval_id,
-        plan_id=plan_id,
-        why=why,
-        note="wave failure handed to the rollup, which owns the plan's verdict",
-    )
-    await rollup.recompute(UUID(plan_id))
-
-
 async def _link_initiative(app_state: AppState, plan: Plan) -> bool:
     """Connect the project to the plan it is about to execute.
 
     Points the project at *plan*, activates it, and moves the plan into
-    EXECUTING. Both writes use the same audited paths the rollup uses, so the
+    SKELETON. Both writes use the same audited paths the rollup uses, so the
     graph has one set of status semantics whether dispatch or rollup is
     writing.
+
+    SKELETON rather than EXECUTING: the units are filed but nothing dispatches
+    them until the contract they build against exists as code. The rollup owns
+    that hand-off, so approval's job ends at making the graph durable.
 
     Returns:
         Whether the project was linked. A failed link must abort the dispatch:
@@ -670,32 +468,9 @@ async def _link_initiative(app_state: AppState, plan: Plan) -> bool:
     if linked is None:
         return False
     await sync_plan_status(
-        app_state, str(plan.id), PlanStatus.EXECUTING, requested_by=_DISPATCH_ACTOR
+        app_state, str(plan.id), PlanStatus.SKELETON, requested_by=_DISPATCH_ACTOR
     )
     return True
-
-
-def _coordination_failure_detail(result: CoordinationResult) -> str:
-    """Name the phases a coordination run failed, for the plan's reason.
-
-    The reason is persisted on the plan and shown in Plan Review, so it has to
-    say which stage died rather than "dispatch failed". Each phase's ``error``
-    is already the scrubbed description, so it is safe to carry through.
-
-    Returns:
-        A one-line summary of the failed phases.
-    """
-    failed = [phase for phase in result.phases if not phase.success]
-    if not failed:
-        # ``is_success`` is vacuously true over no phases, so reaching here
-        # means the run produced none at all: nothing ran, which is its own
-        # failure and needs saying rather than reporting an empty list.
-        return "coordination produced no phase results"
-    parts = [
-        f"{phase.phase}: {phase.error}" if phase.error else phase.phase
-        for phase in failed
-    ]
-    return f"coordination failed ({'; '.join(parts)})"
 
 
 async def _cancel_task(

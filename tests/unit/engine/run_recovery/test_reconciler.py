@@ -17,7 +17,7 @@ import pytest
 from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import (
-    TAIL_STATUSES,
+    STAGE_STATUSES,
     TERMINAL_STATUSES,
     PlanItemKind,
     PlanStatus,
@@ -27,6 +27,7 @@ from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.coordination.run_ledger import LiveRunLedger
 from synthorg.engine.initiative.item_progress import TASK_PAGE_SIZE
+from synthorg.engine.initiative.ports import DriveOutcome
 from synthorg.engine.run_recovery.reconciler import (
     AWAITING_HUMAN_STATUSES,
     DRIVEN_STATUSES,
@@ -168,10 +169,10 @@ def _reconciler(  # type: ignore[explicit-any]  # mock_of returns Any
     awaiting_a_person: frozenset[str] | None = frozenset(),
     defers_to_queue: bool = False,
 ) -> RunRecoveryReconciler:
-    async def _drive(plan: Plan) -> bool:
+    async def _drive(plan: Plan) -> DriveOutcome:
         if driven is not None:
             driven.append(str(plan.id))
-        return True
+        return DriveOutcome.DRIVING
 
     async def _recompute(plan: Plan) -> None:
         if recomputed is not None:
@@ -208,7 +209,7 @@ class TestEveryPlanStatusHasAnOwner:
             | AWAITING_HUMAN_STATUSES
             | UNFILLED_STATUSES
             | DRIVEN_STATUSES
-            | TAIL_STATUSES
+            | STAGE_STATUSES
         )
         assert classified == set(PlanStatus)
 
@@ -220,7 +221,7 @@ class TestEveryPlanStatusHasAnOwner:
             AWAITING_HUMAN_STATUSES,
             UNFILLED_STATUSES,
             DRIVEN_STATUSES,
-            TAIL_STATUSES,
+            STAGE_STATUSES,
         )
         total = sum(len(group) for group in groups)
         assert total == len(set(PlanStatus))
@@ -357,9 +358,9 @@ class TestReconcile:
         plan = _plan(status=PlanStatus.APPROVED)
         asked: list[str] = []
 
-        async def _decline(plan: Plan) -> bool:
+        async def _decline(plan: Plan) -> DriveOutcome:
             asked.append(str(plan.id))
-            return False
+            return DriveOutcome.REFUSED
 
         async def _recompute(plan: Plan) -> None:
             del plan
@@ -566,12 +567,12 @@ class TestReconcile:
         second = _plan(status=PlanStatus.EXECUTING, plan_id=as_uuid("plan-b"))
         driven: list[str] = []
 
-        async def _drive(plan: Plan) -> bool:
+        async def _drive(plan: Plan) -> DriveOutcome:
             if plan.id == first.id:
                 msg = "cannot read this plan"
                 raise RuntimeError(msg)
             driven.append(str(plan.id))
-            return True
+            return DriveOutcome.DRIVING
 
         async def _recompute(plan: Plan) -> None:
             del plan

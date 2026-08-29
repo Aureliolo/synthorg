@@ -51,6 +51,7 @@ from synthorg.engine.initiative.item_progress import collect_item_progress
 from synthorg.engine.initiative.ports import (
     EvaluationPort,
     IntegrationPort,
+    PlanDriver,
     PlanStatusWriter,
     ReplanTriggerPort,
     RetroCapturePort,
@@ -119,6 +120,7 @@ class ProjectRollupService:
         "_integration",
         "_locks",
         "_persistence",
+        "_plan_driver",
         "_plan_writer",
         "_replan_trigger",
         "_ship_retro_capture",
@@ -151,6 +153,8 @@ class ProjectRollupService:
         # Attached only through ``attach_tail``: it needs the approval store,
         # which the boot phase that builds this service has not reached.
         self._stall_escalation: StallEscalationService | None = None
+        # Likewise: driving a plan needs the coordinator and the agent roster.
+        self._plan_driver: PlanDriver | None = None
         # The observer dispatch is sequential, so events alone cannot overlap
         # two recomputes for one plan. The tail stages can: each calls back in
         # once its verdict lands, from its own detached task. Cross-process
@@ -166,6 +170,7 @@ class ProjectRollupService:
         evaluation: EvaluationPort | None = None,
         ship_retro_capture: RetroCapturePort | None = None,
         stall_escalation: StallEscalationService | None = None,
+        plan_driver: PlanDriver | None = None,
     ) -> None:
         """Fill in stage collaborators that a later boot phase resolved.
 
@@ -187,6 +192,8 @@ class ProjectRollupService:
         """
         if self._replan_trigger is None:
             self._replan_trigger = replan_trigger
+        if self._plan_driver is None:
+            self._plan_driver = plan_driver
         if self._skeleton is None:
             self._skeleton = skeleton
         if self._integration is None:
@@ -491,6 +498,7 @@ class ProjectRollupService:
                 reopened=reopened,
                 advance=self._advance_plan,
                 stall=self._stall_on_stage_failure(StallReason.SKELETON_FAILED),
+                drive=self._plan_driver,
             )
         if plan.status is PlanStatus.INTEGRATING:
             plan = await drive_integration(

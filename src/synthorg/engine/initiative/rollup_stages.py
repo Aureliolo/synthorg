@@ -24,8 +24,10 @@ from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.engine.initiative.head_stages import read_skeleton_state
 from synthorg.engine.initiative.ports import (
+    DriveOutcome,
     EvaluationPort,
     IntegrationPort,
+    PlanDriver,
     SkeletonPort,
 )
 from synthorg.engine.initiative.stage_state import StageOutcome
@@ -68,6 +70,47 @@ def _log_running(plan: Plan, *, note: str) -> None:
     )
 
 
+async def _dispatch_units(
+    plan: Plan,
+    *,
+    drive: PlanDriver | None,
+    stall: StallRoute,
+) -> Plan:
+    """Hand a plan whose contract just passed to the coordinator.
+
+    The three outcomes are deliberately not collapsed. An unwired driver and a
+    driver that already holds the plan are both recoverable and neither is the
+    plan's fault: the recovery sweep classifies EXECUTING as driven and re-asks
+    on its cadence, so the cost is a delay somebody can see. A refusal is not
+    recoverable, and leaving it as a delay is how a plan sits at EXECUTING with
+    nothing running while a sweep reports rescuing it every pass for ever. So a
+    refusal routes to a replan or to a person, which is what a dispatch failure
+    did before the contract stage existed.
+
+    Returns:
+        The plan, as the stall route left it on a refusal, else unchanged.
+    """
+    if drive is None:
+        logger.warning(
+            PROJECT_ROLLUP_SKIPPED,
+            plan_id=str(plan.id),
+            reason="plan_driver_unwired",
+            note="contract passed; waiting on a recovery sweep to dispatch",
+        )
+        return plan
+    outcome = await drive(plan)
+    if outcome is DriveOutcome.REFUSED:
+        return await stall(plan)
+    if outcome is DriveOutcome.HELD:
+        logger.debug(
+            PROJECT_ROLLUP_SKIPPED,
+            plan_id=str(plan.id),
+            reason="plan_already_driven",
+            note="contract passed; another driver already owns the plan",
+        )
+    return plan
+
+
 async def drive_skeleton(
     plan: Plan,
     *,
@@ -76,6 +119,7 @@ async def drive_skeleton(
     reopened: bool,
     advance: PlanAdvance,
     stall: StallRoute,
+    drive: PlanDriver | None,
 ) -> Plan:
     """Fire or read the SKELETON stage for a plan sitting in it.
 
@@ -83,6 +127,13 @@ async def drive_skeleton(
     Only then may a spent attempt be stepped over: that is the difference
     between rewriting a contract that was found wrong and re-running the same
     failed attempt on every event.
+
+    A passing contract is also the moment the plan's units become dispatchable
+    for the first time, so *drive* is called on that edge and nowhere else. It
+    is the same port the recovery sweep uses, because a plan being driven is a
+    plan being driven; what differs is only when the question is asked. Without
+    it the plan would reach EXECUTING with nothing running and wait for a
+    recovery sweep to notice, which is minutes of silence on the ordinary path.
 
     Returns:
         The plan, advanced to EXECUTING when the contract job passed.
@@ -100,7 +151,8 @@ async def drive_skeleton(
         skeleton.schedule(plan=plan, attempt=state.attempt)
         return plan
     if state.outcome is StageOutcome.PASSED:
-        return await advance(plan, PlanStatus.EXECUTING) or plan
+        advanced = await advance(plan, PlanStatus.EXECUTING) or plan
+        return await _dispatch_units(advanced, drive=drive, stall=stall)
     if state.outcome is StageOutcome.FAILED:
         # A contract that will not compile is a statement about the plan rather
         # than about the agent that wrote it, so this routes to a replan exactly

@@ -11,6 +11,7 @@ one.
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
@@ -207,6 +208,52 @@ class EvaluationPort(Protocol):
 
     async def drain(self, *, timeout_sec: float) -> None:
         """Await outstanding judgements at shutdown, bounded by *timeout_sec*."""
+        ...
+
+
+class DriveOutcome(StrEnum):
+    """What happened when a plan was handed to a driver.
+
+    Three values rather than a boolean, because the two ways of not driving
+    demand opposite responses and a boolean cannot tell them apart. ``HELD``
+    means somebody else already owns the plan, which is correct and needs
+    nothing. ``REFUSED`` means this deployment cannot drive the plan at all,
+    which is a dead end: the recovery sweep logged a rescue on every pass for a
+    plan whose objective task was gone, so a permanently undrivable run read as
+    being saved every ten minutes for ever.
+
+    ``DRIVING``: a drive now owns the plan. ``HELD``: one already did.
+    ``REFUSED``: nothing can, and the caller owns what to do about it.
+    """
+
+    DRIVING = "driving"
+    HELD = "held"
+    REFUSED = "refused"
+
+
+@runtime_checkable
+class PlanDriver(Protocol):
+    """Runs a dispatched plan's remaining waves.
+
+    A port rather than a call, because driving a plan needs the coordinator,
+    the agent roster and the objective task, which are assembled in the API
+    layer. Stating it here keeps the engine's own dependencies to the graph it
+    reads.
+
+    Two callers, and they ask the same question at different moments. The
+    rollup asks it once, when the skeleton passes and the plan's units become
+    dispatchable for the first time. The recovery sweep asks it on a cadence,
+    for a plan whose driver died with the process that held it. One protocol,
+    because a plan being driven is a plan being driven; what differs is only
+    what each caller does with a refusal.
+    """
+
+    async def __call__(self, plan: Plan) -> DriveOutcome:
+        """Drive *plan*'s remaining waves to whatever they reach.
+
+        Returns:
+            Which of the three things happened.
+        """
         ...
 
 
