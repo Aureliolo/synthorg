@@ -157,6 +157,17 @@ jobs:
           # and fails if the offer ever stops reaching the elected arm,
           # which is a stricter check than the one being exempted here.
           #
+          # mmh3: its own declared metadata is plain MIT, in the version
+          # installed and in the one before it. The action reports
+          # `CC-BY-4.0 AND LicenseRef-scancode-public-domain AND MIT`
+          # because the sdist carries the vendored MurmurHash reference
+          # implementation (public domain, as its author placed it) and
+          # CC-BY-4.0 documentation, and the per-file scan joins its
+          # findings with AND. Same failure mode as grimp and tld above.
+          # Neither added term is copyleft, and neither is an SPDX id the
+          # allow-licenses list can carry, so the exemption is per-package
+          # rather than a widening of that list.
+          #
           # PURLs are intentionally version-less: a package's license does not
           # change across patch/minor bumps, so pinning a version only made the
           # exemption silently fall off the moment the lockfile advanced (the
@@ -183,6 +194,7 @@ jobs:
             pkg:pypi/pyngrok,
             pkg:pypi/tokenizers,
             pkg:pypi/typer,
+            pkg:pypi/mmh3,
             pkg:npm/@img/sharp-wasm32,
             pkg:npm/@img/sharp-win32-ia32,
             pkg:npm/@img/sharp-win32-x64,

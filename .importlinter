@@ -36,6 +36,11 @@ forbidden_modules =
     synthorg.communication
     synthorg.budget
     synthorg.config
+broken_contract_guidance =
+    Every layer imports core, so an import back out of it closes a cycle that
+    no other contract can break. Put the shared type in core and import it
+    from both sides, rather than reaching up from core to whatever needs it.
+    See docs/reference/import-layering.md.
 
 [importlinter:contract:execution-is-a-leaf]
 name = execution is a leaf below engine
@@ -47,6 +52,11 @@ forbidden_modules =
     synthorg.api
     synthorg.workers
     synthorg.meta
+broken_contract_guidance =
+    engine imports execution, so importing engine back from here is a cycle.
+    Shared types belong in a core.* or execution.* leaf that both sides import;
+    behaviour the caller supplies belongs in a parameter or a protocol, not in
+    an import reaching up into engine, api, workers or meta.
 
 [importlinter:contract:persistence-app-boundary]
 name = persistence does not directly import the api or worker layers
@@ -63,6 +73,13 @@ ignore_imports =
     synthorg.persistence.state -> synthorg.api.state_slices
     synthorg.persistence.postgres.user_repo -> synthorg.api.auth.system_user
     synthorg.persistence.sqlite.user_repo -> synthorg.api.auth.system_user
+broken_contract_guidance =
+    A repository must not know which layer called it. Take what you need as a
+    parameter, or depend on a protocol declared in core, and let wiring supply
+    the implementation. The ignore_imports above are the construction-wiring
+    seam and the .state slice; a genuine new back-edge earns its own line there
+    with a reason, never a widening of this contract.
+    See docs/reference/persistence-boundary.md.
 
 [importlinter:contract:observability-below-api]
 name = observability does not directly import the api layer
@@ -77,6 +94,11 @@ ignore_imports =
     synthorg.observability.prometheus_collector -> synthorg.api.state
     synthorg.observability._prometheus_label_fetchers -> synthorg.api.state
     synthorg.observability.startup_wiring -> synthorg.api.state
+broken_contract_guidance =
+    api imports the logger, so importing api from here closes a cycle that
+    surfaces at boot rather than at lint time. Read what you need from a value
+    the caller passes in, or have the api side register the fetcher, instead of
+    importing the api module.
 
 [importlinter:contract:no-business-logic-upward-into-api]
 name = domain/tool/engine/security/integrations layers do not import api business logic
@@ -92,6 +114,12 @@ forbidden_modules =
     synthorg.api.auth
     synthorg.api.dto
 allow_indirect_imports = true
+broken_contract_guidance =
+    Services, auth and DTOs belong to the api layer, which calls these modules
+    rather than the other way round. Declare the protocol in core and let
+    wiring inject the implementation. A DTO in particular never travels down:
+    it is the api's wire shape, and the persistence and service layers have
+    their own types (scripts/check_no_api_dto_in_persistence_or_service.py).
 
 [importlinter:contract:controllers-no-persistence-internals]
 name = controllers reach persistence through services / protocols, never backend internals
@@ -106,3 +134,9 @@ forbidden_modules =
     synthorg.persistence.constraint_tokens
     synthorg.persistence.jsonb_capability
 allow_indirect_imports = true
+broken_contract_guidance =
+    Go through a service or a repository protocol. Importing a backend module
+    binds the endpoint to SQLite or Postgres specifically, which is what the
+    dual-backend conformance suite exists to stop, and puts SQL knowledge in a
+    layer whose job is the wire.
+    See docs/reference/persistence-boundary.md.
