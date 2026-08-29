@@ -4,14 +4,31 @@ Covers word-bigram Jaccard similarity and the MMR-based
 ``apply_diversity_penalty`` re-ranker.
 """
 
+import math
+from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Final
 
 import pytest
+from hypothesis import example, given
+from hypothesis import strategies as st
 
 from synthorg.core.memory_enums import MemoryCategory
+from synthorg.memory import ranking_mmr
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.ranking import ScoredMemory
 from synthorg.memory.ranking_mmr import apply_diversity_penalty, bigram_jaccard
+
+#: Drawn from for the bigram-path property: a shared, small vocabulary so
+#: generated texts genuinely overlap rather than scoring 0.0 against each
+#: other on every pair.
+_BIGRAM_VOCABULARY: Final[tuple[str, ...]] = (
+    "alpha",
+    "beta",
+    "gamma",
+    "delta",
+    "epsilon",
+)
 
 
 def _make_entry(
@@ -287,3 +304,364 @@ class TestApplyDiversityPenalty:
         # All entries present in input order.
         assert len(result) == 3
         assert [r.entry.id for r in result] == ["e0", "e1", "e2"]
+
+
+def _rerank_recomputing_every_pass(
+    scored: tuple[ScoredMemory, ...],
+    *,
+    diversity_lambda: float,
+    similarity_fn: Callable[[str, str], float],
+) -> tuple[str, ...]:
+    """Reference MMR that recomputes the max over all selected each pass.
+
+    The textbook statement of the algorithm, kept here as an oracle.
+    Both production paths fold each selection into a running maximum
+    instead, and both must agree with this exactly: the injected-callable
+    path by passing its own ``similarity_fn`` here, the default path by
+    passing ``bigram_jaccard``.
+
+    ``max_sim`` is unfloored, which is the property under test: seeding
+    the running maximum with ``0.0`` instead would make that seed a
+    phantom comparand no signed similarity can fall below.
+
+    Returns:
+        The re-ranked entry ids.
+    """
+    remaining = list(scored)
+    selected: list[ScoredMemory] = []
+    while remaining:
+        best_idx = 0
+        best_mmr = -math.inf
+        for i, candidate in enumerate(remaining):
+            relevance = diversity_lambda * candidate.combined_score
+            max_sim = (
+                max(
+                    similarity_fn(candidate.entry.content, s.entry.content)
+                    for s in selected
+                )
+                if selected
+                else 0.0
+            )
+            mmr = relevance - (1.0 - diversity_lambda) * max_sim
+            if mmr > best_mmr:
+                best_mmr = mmr
+                best_idx = i
+        selected.append(remaining.pop(best_idx))
+    return tuple(s.entry.id for s in selected)
+
+
+@pytest.mark.unit
+class TestDiversityPenaltyPairwiseCost:
+    """MMR compares each pair once, which is what keeps it quadratic.
+
+    Recomputing the maximum over every selected entry on each pass costs
+    ``sum (n - s) * s`` comparisons, cubic in the input, and the
+    ``docs/design/memory-learning.md`` complexity claim is ``O(n**2)``.
+    Pinning the count is what stops the cubic shape returning unnoticed:
+    it produces identical output, so no behavioural test can see it.
+    """
+
+    @staticmethod
+    def _cubic_call_count(n: int) -> int:
+        """Comparisons the recompute-every-pass formulation would make.
+
+        Returns:
+            ``sum over s of (n - s) * s`` for ``s`` in ``0..n-1``.
+        """
+        return sum((n - s) * s for s in range(n))
+
+    @pytest.mark.parametrize("size", [2, 5, 12])
+    def test_custom_similarity_fn_called_once_per_pair(self, size: int) -> None:
+        entries = tuple(
+            _make_scored(
+                entry_id=f"e{i}",
+                content=f"entry {i} body",
+                combined_score=1.0 - i * 0.01,
+            )
+            for i in range(size)
+        )
+        calls = 0
+
+        def _counting_similarity(left: str, right: str) -> float:
+            nonlocal calls
+            calls += 1
+            return 0.5 if left != right else 1.0
+
+        apply_diversity_penalty(
+            entries,
+            diversity_lambda=0.7,
+            similarity_fn=_counting_similarity,
+        )
+
+        assert calls == size * (size - 1) // 2
+        # The shape being guarded against, not merely a smaller number.
+        if size > 2:
+            assert calls < self._cubic_call_count(size)
+
+    @pytest.mark.parametrize("size", [2, 5, 12])
+    def test_bigram_path_compares_each_pair_once(
+        self, size: int, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The default path is counted at its own similarity primitive."""
+        entries = tuple(
+            _make_scored(
+                entry_id=f"e{i}",
+                content=f"topic {i % 3} detailed body text for entry {i}",
+                combined_score=1.0 - i * 0.01,
+            )
+            for i in range(size)
+        )
+        real = ranking_mmr._bigram_jaccard_sets
+        calls = 0
+
+        def _counting(
+            bigrams_a: frozenset[tuple[str, str]],
+            bigrams_b: frozenset[tuple[str, str]],
+        ) -> float:
+            nonlocal calls
+            calls += 1
+            return real(bigrams_a, bigrams_b)
+
+        monkeypatch.setattr(ranking_mmr, "_bigram_jaccard_sets", _counting)
+        apply_diversity_penalty(entries, diversity_lambda=0.7)
+
+        assert calls == size * (size - 1) // 2
+        # The shape being guarded against, not merely a smaller number.
+        if size > 2:
+            assert calls < self._cubic_call_count(size)
+
+
+def _table_similarity(
+    contents: tuple[str, ...],
+    similarities: list[float],
+    *,
+    symmetric: bool,
+) -> Callable[[str, str], float]:
+    """Build a lookup-table similarity function over ``contents``.
+
+    Arbitrary rather than monotonic, so the ordering under test is not
+    accidentally the input order.  Keyed on each content's position:
+    ``hash`` is PYTHONHASHSEED-salted, so a table built from it draws
+    different values in a fresh interpreter and an ``@example`` pinned
+    from a failure would reproduce nothing.
+
+    Args:
+        contents: Entry contents, whose positions key the table.
+        similarities: Values to draw from.
+        symmetric: Whether ``f(a, b)`` must equal ``f(b, a)``.  MMR
+            assumes symmetry; the asymmetric table is what pins the
+            argument order the re-ranker calls with.
+
+    Returns:
+        A similarity function over any two of ``contents``.
+    """
+    index_by_content = {content: i for i, content in enumerate(contents)}
+    span = len(contents)
+
+    def _similarity(left: str, right: str) -> float:
+        row, column = index_by_content[left], index_by_content[right]
+        if symmetric:
+            row, column = min(row, column), max(row, column)
+        return similarities[(row * span + column) % len(similarities)]
+
+    return _similarity
+
+
+@pytest.mark.unit
+class TestDiversityPenaltyProperties:
+    """The running maximum must agree with recomputing it every pass."""
+
+    @given(
+        scores=st.lists(
+            st.floats(min_value=0.0, max_value=1.0, allow_nan=False),
+            min_size=2,
+            max_size=8,
+        ),
+        similarities=st.lists(
+            # Signed, because a running maximum seeded at 0.0 rather than
+            # -inf agrees with the reference over [0.0, 1.0] and diverges
+            # below it, and cosine is the measure the docstring cites.
+            st.floats(min_value=-1.0, max_value=1.0, allow_nan=False),
+            min_size=1,
+            max_size=40,
+        ),
+        symmetric=st.booleans(),
+        diversity_lambda=st.floats(min_value=0.0, max_value=1.0, allow_nan=False),
+    )
+    @example(
+        # The smallest divergence a floored running maximum produces, kept
+        # because the CI profile draws too few examples to rediscover it.
+        scores=[0.0, 1.0, 2.2250738585e-313],
+        similarities=[-1.0],
+        symmetric=False,
+        diversity_lambda=0.5,
+    )
+    def test_matches_the_recomputing_reference(
+        self,
+        scores: list[float],
+        similarities: list[float],
+        symmetric: bool,
+        diversity_lambda: float,
+    ) -> None:
+        contents = tuple(f"c{i}" for i in range(len(scores)))
+        entries = tuple(
+            _make_scored(entry_id=f"e{i}", content=content, combined_score=score)
+            for i, (content, score) in enumerate(zip(contents, scores, strict=True))
+        )
+        similarity_fn = _table_similarity(contents, similarities, symmetric=symmetric)
+
+        result = apply_diversity_penalty(
+            entries,
+            diversity_lambda=diversity_lambda,
+            similarity_fn=similarity_fn,
+        )
+        expected = _rerank_recomputing_every_pass(
+            entries,
+            diversity_lambda=diversity_lambda,
+            similarity_fn=similarity_fn,
+        )
+
+        assert tuple(r.entry.id for r in result) == expected
+
+    @given(
+        documents=st.lists(
+            st.tuples(
+                st.lists(
+                    st.sampled_from(_BIGRAM_VOCABULARY), min_size=1, max_size=5
+                ).map(" ".join),
+                st.floats(min_value=0.0, max_value=1.0, allow_nan=False),
+            ),
+            min_size=2,
+            max_size=6,
+        ),
+        diversity_lambda=st.floats(min_value=0.0, max_value=1.0, allow_nan=False),
+    )
+    def test_bigram_path_matches_the_recomputing_reference(
+        self,
+        documents: list[tuple[str, float]],
+        diversity_lambda: float,
+    ) -> None:
+        """The default path, which no injected callable can stand in for.
+
+        A shared vocabulary so texts genuinely overlap, and short enough
+        that some draw fewer than two words and so carry no bigrams at
+        all, which is the branch the running maximum has to fold ``0.0``
+        into rather than skip.
+        """
+        entries = tuple(
+            _make_scored(entry_id=f"e{i}", content=content, combined_score=score)
+            for i, (content, score) in enumerate(documents)
+        )
+
+        result = apply_diversity_penalty(entries, diversity_lambda=diversity_lambda)
+        expected = _rerank_recomputing_every_pass(
+            entries,
+            diversity_lambda=diversity_lambda,
+            similarity_fn=bigram_jaccard,
+        )
+
+        assert tuple(r.entry.id for r in result) == expected
+
+    def test_negative_similarity_is_not_floored_at_zero(self) -> None:
+        """A signed measure must survive the fold that accumulates it.
+
+        Pinned as a worked case beside the property: seeding the running
+        maximum at ``0.0`` makes the seed a comparand no negative pair
+        can beat, so ``b`` loses the penalty that promotes it and the
+        order silently changes.
+        """
+        entries = (
+            _make_scored(entry_id="a", content="alpha", combined_score=1.0),
+            _make_scored(entry_id="b", content="beta", combined_score=0.3),
+            _make_scored(entry_id="c", content="gamma", combined_score=0.5),
+        )
+        table = {("beta", "alpha"): -1.0, ("gamma", "alpha"): 0.0}
+
+        def _signed(left: str, right: str) -> float:
+            return table.get((left, right), 0.0)
+
+        result = apply_diversity_penalty(
+            entries,
+            diversity_lambda=0.1,
+            similarity_fn=_signed,
+        )
+
+        # Floored at 0.0 this reads ["a", "c", "b"]: b's -1.0 penalty,
+        # which outweighs c's higher relevance, is thrown away.
+        assert [r.entry.id for r in result] == ["a", "b", "c"]
+
+
+@pytest.mark.unit
+class TestDiversityPenaltyDegradation:
+    """A misbehaving ``similarity_fn`` must not cost the caller its memories.
+
+    Diversity re-orders an already-filtered, already-ranked result, and
+    the retrieval pipeline's own handler discards the whole result on an
+    exception, so propagating one would hand the agent no memory at all
+    because an optional re-ordering failed.
+    """
+
+    @staticmethod
+    def _entries() -> tuple[ScoredMemory, ...]:
+        """Three entries in descending relevance order.
+
+        Returns:
+            Tuple of ``ScoredMemory``.
+        """
+        return tuple(
+            _make_scored(
+                entry_id=f"e{i}",
+                content=f"entry {i} body text",
+                combined_score=1.0 - i * 0.1,
+            )
+            for i in range(3)
+        )
+
+    def test_raising_similarity_fn_falls_back_to_relevance_order(self) -> None:
+        entries = self._entries()
+
+        def _failing(left: str, right: str) -> float:
+            msg = "similarity backend unavailable"
+            raise RuntimeError(msg)
+
+        result = apply_diversity_penalty(
+            entries,
+            diversity_lambda=0.7,
+            similarity_fn=_failing,
+        )
+
+        assert result == entries
+
+    @pytest.mark.parametrize("bad", [math.nan, math.inf, -math.inf])
+    def test_non_finite_similarity_falls_back_to_relevance_order(
+        self, bad: float
+    ) -> None:
+        """Absorbing these silently is what the guard exists to prevent.
+
+        ``nan`` never satisfies ``>``, so it would degrade selection to
+        input order; ``inf`` deprioritises a candidate for the rest of
+        the run.  Neither is distinguishable from a working re-ranking.
+        """
+        entries = self._entries()
+
+        result = apply_diversity_penalty(
+            entries,
+            diversity_lambda=0.7,
+            similarity_fn=lambda left, right: bad,
+        )
+
+        assert result == entries
+
+    def test_critical_exceptions_still_propagate(self) -> None:
+        """The degrade covers a misbehaving callable, not a dying process."""
+        entries = self._entries()
+
+        def _exhausted(left: str, right: str) -> float:
+            raise RecursionError
+
+        with pytest.raises(RecursionError):
+            apply_diversity_penalty(
+                entries,
+                diversity_lambda=0.7,
+                similarity_fn=_exhausted,
+            )
