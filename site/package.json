@@ -14,18 +14,18 @@
     "@astrojs/react": "6.0.4",
     "@astrojs/sitemap": "3.7.3",
     "@tailwindcss/vite": "4.3.3",
-    "astro": "7.2.4",
-    "js-yaml": "5.3.0",
+    "astro": "7.2.9",
+    "js-yaml": "5.4.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "tailwindcss": "4.3.3"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "7.0.1",
-    "@testing-library/react": "16.3.2",
+    "@testing-library/react": "16.3.3",
     "@types/grecaptcha": "3.0.9",
     "@types/react": "19.2.18",
-    "@types/react-dom": "19.2.4",
+    "@types/react-dom": "19.2.5",
     "jsdom": "30.0.1",
     "vitest": "4.1.11"
   },
@@ -35,6 +35,6 @@
     "undici": "7.29.0"
   },
   "engines": {
-    "node": "26.7.0"
+    "node": "26.8.1"
   }
 }
