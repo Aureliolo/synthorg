@@ -219,10 +219,45 @@ defect, caught at skeleton review while the whole contract is being read.
 
 The gate configuration is part of the skeleton because a definition of done
 with nowhere to live is a definition of done nobody enforces. It carries the
-linter, the formatter, the test runner, the coverage floor, the dependency
-policy, and the command that boots the result.
+test runner, the linter, the formatter, the dependency check, and the command
+that boots the result.
+
+**Every gate is a command, and every gate is required.** The build/test oracle
+asks for a passing recorded run of each declared command before it accepts a
+unit, and the set it asks for is derived from the manifest rather than listed
+anywhere, so a field added without a reader fails its own gate instead of
+becoming a knob an operator sets in vain. A coverage floor is declared inside
+the test command, where the runner enforces it by exit status: a separate
+number would be a second owner of one figure, and the one that nothing reads is
+always the one somebody sets.
 
 The skeleton is small by construction, which is what makes it reviewable.
+
+#### As implemented
+
+The stage is `PlanStatus.SKELETON`, between `APPROVED` and `EXECUTING`, plus an
+ordinary forced-`LEAF` task doing the work. That pairing is what makes it
+legible in `GET /plans`, recoverable across a restart, and reviewable by the
+existing chain: the task is minted with a deterministic id derived from the
+plan and the attempt index, carries `plan_id` with no `plan_item_id`, and runs
+through `WorkPipeline`, so it inherits `run_completion_gates` whole and no
+second oracle is written. `APPROVED -> EXECUTING` does not exist, which is what
+makes the stage unskippable rather than optional, and
+`check_skeleton_stage_paths.py` holds that as a graph property rather than as
+one absent edge.
+
+Approval's job ends at making the graph durable. It files the rebuilt task tree,
+moves the plan to `SKELETON`, and hands it to the rollup, which is the single
+owner of which stage a plan is in and what that stage needs next; only a passing
+contract moves the plan to `EXECUTING` and dispatches its units.
+
+The pending reading lives with the **verdict**, not on the row.
+`CodeExecutionRecord.passed` means the command exited zero, held there by a
+validator and a database `CHECK`, so a caller cannot mint a green build from any
+run at all. The oracle reads the project's declaration and decides what a failing
+run means: forgiven when every pending test failed its own assertion and nothing
+else broke, and blocking when a unit's own criterion is still listed pending
+after a green run, which is the direction an exit status cannot see.
 
 ### Slice planning
 

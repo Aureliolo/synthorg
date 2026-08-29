@@ -426,13 +426,12 @@ class TestPlanReviewResume:
     async def test_no_coordinator_is_needed_to_stage_a_plan(self) -> None:
         """Approval runs no wave, so it must not fail one for a missing driver.
 
-        The coordinator used to be a precondition here because this path drove
-        the waves itself. It does not any more: the rollup drives them once the
-        contract passes, and it resolves its own coordinator when it does. Kept
-        as a precondition, an unwired one would fail an initiative over a
-        subsystem the approval path never reaches. Asserted against the slice
-        so the seed's silence about coordinators is a stated fact rather than
-        an omission a later edit can quietly undo.
+        The rollup drives the waves once the contract passes, and resolves its
+        own coordinator when it does. Treated as a precondition here, an unwired
+        one would fail an initiative over a subsystem the approval path never
+        reaches. Asserted against the slice so the seed's silence about
+        coordinators is a stated fact rather than an omission a later edit can
+        quietly undo.
         """
         state, engine, backend = await _seed(
             task=_task("parent-1"), plan=_durable_plan("parent-1")
