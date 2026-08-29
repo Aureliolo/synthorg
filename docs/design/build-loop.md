@@ -227,7 +227,11 @@ that boots the result.
 asks for a passing recorded run of each declared command before it accepts a
 unit, and the set it asks for is derived from the manifest rather than listed
 anywhere, so a field added without a reader fails its own gate instead of
-becoming a knob an operator sets in vain. A coverage floor is declared inside
+becoming a knob an operator sets in vain. The evidence is confined to the
+execution the test verdict was drawn from: a receipt vouches for the code its
+own run saw, so a session that linted, failed its tests, then passed them on a
+later run that only ran tests would otherwise complete on a lint receipt for a
+file the linter never read. A coverage floor is declared inside
 the test command, where the runner enforces it by exit status: a separate
 number would be a second owner of one figure, and the one that nothing reads is
 always the one somebody sets.

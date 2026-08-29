@@ -340,9 +340,16 @@ class TestWhatTheReadItselfRefuses:
         (workspace / "reports").rmdir()
         (workspace / "reports").symlink_to(outside, target_is_directory=True)
 
-        # ELOOP is what POSIX gives O_NOFOLLOW on a symlink, and the message
-        # comes from the platform so it matches whatever the OSError carries.
-        with pytest.raises(OSError, match=re.escape(os.strerror(errno.ELOOP))):
+        # The assertion is that the open was REFUSED, not which code carried
+        # the refusal: the descent asks for O_DIRECTORY and O_NOFOLLOW at once
+        # and a symlinked directory violates both, so whether the kernel
+        # answers ENOTDIR or ELOOP is its own evaluation order. Pinning one
+        # would fail on a platform that refuses just as firmly by the other.
+        # The messages come from the platform, so they match what it raises.
+        refusals = "|".join(
+            re.escape(os.strerror(code)) for code in (errno.ENOTDIR, errno.ELOOP)
+        )
+        with pytest.raises(OSError, match=refusals):
             pending_report._open_within(root, resolved)
 
     def test_a_report_past_the_ceiling_is_refused(
