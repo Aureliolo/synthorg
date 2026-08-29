@@ -77,11 +77,22 @@ This flag is independent of the `wt-synthorg.ps1` helper's `-NoLaunch` flag: whe
 
 ### Directory naming
 
-Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (NO `wt-` prefix); the `wt-` prefix is added exclusively by the directory-path template:
-- Example: branch `feat/delegation-loop-prevention` → slug `delegation-loop-prevention` → directory `../synthorg-wt-delegation-loop-prevention`
+The directory name is auto-derived from the branch name. Produce a bare `<slug>`; it is the whole directory name, since the shared parent already says these are worktrees:
+- Example: branch `feat/delegation-loop-prevention` → slug `delegation-loop-prevention` → directory `C:/Users/Aurelio/synthorg-worktrees/delegation-loop-prevention`
 - Slug derivation: strip everything up to and including the first `/` in the branch name (covers `feat/`, `fix/`, `refactor/`, `chore/`, `docs/`, `test/`, `perf/`, `ci/`). Then **replace any remaining `/` characters with `-`** so nested branches like `feat/foo/bar` become slug `foo-bar` (never `foo/bar`). The slug must match `^[a-zA-Z0-9._-]+$` after derivation; reject and abort if it does not.
-- Directory template: `../<repo-name>-wt-<slug>` where `<slug>` is the bare derived slug (no `wt-` prefix on the slug itself). The `wt-` in the template is the only source of that prefix, so there is never a double prefix.
-- Repo name extracted from the repository's canonical root metadata (e.g. `basename $(git rev-parse --show-toplevel)`), not the current working directory basename. If running inside a linked worktree, derive the base repo name from shared Git metadata before composing `../<repo-name>-wt-<slug>`.
+- Slug validation, before the directory is created. The derivation collapses `/` to `-`, so it is not injective: `feat/foo/bar` and `feat/foo-bar` both yield `foo-bar`, and the second branch would be handed a directory already belonging to the first. Reject rather than disambiguate, so one branch never silently adopts another's tree:
+  - **Collision**: if `$WORKTREE_ROOT/<slug>` already exists, abort naming the branch that holds it (`git worktree list --porcelain -z`). Two branches wanting one directory is a branch-naming problem to fix upstream, not something to paper over with a numeric suffix nobody can map back to a branch.
+  - **Windows-reserved basename**: reject `CON`, `PRN`, `AUX`, `NUL`, `COM0`-`COM9` and `LPT0`-`LPT9`, case-insensitively and whether or not an extension follows (`con`, `CON.txt` and `Com1.old` are all reserved). Windows refuses to create these at any path depth, so the failure would otherwise surface as an opaque OS error mid-`git worktree add`.
+  - **Trailing dot or space**: reject a slug ending in `.` or a space. Windows silently strips both, so the created directory does not carry the name that was asked for and no later lookup by slug finds it.
+- Directory template: `$WORKTREE_ROOT/<slug>`, an ABSOLUTE path. `$WORKTREE_ROOT` is `<repo-name>-worktrees` sitting beside the MAIN repository root. Create it if it does not exist; every worktree shares it, so a worktree never lands beside unrelated directories or in one named for temporary files.
+- Both halves of that path come from the **shared** Git directory, and the result is absolute rather than `../`-relative. Each half fails the same way from a linked worktree and they compound: `git rev-parse --show-toplevel` answers with the *linked worktree's* root, so the repo name comes out as the slug, and a leading `../` resolves against the current directory, so the parent comes out as the worktrees root itself. Setup run from a worktree therefore targets `<worktree-root>/<worktree-root>/<slug>`, nested one level inside the shared root. `--git-common-dir` names the main repository's `.git` from every checkout, so its parent is the main root and the answer holds wherever the command runs:
+
+  ```bash
+  MAIN_ROOT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+  WORKTREE_ROOT="$(dirname "$MAIN_ROOT")/$(basename "$MAIN_ROOT")-worktrees"
+  ```
+
+  Quote every substitution and every later use of `$WORKTREE_ROOT`; a repository path may contain spaces.
 
 ### Steps
 
@@ -149,7 +160,7 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
 
 4. **For each worktree definition**, run in sequence:
 
-   a. Determine the directory path: `../<repo-name>-wt-<slug>` (e.g. `../synthorg-wt-delegation-loop-prevention`)
+   a. Determine the directory path: `"$WORKTREE_ROOT/<slug>"` (see "Directory naming" for the derivation; absolute, so a setup run from inside a linked worktree targets the shared root rather than nesting under itself), creating the parent if absent. One root holds every worktree, so nothing durable lands in a directory named for temporary files.
 
    b. **Path A (helper present)**: one call per worktree.
 
@@ -337,7 +348,7 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
    wt.exe -w 0 new-tab --title "<slug>" -d "<forward-slash-path>"
    ```
 
-   Use forward-slash paths (`C:/Users/Aurelio/synthorg-wt-<slug>`) to avoid Bash interpreting `\t` / `\U` / `\N` as escape sequences. `-w 0` targets the current Windows Terminal window. No trailing command. See the "Design note (do NOT regress)" block under the `launch` subcommand below for why.
+   Use forward-slash paths (`C:/Users/Aurelio/synthorg-worktrees/<slug>`) to avoid Bash interpreting `\t` / `\U` / `\N` as escape sequences. `-w 0` targets the current Windows Terminal window. No trailing command. See the "Design note (do NOT regress)" block under the `launch` subcommand below for why.
 
    If not in Windows Terminal or `wt.exe` is missing, skip auto-launch and instead tell the user to run `cd <path> && claude` manually in each target terminal.
 
@@ -354,7 +365,7 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
    ~~~text
    ### <slug>
 
-   **Path:** `C:\Users\Aurelio\synthorg-wt-<slug>`
+   **Path:** `C:\Users\Aurelio\synthorg-worktrees\<slug>`
 
    Prompt to paste into the claude REPL (after running `claude` in the tab):
 
@@ -403,16 +414,16 @@ Open each worktree as a **plain terminal tab** in the current Windows Terminal w
 2. **List worktrees (excluding main):**
 
    ```bash
-   git worktree list --porcelain
+   git worktree list --porcelain -z
    ```
 
-   Parse into `(path, branch)` pairs. Skip the main worktree (matches `git rev-parse --show-toplevel`). If filtering by `<name>`, keep only worktrees whose path suffix matches.
+   Parse into `(path, branch)` pairs, taking the ENTIRE value after `worktree ` up to the NUL. `-z` is required: without it the records are newline-terminated and the path is neither quoted nor escaped, so a whitespace split truncates `C:/Users/Dev Projects/wt` to `C:/Users/Dev` and both the suffix filter and the tab's `-d` then receive a directory that does not exist. Skip the main worktree, identified as the **first** `worktree` entry the output lists, which is the main one from every checkout. Do not match against `git rev-parse --show-toplevel`: run from inside a linked worktree it names that worktree, so the skip drops the one the user is sitting in and opens a tab for the main repository instead. If filtering by `<name>`, keep only worktrees whose path suffix matches.
 
 ### Steps
 
 1. **For each worktree**, derive:
-   - Path in **forward-slash form** (e.g. `C:/Users/Aurelio/synthorg-wt-<slug>`). Windows Terminal's `-d` flag accepts forward slashes natively and this avoids shell escape-sequence risk (e.g. `\t` in a Bash double-quoted string would be interpreted as a tab character, and `\U` / `\N` can trigger warnings or unicode-escape behavior in some shells). Do NOT emit backslash paths from the Bash tool.
-   - Tab title: the dir suffix after `wt-` (e.g. `tighten-workflow-permissions`), truncated to ~30 chars.
+   - Path in **forward-slash form** (e.g. `C:/Users/Aurelio/synthorg-worktrees/<slug>`). Windows Terminal's `-d` flag accepts forward slashes natively and this avoids shell escape-sequence risk (e.g. `\t` in a Bash double-quoted string would be interpreted as a tab character, and `\U` / `\N` can trigger warnings or unicode-escape behavior in some shells). Do NOT emit backslash paths from the Bash tool.
+   - Tab title: the directory name (e.g. `tighten-workflow-permissions`), truncated to ~30 chars.
 
 2. **Spawn one tab per worktree, sequentially:**
 
@@ -449,10 +460,10 @@ Remove worktrees and clean up branches after PRs are merged.
 1. **List current worktrees:**
 
    ```bash
-   git worktree list
+   git worktree list --porcelain -z
    ```
 
-   If only the main worktree exists, report "No worktrees to clean up." and stop.
+   Parsed, so `--porcelain -z` rather than the bare form: every later step takes one of these paths and hands it to `git -C`. If only the main worktree exists, report "No worktrees to clean up." and stop.
 
 2. **Pull latest main:**
 
@@ -546,18 +557,20 @@ Show current worktree state and how they compare to main.
 1. **List worktrees:**
 
    ```bash
-   git worktree list
+   git worktree list --porcelain -z
    ```
+
+   Parsed, so `--porcelain -z` rather than the bare form: steps 2 and 4 hand each path to `git -C`.
 
 2. **For each non-main worktree**, show:
    - Branch name
    - How many commits ahead/behind main:
      ```bash
-     git -C <path> rev-list --left-right --count main...<branch>
+     git -C "<path>" rev-list --left-right --count "main...<branch>"
      ```
    - Whether it has uncommitted changes:
      ```bash
-     git -C <path> status --short
+     git -C "<path>" status --short
      ```
 
 3. **Check for corresponding PRs:**
@@ -571,9 +584,9 @@ Show current worktree state and how they compare to main.
 4. **Check dependency staleness** for each worktree. Compare lock files against main to detect if deps need re-syncing after a rebase:
 
    ```bash
-   git -C <path> diff --quiet main -- uv.lock
-   git -C <path> diff --quiet main -- web/package-lock.json
-   git -C <path> diff --quiet main -- cli/go.sum
+   git -C "<path>" diff --quiet main -- uv.lock
+   git -C "<path>" diff --quiet main -- web/package-lock.json
+   git -C "<path>" diff --quiet main -- cli/go.sum
    ```
 
    Each command exits 0 if no difference, 1 if different. If any lock file differs from main and the worktree is behind, flag it as "deps stale" in the status table.
@@ -581,10 +594,10 @@ Show current worktree state and how they compare to main.
 5. **Present a summary table** (show both ahead AND behind counts):
 
    ```text
-   Worktree             | Branch                    | vs Main            | PR     | Status     | Deps
-   wt-delegation        | feat/delegation-loop-prev | +5 ahead           | #142   | clean      | ok
-   wt-parallel          | feat/parallel-execution   | +3 ahead -2 behind | --     | 2 modified | stale
-   wt-memory            | feat/memory-layer         | up to date         | #155   | clean      | ok
+   Worktree                   | Branch                         | vs Main            | PR     | Status     | Deps
+   delegation-loop-prevention | feat/delegation-loop-prevention | +5 ahead           | #142   | clean      | ok
+   parallel-execution         | feat/parallel-execution         | +3 ahead -2 behind | --     | 2 modified | stale
+   memory-layer               | feat/memory-layer               | up to date         | #155   | clean      | ok
    ```
 
 ---
@@ -619,8 +632,10 @@ If no issues specified, try to detect from current worktree branches or ask via 
 
 4. **Identify current active worktrees** (if any):
    ```bash
-   git worktree list
+   git worktree list --porcelain -z
    ```
+
+   Parsed, so `--porcelain -z` rather than the bare form: the rendered tree matches these paths against issue assignments.
 
 5. **Render the tree** showing:
    - Each tier with issues, their state (DONE/OPEN), priority labels
@@ -666,7 +681,7 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
 2. **For each non-main worktree**, first check for uncommitted changes (hard prerequisite):
 
    ```bash
-   git -C <path> status --short
+   git -C "<path>" status --short
    ```
 
    If dirty, warn and skip immediately: "Worktree <name> has uncommitted changes. Skipping rebase."
@@ -674,7 +689,7 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
 3. **Then check ahead/behind status relative to main:**
 
    ```bash
-   git -C <path> rev-list --left-right --count main...<branch>
+   git -C "<path>" rev-list --left-right --count "main...<branch>"
    ```
 
    This outputs two tab-separated numbers: `<left>\t<right>` where left = commits on main not on branch (behind), right = commits on branch not on main (ahead).
@@ -686,12 +701,12 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
 4. **For approved worktrees**, rebase:
 
    ```bash
-   git -C <path> rebase main
+   git -C "<path>" rebase main
    ```
 
    If rebase fails (conflicts), abort and report:
    ```bash
-   git -C <path> rebase --abort
+   git -C "<path>" rebase --abort
    ```
 
 5. **Re-sync dependencies** for each successfully rebased worktree. Lock files (`uv.lock`, `package-lock.json`, `go.sum`) may have changed after rebase:
@@ -707,7 +722,7 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
 6. **Verify:**
 
    ```bash
-   git -C <path> log --oneline -1
+   git -C "<path>" log --oneline -1
    ```
 
 7. Report: "N worktrees rebased to <commit> and deps re-synced. M skipped (have local commits or dirty state)."
@@ -719,10 +734,14 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
 - **Never force-remove** a worktree without asking the user first.
 - **Never delete branches** without checking PR merge status first.
 - **Always check `.claude/` local files exist** before copying; warn if missing.
-- **Repo name detection**: extract from the repository's canonical root (`basename $(git rev-parse --show-toplevel)`), not the current directory basename. Strip any existing `wt-` prefix to avoid nested names when running from inside a linked worktree.
+- **Repo name detection**: `basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"`, never `--show-toplevel` and never the current directory basename. Both of those answer with the linked worktree's own root when the command runs from inside one, which is the slug rather than the repo name; `--git-common-dir` names the main repository's `.git` from every worktree. Quote every substitution so a repository path containing spaces survives.
 - **Owner/repo detection**: extract from `git remote get-url origin`.
 - **Platform-aware paths**: derive worktree absolute paths dynamically at runtime. On Windows, convert to backslash paths for user-facing output. The `cd <path> && claude` instructions are for the user's own terminal, not Bash tool invocations.
-- Worktree directories are always siblings of the main repo directory (`../`).
+- **Path handling (CRITICAL)**: a repository path may contain spaces (`C:/Users/Dev Projects/synthorg`), and nothing in the toolchain quotes one for you. Three rules, applied at EVERY site rather than at the ones that have bitten so far:
+  - **Quote every interpolated path**, `git -C "<path>"` never `git -C <path>`. Unquoted, a path with a space becomes two arguments and git reads the tail as a subcommand or a pathspec, so the command fails or, worse, silently operates on the wrong thing. This covers every branch name interpolated beside one, for the same reason.
+  - **Enumerate with `git worktree list --porcelain -z`** wherever the output is PARSED. `--porcelain` does not quote or escape paths, so a space-splitting parser truncates `C:/Users/Dev Projects/wt` to `C:/Users/Dev`; `-z` terminates each field with NUL, which no path can contain. Take the whole value after `worktree `, never the first whitespace-delimited token. Bare `git worktree list` is for output a human READS (its column padding is not a format); it must never feed a parser.
+  - **Build paths absolute, never `../`-relative.** A relative path resolves against wherever the command happens to run, which for this skill is as often a linked worktree as the main root. Compose from `$WORKTREE_ROOT` (see "Directory naming"), which is derived from the shared Git directory and is the same string from every checkout.
+- Worktree directories always live under `$WORKTREE_ROOT`, a sibling of the MAIN repo directory, resolved absolutely so the answer does not depend on which checkout the command ran from.
 - When generating prompts, read the actual issue bodies. Do not guess or use stale information.
 - Parse `spec:*` labels to auto-match source directories for prompt generation.
 - Parse `## Dependencies` sections to auto-detect implementation order.

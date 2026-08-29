@@ -95,12 +95,13 @@ Default invocation (no args) does the full bring-up:
 
 4. **Launch the frontend** (background) on port 3000 so existing bookmarks and
    the backend's expected origin match, with full logs. Create the log's parent
-   first (`mkdir -p C:/tmp`): a fresh Windows host has no `C:/tmp`, and the
-   launch then fails opening a log rather than starting Vite. Then, in the Bash
-   tool's background mode:
+   first (`mkdir -p logs`): a fresh clone has no `logs/`, and the launch then
+   fails opening a log rather than starting Vite. It is gitignored, so the log
+   stays out of the tree while remaining where the next session looks. Then, in
+   the Bash tool's background mode:
 
    ```bash
-   bash -o pipefail -c 'cd web && npm run dev -- --port 3000 --strictPort 2>&1 | tee C:/tmp/synthorg-dev-server.log'
+   bash -o pipefail -c 'cd web && npm run dev -- --port 3000 --strictPort 2>&1 | tee ../logs/synthorg-dev-server.log'
    ```
 
    The `tee` is not decoration: step 5 reports that log path and `--status`
@@ -130,7 +131,7 @@ Default invocation (no args) does the full bring-up:
 - **Logs are the contract.** The backend's are `make dev-logs`, which resolves
   the container from the running stack rather than a fixed name (`--data-dir`
   and `SYNTHORG_STACK_PROJECT` both rename it); the frontend's are
-  `C:/tmp/synthorg-dev-server.log`. Surface both so the user sees every error.
+  `logs/synthorg-dev-server.log`. Surface both so the user sees every error.
 - **Auth bypass (no login screen):** the overlay sets
   `SYNTHORG_DEV_AUTH_BYPASS=true`, which exposes the gated, password-free
   `POST /auth/dev-login`; the Vite frontend (`web/.env`'s

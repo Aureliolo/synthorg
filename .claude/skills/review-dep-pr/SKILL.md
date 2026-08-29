@@ -436,7 +436,7 @@ Follow-ups: none.
 EOF
 
 # Long rationale via temp file (when heredoc gets unwieldy or you want to review the body before posting)
-gh pr review <number> --approve --body-file /tmp/dep-approval-<number>.txt
+gh pr review <number> --approve --body-file <your session scratchpad>/dep-approval-<number>.txt
 
 # One-liner only when the rationale truly fits on one line
 gh pr review <number> --approve --body "Decision: lockfile-only refresh; CI green; no source diffs. Changelog digest: not applicable for lockFileMaintenance. Follow-ups: none."
