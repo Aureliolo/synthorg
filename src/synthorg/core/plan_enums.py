@@ -61,7 +61,7 @@ class PlanStatus(StrEnum):
 
 #: Statuses from which an operator rework / request-changes is accepted. A
 #: transient PLANNING shell (no items yet), a dispatched plan (APPROVED /
-#: EXECUTING), and every terminal plan are excluded; edits on them are rejected
+#: SKELETON / EXECUTING), and every terminal plan are excluded; edits are rejected
 #: with a conflict. Reworking a dispatched plan is a re-plan, which supersedes
 #: the current revision rather than editing it in place.
 REWORKABLE_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
@@ -70,7 +70,7 @@ REWORKABLE_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
 
 #: Terminal statuses: the plan has been delivered, declined, retired, or failed
 #: to decompose, and has no remaining lifecycle hops. APPROVED is deliberately
-#: absent: it dispatches into EXECUTING and is therefore mid-lifecycle.
+#: absent: it opens SKELETON and is therefore mid-lifecycle.
 TERMINAL_STATUSES: Final[frozenset[PlanStatus]] = frozenset(
     {
         PlanStatus.COMPLETED,
