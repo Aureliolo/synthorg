@@ -480,19 +480,54 @@ whoever is next and hope.
 
 The design is not derived from first principles. It is derived from a corpus of
 recorded corrections: 285 written-down lessons and 127 substantial session
-transcripts of a human supervising agents on this codebase. Every class below
-is a thing a human had to say out loud, and each one names the mechanism here
-that removes the need to say it again.
+transcripts, 223 MB in total, of one operator supervising agents on this
+codebase. Every class below is a thing a human had to say out loud, usually
+more than once, and each names the mechanism that removes the need to say it
+again.
+
+### The dominant one, by a wide margin
+
+**An agent deciding for itself that it is finished.** It is the top or
+near-top theme in every batch of transcripts independently, and the largest
+single count in the corpus: 51 sessions ended with work left unfinished. It is
+also the only class that reliably produces profanity.
+
+The mechanism the operator arrived at on their own is the right one, and it is
+structural rather than a matter of diligence: **there is no "done" an agent can
+declare.** Done is computed. A unit reaches a terminal state when its contract
+test passes and it broke nothing else, and a unit that stops anywhere else has
+failed rather than finished. Stopping is not an outcome, so it cannot be
+mistaken for one.
+
+This generalises past stopping, and once stated that way it absorbs most of the
+rest of the corpus:
+
+**Every stage transition carries machine-checkable conditions on both sides,
+and the transition is performed by the system rather than asserted by the party
+doing the work.**
+
+### The classes, and what each demands
 
 | Class | What it looks like | Mechanism |
 | --- | --- | --- |
+| **Self-declared completion** | Work stops mid-flow, or "done" is announced with objectives outstanding | No agent-declarable done; a terminal state is computed from the contract test |
+| **Premature advancement** | A stage opens before its prerequisites hold: a PR opened before every agent reported, a merge landing on a review still in flight | Each transition is gated on a checkable precondition, re-read immediately before the transition rather than earlier in the turn |
 | **Verification honesty** | A setting is changed, it parses, success is reported, and the value never reached the wire | The system runs every deterministic check; an agent-reported result is never evidence |
-| **Premature advancement** | A stage opens before its prerequisites reported. *"Why did you open the PR if not all agents reported?"* | A slice does not close until every unit in it has a terminal outcome |
-| **Unauthorised mutation** | An irreversible action taken without being asked for | Irreversible and outward decisions stay with the operator at every autonomy level |
-| **Scope integrity** | The job quietly shrinks when it gets hard, and the shrink is reported as prudence | A finding is the only way scope changes, and it is recorded |
-| **Machinery health** | Nobody notices that the checks have become slow or stopped earning their cost | The machinery budget, and the meta-finding on dismissal rate |
-| **Change amplification** | Adding a route in the right file and the wrong registry: it type-checks, it lints, it passes every gate, and it serves 404 | The gate config is part of the contract, so a capability declares the whole set of things that must move together |
-| **Knowledge loss** | The same environment trap is rediscovered every session | A lesson that is mechanical becomes a gate; one that is judgement becomes a brief line. Neither stays only in a transcript |
+| **Asserted completeness** | "We are done" with scheduled jobs unaccounted for, or a partial list where a full one was asked for | The complete set is derived, never enumerated by the party reporting on it; an unaccounted member fails the check |
+| **Unauthorised action** | Issues filed, pull requests opened or closed, implementation begun, scope reduced, none of it asked for | Outward and irreversible actions stay with the operator at every autonomy level; scope is never reduced by the party doing the work |
+| **Procedure drift** | A written procedure is loaded and then not followed | A procedure expressed as prose can be drifted from; the same procedure expressed as gates and preconditions cannot. This is the argument for the whole mechanical split |
+| **Silent waiting** | A unit blocked on something says nothing, and is indistinguishable from a unit that has died | A blocked unit names its blocker in a readable state. Silence is not a state, and time-in-wait is budgeted |
+| **Lost decisions** | A settled question is re-opened, or previously approved wording is silently replaced | Decisions are durable and addressable; re-opening one is an operator action |
+| **Duplicated work** | The same check is run locally that the gate will run again, or a rate-limited reviewer is pinged inside its window | Content-addressed results keyed on `(check_id, tree_sha, config_sha)`; a check already run on this tree is read, not repeated |
+| **Workaround before diagnosis** | A bypass is offered for a failing gate instead of the gate's cause being found | Investigation dispatched automatically on the second failure of anything; its output is a finding, never code |
+| **Unbounded parallelism** | Enough concurrent work is launched to exhaust the host | Concurrency and spend are budgeted per slice, and the budget is a precondition of dispatch |
+| **Machinery health** | Nobody notices the checks have become slow or stopped earning their cost | The machinery budget, and the meta-finding on dismissal rate |
+| **Change amplification** | A route added in the right file and the wrong registry: it type-checks, it lints, it passes every gate, and it serves 404 | The gate config is part of the contract, so a capability declares the whole set of artefacts that must move together |
+| **Knowledge loss** | The same trap is rediscovered every session | A mechanical lesson becomes a gate, a judgement one becomes a line in a brief. Neither stays only in a transcript |
+| **Late defect discovery** | Core defects in planning, reconciliation and delivery keep surfacing during live runs rather than before them | Reconnaissance establishes the facts and the skeleton proves the contract compiles, both before any leaf builds on either |
+| **Lost vision** | Design decisions accumulate until nobody can say which problem they serve: *"what is the goal. i lost the vision. does it make sense?"* | Every decision cites the charter objective it serves. A decision citing none is itself a finding |
+| **Unsolicited output** | Deliverables produced that nobody asked for | A unit produces what its contract declares. Anything else is out of scope by construction |
+| **Ceremony without value** | The route from finished work to landed work feels heavier than the work: *"why is it so complicated for the agents to submit work?"* | The internal review object is local (base, head, diff, gate results, verdict). No forge, no network, no external account |
 
 Two of these were reproduced while writing this page, which is the argument for
 taking them seriously rather than a coincidence worth mentioning.
