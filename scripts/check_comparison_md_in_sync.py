@@ -36,6 +36,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 import yaml
+from pydantic import BaseModel, ConfigDict
+
+from synthorg.core.boundary import parse_typed
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -53,6 +56,26 @@ _DERIVED_DATE_LINE: Final[re.Pattern[str]] = re.compile(
     r"^(Comparison data last changed: ).*$", re.MULTILINE
 )
 _DERIVED_DATE_MASK: Final[str] = r"\1<derived from git>"
+
+
+class _CompetitorsMeta(BaseModel):
+    """The ``meta`` block of ``data/competitors.yaml``.
+
+    Only ``last_updated`` is read here; the generator owns the rest. Extra keys
+    are accepted so a field added for the generator does not fail this gate.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="allow", allow_inf_nan=False)
+
+    last_updated: str | None = None
+
+
+class _CompetitorsFile(BaseModel):
+    """The top level of ``data/competitors.yaml``, as far as this gate reads."""
+
+    model_config = ConfigDict(frozen=True, extra="allow", allow_inf_nan=False)
+
+    meta: _CompetitorsMeta = _CompetitorsMeta()
 
 
 def _load_generator() -> ModuleType:
@@ -92,8 +115,8 @@ def _declares_auto_date(gen_mod: ModuleType) -> bool:
         True when ``meta.last_updated`` is the auto sentinel.
     """
     raw = yaml.safe_load(gen_mod.DATA_FILE.read_text(encoding="utf-8"))
-    declared = raw.get("meta", {}).get("last_updated")
-    return bool(declared == gen_mod.AUTO_SENTINEL)
+    parsed = parse_typed("comparison.yaml", raw, _CompetitorsFile)
+    return bool(parsed.meta.last_updated == gen_mod.AUTO_SENTINEL)
 
 
 def _mask_derived_date(text: str) -> str:

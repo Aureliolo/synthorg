@@ -11,6 +11,8 @@ Pins the gate's contract:
 * the git-derived date line differs but the content does not, under the
   ``auto`` sentinel -> exit 0
 * the same date difference under a pinned date -> exit 1
+* a YAML whose ``meta`` block is not a mapping -> exit 1 with a clean
+  diagnostic, because the typed parse rejects it before any field is read
 """
 
 import importlib.util
@@ -174,6 +176,38 @@ def test_pinned_date_difference_is_still_drift(tmp_path: Path) -> None:
         ),
     ):
         assert check.main() == 1
+
+
+@pytest.mark.unit
+def test_malformed_meta_block_returns_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A ``meta`` block that is not a mapping fails cleanly, not with a crash.
+
+    Reading ``meta.last_updated`` off the raw mapping raised ``AttributeError``
+    from inside the gate. The typed parse refuses the shape first, so the
+    operator gets the gate's own diagnostic and an exit code.
+    """
+    committed = tmp_path / "comparison.md"
+    committed.write_text("EXPECTED", encoding="utf-8")
+    data_file = tmp_path / "data.yaml"
+
+    def _generator() -> SimpleNamespace:
+        data_file.write_text("meta: not-a-mapping\n", encoding="utf-8")
+        return SimpleNamespace(
+            _load_data=lambda: {"meta": {}},
+            _generate_markdown=lambda _data: "EXPECTED",
+            DATA_FILE=data_file,
+            AUTO_SENTINEL=_AUTO,
+        )
+
+    with (
+        patch.object(check, "REPO_ROOT", tmp_path),
+        patch.object(check, "_OUTPUT_FILE", committed),
+        patch.object(check, "_load_generator", _generator),
+    ):
+        assert check.main() == 1
+    assert "could not generate expected comparison page" in capsys.readouterr().err
 
 
 @pytest.mark.unit

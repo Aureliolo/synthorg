@@ -22,7 +22,7 @@ from tests.evals.prompt._harness import fingerprint_prompt
 
 # Pinned SHA-256[:16] of ``_SYSTEM_PROMPT``. Bump when the prompt
 # changes intentionally, paired with new behavioural coverage.
-_PINNED_CODE_MOD_PROMPT_FP = "6ae360befb461ca9"
+_PINNED_CODE_MOD_PROMPT_FP = "d99fed0bb370980b"
 
 
 @pytest.mark.unit

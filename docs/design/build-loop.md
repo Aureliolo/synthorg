@@ -100,7 +100,7 @@ Mechanical: {
   Budget: Machinery budget
   Boot: Increment boot
 
-  GateRunner -> Cache: "keyed on tree sha"
+  GateRunner -> Cache: "keyed on check + tree + config sha"
   Merger -> Trunk
   GateRunner -> Budget: "duration + cost"
 }
@@ -185,13 +185,27 @@ Reconnaissance runs again whenever a finding invalidates one of its facts.
 One agent, working serially, commits a compiling skeleton to the trunk:
 
 - module layout and type signatures
-- one failing test per acceptance criterion
+- one **pending** test per acceptance criterion
 - the project's own gate configuration
 
 **The contract becomes code.** A leaf's brief stops being a paragraph and
-becomes a signature plus a failing test that must pass. Two leaves implementing
+becomes a signature plus a pending test that must pass. Two leaves implementing
 against the same skeleton touch disjoint files, so their union is a three-way
 git merge rather than a reconstruction.
+
+**Pending is what keeps the skeleton compatible with a green trunk.** A test
+asserting a contract nobody has implemented yet fails, and a skeleton that
+committed a plainly failing suite would break the invariant the whole loop
+rests on before the first unit runs. So the gate configuration declares each
+criterion test pending, and the trunk suite reads a pending failure as green.
+
+Pending is strict in both directions, which is the half that makes it a
+contract rather than a mute button. A pending test that fails is green; a
+pending test that **passes** is red until the same commit clears its marker.
+A unit therefore cannot satisfy its contract and leave the marker behind for
+the next unit to inherit, and clearing the marker is the mechanical signal that
+the unit is done. A pending marker on a criterion no unit claims is a skeleton
+defect, caught at skeleton review while the whole contract is being read.
 
 The gate configuration is part of the skeleton because a definition of done
 with nowhere to live is a definition of done nobody enforces. It carries the
@@ -217,8 +231,9 @@ recursively.
 Each unit gets a git worktree off the current trunk commit and its own
 container. Unchanged from today, and this part works.
 
-A unit is done when the skeleton's failing test for it passes and nothing else
-broke. That is mechanically checkable and it is not a paragraph.
+A unit is done when the skeleton's pending test for it passes, its marker is
+cleared in the same commit, and nothing else broke. That is mechanically
+checkable and it is not a paragraph.
 
 ### Gates
 
@@ -305,16 +320,20 @@ a deadlock. See [Single-Owner Decisions](../reference/single-owner-decisions.md)
 | What a slice contains | slice planner | operator when a finding empties it |
 | Which gates apply | derived from the declared capability's profile | operator at skeleton review, when no profile fits and a project-local gate is drafted |
 | Whether this is what was wanted | operator, at the increment | never delegated; no machine makes this one |
-| Tightening or adding a gate | any agent | never |
+| Tightening an existing gate | any agent | never |
+| Adding a project-local gate | operator, at skeleton review | never |
 | Loosening or removing a gate | operator only | never |
 | Whether a unit is done | gates, then the reviewer | operator when review stalls, at `supervised` and stricter |
 | Whether it merges | the system | the author, when the merge conflicts or the trunk goes red |
 | Whether the machinery is healthy | the standards role | operator on a budget breach |
 | Whether a gate earns its keep | the meta-finding rule | operator |
 
-The asymmetry in the two gate rows is load-bearing. An agent blocked by a gate
-will always prefer to weaken it, so the ratchet turns one way: agents may
-tighten, only an operator may loosen.
+The asymmetry in the gate rows is load-bearing. An agent blocked by a gate will
+always prefer to weaken it, so the ratchet turns one way: agents may tighten an
+existing gate, only an operator may loosen one. Adding a gate is separated out
+because it is not the same act: a new project-local gate is drafted by an agent
+and approved by the operator at skeleton review, since a check nobody has read
+is a check nobody can be held to.
 
 ### Decisions are durable
 
@@ -448,6 +467,16 @@ exactly as a single gate does. It also raises one every **N slices that declared
 its capability**, so the review arrives on accumulated use rather than on a
 calendar.
 
+`N` is a field of the profile itself, not a global, because a profile that
+charges four checks and one that charges forty do not earn the same review
+rate; it defaults to 50 and only the operator may raise it, under the same
+ratchet as every other loosening. The count is over slices **declaring the
+capability**, across every project, and it is reset by the review it triggers.
+Declaring rather than running is deliberate: a slice that declared the
+capability paid for the profile's gates whether or not any of them fired, and
+counting fires would make the profile least examined exactly where it is most
+inert.
+
 The unit is deliberately work rather than time. A cadence in days reviews a repo
 that has been idle for a month and under-reviews one running hundreds of
 sessions a week, and neither has anything to do with whether the profile is
@@ -460,9 +489,16 @@ Retirement itself is the operator's, like every other loosening.
 
 ## The finding channel
 
-One stream, two producers, one shape. A lint error already carries a file and a
-line; so does a failing test frame; so does a reviewer's observation. The author
-works from one list and does not care which produced each entry.
+One stream, one shape, and every producer on it. A lint error already carries a
+file and a line; so does a failing test frame; so does a reviewer's
+observation. The author works from one list and does not care which produced
+each entry.
+
+Six things raise findings, and the list is exhaustive because a producer with
+nowhere to write is a failure path nobody sees: the **gate runner**, the
+**trunk gates** on a merge that goes red, the **reviewer**, the **builder**
+itself when it discovers it cannot proceed, the **standards role** on a
+machinery-budget breach, and the **operator** looking at an increment.
 
 ### Classes
 
@@ -473,6 +509,7 @@ works from one list and does not care which produced each entry.
 | `blocked-by-fact` | a fact the plan assumed is false | reconnaissance, then the slice planner |
 | `scope-conflict` | two units both claim the same ground | the slice planner |
 | `misaligned` | it works, and it is not what was wanted | the charter, then the slice planner |
+| `re-slice` | the plan is wrong and nothing built is affected | the slice planner |
 | `needs-human` | a question only the operator can settle | the operator |
 
 `blocked-by-fact` is the one the current design cannot express at all. It is
@@ -481,15 +518,34 @@ thing the whole approach rests on.
 
 ### Anchoring
 
-A finding carries a path and a line range within the diff under review. This is
-not presentation. A finding pointing outside the diff is about code this unit
-did not write and is subtracted automatically, the same way an output-policy
-guard subtracts findings a file already carried.
+A finding carries a **typed target**, and the type decides what anchoring
+means. Requiring a path and a line range of every finding would be requiring
+one of findings raised before any diff exists: `blocked-by-fact` is what
+reconnaissance has when a fact turns out to be false, and a budget breach or a
+`misaligned` verdict is about a record rather than a line.
+
+| Target | Names | Anchoring |
+| --- | --- | --- |
+| `code` | a path and a line range | must fall inside the diff under review |
+| `slice` | a unit or a slice | the unit id |
+| `plan` | the slice plan | the plan id |
+| `charter` | an acceptance criterion | the criterion |
+| `decision` | a recorded decision | the decision id |
+
+For a `code` target the diff bound is not presentation. A finding pointing
+outside the diff is about code this unit did not write and is subtracted
+automatically, the same way an output-policy guard subtracts findings a file
+already carried. The other four have no diff to be subtracted against, which is
+exactly why they need a target of their own: a pre-diff finding forced into a
+`code` shape has to invent a path, and an invented path is subtracted by the
+rule above and vanishes.
 
 ### Convergence
 
-Findings are keyed on `(path, line_range, severity, criterion)`, which makes
-rounds comparable.
+Findings are keyed on `(target, severity, criterion)`, where the target carries
+whatever identifies it: a path and line range for `code`, an id for the rest.
+That makes rounds comparable without making a line number a requirement of
+findings that never had one.
 
 ```mermaid
 flowchart TD
@@ -521,7 +577,7 @@ absence of state.
 | --- | --- |
 | `RUNNING` | Working, heartbeat current |
 | `BLOCKED(reason)` | Waiting, and naming what it waits on |
-| terminal | `DELIVERED`, `FAILED` or `ABANDONED`, each with an outcome record |
+| terminal | `DELIVERED`, `FAILED`, `LOST` or `ABANDONED`, each with an outcome record |
 
 `BLOCKED` carries a typed reason that names its subject: `awaiting-operator`
 names a finding, `awaiting-dependency` names a sibling unit,
@@ -531,7 +587,12 @@ the state this exists to eliminate.
 
 **Silence is a transition, not a state.** A unit that stops reporting without
 reaching a terminal state and without declaring a block is marked `LOST` once
-its heartbeat lapses, and `LOST` is a failure rather than a pause.
+its heartbeat lapses. `LOST` is terminal and it is a failure rather than a
+pause: it carries an outcome record like every other terminal, naming the last
+heartbeat and the lapse that ended it. It is kept distinct from `FAILED`
+because the two are different diagnoses. A `FAILED` unit reported why; a `LOST`
+one reported nothing, so the investigation it triggers is into the runner
+rather than into the work.
 
 Without that, every other property here is defeated by a unit that simply
 stops: the slice waits on something that will never report, and the loop reads

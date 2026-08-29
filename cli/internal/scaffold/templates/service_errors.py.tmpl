@@ -24,3 +24,14 @@ class {{.ClassName}}NotFoundError(NotFoundError):
     """Raised when a {{.ModuleDocSlug}} entity is not found."""
 
     default_message: ClassVar[str] = "{{.ClassName}} not found"
+
+
+class {{.ClassName}}AlreadyRunningError({{.ClassName}}Error):
+    """Raised when :meth:`start` is called on a service already running.
+
+    An inheritance alias of the subsystem base: it carries no distinct
+    client-facing semantics, so it reuses that class's ``error_code`` and
+    exists to name the condition at the raise site.
+    """
+
+    default_message: ClassVar[str] = "{{.ClassName}} service is already running"

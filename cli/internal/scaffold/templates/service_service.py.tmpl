@@ -19,6 +19,7 @@ rather than reimplementing either shape here.
 import asyncio
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.{{.Domain}}.errors import {{.ClassName}}AlreadyRunningError
 from synthorg.observability import get_logger
 from synthorg.observability.events.{{.Domain}} import (
     {{shout .Domain}}_SERVICE_STARTED,
@@ -52,11 +53,16 @@ class {{.ClassName}}Service:
         return self._running
 
     async def start(self) -> None:
-        """Run the service until :meth:`stop` is signalled."""
+        """Run the service until :meth:`stop` is signalled.
+
+        Raises:
+            {{.ClassName}}AlreadyRunningError: If the service is already
+                running.
+        """
         async with self._lifecycle_lock:
             if self._running:
                 msg = "{{.ClassName}}Service is already running"
-                raise RuntimeError(msg)
+                raise {{.ClassName}}AlreadyRunningError(msg)
             self._running = True
             self._stop_event.clear()
             logger.debug({{shout .Domain}}_SERVICE_STARTED)
