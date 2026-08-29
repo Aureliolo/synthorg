@@ -14,6 +14,24 @@ things: the recursion mechanism, the durable form the tree takes so an operator
 can review it and a dispatcher can run it, and the harness that measures what
 happens to the work as the tree deepens.
 
+!!! info "Scope"
+
+    [The Build Loop](build-loop.md) is authoritative on how work is planned and
+    assembled. This page owns the recursion mechanism, the durable tree, and the
+    depth experiment's evidence.
+
+    The build loop replaces whole-tree planning with **slice planning**: the
+    next set of concurrently-runnable units is planned against the current
+    trunk, with everything the previous slice learned. Depth is emergent there
+    rather than configured, so the depth cap this page treats as the
+    experiment's independent variable is a property of the harness, not a knob
+    the designed loop exposes. It also replaces bottom-up assembly with
+    continuous integration, which removes the fan-in cost the curves below are
+    measuring.
+
+    The evidence on this page therefore remains valid as a measurement of the
+    loop as built, and is not a measurement of the loop as designed.
+
 Recursion ships ON, and the sweep below is weaker evidence than it looks: its
 depth-1 cells scored 0 of 42 in both arms against 36 of 42 at depth 2, but that
 recording judged a merge on whether a path the PLANNER named before the tree

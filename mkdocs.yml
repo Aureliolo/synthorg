@@ -175,6 +175,7 @@ nav:
       - Agent MCP Governance: design/agent-mcp-governance.md
       - Mid-Flight Steering: design/mid-flight-steering.md
       - The Org Asks: design/org-questions.md
+      - The Build Loop: design/build-loop.md
       - Coordination & Resilience: design/coordination.md
       - Recursive Decomposition: design/recursive-decomposition.md
       - Verification & Quality: design/verification-quality.md
