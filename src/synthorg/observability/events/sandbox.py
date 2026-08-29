@@ -60,3 +60,8 @@ SANDBOX_CONTAINER_LOGS_COLLECT_FAILED: Final[str] = (
 SANDBOX_WORKSPACE_SHARING_UNAVAILABLE: Final[str] = (
     "sandbox.workspace.sharing.unavailable"
 )
+SANDBOX_BACKGROUND_JOB_STARTED: Final[str] = "sandbox.background_job.started"
+SANDBOX_BACKGROUND_JOB_START_FAILED: Final[str] = "sandbox.background_job.start.failed"
+SANDBOX_BACKGROUND_JOB_TIMED_OUT: Final[str] = "sandbox.background_job.timed_out"
+SANDBOX_BACKGROUND_JOB_REAPED: Final[str] = "sandbox.background_job.reaped"
+SANDBOX_BACKGROUND_JOB_CANCELLED: Final[str] = "sandbox.background_job.cancelled"

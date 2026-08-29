@@ -243,7 +243,13 @@ def build_kill_command(
     ``setsid`` made the job's own process a new session and process
     group leader, so its PID doubles as its process-group id: signalling
     the negative PID reaches the job and anything it forked, not just
-    the one process. Sends TERM, waits *grace_seconds*, then KILLs
+    the one process. That equivalence holds only because
+    :func:`build_start_command` never lets bash fork between the
+    ``setsid`` call and the real command -- see its own docstring for
+    why a redirection or a ``cd`` prefix reaching that invocation
+    directly breaks it, silently, with this function then signalling a
+    process group nothing is actually in. Sends TERM, waits
+    *grace_seconds*, then KILLs
     anything still standing; both signals are best-effort (a process
     that already exited answers with an ordinary "no such process",
     swallowed here rather than surfaced, since cancelling an already-

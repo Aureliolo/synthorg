@@ -1,0 +1,212 @@
+"""Sandbox-agnostic orchestration over persisted background-job records.
+
+Owns the read/write surface the Docker background-execution mixin,
+boot reconciliation, and the terminal tools all need, but knows
+nothing about Docker or ``aiodocker`` itself: killing a job's process
+is the caller's job (its container-exec mechanism lives beside the
+Docker sandbox code, not here), this class only decides WHICH rows
+need it and records the outcome.
+"""
+
+from collections.abc import Awaitable, Callable
+
+from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger
+from synthorg.observability.events.sandbox import (
+    SANDBOX_BACKGROUND_JOB_REAPED,
+    SANDBOX_BACKGROUND_JOB_TIMED_OUT,
+)
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence.background_job_protocol import (
+    LIVE_BACKGROUND_JOB_STATUSES,
+    BackgroundJobRecord,
+    BackgroundJobRepository,
+    BackgroundJobStatus,
+)
+
+logger = get_logger(__name__)
+
+#: A job past its own ceiling is force-cancelled with this reason
+#: recorded nowhere the agent reads (`ORPHANED`/`TIMED_OUT` cover the
+#: agent-visible status); logged for the operator instead.
+_TIMEOUT_REASON: str = "max_duration_seconds exceeded"
+
+
+class BackgroundJobRegistry:
+    """Read/write surface over :class:`BackgroundJobRepository`.
+
+    Constructed once per Docker sandbox backend and threaded into the
+    lifecycle-strategy factory (as the source data for ``pin_check``,
+    via the sandbox's own bound method -- this class holds no
+    container-exec capability itself), the background-execution mixin,
+    boot reconciliation, and the terminal tools' collaborator.
+    """
+
+    def __init__(
+        self,
+        repo: BackgroundJobRepository,
+        *,
+        clock: Clock | None = None,
+    ) -> None:
+        """Initialise the registry over *repo*.
+
+        Args:
+            repo: Backend-specific background-job repository.
+            clock: Clock seam; defaults to :class:`SystemClock`.
+        """
+        self._repo = repo
+        self._clock = clock or SystemClock()
+
+    async def get(self, job_id: NotBlankStr) -> BackgroundJobRecord | None:
+        """Read one job's tracking row.
+
+        Returns:
+            The persisted record, or ``None`` if no row exists.
+        """
+        return await self._repo.get(job_id)
+
+    async def save(self, record: BackgroundJobRecord) -> None:
+        """Persist *record* (insert or replace)."""
+        await self._repo.save(record)
+
+    async def count_live_by_owner(self, owner_id: NotBlankStr) -> int:
+        """Count jobs in a live status for one lifecycle owner.
+
+        Returns:
+            The number of rows for *owner_id* whose status is in
+            :data:`LIVE_BACKGROUND_JOB_STATUSES`.
+        """
+        return await self._repo.count_live_by_owner(owner_id)
+
+    async def list_by_owner(
+        self,
+        owner_id: NotBlankStr,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[BackgroundJobRecord, ...]:
+        """List jobs recorded against one lifecycle owner, newest-first.
+
+        Returns:
+            Job rows recorded against *owner_id*, newest-first.
+        """
+        return await self._repo.list_by_owner(owner_id, limit=limit, offset=offset)
+
+    async def list_live_by_container(
+        self, container_id: NotBlankStr
+    ) -> tuple[BackgroundJobRecord, ...]:
+        """List jobs in a live status for one container.
+
+        Unlike :meth:`list_by_container` (every row, any status, used
+        by :meth:`reap_for_container`), this is scoped to
+        :data:`LIVE_BACKGROUND_JOB_STATUSES` -- the question a pin
+        check and a job-limit check both actually ask.
+
+        Returns:
+            Live job rows recorded against *container_id*.
+        """
+        rows = await self._repo.list_by_container(container_id)
+        return tuple(r for r in rows if r.status in LIVE_BACKGROUND_JOB_STATUSES)
+
+    async def mark_terminal(
+        self,
+        record: BackgroundJobRecord,
+        status: BackgroundJobStatus,
+        *,
+        exit_code: int | None = None,
+    ) -> BackgroundJobRecord:
+        """Transition *record* to a new status and persist it.
+
+        Args:
+            record: The job row to update.
+            status: New status.
+            exit_code: Process exit code, when known.
+
+        Returns:
+            The updated, persisted record.
+        """
+        updated = record.model_copy(
+            update={
+                "status": status,
+                "exit_code": exit_code if exit_code is not None else record.exit_code,
+                "updated_at": self._clock.now(),
+            }
+        )
+        await self._repo.save(updated)
+        return updated
+
+    async def expire_overdue(
+        self,
+        container_id: NotBlankStr,
+        *,
+        kill_fn: Callable[[NotBlankStr, int], Awaitable[None]],
+    ) -> tuple[BackgroundJobRecord, ...]:
+        """Force-cancel any live job past its own duration ceiling.
+
+        D2's self-cleaning step: rather than a separate sweep task for
+        ``max_duration_seconds``, whatever already asks "is this
+        container pinned" (the lifecycle strategy's own grace/idle
+        recheck) also answers this, reusing that cadence instead of a
+        second polling loop.
+
+        Args:
+            container_id: Container to check.
+            kill_fn: Async callable killing a job's process group
+                inside its container -- the caller's own container-exec
+                mechanism; this class has none.
+
+        Returns:
+            The jobs that were still live after expiry (i.e. the ones
+            NOT force-cancelled by this call).
+        """
+        live = await self.list_live_by_container(container_id)
+        still_live: list[BackgroundJobRecord] = []
+        now = self._clock.now()
+        for record in live:
+            elapsed = (now - record.started_at).total_seconds()
+            if elapsed <= record.max_duration_seconds:
+                still_live.append(record)
+                continue
+            if record.pid is not None:
+                await kill_fn(container_id, record.pid)
+            await self.mark_terminal(record, BackgroundJobStatus.TIMED_OUT)
+            logger.warning(
+                SANDBOX_BACKGROUND_JOB_TIMED_OUT,
+                job_id=record.job_id,
+                container_id=container_id[:12],
+                elapsed_seconds=round(elapsed, 1),
+                max_duration_seconds=record.max_duration_seconds,
+                reason=_TIMEOUT_REASON,
+            )
+        return tuple(still_live)
+
+    async def reap_for_container(
+        self, container_id: NotBlankStr, *, reason: str
+    ) -> None:
+        """Mark every live job of a destroyed container ``ORPHANED``.
+
+        Wired into every existing container-teardown choke point
+        (``_destroy_handle``) plus boot reconciliation: a job whose
+        container is gone before it reached a terminal status on its
+        own has no process left to poll, cancel, or read output from.
+
+        Args:
+            container_id: The container that was (or is about to be)
+                torn down.
+            reason: Why -- logged, not persisted; the row's own
+                ``ORPHANED`` status is the durable signal.
+        """
+        rows = await self._repo.list_by_container(container_id)
+        live = [r for r in rows if r.status in LIVE_BACKGROUND_JOB_STATUSES]
+        for record in live:
+            await self.mark_terminal(record, BackgroundJobStatus.ORPHANED)
+            logger.info(
+                SANDBOX_BACKGROUND_JOB_REAPED,
+                job_id=record.job_id,
+                container_id=container_id[:12],
+                reason=reason,
+            )
+
+
+__all__ = ["BackgroundJobRegistry"]
