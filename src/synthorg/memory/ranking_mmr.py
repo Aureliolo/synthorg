@@ -18,6 +18,7 @@ from synthorg.observability.events.memory import (
     MEMORY_DIVERSITY_RERANK_FAILED,
     MEMORY_DIVERSITY_RERANKED,
 )
+from synthorg.observability.redaction import safe_error_description
 
 logger = get_logger(__name__)
 
@@ -264,7 +265,8 @@ def _mmr_rerank_generic(
             MEMORY_DIVERSITY_RERANK_FAILED,
             param="similarity_fn",
             input_count=len(scored),
-            error_type=type(exc).__qualname__,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
             reason="similarity_fn_failed_falling_back_to_relevance_order",
         )
         return scored
