@@ -463,13 +463,14 @@ stateDiagram-v2
     [*] --> Proposed: a profile, or a change to one, is drafted
     Proposed --> Profile: standards role settles it, at catalogue review
     Profile --> Proposed: every change, an addition included
-    Local --> UnderReview: meta-finding, dismissal rate high
-    Profile --> UnderReview: meta-finding, or N slices declared
-    UnderReview --> Local: operator keeps it
-    UnderReview --> Profile: operator keeps it
+    Local --> LocalUnderReview: meta-finding, dismissal rate high
+    LocalUnderReview --> Local: operator keeps it
+    LocalUnderReview --> Retired: operator retunes or drops it
+    Profile --> ProfileUnderReview: meta-finding, or N slices declared
+    ProfileUnderReview --> Profile: operator keeps it
+    ProfileUnderReview --> Retired: operator retunes or drops it
     Local --> Retired: operator loosens or removes
     Profile --> Retired: operator loosens or removes
-    UnderReview --> Retired: operator retunes or drops it
     Retired --> [*]
 ```
 
@@ -501,6 +502,14 @@ genuine tightening, so nothing has to be proven about it, but it is one every
 project declaring the capability inherits, and a project's operator approving
 work for projects they cannot see is the two-owner shape rather than the free
 direction. Catalogue review is where that reader exists.
+
+The review states are per scope for the same reason. A gate under review leaves
+it as whatever it entered as, so a project-local gate the operator keeps is
+still project-local and a profile the operator keeps is still a profile. One
+shared state with two unconditional exits would let a review promote a local
+gate, or demote a profile, without either passing the door its own scope
+requires, which is the ownership this section just established being undone by
+the state that watches its health.
 
 ### Gates are memories of mistakes
 
@@ -541,9 +550,17 @@ calendar.
 
 `N` is a field of the profile itself, not a global, because a profile that
 charges four checks and one that charges forty do not earn the same review
-rate; it defaults to 50 and only the operator may raise it, under the same
-ratchet as every other loosening. The count is over slices **declaring the
-capability**, across every project, and it is reset by the review it triggers.
+rate; it defaults to 50. Being a field of a central profile, it changes where
+every change to one does, at catalogue review, and the ratchet decides who
+settles it there. Raising it reviews the profile less often, which is a
+loosening, so the operator settles it and the standards role brings and records
+it; lowering it reviews more often, which needs nobody's permission and no
+proof, so the standards role settles that itself. Naming only "the operator"
+left the raise with no settled owner, since the operator of one project is not
+the operator of the others the profile charges, and a cadence is precisely the
+field a project blocked by a profile would want turned down. The count is over
+slices **declaring the capability**, across every
+project, and it is reset by the review it triggers.
 Declaring rather than running is deliberate: a slice that declared the
 capability paid for the profile's gates whether or not any of them fired, and
 counting fires would make the profile least examined exactly where it is most
