@@ -11,6 +11,17 @@ in-memory and compares the result against the committed file.
 The gate never writes the file; it only reads. Remediation is a single
 generator run.
 
+One rendered line is excluded from the comparison, and only when the YAML
+declares the ``auto`` sentinel: the "Comparison data last changed" date, which
+the generator derives from the committer date of the last commit touching
+``data/competitors.yaml``. A squash-merge mints a new commit with a new date,
+so the date the page must carry changes at the moment of merge, after the last
+point anyone could have regenerated it. That left main red on a page whose
+content was correct, and it recurred on every merge touching the YAML, because
+the gate was asserting a property the merge itself rewrites. A pinned date is
+authored content and stays compared: it cannot be changed by a merge, so drift
+there is real.
+
 Exit codes
 ----------
 * ``0`` -- committed Markdown matches the freshly-generated output.
@@ -19,9 +30,12 @@ Exit codes
 
 import difflib
 import importlib.util
+import re
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
+
+import yaml
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -31,6 +45,14 @@ _OUTPUT_FILE: Final[Path] = REPO_ROOT / "docs" / "reference" / "comparison.md"
 _GENERATOR_PATH: Final[Path] = REPO_ROOT / "scripts" / "generate_comparison.py"
 
 _REMEDIATION: Final[str] = "Run: uv run python scripts/generate_comparison.py"
+
+#: The one rendered line whose value the generator derives from git rather than
+#: from the YAML, and which a merge therefore rewrites out from under a
+#: correctly-generated page.
+_DERIVED_DATE_LINE: Final[re.Pattern[str]] = re.compile(
+    r"^(Comparison data last changed: ).*$", re.MULTILINE
+)
+_DERIVED_DATE_MASK: Final[str] = r"\1<derived from git>"
 
 
 def _load_generator() -> ModuleType:
@@ -55,6 +77,35 @@ def _expected_markdown(gen_mod: ModuleType) -> str:
     data = gen_mod._load_data()  # noqa: SLF001
     markdown: str = gen_mod._generate_markdown(data)  # noqa: SLF001
     return markdown
+
+
+def _declares_auto_date(gen_mod: ModuleType) -> bool:
+    """Report whether the YAML asks for a git-derived date.
+
+    Read from the raw file rather than from ``_load_data``, which has already
+    resolved the sentinel into a date and cannot say which it was.
+
+    Args:
+        gen_mod: The imported generator, for its sentinel and data path.
+
+    Returns:
+        True when ``meta.last_updated`` is the auto sentinel.
+    """
+    raw = yaml.safe_load(gen_mod.DATA_FILE.read_text(encoding="utf-8"))
+    declared = raw.get("meta", {}).get("last_updated")
+    return bool(declared == gen_mod.AUTO_SENTINEL)
+
+
+def _mask_derived_date(text: str) -> str:
+    """Blank the git-derived date so a merge-rewritten commit date is not drift.
+
+    Args:
+        text: Rendered Markdown, committed or freshly generated.
+
+    Returns:
+        The same text with the derived date line's value replaced.
+    """
+    return _DERIVED_DATE_LINE.sub(_DERIVED_DATE_MASK, text)
 
 
 def main() -> int:
@@ -82,6 +133,7 @@ def main() -> int:
     try:
         gen_mod = _load_generator()
         expected = _expected_markdown(gen_mod)
+        auto_date = _declares_auto_date(gen_mod)
     except Exception as exc:
         print(
             f"error: could not generate expected comparison page: "
@@ -89,6 +141,10 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+
+    if auto_date:
+        committed = _mask_derived_date(committed)
+        expected = _mask_derived_date(expected)
 
     # The generator joins lines without a trailing newline; normalise so a
     # final-newline-only difference does not flap the gate.
