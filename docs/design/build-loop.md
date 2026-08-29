@@ -306,6 +306,33 @@ The asymmetry in the two gate rows is load-bearing. An agent blocked by a gate
 will always prefer to weaken it, so the ratchet turns one way: agents may
 tighten, only an operator may loosen.
 
+### Decisions are durable
+
+Saying who owns a decision is half of it. The other half is that a decision,
+once made, stays made and stays findable, or a later unit that lacked the
+context quietly reverses it.
+
+Every decision the table names produces an addressable record carrying its
+`question`, its `answer`, its `owner`, the charter objective it `serves`, the
+`evidence` it rested on, and the decision it `supersedes` when it replaces one.
+Records are immutable: a change is a new record naming its predecessor, so
+"what did we decide, and why did it change" is answerable rather than
+reconstructed.
+
+Decisions travel with the work. A unit's brief carries the decisions in scope
+for it, so a leaf building against a contract is given the decisions that shaped
+that contract rather than re-deriving them.
+
+Re-opening one is an action rather than a drift. A `decision-stale` finding
+names the decision and the new fact that invalidates it; at `supervised` and
+stricter the operator settles it, and at `full` it proceeds automatically but is
+recorded and reported in the increment.
+
+`serves` is also what keeps the build anchored to what it is for. A decision
+citing no live charter objective is surfaced as a finding, which makes drift
+visible while it is happening rather than forty rounds later, and costs nothing
+to check because the citation is a required field rather than a judgement.
+
 ## The gate system
 
 ### Capabilities derive gates
@@ -423,6 +450,39 @@ same number of findings every round and never converges.
 A hard ceiling remains as a spend backstop. The normal exit is the progress
 test, and the loop records **which** ended it, because running out of budget
 and ceasing to converge are different diagnoses.
+
+## A unit is never silent
+
+A unit is in exactly one of three states. There is no fourth, and there is no
+absence of state.
+
+| State | Meaning |
+| --- | --- |
+| `RUNNING` | Working, heartbeat current |
+| `BLOCKED(reason)` | Waiting, and naming what it waits on |
+| terminal | `DELIVERED`, `FAILED` or `ABANDONED`, each with an outcome record |
+
+`BLOCKED` carries a typed reason that names its subject: `awaiting-operator`
+names a finding, `awaiting-dependency` names a sibling unit,
+`awaiting-gate` names a check, `awaiting-capacity` names a budget. A reason
+naming nothing is refused at the transition, because "blocked on something" is
+the state this exists to eliminate.
+
+**Silence is a transition, not a state.** A unit that stops reporting without
+reaching a terminal state and without declaring a block is marked `LOST` once
+its heartbeat lapses, and `LOST` is a failure rather than a pause.
+
+Without that, every other property here is defeated by a unit that simply
+stops: the slice waits on something that will never report, and the loop reads
+as working. It is the same defect as an agent declaring itself done, inverted.
+One asserts an outcome it did not earn; the other asserts nothing at all; both
+leave the system unable to tell success from absence.
+
+Every blocked unit and the subject it names is readable per slice, so "what is
+this run waiting on" is answered without reading a log. Time-in-wait is measured
+per reason and enters the machinery budget, and a unit blocked past that budget
+raises a finding owned by **the party that owns the blocker**, never by the unit
+that has been waiting.
 
 ## The machinery budget
 
@@ -557,6 +617,40 @@ produces a result that reads exactly like a measurement.
 - Depth as a configured parameter.
 - The fixed rework-round count as the only exit.
 - Agent-reported build and test results as evidence.
+
+## What this costs in enforced rules
+
+Two MANDATORY rules in `CLAUDE.md` are contradicted by this design. Stating
+that here is the point: a design page that silently conflicts with an enforced
+rule leaves the next contributor to find out at the gate, which is the change
+amplification class catalogued above.
+
+**Verified Initiative Completion.** The rule requires `INTEGRATING`, a gated
+root assembly task, before `EVALUATING`, and is enforced by
+`check_verified_completion_paths.py`. Assembly stops being a stage here, so
+`INTEGRATING` has nothing left to represent and no root assembly for its
+provenance rule to identify. `EVALUATING` survives untouched, and what the rule
+exists for, that an initiative cannot complete straight out of execution
+without the whole thing having been run and judged, is carried by the trunk
+invariant and the per-slice boot instead. The assembly stage goes; the
+verification it carried does not.
+
+**Dependency-Gated Waves.** The rule derives its population from the modules
+calling `build_execution_waves` and mandates four parking calls, with no
+baseline and no opt-out. Slices replace waves, so that derived population
+empties. Every question those calls answer is still live and still needs one
+owner: a unit whose declared inputs failed must not dispatch, a unit awaiting a
+person must be held without being recorded as failed, a run that stops must
+leave no row that nothing will move, and a unit routing could not place must not
+sit invisible. Each of those exists because a live run left rows with no exit,
+so they are restated against the new shape rather than dropped because the
+vocabulary changed. Re-planning each slice against the current trunk makes them
+easier to satisfy, not unnecessary.
+
+Unaffected, and depended upon: Roster-Held Gate Roles, whose reviewer selection
+and no-self-review constraints this design relies on unchanged. Strengthened:
+Single-Owner Decisions. The ownership table and the decision registry are that
+rule applied to this loop.
 
 ## Open questions
 
