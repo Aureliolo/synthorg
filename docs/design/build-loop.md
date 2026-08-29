@@ -495,7 +495,7 @@ observation. The author works from one list and does not care which produced
 each entry.
 
 Six things raise findings, and the list is exhaustive because a producer with
-nowhere to write is a failure path nobody sees: the **gate runner**, the
+nowhere to write is a failure path nothing reports: the **gate runner**, the
 **trunk gates** on a merge that goes red, the **reviewer**, the **builder**
 itself when it discovers it cannot proceed, the **standards role** on a
 machinery-budget breach, and the **operator** looking at an increment.
