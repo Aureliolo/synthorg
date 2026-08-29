@@ -337,7 +337,8 @@ a deadlock. See [Single-Owner Decisions](../reference/single-owner-decisions.md)
 | What a slice contains | slice planner | operator when a finding empties it |
 | Which gates apply | derived from the declared capability's profile | operator at skeleton review, when no profile fits and a project-local gate is drafted |
 | Whether this is what was wanted | operator, at the increment | never delegated; no machine makes this one |
-| Tightening an existing gate | any agent | never |
+| Adding a check to an existing gate | any agent | never |
+| Editing a check an existing gate already has | operator, at skeleton review | never |
 | Adding a project-local gate | operator, at skeleton review | never |
 | Loosening or removing a gate | operator only | never |
 | Whether a unit is done | gates, then the reviewer | operator when review stalls, at `supervised` and stricter |
@@ -346,11 +347,13 @@ a deadlock. See [Single-Owner Decisions](../reference/single-owner-decisions.md)
 | Whether a gate earns its keep | the meta-finding rule | operator |
 
 The asymmetry in the gate rows is load-bearing. An agent blocked by a gate will
-always prefer to weaken it, so the ratchet turns one way: agents may tighten an
-existing gate, only an operator may loosen one. Adding a gate is separated out
-because it is not the same act: a new project-local gate is drafted by an agent
-and approved by the operator at skeleton review, since a check nobody has read
-is a check nobody can be held to.
+always prefer to weaken it, so the ratchet turns one way, and it turns on the
+distinction between adding and editing rather than on anyone's judgement of
+which check is stricter. Adding is free because a configuration that only grows
+admits strictly less than it did; editing is not, because "this replacement is
+no weaker" is not a property the system can decide for arbitrary checks. The
+two operator rows are the ones an agent could otherwise use to walk the ratchet
+backwards: rewriting a check, and drafting a new gate nobody has read.
 
 ### Decisions are durable
 
@@ -439,7 +442,8 @@ stateDiagram-v2
     [*] --> Active: profile gate, reviewed once centrally
     Drafted --> Active: operator approves at skeleton review
     Drafted --> [*]: operator declines
-    Active --> Active: tightened by any agent
+    Active --> Active: any agent ADDS a check
+    Active --> Drafted: any edit to an existing check
     Active --> Retired: operator loosens or removes
     Active --> UnderReview: meta-finding, dismissal rate high
     UnderReview --> Active: operator keeps it
@@ -447,12 +451,24 @@ stateDiagram-v2
     Retired --> [*]
 ```
 
-Gates leave only through an operator. Entering is the direction that is free
-only for *tightening*: an existing gate can be made stricter by any agent, and
-a profile gate arrives already reviewed, but a brand-new project-local gate is
-drafted rather than activated and reaches `Active` only once the operator
-approves it at skeleton review. A gate that blocks work is doing its job; an
-agent that could remove it would.
+Gates leave only through an operator. Entering is free in exactly one
+direction, and the definition is what makes the ratchet hold: **tightening
+means ADDING a check, never editing one.** A profile gate arrives already
+reviewed; a brand-new project-local gate is drafted rather than activated and
+reaches `Active` only once the operator approves it at skeleton review.
+
+The restriction to addition is deliberate, and it is the alternative to a
+mechanism that cannot exist. "Prove the replacement is stricter than what it
+replaced" is undecidable for arbitrary checks, so a monotonicity check over
+edits would be a claim the system could not keep, and an agent blocked by a
+gate could rewrite it into something weaker that still passes for a tightening.
+Addition needs no such proof: a gate configuration that only ever grows admits
+strictly less than it did before, which a diff shows and nothing has to infer.
+
+So an edit to an existing check is not a tightening at all. It returns to
+`Drafted` and takes the same operator approval a new gate does, because
+replacing a check is indistinguishable from relaxing one without reading both.
+A gate that blocks work is doing its job; an agent that could rewrite it would.
 
 ### Gates are memories of mistakes
 
@@ -545,9 +561,13 @@ be building a second stream to avoid naming this one.
 | `meta-finding` | a gate or a profile has stopped earning its cost | the operator, via the standards role |
 | `needs-human` | a question only the operator can settle | the operator |
 
-`blocked-by-fact` is the one the current design cannot express at all. It is
+`blocked-by-fact` is the one the loop as built cannot express at all. It is
 what an agent four levels deep has when it discovers the library cannot do the
-thing the whole approach rests on.
+thing the whole approach rests on, and today it has nowhere to go: every
+channel that exists is anchored to a diff, and this finding is raised before
+one. The typed targets below are what give it a home, as a `plan` target
+routed to reconnaissance and then the slice planner, on the same stream as
+every other finding rather than beside it.
 
 ### Anchoring
 
@@ -564,7 +584,7 @@ reconnaissance has when a fact turns out to be false, and a budget breach or a
 | `plan` | the slice plan | the plan id |
 | `charter` | an acceptance criterion | the criterion |
 | `decision` | a recorded decision | the decision id |
-| `gate` | a gate or a profile | the check id, or the profile's |
+| `gate` | a gate or a profile | the `check_id`, or the `profile_id` |
 
 For a `code` target the diff bound is not presentation. A finding pointing
 outside the diff is about code this unit did not write and is subtracted

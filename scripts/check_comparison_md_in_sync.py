@@ -159,13 +159,13 @@ def main() -> int:
         expected = _expected_markdown(gen_mod)
         auto_date = _declares_auto_date(gen_mod)
     except Exception as exc:
-        # Never interpolate a raw exception: the typed parse below raises a
+        # Never interpolate a raw exception: the typed parse above raises a
         # ValidationError carrying whatever the YAML held, and this line lands
-        # in CI output. The type is kept because it is what says WHICH gate
-        # refused.
+        # in CI output. The helper already leads with the exception type, so
+        # naming it again reads back as `ValidationError: ValidationError: ...`.
         print(
             f"error: could not generate expected comparison page: "
-            f"{type(exc).__name__}: {safe_error_description(exc)}",
+            f"{safe_error_description(exc)}",
             file=sys.stderr,
         )
         return 1
