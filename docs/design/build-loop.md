@@ -340,8 +340,9 @@ a deadlock. See [Single-Owner Decisions](../reference/single-owner-decisions.md)
 | Adding a check to a project-local gate | any agent | never |
 | Editing a check a project-local gate already has | operator, at skeleton review | never |
 | Adding a project-local gate | operator, at skeleton review | never |
-| Changing a central profile, promotion into one included | the standards role, at catalogue review | never |
-| Loosening or removing a gate, profile or project-local | operator only | never |
+| Tightening a central profile, promotion into one included | the standards role, at catalogue review | never |
+| Loosening or removing a project-local gate | operator, at skeleton review | never |
+| Loosening or removing a central profile | the catalogue operator, at catalogue review | never |
 | Whether a unit is done | gates, then the reviewer | operator when review stalls, at `supervised` and stricter |
 | Whether it merges | the system | the author, when the merge conflicts or the trunk goes red |
 | Whether the machinery is healthy | the standards role | operator on a budget breach |
@@ -365,8 +366,10 @@ addition rule stops at the project boundary, and every change to a profile, an
 addition included, is the standards role's at catalogue review. Promotion is
 the one path from a project into the catalogue, which is why a local gate that
 keeps recurring is promoted rather than an agent editing the catalogue from
-inside a build. Loosening runs the other way and stays the operator's on both
-sides, because a ratchet that turns one way is what this whole section is for.
+inside a build. Loosening runs the other way and stays an operator's on both
+sides, because a ratchet that turns one way is what this whole section is for;
+which operator follows the scope, the project's for a project-local gate and
+the catalogue operator for a profile.
 
 ### Decisions are durable
 
@@ -433,6 +436,17 @@ why most projects need no gate authoring at all. It is also why nothing inside
 a build reaches one: a profile is shared, so a change to it is settled where
 every project it charges is in view, never at one project's skeleton review.
 
+Catalogue review seats two authorities, and which one settles a change follows
+the ratchet rather than the venue. The **standards role** settles a tightening,
+because an addition needs no permission. The **catalogue operator**, who owns
+the catalogue rather than any one project, settles a loosening, because
+loosening is an operator's everywhere and no project's operator can speak for
+the others a profile charges. Naming that seat is what makes "operator only"
+executable on a shared profile instead of a word that resolves to whoever
+happens to be reading. Each settlement is a decision like any other and leaves
+the record the ownership section requires, so a profile returns to `Profile`
+carrying who approved it and why.
+
 **Project-local gates** cover what no profile does. A project needing a check
 the catalogue has never seen gets one drafted by an agent and approved by the
 operator at skeleton review, where the whole contract is being read anyway.
@@ -461,20 +475,23 @@ stateDiagram-v2
     Local --> Drafted: any edit to an existing check
     Local --> Proposed: standards role puts it up for promotion
     [*] --> Proposed: a profile, or a change to one, is drafted
-    Proposed --> Profile: standards role settles it, at catalogue review
+    Proposed --> Profile: settled at catalogue review
     Profile --> Proposed: every change, an addition included
     Local --> LocalUnderReview: meta-finding, dismissal rate high
     LocalUnderReview --> Local: operator keeps it
-    LocalUnderReview --> Retired: operator retunes or drops it
+    LocalUnderReview --> Drafted: operator retunes it
+    LocalUnderReview --> Retired: operator drops it
     Profile --> ProfileUnderReview: meta-finding, or N slices declared
-    ProfileUnderReview --> Profile: operator keeps it
-    ProfileUnderReview --> Retired: operator retunes or drops it
+    ProfileUnderReview --> Profile: catalogue operator keeps it
+    ProfileUnderReview --> Proposed: catalogue operator retunes it
+    ProfileUnderReview --> Retired: catalogue operator drops it
     Local --> Retired: operator loosens or removes
-    Profile --> Retired: operator loosens or removes
+    Profile --> Retired: catalogue operator loosens or removes
     Retired --> [*]
 ```
 
-Gates leave only through an operator. Entering is free in exactly one
+Gates leave only through the operator their scope names. Entering is free in
+exactly one
 direction and within exactly one scope, and the definitions are what make the
 ratchet hold: **tightening means ADDING a check, never editing one, and the
 free addition is a project-local gate's alone.** A brand-new project-local gate
@@ -510,6 +527,14 @@ shared state with two unconditional exits would let a review promote a local
 gate, or demote a profile, without either passing the door its own scope
 requires, which is the ownership this section just established being undone by
 the state that watches its health.
+
+A review ends three ways, not two, and the third is why keeping and dropping do
+not cover it. Kept, the gate returns unchanged. Dropped, it retires. **A retune
+is a CHANGE**, and a change takes the door its scope already has: back to
+`Drafted` for a project-local gate, back to `Proposed` for a profile, lowering
+`N` included. Routing one straight to `Retired` would let a review rewrite a
+gate on its way out, which is the one move the ratchet exists to refuse, and it
+would do it under the label that sounds most like maintenance.
 
 ### Gates are memories of mistakes
 
@@ -550,17 +575,24 @@ calendar.
 
 `N` is a field of the profile itself, not a global, because a profile that
 charges four checks and one that charges forty do not earn the same review
-rate; it defaults to 50. Being a field of a central profile, it changes where
-every change to one does, at catalogue review, and the ratchet decides who
-settles it there. Raising it reviews the profile less often, which is a
-loosening, so the operator settles it and the standards role brings and records
-it; lowering it reviews more often, which needs nobody's permission and no
-proof, so the standards role settles that itself. Naming only "the operator"
-left the raise with no settled owner, since the operator of one project is not
-the operator of the others the profile charges, and a cadence is precisely the
-field a project blocked by a profile would want turned down. The count is over
-slices **declaring the capability**, across every
-project, and it is reset by the review it triggers.
+rate. It is a **positive integer** and it defaults to 50, and both halves are
+load-bearing: the trigger is machine-computed, so a profile whose `N` is
+missing, zero or negative has no cadence at all and is the one profile nothing
+ever reviews, silently, which is the failure this whole section exists to catch.
+A profile carrying an unusable `N` is therefore refused rather than run at some
+inferred rate, and the default covers the ordinary case of nobody having an
+opinion.
+
+Being a field of a central profile, `N` changes where every change to one does,
+at catalogue review, and the ratchet decides which of that venue's two seats
+settles it. Raising it reviews the profile less often, which is a loosening, so
+the **catalogue operator** settles it and the standards role brings it; lowering
+it reviews more often, which needs nobody's permission and no proof, so the
+standards role settles that itself. Naming "the operator" is not enough here and
+saying so is the point: the operator of one project is not the operator of the
+others a profile charges, and a cadence is precisely the field a project blocked
+by a profile would want turned down. The count is over slices **declaring the
+capability**, across every project, and it is reset by the review it triggers.
 Declaring rather than running is deliberate: a slice that declared the
 capability paid for the profile's gates whether or not any of them fired, and
 counting fires would make the profile least examined exactly where it is most
@@ -574,7 +606,8 @@ much the profile is actually costing: a heavily-used profile is examined often,
 and a profile nobody declares is never examined at all, which is correct because
 it is charging nobody.
 
-Retirement itself is the operator's, like every other loosening.
+Retiring a profile is the catalogue operator's, like every other loosening of
+one.
 
 ## The finding channel
 
