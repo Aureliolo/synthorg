@@ -153,7 +153,7 @@ repos:
       - id: mixed-line-ending
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.4
+    rev: v0.16.5
     hooks:
       - id: ruff-check
         args: [--fix]
@@ -868,7 +868,7 @@ repos:
       # Declarative import-layering contracts (import-linter / grimp).
       - id: lint-imports
         name: import-linter layering contracts
-        entry: uv run python scripts/lint_imports.py --config .importlinter
+        entry: uv run python scripts/lint_imports.py --config .importlinter --no-logo
         language: system
         files: ^(src/synthorg/.*\.py|scripts/lint_imports\.py|\.importlinter|\.pre-commit-config\.yaml)$
         pass_filenames: false

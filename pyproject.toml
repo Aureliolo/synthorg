@@ -22,7 +22,7 @@ dependencies = [
     # surface rather than something we inherit through mcp.
     "anyio==4.14.2",
     "argon2-cffi==25.1.0",
-    "cryptography==50.0.0",
+    "cryptography==50.0.1",
     "faker==40.37.0",
     "httpcore==1.0.9",
     "httpx==0.28.1",
@@ -36,11 +36,11 @@ dependencies = [
     "cedarpy==4.8.7",
     "lxml==6.1.2",
     "litestar[standard,structlog,pydantic,brotli,prometheus]==2.24.0",
-    "mcp==2.0.0",
-    "mmh3==5.2.1",
+    "mcp==2.1.1",
+    "mmh3==5.3.0",
     "packaging==26.3",
     "prometheus-client==0.26.0",
-    "pydantic==2.13.4",
+    "pydantic==2.13.5",
     "pyjwt[crypto]==2.13.0",
     "pyngrok==8.1.2",
     "pyyaml==6.0.3",
@@ -82,13 +82,13 @@ fine-tune-gpu = [
     "torch==2.13.0",
     "sentence-transformers[train]==6.0.0",
     "datasets==5.0.1",
-    "transformers==5.15.1",
+    "transformers==5.16.1",
 ]
 fine-tune-cpu = [
     "torch==2.13.0",
     "sentence-transformers[train]==6.0.0",
     "datasets==5.0.1",
-    "transformers==5.15.1",
+    "transformers==5.16.1",
 ]
 telemetry = ["logfire==4.41.0"]
 # Distributed runtime: first distributed MessageBus backend + task queue workers.
@@ -102,7 +102,7 @@ postgres = ["psycopg[binary]==3.3.4", "psycopg_pool==3.3.1"]
 knowledge = [
     "pdfplumber==0.11.10",
     "tree-sitter==0.26.0",
-    "tree-sitter-language-pack==1.14.3",
+    "tree-sitter-language-pack==1.15.8",
 ]
 
 [tool.hatch.version]
@@ -150,7 +150,7 @@ test = [
     # Runtime users opt in via `pip install synthorg[knowledge]`.
     "pdfplumber==0.11.10",
     "tree-sitter==0.26.0",
-    "tree-sitter-language-pack==1.14.3",
+    "tree-sitter-language-pack==1.15.8",
 ]
 docs = [
     "zensical==0.0.57",
@@ -167,13 +167,13 @@ fine-tune-gpu = [
     "torch==2.13.0",
     "sentence-transformers[train]==6.0.0",
     "datasets==5.0.1",
-    "transformers==5.15.1",
+    "transformers==5.16.1",
 ]
 fine-tune-cpu = [
     "torch==2.13.0",
     "sentence-transformers[train]==6.0.0",
     "datasets==5.0.1",
-    "transformers==5.15.1",
+    "transformers==5.16.1",
 ]
 dev = [
     "commitizen==4.18.0",
@@ -181,7 +181,7 @@ dev = [
     "pre-commit==4.6.2",
     "pip-audit==2.10.1",
     "pre-commit-uv==4.3.0",
-    "ruff==0.16.4",
+    "ruff==0.16.5",
     "sqlglot==30.17.0",
     "types-pyyaml==6.0.12.20260815",
     "types-defusedxml==0.7.0.20260504",
@@ -198,7 +198,7 @@ dev = [
     "codespell==2.4.3",
     "sqlfluff==4.3.0",
     "yamllint==1.38.0",
-    "import-linter==2.13",
+    "import-linter==2.14",
     {include-group = "test"},
     {include-group = "docs"},
 ]
@@ -248,14 +248,14 @@ override-dependencies = [
     "click>=8.3",                # litellm pins ==8.1.8; 8.2 dropped 3.7/3.8/3.9 support
     "importlib-metadata>=9.0",   # litellm pins ==8.5.0; 9.0 raises MetadataNotFound on missing metadata
     "openai>=2.33",              # litellm pins ==2.24.0; 2.25-2.33 are additive
-    # The ceiling here is transformers', not ours: it declares
-    # tokenizers>=0.22.0,<=0.23.0 in its own dependency_versions_table and
-    # asserts that at import time, and 0.23.0 was never published as a final
-    # (only 0.23.0rc0), so 0.22.2 is the newest release it accepts. An override
-    # replaces EVERY declaration of a package, transformers' included, so a bare
-    # floor here reaches past litellm and takes `import sentence_transformers`
-    # down wherever the fine-tune extra is installed.
-    "tokenizers>=0.22.2,<0.23",  # litellm's own range (>=0.21.0,<1.0) is wider
+    # The range here is transformers', not ours: it declares tokenizers in its
+    # own dependency_versions_table and asserts that at import time, so a value
+    # outside what transformers accepts makes `import transformers` raise rather
+    # than failing resolution. An override replaces EVERY declaration of a
+    # package, transformers' included, so uv resolves such a pairing silently
+    # and the only symptom is the import, wherever the fine-tune extra is
+    # installed. Keep this window inside what the pinned transformers declares.
+    "tokenizers>=0.23.1,<0.24",  # litellm's own range (>=0.21.0,<1.0) is wider
     "typer>=0.25",               # transitive downgrade from litellm's click==8.1.8 + openai==2.24
 ]
 

@@ -69,22 +69,38 @@ _EXTRA_PACKAGES: Final[tuple[str, ...]] = (
 )
 
 
-def _missing_extra_packages() -> tuple[str, ...]:
-    """Names from the fine-tune extra that this environment cannot import.
+def _missing_extra_packages() -> tuple[tuple[str, str], ...]:
+    """Packages from the fine-tune extra this environment cannot import.
 
     Attempts a real import rather than a spec lookup: a half-installed package
     registers a spec and then raises when something first touches it, which
     would surface mid-test instead of as a clean skip.
 
+    Each entry carries WHY, because absent and present-but-raising need
+    different fixes and read identically from the outside. An installed
+    package can refuse to import on a constraint it enforces itself -- a
+    transformers pinned against a tokenizers outside its declared range
+    asserts at import through ``require_version_core`` -- and reporting that
+    as "missing" sends the reader to the install step, which is the one place
+    the fault is not. The exception text is the only record of it: nothing
+    else in the run has seen the failure.
+
     Returns:
-        The absent package names, empty when every one imports.
+        One ``(package name, reason)`` pair per package that did not import,
+        empty when every one did.
     """
-    missing: list[str] = []
+    missing: list[tuple[str, str]] = []
     for name in _EXTRA_PACKAGES:
         try:
             importlib.import_module(name)
-        except Exception:
-            missing.append(name)
+        except Exception as exc:
+            absent = isinstance(exc, ModuleNotFoundError) and exc.name == name
+            reason = (
+                "not installed"
+                if absent
+                else f"installed but raised on import -- {type(exc).__name__}: {exc}"
+            )
+            missing.append((name, reason))
     return tuple(missing)
 
 
@@ -96,7 +112,7 @@ def _missing_extra_packages() -> tuple[str, ...]:
 #: which then trips the six-second per-test wall-clock guard on an accident of
 #: ordering. Collection sits outside every test's timing window, so the cost
 #: lands where it belongs.
-_MISSING_EXTRA_PACKAGES: Final[tuple[str, ...]] = _missing_extra_packages()
+_MISSING_EXTRA_PACKAGES: Final[tuple[tuple[str, str], ...]] = _missing_extra_packages()
 
 
 def _require_fine_tune_extra() -> None:
@@ -105,20 +121,20 @@ def _require_fine_tune_extra() -> None:
     Raises:
         AssertionError: When the environment declares the extra mandatory
             (the CI job sets ``SYNTHORG_REQUIRE_FINE_TUNE_EXTRA=1``) and a
-            package is nonetheless absent.
+            package is nonetheless unimportable.
     """
     if not _MISSING_EXTRA_PACKAGES:
         return
-    detail = ", ".join(_MISSING_EXTRA_PACKAGES)
+    detail = "; ".join(f"{name} ({reason})" for name, reason in _MISSING_EXTRA_PACKAGES)
     # Compared against "1" rather than read for truthiness, matching the
     # sibling probe flag: "0" must mean off, not "any non-empty string is on".
     if os.environ.get(_REQUIRE_EXTRA_ENV, "").strip() == "1":  # lint-allow: env-read
         msg = (
-            f"{_REQUIRE_EXTRA_ENV}=1 but these packages are missing: "
+            f"{_REQUIRE_EXTRA_ENV}=1 but these packages did not import: "
             f"{detail}. The guarded tests must run here, not skip."
         )
         raise AssertionError(msg)
-    pytest.skip(f"fine-tune extra not installed in this environment: {detail}")
+    pytest.skip(f"fine-tune extra not importable in this environment: {detail}")
 
 
 class _RefusingFinder:
