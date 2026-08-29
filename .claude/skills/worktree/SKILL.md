@@ -77,11 +77,11 @@ This flag is independent of the `wt-synthorg.ps1` helper's `-NoLaunch` flag: whe
 
 ### Directory naming
 
-Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (NO `wt-` prefix); the `wt-` prefix is added exclusively by the directory-path template:
-- Example: branch `feat/delegation-loop-prevention` → slug `delegation-loop-prevention` → directory `../synthorg-wt-delegation-loop-prevention`
+The directory name is auto-derived from the branch name. Produce a bare `<slug>`; it is the whole directory name, since the shared parent already says these are worktrees:
+- Example: branch `feat/delegation-loop-prevention` → slug `delegation-loop-prevention` → directory `../synthorg-worktrees/delegation-loop-prevention`
 - Slug derivation: strip everything up to and including the first `/` in the branch name (covers `feat/`, `fix/`, `refactor/`, `chore/`, `docs/`, `test/`, `perf/`, `ci/`). Then **replace any remaining `/` characters with `-`** so nested branches like `feat/foo/bar` become slug `foo-bar` (never `foo/bar`). The slug must match `^[a-zA-Z0-9._-]+$` after derivation; reject and abort if it does not.
-- Directory template: `../<repo-name>-wt-<slug>` where `<slug>` is the bare derived slug (no `wt-` prefix on the slug itself). The `wt-` in the template is the only source of that prefix, so there is never a double prefix.
-- Repo name extracted from the repository's canonical root metadata (e.g. `basename $(git rev-parse --show-toplevel)`), not the current working directory basename. If running inside a linked worktree, derive the base repo name from shared Git metadata before composing `../<repo-name>-wt-<slug>`.
+- Directory template: `../<repo-name>-worktrees/<slug>`. Create the parent if it does not exist; every worktree shares it, so a worktree never lands beside unrelated directories or in one named for temporary files.
+- Repo name extracted from the repository's canonical root metadata (e.g. `basename $(git rev-parse --show-toplevel)`), not the current working directory basename. If running inside a linked worktree, derive the base repo name from shared Git metadata before composing `../<repo-name>-worktrees/<slug>`.
 
 ### Steps
 
@@ -149,7 +149,7 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
 
 4. **For each worktree definition**, run in sequence:
 
-   a. Determine the directory path: `../<repo-name>-wt-<slug>` (e.g. `../synthorg-wt-delegation-loop-prevention`)
+   a. Determine the directory path: `../<repo-name>-worktrees/<slug>` (e.g. `../synthorg-worktrees/delegation-loop-prevention`), creating the parent if absent. One root holds every worktree, so nothing durable lands in a directory named for temporary files.
 
    b. **Path A (helper present)**: one call per worktree.
 
@@ -337,7 +337,7 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
    wt.exe -w 0 new-tab --title "<slug>" -d "<forward-slash-path>"
    ```
 
-   Use forward-slash paths (`C:/Users/Aurelio/synthorg-wt-<slug>`) to avoid Bash interpreting `\t` / `\U` / `\N` as escape sequences. `-w 0` targets the current Windows Terminal window. No trailing command. See the "Design note (do NOT regress)" block under the `launch` subcommand below for why.
+   Use forward-slash paths (`C:/Users/Aurelio/synthorg-worktrees/<slug>`) to avoid Bash interpreting `\t` / `\U` / `\N` as escape sequences. `-w 0` targets the current Windows Terminal window. No trailing command. See the "Design note (do NOT regress)" block under the `launch` subcommand below for why.
 
    If not in Windows Terminal or `wt.exe` is missing, skip auto-launch and instead tell the user to run `cd <path> && claude` manually in each target terminal.
 
@@ -354,7 +354,7 @@ Directory suffix is auto-derived from the branch name. Produce a bare `<slug>` (
    ~~~text
    ### <slug>
 
-   **Path:** `C:\Users\Aurelio\synthorg-wt-<slug>`
+   **Path:** `C:\Users\Aurelio\synthorg-worktrees\<slug>`
 
    Prompt to paste into the claude REPL (after running `claude` in the tab):
 
@@ -411,8 +411,8 @@ Open each worktree as a **plain terminal tab** in the current Windows Terminal w
 ### Steps
 
 1. **For each worktree**, derive:
-   - Path in **forward-slash form** (e.g. `C:/Users/Aurelio/synthorg-wt-<slug>`). Windows Terminal's `-d` flag accepts forward slashes natively and this avoids shell escape-sequence risk (e.g. `\t` in a Bash double-quoted string would be interpreted as a tab character, and `\U` / `\N` can trigger warnings or unicode-escape behavior in some shells). Do NOT emit backslash paths from the Bash tool.
-   - Tab title: the dir suffix after `wt-` (e.g. `tighten-workflow-permissions`), truncated to ~30 chars.
+   - Path in **forward-slash form** (e.g. `C:/Users/Aurelio/synthorg-worktrees/<slug>`). Windows Terminal's `-d` flag accepts forward slashes natively and this avoids shell escape-sequence risk (e.g. `\t` in a Bash double-quoted string would be interpreted as a tab character, and `\U` / `\N` can trigger warnings or unicode-escape behavior in some shells). Do NOT emit backslash paths from the Bash tool.
+   - Tab title: the directory name (e.g. `tighten-workflow-permissions`), truncated to ~30 chars.
 
 2. **Spawn one tab per worktree, sequentially:**
 
@@ -582,9 +582,9 @@ Show current worktree state and how they compare to main.
 
    ```text
    Worktree             | Branch                    | vs Main            | PR     | Status     | Deps
-   wt-delegation        | feat/delegation-loop-prev | +5 ahead           | #142   | clean      | ok
-   wt-parallel          | feat/parallel-execution   | +3 ahead -2 behind | --     | 2 modified | stale
-   wt-memory            | feat/memory-layer         | up to date         | #155   | clean      | ok
+   delegation           | feat/delegation-loop-prev | +5 ahead           | #142   | clean      | ok
+   parallel             | feat/parallel-execution   | +3 ahead -2 behind | --     | 2 modified | stale
+   memory               | feat/memory-layer         | up to date         | #155   | clean      | ok
    ```
 
 ---
@@ -719,10 +719,10 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
 - **Never force-remove** a worktree without asking the user first.
 - **Never delete branches** without checking PR merge status first.
 - **Always check `.claude/` local files exist** before copying; warn if missing.
-- **Repo name detection**: extract from the repository's canonical root (`basename $(git rev-parse --show-toplevel)`), not the current directory basename. Strip any existing `wt-` prefix to avoid nested names when running from inside a linked worktree.
+- **Repo name detection**: extract from the repository's canonical root (`basename $(git rev-parse --show-toplevel)`), not the current directory basename. Running from inside a linked worktree yields the slug rather than the repo name, so derive it from shared Git metadata.
 - **Owner/repo detection**: extract from `git remote get-url origin`.
 - **Platform-aware paths**: derive worktree absolute paths dynamically at runtime. On Windows, convert to backslash paths for user-facing output. The `cd <path> && claude` instructions are for the user's own terminal, not Bash tool invocations.
-- Worktree directories are always siblings of the main repo directory (`../`).
+- Worktree directories always live under `../<repo-name>-worktrees/`, a sibling of the main repo directory.
 - When generating prompts, read the actual issue bodies. Do not guess or use stale information.
 - Parse `spec:*` labels to auto-match source directories for prompt generation.
 - Parse `## Dependencies` sections to auto-detect implementation order.
