@@ -80,8 +80,12 @@ This flag is independent of the `wt-synthorg.ps1` helper's `-NoLaunch` flag: whe
 The directory name is auto-derived from the branch name. Produce a bare `<slug>`; it is the whole directory name, since the shared parent already says these are worktrees:
 - Example: branch `feat/delegation-loop-prevention` → slug `delegation-loop-prevention` → directory `../synthorg-worktrees/delegation-loop-prevention`
 - Slug derivation: strip everything up to and including the first `/` in the branch name (covers `feat/`, `fix/`, `refactor/`, `chore/`, `docs/`, `test/`, `perf/`, `ci/`). Then **replace any remaining `/` characters with `-`** so nested branches like `feat/foo/bar` become slug `foo-bar` (never `foo/bar`). The slug must match `^[a-zA-Z0-9._-]+$` after derivation; reject and abort if it does not.
+- Slug validation, before the directory is created. The derivation collapses `/` to `-`, so it is not injective: `feat/foo/bar` and `feat/foo-bar` both yield `foo-bar`, and the second branch would be handed a directory already belonging to the first. Reject rather than disambiguate, so one branch never silently adopts another's tree:
+  - **Collision**: if `../<repo-name>-worktrees/<slug>` already exists, abort naming the branch that holds it (`git worktree list --porcelain`). Two branches wanting one directory is a branch-naming problem to fix upstream, not something to paper over with a numeric suffix nobody can map back to a branch.
+  - **Windows-reserved basename**: reject `CON`, `PRN`, `AUX`, `NUL`, `COM0`-`COM9` and `LPT0`-`LPT9`, case-insensitively and whether or not an extension follows (`con`, `CON.txt` and `Com1.old` are all reserved). Windows refuses to create these at any path depth, so the failure would otherwise surface as an opaque OS error mid-`git worktree add`.
+  - **Trailing dot or space**: reject a slug ending in `.` or a space. Windows silently strips both, so the created directory does not carry the name that was asked for and no later lookup by slug finds it.
 - Directory template: `../<repo-name>-worktrees/<slug>`. Create the parent if it does not exist; every worktree shares it, so a worktree never lands beside unrelated directories or in one named for temporary files.
-- Repo name extracted from the repository's canonical root metadata (e.g. `basename $(git rev-parse --show-toplevel)`), not the current working directory basename. If running inside a linked worktree, derive the base repo name from shared Git metadata before composing `../<repo-name>-worktrees/<slug>`.
+- Repo name derived from the **shared** Git directory, never the current working tree. `git rev-parse --show-toplevel` answers with the *linked worktree's* root when run from inside one, so it yields the slug and composes `../<slug>-worktrees/<slug>`, a fresh directory beside the shared root rather than inside it. `--git-common-dir` points at the main repository's `.git` from every worktree, so its parent is the main root: `basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"`. Quote every substitution; the repository path may contain spaces.
 
 ### Steps
 
@@ -406,7 +410,7 @@ Open each worktree as a **plain terminal tab** in the current Windows Terminal w
    git worktree list --porcelain
    ```
 
-   Parse into `(path, branch)` pairs. Skip the main worktree (matches `git rev-parse --show-toplevel`). If filtering by `<name>`, keep only worktrees whose path suffix matches.
+   Parse into `(path, branch)` pairs. Skip the main worktree, identified as the **first** `worktree` entry the porcelain output lists, which is the main one from every checkout. Do not match against `git rev-parse --show-toplevel`: run from inside a linked worktree it names that worktree, so the skip drops the one the user is sitting in and opens a tab for the main repository instead. If filtering by `<name>`, keep only worktrees whose path suffix matches.
 
 ### Steps
 
@@ -581,10 +585,10 @@ Show current worktree state and how they compare to main.
 5. **Present a summary table** (show both ahead AND behind counts):
 
    ```text
-   Worktree             | Branch                    | vs Main            | PR     | Status     | Deps
-   delegation           | feat/delegation-loop-prev | +5 ahead           | #142   | clean      | ok
-   parallel             | feat/parallel-execution   | +3 ahead -2 behind | --     | 2 modified | stale
-   memory               | feat/memory-layer         | up to date         | #155   | clean      | ok
+   Worktree                   | Branch                         | vs Main            | PR     | Status     | Deps
+   delegation-loop-prevention | feat/delegation-loop-prevention | +5 ahead           | #142   | clean      | ok
+   parallel-execution         | feat/parallel-execution         | +3 ahead -2 behind | --     | 2 modified | stale
+   memory-layer               | feat/memory-layer               | up to date         | #155   | clean      | ok
    ```
 
 ---
@@ -719,7 +723,7 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
 - **Never force-remove** a worktree without asking the user first.
 - **Never delete branches** without checking PR merge status first.
 - **Always check `.claude/` local files exist** before copying; warn if missing.
-- **Repo name detection**: extract from the repository's canonical root (`basename $(git rev-parse --show-toplevel)`), not the current directory basename. Running from inside a linked worktree yields the slug rather than the repo name, so derive it from shared Git metadata.
+- **Repo name detection**: `basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"`, never `--show-toplevel` and never the current directory basename. Both of those answer with the linked worktree's own root when the command runs from inside one, which is the slug rather than the repo name; `--git-common-dir` names the main repository's `.git` from every worktree. Quote every substitution so a repository path containing spaces survives.
 - **Owner/repo detection**: extract from `git remote get-url origin`.
 - **Platform-aware paths**: derive worktree absolute paths dynamically at runtime. On Windows, convert to backslash paths for user-facing output. The `cd <path> && claude` instructions are for the user's own terminal, not Bash tool invocations.
 - Worktree directories always live under `../<repo-name>-worktrees/`, a sibling of the main repo directory.
