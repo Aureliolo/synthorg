@@ -17,10 +17,12 @@ end.
 So the count is here, over both nudge sets at once, and the limit with it.
 """
 
+from collections.abc import Sequence
 from typing import Final
 
 from synthorg.engine.context import AgentContext
 from synthorg.providers.enums import MessageRole
+from synthorg.providers.models import ChatMessage
 
 SILENT_TURN_NUDGE: Final[str] = (
     "Your last turn produced no visible output: its whole token budget went "
@@ -66,16 +68,44 @@ CORRECTION_NUDGES: Final[frozenset[str]] = frozenset(
 MAX_CONSECUTIVE_CORRECTIONS: Final[int] = 3
 
 
+def _walk_correction_tail(conversation: Sequence[ChatMessage]) -> tuple[int, int]:
+    """Walk the trailing correction stretch, newest message first.
+
+    Counts nudges of either shape and steps over the call-less assistant turn
+    each one answers, stopping at anything else. A productive turn ends in a
+    tool call and its result, so both stop the walk; skipping every non-user
+    message instead would read past them and count a nudge from earlier in the
+    run as consecutive with a later one, spending the bound across unrelated
+    stumbles rather than one stuck stretch.
+
+    Args:
+        conversation: The messages to walk, oldest first.
+
+    Returns:
+        ``(nudges, messages)`` -- how many corrections the stretch carries, and
+        how many trailing messages it occupies.
+    """
+    nudges = 0
+    messages = 0
+    for message in reversed(conversation):
+        if message.role is MessageRole.USER:
+            if message.content not in CORRECTION_NUDGES:
+                break
+            nudges += 1
+            messages += 1
+            continue
+        if message.role is MessageRole.ASSISTANT and not message.tool_calls:
+            # The turn the nudge above answers. It can carry text (a dropped
+            # call typically follows a preamble) and is empty by definition
+            # when it was silent, so the discriminator is the absent call.
+            messages += 1
+            continue
+        break
+    return nudges, messages
+
+
 def consecutive_corrections(ctx: AgentContext) -> int:
     """Count the corrections issued since the last productive turn.
-
-    Walks the tail of the conversation, counting nudges of either shape and
-    stepping over the call-less assistant turn each one answers, and stops at
-    anything else. A productive turn ends in a tool call and its result, so
-    both stop the walk; skipping every non-user message instead would read
-    past them and count a nudge from earlier in the run as consecutive with a
-    later one, spending the bound across unrelated stumbles rather than one
-    stuck stretch.
 
     Args:
         ctx: The context whose conversation tail is walked.
@@ -83,17 +113,32 @@ def consecutive_corrections(ctx: AgentContext) -> int:
     Returns:
         The number of consecutive corrections at the end of the run.
     """
-    consecutive = 0
-    for message in reversed(ctx.conversation):
-        if message.role is MessageRole.USER:
-            if message.content not in CORRECTION_NUDGES:
-                break
-            consecutive += 1
-            continue
-        if message.role is MessageRole.ASSISTANT and not message.tool_calls:
-            # The turn the nudge above answers. It can carry text (a dropped
-            # call typically follows a preamble) and is empty by definition
-            # when it was silent, so the discriminator is the absent call.
-            continue
-        break
-    return consecutive
+    nudges, _ = _walk_correction_tail(ctx.conversation)
+    return nudges
+
+
+def correction_tail_messages(conversation: Sequence[ChatMessage]) -> int:
+    """How many trailing messages the current correction stretch occupies.
+
+    The bound above is derived from the transcript, so anything that rewrites
+    the transcript can spend it without meaning to. Compaction archives
+    everything outside a preserved window and replaces it with a summary, and
+    the window is a turn count an operator sets: at the default it happens to
+    be the same size as a full correction stretch, and at the minimum it is
+    two messages. Either way the walk restarts inside the preserved window,
+    the count reads lower than the run has actually earned, and the model that
+    the bound exists to stop is corrected past it.
+
+    So compaction asks how long the stretch is and keeps it whole. It is
+    bounded by ``MAX_CONSECUTIVE_CORRECTIONS`` nudges and the turns they
+    answer, so it can never hold compaction back by more than a handful of
+    messages, and a productive turn ends it immediately.
+
+    Args:
+        conversation: The messages to measure, oldest first.
+
+    Returns:
+        The number of trailing messages that must survive intact.
+    """
+    _, messages = _walk_correction_tail(conversation)
+    return messages

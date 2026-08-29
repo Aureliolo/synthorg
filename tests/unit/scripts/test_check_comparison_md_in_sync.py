@@ -187,6 +187,12 @@ def test_malformed_meta_block_returns_one(
     Reading ``meta.last_updated`` off the raw mapping raised ``AttributeError``
     from inside the gate. The typed parse refuses the shape first, so the
     operator gets the gate's own diagnostic and an exit code.
+
+    The exception TYPE is asserted, not just the exit code and the message
+    prefix: both of those were already produced by the raw ``AttributeError``,
+    so a check on them alone would pass whether or not the payload is
+    validated. The gate prints the type beside the redacted description, so
+    ``ValidationError`` is the evidence that ``parse_typed`` rejected it.
     """
     committed = tmp_path / "comparison.md"
     committed.write_text("EXPECTED", encoding="utf-8")
@@ -207,7 +213,9 @@ def test_malformed_meta_block_returns_one(
         patch.object(check, "_load_generator", _generator),
     ):
         assert check.main() == 1
-    assert "could not generate expected comparison page" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "could not generate expected comparison page" in err
+    assert "ValidationError" in err
 
 
 @pytest.mark.unit

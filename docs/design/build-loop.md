@@ -199,9 +199,19 @@ committed a plainly failing suite would break the invariant the whole loop
 rests on before the first unit runs. So the gate configuration declares each
 criterion test pending, and the trunk suite reads a pending failure as green.
 
-Pending is strict in both directions, which is the half that makes it a
-contract rather than a mute button. A pending test that fails is green; a
-pending test that **passes** is red until the same commit clears its marker.
+Pending is narrow as well as strict, and the narrowness is what stops it
+becoming a mute button. Only the **declared** failure is green: the assertion
+in the criterion test, failing because nothing implements the contract yet.
+Every other way that test can end stays red, because none of them is evidence
+the contract is merely unimplemented. A collection error means the skeleton
+does not import; an unexpected exception means it is wrong rather than absent;
+a timeout or a runner crash means nothing was measured at all. Reading any of
+those as green would let a skeleton that does not even load ship as a green
+trunk, which is the invariant this mechanism exists to protect.
+
+Pending is strict in both directions too, which is the other half of the same
+contract. A pending test failing its declared assertion is green; a pending
+test that **passes** is red until the same commit clears its marker.
 A unit therefore cannot satisfy its contract and leave the marker behind for
 the next unit to inherit, and clearing the marker is the mechanical signal that
 the unit is done. A pending marker on a criterion no unit claims is a skeleton
@@ -231,9 +241,16 @@ recursively.
 Each unit gets a git worktree off the current trunk commit and its own
 container. Unchanged from today, and this part works.
 
-A unit is done when the skeleton's pending test for it passes, its marker is
-cleared in the same commit, and nothing else broke. That is mechanically
-checkable and it is not a paragraph.
+A unit is **ready** when the skeleton's pending test for it passes, its marker
+is cleared in the same commit, and nothing else broke. That is mechanically
+checkable and it is not a paragraph, which is the whole point: it is the one
+part of "done" a machine can decide alone.
+
+Ready is not done. A ready unit still has to pass review, merge cleanly, and
+leave the trunk green, and each of those can send it back. Naming the two
+apart matters because they have different owners: readiness is the gates',
+and completion is the reviewer's and then the system's, exactly as the
+ownership table and the merge section below have them.
 
 ### Gates
 
@@ -418,8 +435,11 @@ which those are is to watch which local gates keep getting drafted.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Active: gate added or tightened by any agent
-    Active --> Active: tightened
+    [*] --> Drafted: project-local gate drafted by an agent
+    [*] --> Active: profile gate, reviewed once centrally
+    Drafted --> Active: operator approves at skeleton review
+    Drafted --> [*]: operator declines
+    Active --> Active: tightened by any agent
     Active --> Retired: operator loosens or removes
     Active --> UnderReview: meta-finding, dismissal rate high
     UnderReview --> Active: operator keeps it
@@ -427,8 +447,12 @@ stateDiagram-v2
     Retired --> [*]
 ```
 
-Gates enter freely and leave only through an operator. A gate that blocks work
-is doing its job; an agent that could remove it would.
+Gates leave only through an operator. Entering is the direction that is free
+only for *tightening*: an existing gate can be made stricter by any agent, and
+a profile gate arrives already reviewed, but a brand-new project-local gate is
+drafted rather than activated and reaches `Active` only once the operator
+approves it at skeleton review. A gate that blocks work is doing its job; an
+agent that could remove it would.
 
 ### Gates are memories of mistakes
 
@@ -494,11 +518,19 @@ file and a line; so does a failing test frame; so does a reviewer's
 observation. The author works from one list and does not care which produced
 each entry.
 
-Six things raise findings, and the list is exhaustive because a producer with
+Seven things raise findings, and the list is exhaustive because a producer with
 nowhere to write is a failure path nothing reports: the **gate runner**, the
 **trunk gates** on a merge that goes red, the **reviewer**, the **builder**
 itself when it discovers it cannot proceed, the **standards role** on a
-machinery-budget breach, and the **operator** looking at an increment.
+machinery-budget breach, the **operator** looking at an increment, and the
+**meta-finding rule** when a gate's dismissal rate crosses its threshold or a
+profile comes due for review.
+
+The last one is on this list rather than beside it because it is a finding
+about the machinery instead of about the software, and a channel that carried
+only the second kind would leave the first with nowhere to go. That is the
+failure the standards role exists to catch, so routing it anywhere else would
+be building a second stream to avoid naming this one.
 
 ### Classes
 
@@ -510,6 +542,7 @@ machinery-budget breach, and the **operator** looking at an increment.
 | `scope-conflict` | two units both claim the same ground | the slice planner |
 | `misaligned` | it works, and it is not what was wanted | the charter, then the slice planner |
 | `re-slice` | the plan is wrong and nothing built is affected | the slice planner |
+| `meta-finding` | a gate or a profile has stopped earning its cost | the operator, via the standards role |
 | `needs-human` | a question only the operator can settle | the operator |
 
 `blocked-by-fact` is the one the current design cannot express at all. It is
@@ -531,11 +564,12 @@ reconnaissance has when a fact turns out to be false, and a budget breach or a
 | `plan` | the slice plan | the plan id |
 | `charter` | an acceptance criterion | the criterion |
 | `decision` | a recorded decision | the decision id |
+| `gate` | a gate or a profile | the check id, or the profile's |
 
 For a `code` target the diff bound is not presentation. A finding pointing
 outside the diff is about code this unit did not write and is subtracted
 automatically, the same way an output-policy guard subtracts findings a file
-already carried. The other four have no diff to be subtracted against, which is
+already carried. The other five have no diff to be subtracted against, which is
 exactly why they need a target of their own: a pre-diff finding forced into a
 `code` shape has to invent a path, and an invented path is subtracted by the
 rule above and vanishes.

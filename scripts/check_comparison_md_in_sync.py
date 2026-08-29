@@ -39,6 +39,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.core.boundary import parse_typed
+from synthorg.observability import safe_error_description
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -158,9 +159,13 @@ def main() -> int:
         expected = _expected_markdown(gen_mod)
         auto_date = _declares_auto_date(gen_mod)
     except Exception as exc:
+        # Never interpolate a raw exception: the typed parse below raises a
+        # ValidationError carrying whatever the YAML held, and this line lands
+        # in CI output. The type is kept because it is what says WHICH gate
+        # refused.
         print(
             f"error: could not generate expected comparison page: "
-            f"{type(exc).__name__}: {exc}",
+            f"{type(exc).__name__}: {safe_error_description(exc)}",
             file=sys.stderr,
         )
         return 1

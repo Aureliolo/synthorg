@@ -23,6 +23,7 @@ from synthorg.engine.compaction.models import (
 )
 from synthorg.engine.compaction.protocol import CompactionCallback
 from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_correction_budget import correction_tail_messages
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.engine.token_estimation import (
     DefaultTokenEstimator,
@@ -285,7 +286,15 @@ def _split_conversation(
         already covers every non-system message).
     """
     conversation = ctx.conversation
-    preserve_count = config.preserve_recent_turns * 2
+    # The correction budget is derived from the trailing run of nudges, so
+    # archiving any of them tells the next turn the run has earned fewer
+    # corrections than it has. Widen the window rather than trimming the
+    # stretch: it is bounded by MAX_CONSECUTIVE_CORRECTIONS and a productive
+    # turn ends it, so the cost is a handful of messages at worst.
+    preserve_count = max(
+        config.preserve_recent_turns * 2,
+        correction_tail_messages(conversation),
+    )
     # Preserve all leading SYSTEM messages (original system prompt
     # and any prior compaction summaries).
     start_idx = 0
