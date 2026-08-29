@@ -64,6 +64,7 @@ flowchart TD
     B -.finding.-> F[Finding channel]
     V -.finding.-> F
     G -.finding.-> F
+    I -.misaligned.-> F
     F -.amend.-> S
     F -.re-slice.-> P
     F -.ask.-> C
@@ -127,6 +128,7 @@ Findings -> Judgement.Investigator: "second failure"
 Findings -> Judgement.Skeleton: "contract-wrong"
 Findings -> Judgement.Planner: "re-slice"
 Findings -> Operator: "needs-human"
+Operator -> Findings: "misaligned"
 ```
 
 The left column costs tokens and produces judgement. The right column costs
@@ -301,7 +303,8 @@ a deadlock. See [Single-Owner Decisions](../reference/single-owner-decisions.md)
 | What the facts are | reconnaissance | re-runs on an invalidating finding |
 | The contract | skeleton owner | operator on a second `contract-wrong` for one interface |
 | What a slice contains | slice planner | operator when a finding empties it |
-| Which gates apply | derived from declared capability | operator, when a capability profile is authored |
+| Which gates apply | derived from the declared capability's profile | operator at skeleton review, when no profile fits and a project-local gate is drafted |
+| Whether this is what was wanted | operator, at the increment | never delegated; no machine makes this one |
 | Tightening or adding a gate | any agent | never |
 | Loosening or removing a gate | operator only | never |
 | Whether a unit is done | gates, then the reviewer | operator when review stalls, at `supervised` and stricter |
