@@ -20,11 +20,13 @@ from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import PlanItemKind
 from synthorg.core.plan_tree import PlanTree
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
+from synthorg.engine.workspace.environment.config import DEFAULT_MANIFEST_FILENAME
 
 #: The manifest carrying the project's gate configuration and its pending set.
-#: Named here because it is what the skeleton must write and what every later
-#: stage reads; the strategy that provisions from it owns the same name.
-MANIFEST_PATH: Final[str] = "synthorg.env.yaml"
+#: Taken from the environment config rather than spelled again, because the
+#: brief telling an agent where to write it and the reader looking for it there
+#: are the same claim, and two spellings of it fail silently in both directions.
+MANIFEST_PATH: Final[str] = DEFAULT_MANIFEST_FILENAME
 
 #: What the skeleton task declares it will produce, so the zero-artifact guard
 #: arms on it exactly as it does on ordinary work.

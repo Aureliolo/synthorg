@@ -3,6 +3,7 @@
 Supports Python, JavaScript, and Bash via configurable sandbox backends.
 """
 
+from pathlib import Path
 from typing import ClassVar, Final, Literal, override
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -84,6 +85,7 @@ class CodeRunnerTool(BaseTool):
         code_execution_records: CodeExecutionRecordRepository | None = None,
         clock: Clock | None = None,
         output_tail_limit: int = _OUTPUT_TAIL_LIMIT,
+        workspace_root: Path | None = None,
     ) -> None:
         """Initialize the code runner tool.
 
@@ -105,6 +107,10 @@ class CodeRunnerTool(BaseTool):
                 stdout/stderr kept on a test record. Resolved from the
                 ``tools.code_runner_output_tail_limit`` setting at the
                 wiring boundary, defaulting to ``_OUTPUT_TAIL_LIMIT``.
+            workspace_root: Base directory projects live under, so a suite
+                whose failures are the ones its manifest declared pending is
+                recorded as the pass it is rather than as the non-zero exit
+                a correct skeleton produces by design.
 
         Raises:
             ValueError: When ``output_tail_limit`` is not a positive
@@ -130,6 +136,7 @@ class CodeRunnerTool(BaseTool):
             )
             raise ValueError(msg)
         self._output_tail_limit = output_tail_limit
+        self._workspace_root = workspace_root
 
     @override
     async def execute(
@@ -235,6 +242,7 @@ class CodeRunnerTool(BaseTool):
                 clock=self._clock,
                 command_repr_limit=_COMMAND_REPR_LIMIT,
                 output_tail_limit=self._output_tail_limit,
+                workspace_root=self._workspace_root,
             )
 
         if result.success:

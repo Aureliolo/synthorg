@@ -52,7 +52,7 @@ for it is the one ``echo`` exited with.
 
 import shlex
 from collections.abc import Mapping, Sequence
-from pathlib import PurePosixPath, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import MappingProxyType
 from typing import Final
 
@@ -69,6 +69,7 @@ from synthorg.persistence.code_execution_protocol import (
     CodeExecutionRecord,
     CodeExecutionRecordRepository,
 )
+from synthorg.tools._pending_verdict import resolve_passed
 from synthorg.tools.sandbox.result import SandboxResult
 
 logger = get_logger(__name__)
@@ -469,6 +470,7 @@ async def record_if_test_run(
     clock: Clock,
     command_repr_limit: int,
     output_tail_limit: int,
+    workspace_root: Path | None = None,
 ) -> None:
     """Persist *result* as test evidence when *command* ran a test suite.
 
@@ -476,6 +478,14 @@ async def record_if_test_run(
     or when called outside a bound execution scope. Best-effort: a capture
     failure logs and returns rather than failing the tool call, because
     losing the receipt must not lose the run.
+
+    What ``passed`` records is the run's exit status UNLESS the project's
+    committed manifest declares tests pending, in which case it is that
+    declaration's verdict: a skeleton's suite fails by design, and reading its
+    exit status would block the deliverable the stage exists to produce. The
+    decision has one owner, :mod:`synthorg.tools._pending_verdict`, because the
+    oracle is a pure function of this field and a second reading of it is a
+    second answer to whether a build passed.
 
     Args:
         result: The finished sandbox execution.
@@ -487,12 +497,21 @@ async def record_if_test_run(
         clock: Clock seam stamping the record.
         command_repr_limit: Characters of *command* kept on the record.
         output_tail_limit: Characters of stdout/stderr kept on the record.
+        workspace_root: Base directory projects live under, needed to find the
+            manifest. ``None`` leaves the exit status untouched, which is the
+            pre-pending behaviour and the right answer for a caller that has no
+            workspace to read.
     """
     if records is None or not is_test_run(command):
         return
     identity = current_execution_identity()
     if identity is None or identity.project_id is None:
         return
+    passed = resolve_passed(
+        exited_zero=result.success,
+        workspace_root=workspace_root,
+        project_id=identity.project_id,
+    )
     try:
         await records.append(
             CodeExecutionRecord(
@@ -502,7 +521,7 @@ async def record_if_test_run(
                 purpose=CodeExecutionPurpose.TESTS,
                 command=command[:command_repr_limit],
                 returncode=result.returncode,
-                passed=result.success,
+                passed=passed,
                 timed_out=result.timed_out,
                 stdout_tail=(
                     result.stdout[-output_tail_limit:] if result.stdout else None

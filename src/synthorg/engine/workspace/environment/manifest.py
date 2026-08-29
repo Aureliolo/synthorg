@@ -180,6 +180,36 @@ class EnvironmentManifest(BaseModel):
         return self
 
 
+def read_manifest(workspace_path: Path, *, filename: str) -> EnvironmentManifest:
+    """Read and validate the committed manifest under *workspace_path*.
+
+    Module-level so the strategy that provisions from the manifest and the
+    capture path that reads its pending set share one reader: two would let a
+    field the strategy accepts be one the capture path silently ignores.
+
+    Raises:
+        EnvironmentConfigError: The file is unreadable, is not a mapping, or
+            does not validate.
+
+    Returns:
+        The parsed manifest.
+    """
+    path = workspace_path / filename
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        msg = f"failed to read environment manifest {filename!r}"
+        raise EnvironmentConfigError(msg) from exc
+    if not isinstance(raw, dict):
+        msg = f"environment manifest {filename!r} must be a mapping"
+        raise EnvironmentConfigError(msg)
+    try:
+        return EnvironmentManifest.model_validate(raw)
+    except ValidationError as exc:
+        msg = f"invalid environment manifest {filename!r}"
+        raise EnvironmentConfigError(msg) from exc
+
+
 class ManifestEnvironmentStrategy:
     """Backend-agnostic bootstrap-manifest strategy (default)."""
 
@@ -215,20 +245,7 @@ class ManifestEnvironmentStrategy:
         return self._manifest_path(workspace_path).is_file()
 
     def _read_manifest(self, workspace_path: Path) -> EnvironmentManifest:
-        path = self._manifest_path(workspace_path)
-        try:
-            raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-        except (OSError, yaml.YAMLError) as exc:
-            msg = f"failed to read environment manifest {self._manifest_filename!r}"
-            raise EnvironmentConfigError(msg) from exc
-        if not isinstance(raw, dict):
-            msg = f"environment manifest {self._manifest_filename!r} must be a mapping"
-            raise EnvironmentConfigError(msg)
-        try:
-            return EnvironmentManifest.model_validate(raw)
-        except ValidationError as exc:
-            msg = f"invalid environment manifest {self._manifest_filename!r}"
-            raise EnvironmentConfigError(msg) from exc
+        return read_manifest(workspace_path, filename=self._manifest_filename)
 
     async def scaffold(self, workspace_path: Path) -> ScaffoldResult:
         """Write the default manifest if absent (idempotent no-op otherwise).

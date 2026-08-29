@@ -107,24 +107,37 @@ class PendingReport(BaseModel):
             False means every outcome below is red for that reason alone, which
             a caller should say out loud rather than reporting each criterion as
             if it had been measured and lost.
+        other_failures: How many cases OUTSIDE the pending set failed or
+            errored. Counted because a suite whose pending tests are all
+            correctly failing exits non-zero by construction, so the exit
+            status can no longer tell a caller whether anything real broke.
+            Reading the pending verdict alone would then pass a run that also
+            broke three ordinary tests.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     outcomes: tuple[CriterionOutcome, ...] = ()
     report_read: bool = True
+    other_failures: int = 0
 
     @property
     def green(self) -> bool:
-        """Whether every pending criterion reached its declared failure.
+        """Whether the run is clean given what it declared pending.
 
         Returns:
-            ``True`` when nothing is red. An empty pending set is green: a
-            skeleton that declared no pending criteria has nothing outstanding,
-            which is a different claim from one whose report went missing.
+            ``True`` when every pending criterion reached its declared failure
+            and nothing outside the pending set broke. An empty pending set is
+            green: a skeleton that declared no pending criteria has nothing
+            outstanding, which is a different claim from one whose report went
+            missing.
         """
-        return self.report_read and all(
-            outcome.verdict is PendingVerdict.GREEN for outcome in self.outcomes
+        return (
+            self.report_read
+            and self.other_failures == 0
+            and all(
+                outcome.verdict is PendingVerdict.GREEN for outcome in self.outcomes
+            )
         )
 
 
@@ -141,6 +154,41 @@ def _outcome_tag(case: Element) -> str | None:
     return None
 
 
+def _spellings(case: Element) -> tuple[str, ...]:
+    """Every node id a manifest could legitimately name *case* by.
+
+    Returns:
+        The bare name plus, when the case carries one, both classname-qualified
+        forms; empty when the case has no name at all.
+    """
+    name = case.get("name", "")
+    if not name:
+        return ()
+    classname = case.get("classname", "")
+    if not classname:
+        return (name,)
+    return (name, f"{classname}::{name}", f"{classname}.{name}")
+
+
+def _count_other_failures(root: Element, pending_ids: frozenset[str]) -> int:
+    """Count failing cases the manifest did not declare pending.
+
+    Counted from the cases rather than from the index, because the index holds
+    each case under three spellings and would treble every failure.
+
+    Returns:
+        How many non-pending cases failed or errored. A skip is not one: a
+        skipped ordinary test is a decision the suite made, not a break.
+    """
+    return sum(
+        1
+        for case in root.iter("testcase")
+        if (spellings := _spellings(case))
+        and not pending_ids.intersection(spellings)
+        and _outcome_tag(case) in {_FAILURE_TAG, _ERROR_TAG}
+    )
+
+
 def _case_index(root: Element) -> Mapping[str, str | None]:
     """Index every test case in *root* by its node id.
 
@@ -152,16 +200,11 @@ def _case_index(root: Element) -> Mapping[str, str | None]:
     """
     index: dict[str, str | None] = {}
     for case in root.iter("testcase"):
-        classname = case.get("classname", "")
-        name = case.get("name", "")
-        if not name:
-            continue
         # Runners disagree on whether the file is a classname or part of the
-        # name, so both spellings are indexed and the manifest may use either.
-        index[name] = _outcome_tag(case)
-        if classname:
-            index[f"{classname}::{name}"] = _outcome_tag(case)
-            index[f"{classname}.{name}"] = _outcome_tag(case)
+        # name, so every spelling is indexed and the manifest may use any.
+        outcome = _outcome_tag(case)
+        for spelling in _spellings(case):
+            index[spelling] = outcome
     return index
 
 
@@ -232,7 +275,10 @@ def classify_pending(
         )
     index = _case_index(root)
     return PendingReport(
-        outcomes=tuple(_classify_one(entry, index=index) for entry in pending)
+        outcomes=tuple(_classify_one(entry, index=index) for entry in pending),
+        other_failures=_count_other_failures(
+            root, frozenset(str(entry.test_id) for entry in pending)
+        ),
     )
 
 

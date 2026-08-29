@@ -119,6 +119,10 @@ ENVIRONMENT_PENDING_REPORT_ESCAPED: Final[str] = "environment.pending.report.esc
 ENVIRONMENT_PENDING_REPORT_UNREADABLE: Final[str] = (
     "environment.pending.report.unreadable"
 )
+# A committed manifest was present and would not parse, so what the project
+# declared pending is unknowable and the test run records as failed. Logged
+# because the fix is the author's and nothing else in the run will say so.
+ENVIRONMENT_PENDING_MANIFEST_UNREAD: Final[str] = "environment.pending.manifest.unread"
 
 # ── Coordinator push-queue events ────────────────────────────────
 WORKSPACE_PUSH_QUEUE_ENQUEUED: Final[str] = "workspace.push_queue.enqueued"
