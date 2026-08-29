@@ -22,7 +22,7 @@ dependencies = [
     # surface rather than something we inherit through mcp.
     "anyio==4.14.2",
     "argon2-cffi==25.1.0",
-    "cryptography==50.0.0",
+    "cryptography==50.0.1",
     "faker==40.37.0",
     "httpcore==1.0.9",
     "httpx==0.28.1",
@@ -36,11 +36,11 @@ dependencies = [
     "cedarpy==4.8.7",
     "lxml==6.1.2",
     "litestar[standard,structlog,pydantic,brotli,prometheus]==2.24.0",
-    "mcp==2.0.0",
-    "mmh3==5.2.1",
+    "mcp==2.1.1",
+    "mmh3==5.3.0",
     "packaging==26.3",
     "prometheus-client==0.26.0",
-    "pydantic==2.13.4",
+    "pydantic==2.13.5",
     "pyjwt[crypto]==2.13.0",
     "pyngrok==8.1.2",
     "pyyaml==6.0.3",
@@ -82,13 +82,13 @@ fine-tune-gpu = [
     "torch==2.13.0",
     "sentence-transformers[train]==6.0.0",
     "datasets==5.0.1",
-    "transformers==5.15.1",
+    "transformers==5.16.1",
 ]
 fine-tune-cpu = [
     "torch==2.13.0",
     "sentence-transformers[train]==6.0.0",
     "datasets==5.0.1",
-    "transformers==5.15.1",
+    "transformers==5.16.1",
 ]
 telemetry = ["logfire==4.41.0"]
 # Distributed runtime: first distributed MessageBus backend + task queue workers.
@@ -102,7 +102,7 @@ postgres = ["psycopg[binary]==3.3.4", "psycopg_pool==3.3.1"]
 knowledge = [
     "pdfplumber==0.11.10",
     "tree-sitter==0.26.0",
-    "tree-sitter-language-pack==1.14.3",
+    "tree-sitter-language-pack==1.15.8",
 ]
 
 [tool.hatch.version]
@@ -150,7 +150,7 @@ test = [
     # Runtime users opt in via `pip install synthorg[knowledge]`.
     "pdfplumber==0.11.10",
     "tree-sitter==0.26.0",
-    "tree-sitter-language-pack==1.14.3",
+    "tree-sitter-language-pack==1.15.8",
 ]
 docs = [
     "zensical==0.0.57",
@@ -167,13 +167,13 @@ fine-tune-gpu = [
     "torch==2.13.0",
     "sentence-transformers[train]==6.0.0",
     "datasets==5.0.1",
-    "transformers==5.15.1",
+    "transformers==5.16.1",
 ]
 fine-tune-cpu = [
     "torch==2.13.0",
     "sentence-transformers[train]==6.0.0",
     "datasets==5.0.1",
-    "transformers==5.15.1",
+    "transformers==5.16.1",
 ]
 dev = [
     "commitizen==4.18.0",
@@ -181,7 +181,7 @@ dev = [
     "pre-commit==4.6.2",
     "pip-audit==2.10.1",
     "pre-commit-uv==4.3.0",
-    "ruff==0.16.4",
+    "ruff==0.16.5",
     "sqlglot==30.17.0",
     "types-pyyaml==6.0.12.20260815",
     "types-defusedxml==0.7.0.20260504",
@@ -198,7 +198,7 @@ dev = [
     "codespell==2.4.3",
     "sqlfluff==4.3.0",
     "yamllint==1.38.0",
-    "import-linter==2.13",
+    "import-linter==2.14",
     {include-group = "test"},
     {include-group = "docs"},
 ]
