@@ -58,6 +58,7 @@ from synthorg.tools.sandbox._sidecar_resolution import (
     get_resolved_docker_connect_timeout_seconds,
 )
 from synthorg.tools.sandbox.active_environment import get_active_sandbox_environment
+from synthorg.tools.sandbox.background_jobs import BackgroundJobRegistry
 from synthorg.tools.sandbox.credential_manager import SandboxCredentialManager
 from synthorg.tools.sandbox.deployment_identity import (
     DEPLOYMENT_LABEL,
@@ -66,6 +67,9 @@ from synthorg.tools.sandbox.deployment_identity import (
     deployment_id_for,
 )
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
+from synthorg.tools.sandbox.docker_sandbox_background import (
+    DockerSandboxBackgroundMixin,
+)
 from synthorg.tools.sandbox.docker_sandbox_exec import DockerSandboxExecMixin
 from synthorg.tools.sandbox.docker_sandbox_lifecycle import (
     DockerSandboxLifecycleMixin,
@@ -144,6 +148,7 @@ def _to_posix_bind_path(path: Path) -> str:
 
 
 class DockerSandbox(
+    DockerSandboxBackgroundMixin,
     DockerSandboxExecMixin,
     DockerSandboxSidecarMixin,
     DockerSandboxLifecycleMixin,
@@ -169,6 +174,7 @@ class DockerSandbox(
         clock: Clock | None = None,
         tracked_container_repo: TrackedContainerRepository | None = None,
         lifecycle_strategy: SandboxLifecycleStrategy | None = None,
+        background_jobs: BackgroundJobRegistry | None = None,
     ) -> None:
         """Initialize the Docker sandbox.
 
@@ -191,6 +197,13 @@ class DockerSandbox(
                 reconcile orphaned containers on restart. When omitted
                 (tests, ad-hoc instantiation), the in-memory dict is
                 still authoritative and reconciliation is skipped.
+            background_jobs: Registry backing ``start_background`` and
+                its siblings (:class:`DockerSandboxBackgroundMixin`).
+                ``None`` disables backgrounding: every ``*_background``
+                call raises ``SandboxBackgroundUnsupportedError``, and
+                the lifecycle strategy's own pin check is never wired,
+                so container teardown timing is unchanged from before
+                this feature existed.
 
         Raises:
             ValueError: If *workspace* is not absolute or does not exist.
@@ -219,6 +232,7 @@ class DockerSandbox(
         self._tracked_container_repo: TrackedContainerRepository | None = (
             tracked_container_repo
         )
+        self._background_jobs: BackgroundJobRegistry | None = background_jobs
         self._lock = asyncio.Lock()
         self._init_execution_leases(command_timeout=self._config.timeout_seconds)
         self._clock = clock or SystemClock()
@@ -430,6 +444,7 @@ class DockerSandbox(
             certain=own.certain,
         )
 
+    @override
     async def _project_root(self, project_id: str | None) -> Path:
         """Resolve the per-execution mount root for *project_id*.
 
@@ -491,6 +506,7 @@ class DockerSandbox(
             raise SandboxError(msg)
         return root
 
+    @override
     @staticmethod
     def _rooted(cwd: Path, effective_root: Path) -> Path:
         """Anchor a caller-supplied *cwd* to the mount root when it is relative.
@@ -505,6 +521,7 @@ class DockerSandbox(
         """
         return cwd if cwd.is_absolute() else effective_root / cwd
 
+    @override
     def _validate_cwd(self, cwd: Path, effective_root: Path | None = None) -> None:
         """Validate that *cwd* is within *effective_root*.
 
@@ -531,6 +548,7 @@ class DockerSandbox(
             )
             raise SandboxError(msg) from exc
 
+    @override
     def _resolve_cwd_in_container(
         self,
         cwd: Path | None,
@@ -570,6 +588,7 @@ class DockerSandbox(
             for pat in self._config.env_denylist_patterns
         )
 
+    @override
     def _screen_declaration_env(
         self,
         env_additions: Mapping[str, str],
@@ -961,6 +980,7 @@ class DockerSandbox(
         """The container lifecycle strategy in effect for this backend."""
         return self._lifecycle_strategy
 
+    @override
     async def _acquire_owner_handle(
         self,
         *,

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from synthorg.core.types import NotBlankStr
+from synthorg.persistence.background_job_protocol import BackgroundJobRecord
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
 from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.tools.sandbox.result import SandboxResult
@@ -51,6 +52,35 @@ class _FakeSandbox:
 
     def get_backend_type(self) -> NotBlankStr:
         return NotBlankStr("fake")
+
+    async def start_background(
+        self,
+        *,
+        command: str,
+        args: tuple[str, ...],
+        cwd: Path | None = None,
+        env_overrides: Mapping[str, str] | None = None,
+        category: str = "",
+        owner_id: NotBlankStr,
+        project_id: NotBlankStr | None = None,
+    ) -> NotBlankStr:
+        return NotBlankStr("fake-job")
+
+    async def poll_background(self, job_id: NotBlankStr) -> BackgroundJobRecord:
+        raise NotImplementedError
+
+    async def read_background_output(
+        self, job_id: NotBlankStr, *, byte_cap: int
+    ) -> str:
+        return ""
+
+    async def cancel_background(self, job_id: NotBlankStr) -> BackgroundJobRecord:
+        raise NotImplementedError
+
+    async def list_background_jobs(
+        self, owner_id: NotBlankStr
+    ) -> tuple[BackgroundJobRecord, ...]:
+        return ()
 
 
 class TestSandboxBackendProtocol:

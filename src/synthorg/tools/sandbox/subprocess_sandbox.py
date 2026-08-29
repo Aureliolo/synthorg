@@ -23,6 +23,7 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_KILL_FAILED,
     SANDBOX_WORKSPACE_VIOLATION,
 )
+from synthorg.persistence.background_job_protocol import BackgroundJobRecord
 from synthorg.tools.sandbox._subprocess_env import _EnvFilterMixin
 from synthorg.tools.sandbox._subprocess_proc import (
     _close_process,
@@ -34,6 +35,7 @@ from synthorg.tools.sandbox._subprocess_proc import (
 from synthorg.tools.sandbox.active_environment import get_active_sandbox_environment
 from synthorg.tools.sandbox.config import SubprocessSandboxConfig
 from synthorg.tools.sandbox.errors import (
+    SandboxBackgroundUnsupportedError,
     SandboxError,
 )
 from synthorg.tools.sandbox.result import SandboxResult
@@ -424,3 +426,80 @@ class SubprocessSandbox(_EnvFilterMixin):
             Result of type ``NotBlankStr``.
         """
         return NotBlankStr("subprocess")
+
+    async def start_background(
+        self,
+        *,
+        command: str,  # noqa: ARG002
+        args: tuple[str, ...],  # noqa: ARG002
+        cwd: Path | None = None,  # noqa: ARG002
+        env_overrides: Mapping[str, str] | None = None,  # noqa: ARG002
+        category: str = "",  # noqa: ARG002
+        owner_id: NotBlankStr,  # noqa: ARG002
+        project_id: NotBlankStr | None = None,  # noqa: ARG002
+    ) -> NotBlankStr:
+        """Refuse: no persistent container a background job could run in.
+
+        Raises:
+            SandboxBackgroundUnsupportedError: Always.
+        """
+        msg = (
+            "SubprocessSandbox holds no per-owner container; a background "
+            "job started here would be orphaned the instant execute() "
+            "returns and closes the process."
+        )
+        raise SandboxBackgroundUnsupportedError(msg)
+
+    async def poll_background(
+        self,
+        job_id: NotBlankStr,  # noqa: ARG002
+    ) -> BackgroundJobRecord:
+        """Refuse: no background job could ever have started here.
+
+        Raises:
+            SandboxBackgroundUnsupportedError: Always.
+        """
+        msg = "SubprocessSandbox cannot start a background job, so it has none to poll."
+        raise SandboxBackgroundUnsupportedError(msg)
+
+    async def read_background_output(
+        self,
+        job_id: NotBlankStr,  # noqa: ARG002
+        *,
+        byte_cap: int,  # noqa: ARG002
+    ) -> str:
+        """Refuse: no background job could ever have started here.
+
+        Raises:
+            SandboxBackgroundUnsupportedError: Always.
+        """
+        msg = (
+            "SubprocessSandbox cannot start a background job, so it has "
+            "no output to read."
+        )
+        raise SandboxBackgroundUnsupportedError(msg)
+
+    async def cancel_background(
+        self,
+        job_id: NotBlankStr,  # noqa: ARG002
+    ) -> BackgroundJobRecord:
+        """Refuse: no background job could ever have started here.
+
+        Raises:
+            SandboxBackgroundUnsupportedError: Always.
+        """
+        msg = (
+            "SubprocessSandbox cannot start a background job, so it has none to cancel."
+        )
+        raise SandboxBackgroundUnsupportedError(msg)
+
+    async def list_background_jobs(
+        self,
+        owner_id: NotBlankStr,  # noqa: ARG002
+    ) -> tuple[BackgroundJobRecord, ...]:
+        """Return no jobs: this backend can never have started one.
+
+        Returns:
+            Always the empty tuple.
+        """
+        return ()

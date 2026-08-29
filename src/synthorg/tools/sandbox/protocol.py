@@ -7,6 +7,7 @@ from pathlib import (
 from typing import Protocol, runtime_checkable
 
 from synthorg.core.types import NotBlankStr
+from synthorg.persistence.background_job_protocol import BackgroundJobRecord
 from synthorg.tools.sandbox.result import SandboxResult
 
 
@@ -118,5 +119,117 @@ class SandboxBackend(Protocol):
 
         Returns:
             A string like ``'subprocess'`` or ``'docker'``.
+        """
+        ...
+
+    async def start_background(
+        self,
+        *,
+        command: str,
+        args: tuple[str, ...],
+        cwd: Path | None = None,
+        env_overrides: Mapping[str, str] | None = None,
+        category: str = "",
+        owner_id: NotBlankStr,
+        project_id: NotBlankStr | None = None,
+    ) -> NotBlankStr:
+        """Start *command* detached; the caller polls/reads/cancels it later.
+
+        The job's lifetime is tied to the sandbox container that owns
+        *owner_id*'s workspace: starting one pins that container open
+        past what its lifecycle strategy's own grace/idle timers would
+        otherwise allow, until the job reaches a terminal status.
+
+        Args:
+            command: Executable name or path.
+            args: Command arguments.
+            cwd: Working directory (defaults to sandbox workspace root).
+            env_overrides: Extra environment variables for the sandbox.
+            category: The calling tool's :class:`ToolCategory` value.
+            owner_id: Lifecycle owner identifier. Background jobs have
+                no per-call semantics, so this is required (unlike
+                ``execute``'s optional ``owner_id``).
+            project_id: Owning project; see ``execute``.
+
+        Returns:
+            The started job's id, addressed by every other
+            ``*_background`` method.
+
+        Raises:
+            SandboxBackgroundUnsupportedError: This backend has no
+                persistent container a background job could run in.
+            SandboxBackgroundNoReusableContainerError: The resolved
+                lifecycle strategy destroys its container after every
+                call, so there is nothing to pin.
+            SandboxBackgroundJobLimitError: *owner_id* already holds
+                the maximum number of live background jobs.
+            SandboxStartError: The job could not be confirmed started.
+        """
+        ...
+
+    async def poll_background(self, job_id: NotBlankStr) -> BackgroundJobRecord:
+        """Return the current tracking row for *job_id*.
+
+        A still-running job is polled directly (via the container) so
+        the returned status reflects reality even if this is the first
+        check since the job finished; a terminal job returns the
+        persisted row unchanged.
+
+        Args:
+            job_id: The job to check.
+
+        Returns:
+            The job's current tracking row.
+
+        Raises:
+            SandboxBackgroundJobNotFoundError: No job matches *job_id*.
+        """
+        ...
+
+    async def read_background_output(
+        self, job_id: NotBlankStr, *, byte_cap: int
+    ) -> str:
+        """Return *job_id*'s captured output, truncated to *byte_cap* bytes.
+
+        Args:
+            job_id: The job whose output to read.
+            byte_cap: Maximum bytes to return.
+
+        Returns:
+            The captured stdout+stderr, interleaved as written, kept
+            from the start (never the tail) when larger than the cap.
+
+        Raises:
+            SandboxBackgroundJobNotFoundError: No job matches *job_id*.
+        """
+        ...
+
+    async def cancel_background(self, job_id: NotBlankStr) -> BackgroundJobRecord:
+        """Terminate *job_id*'s process group and mark it cancelled.
+
+        A job that already reached a terminal status is left alone and
+        returned as-is: cancelling a finished job is not an error.
+
+        Args:
+            job_id: The job to cancel.
+
+        Returns:
+            The job's tracking row after cancellation.
+
+        Raises:
+            SandboxBackgroundJobNotFoundError: No job matches *job_id*.
+        """
+        ...
+
+    async def list_background_jobs(
+        self, owner_id: NotBlankStr
+    ) -> tuple[BackgroundJobRecord, ...]:
+        """List background jobs recorded against *owner_id*, newest-first.
+
+        Args:
+            owner_id: Lifecycle owner to list jobs for.
+
+        Returns:
+            This owner's job rows, newest-first.
         """
         ...
