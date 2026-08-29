@@ -331,7 +331,7 @@ the agent during execution.
     each candidate carries a running maximum similarity that the newly selected
     entry is folded into once per selection. Recomputing that maximum over the
     whole selected set on every pass instead is cubic, because it re-derives
-    each pair about `n / 6` times.  When
+    each pair `(n + 1) / 3` times over. When
     diversity is enabled, the backend over-fetches by a configurable
     `candidate_pool_multiplier` (default 3x, range 1--10) so MMR can promote
     diverse candidates that would otherwise fall below the top-K cutoff. This
