@@ -4,9 +4,13 @@ Covers word-bigram Jaccard similarity and the MMR-based
 ``apply_diversity_penalty`` re-ranker.
 """
 
+import math
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from synthorg.core.memory_enums import MemoryCategory
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
@@ -287,3 +291,170 @@ class TestApplyDiversityPenalty:
         # All entries present in input order.
         assert len(result) == 3
         assert [r.entry.id for r in result] == ["e0", "e1", "e2"]
+
+
+def _rerank_recomputing_every_pass(
+    scored: tuple[ScoredMemory, ...],
+    *,
+    diversity_lambda: float,
+    similarity_fn: Callable[[str, str], float],
+) -> tuple[str, ...]:
+    """Reference MMR that recomputes the max over all selected each pass.
+
+    The textbook statement of the algorithm, kept here as an oracle: the
+    production re-ranker folds each selection into a running maximum
+    instead, and the two must agree exactly.
+
+    Returns:
+        The re-ranked entry ids.
+    """
+    remaining = list(scored)
+    selected: list[ScoredMemory] = []
+    while remaining:
+        best_idx = 0
+        best_mmr = -math.inf
+        for i, candidate in enumerate(remaining):
+            relevance = diversity_lambda * candidate.combined_score
+            max_sim = (
+                max(
+                    similarity_fn(candidate.entry.content, s.entry.content)
+                    for s in selected
+                )
+                if selected
+                else 0.0
+            )
+            mmr = relevance - (1.0 - diversity_lambda) * max_sim
+            if mmr > best_mmr:
+                best_mmr = mmr
+                best_idx = i
+        selected.append(remaining.pop(best_idx))
+    return tuple(s.entry.id for s in selected)
+
+
+@pytest.mark.unit
+class TestDiversityPenaltyPairwiseCost:
+    """MMR compares each pair once, which is what keeps it quadratic.
+
+    Recomputing the maximum over every selected entry on each pass costs
+    ``sum (n - s) * s`` comparisons, cubic in the input, and the
+    ``docs/design/memory-learning.md`` complexity claim is ``O(n**2)``.
+    Pinning the count is what stops the cubic shape returning unnoticed:
+    it produces identical output, so no behavioural test can see it.
+    """
+
+    @staticmethod
+    def _cubic_call_count(n: int) -> int:
+        """Comparisons the recompute-every-pass formulation would make.
+
+        Returns:
+            ``sum over s of (n - s) * s`` for ``s`` in ``0..n-1``.
+        """
+        return sum((n - s) * s for s in range(n))
+
+    @pytest.mark.parametrize("size", [2, 5, 12])
+    def test_custom_similarity_fn_called_once_per_pair(self, size: int) -> None:
+        entries = tuple(
+            _make_scored(
+                entry_id=f"e{i}",
+                content=f"entry {i} body",
+                combined_score=1.0 - i * 0.01,
+            )
+            for i in range(size)
+        )
+        calls = 0
+
+        def _counting_similarity(left: str, right: str) -> float:
+            nonlocal calls
+            calls += 1
+            return 0.5 if left != right else 1.0
+
+        apply_diversity_penalty(
+            entries,
+            diversity_lambda=0.7,
+            similarity_fn=_counting_similarity,
+        )
+
+        assert calls == size * (size - 1) // 2
+        # The shape being guarded against, not merely a smaller number.
+        if size > 2:
+            assert calls < self._cubic_call_count(size)
+
+    def test_bigram_path_compares_each_pair_once(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The default path is counted at its own similarity primitive."""
+        from synthorg.memory import ranking_mmr
+
+        size = 12
+        entries = tuple(
+            _make_scored(
+                entry_id=f"e{i}",
+                content=f"topic {i % 3} detailed body text for entry {i}",
+                combined_score=1.0 - i * 0.01,
+            )
+            for i in range(size)
+        )
+        real = ranking_mmr._bigram_jaccard_sets
+        calls = 0
+
+        def _counting(
+            bigrams_a: frozenset[tuple[str, str]],
+            bigrams_b: frozenset[tuple[str, str]],
+        ) -> float:
+            nonlocal calls
+            calls += 1
+            return real(bigrams_a, bigrams_b)
+
+        monkeypatch.setattr(ranking_mmr, "_bigram_jaccard_sets", _counting)
+        apply_diversity_penalty(entries, diversity_lambda=0.7)
+
+        assert calls == size * (size - 1) // 2
+        assert calls < self._cubic_call_count(size)
+
+
+@pytest.mark.unit
+class TestDiversityPenaltyProperties:
+    """The running maximum must agree with recomputing it every pass."""
+
+    @given(
+        scores=st.lists(
+            st.floats(min_value=0.0, max_value=1.0, allow_nan=False),
+            min_size=2,
+            max_size=8,
+        ),
+        similarities=st.lists(
+            st.floats(min_value=0.0, max_value=1.0, allow_nan=False),
+            min_size=1,
+            max_size=40,
+        ),
+        diversity_lambda=st.floats(min_value=0.0, max_value=1.0, allow_nan=False),
+    )
+    def test_matches_the_recomputing_reference(
+        self,
+        scores: list[float],
+        similarities: list[float],
+        diversity_lambda: float,
+    ) -> None:
+        entries = tuple(
+            _make_scored(entry_id=f"e{i}", content=f"c{i}", combined_score=score)
+            for i, score in enumerate(scores)
+        )
+
+        def _table_similarity(left: str, right: str) -> float:
+            # Symmetric and deterministic, as MMR assumes, but otherwise
+            # arbitrary so the ordering is not accidentally monotonic.
+            key = hash(frozenset((left, right))) % len(similarities)
+            return similarities[key]
+
+        result = apply_diversity_penalty(
+            entries,
+            diversity_lambda=diversity_lambda,
+            similarity_fn=_table_similarity,
+        )
+        expected = _rerank_recomputing_every_pass(
+            entries,
+            diversity_lambda=diversity_lambda,
+            similarity_fn=_table_similarity,
+        )
+
+        assert tuple(r.entry.id for r in result) == expected

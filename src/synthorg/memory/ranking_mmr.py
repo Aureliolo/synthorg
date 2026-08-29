@@ -52,13 +52,7 @@ def bigram_jaccard(text_a: str, text_b: str) -> float:
     Returns:
         Similarity score between 0.0 and 1.0.
     """
-    bigrams_a = _word_bigrams(text_a)
-    bigrams_b = _word_bigrams(text_b)
-    if not bigrams_a or not bigrams_b:
-        return 0.0
-    intersection = len(bigrams_a & bigrams_b)
-    union = len(bigrams_a | bigrams_b)
-    return intersection / union
+    return _bigram_jaccard_sets(_word_bigrams(text_a), _word_bigrams(text_b))
 
 
 _DEFAULT_DIVERSITY_LAMBDA: Final[float] = 0.7
@@ -118,7 +112,7 @@ def apply_diversity_penalty(
         return scored
 
     if similarity_fn is None:
-        return _mmr_rerank_bigram_cached(
+        return _mmr_rerank_bigram(
             scored,
             diversity_lambda=diversity_lambda,
         )
@@ -130,12 +124,22 @@ def apply_diversity_penalty(
     )
 
 
-def _mmr_rerank_bigram_cached(
+def _mmr_rerank_bigram(
     scored: tuple[ScoredMemory, ...],
     *,
     diversity_lambda: float,
 ) -> tuple[ScoredMemory, ...]:
     """MMR re-ranking with pre-computed bigram sets for each entry.
+
+    Each candidate carries its similarity to the *nearest* entry selected so
+    far. Only the entry just selected can raise that maximum, so folding it
+    in once per selection derives each pair exactly once and holds the whole
+    re-ranking at the ``O(n**2)`` comparisons the design specifies.
+    Recomputing the maximum over the whole selected set on every pass costs
+    ``sum (n - s) * s`` instead, which is cubic. The running maximum is exact
+    rather than approximate: ``max`` is associative and idempotent and
+    accumulates no floating-point error, so it equals the maximum over the
+    whole selected set.
 
     Returns:
         Tuple of ``ScoredMemory``.
@@ -143,6 +147,7 @@ def _mmr_rerank_bigram_cached(
     bigrams_by_idx = [_word_bigrams(s.entry.content) for s in scored]
     remaining_indices = list(range(len(scored)))
     selected_indices: list[int] = []
+    max_sim_by_idx = [0.0] * len(scored)
 
     while remaining_indices:
         best_position = 0
@@ -150,31 +155,31 @@ def _mmr_rerank_bigram_cached(
 
         for position, idx in enumerate(remaining_indices):
             relevance = diversity_lambda * scored[idx].combined_score
-            if selected_indices:
-                max_sim = max(
-                    _bigram_jaccard_cached(bigrams_by_idx[idx], bigrams_by_idx[sel])
-                    for sel in selected_indices
-                )
-            else:
-                max_sim = 0.0
-            mmr = relevance - (1.0 - diversity_lambda) * max_sim
+            mmr = relevance - (1.0 - diversity_lambda) * max_sim_by_idx[idx]
             if mmr > best_mmr:
                 best_mmr = mmr
                 best_position = position
 
-        selected_indices.append(remaining_indices.pop(best_position))
+        chosen = remaining_indices.pop(best_position)
+        selected_indices.append(chosen)
+        chosen_bigrams = bigrams_by_idx[chosen]
+        for idx in remaining_indices:
+            max_sim_by_idx[idx] = max(
+                max_sim_by_idx[idx],
+                _bigram_jaccard_sets(bigrams_by_idx[idx], chosen_bigrams),
+            )
 
     logger.info(
         MEMORY_DIVERSITY_RERANKED,
         input_count=len(scored),
         diversity_lambda=diversity_lambda,
-        similarity="bigram_jaccard_cached",
+        similarity="bigram_jaccard",
     )
 
     return tuple(scored[i] for i in selected_indices)
 
 
-def _bigram_jaccard_cached(
+def _bigram_jaccard_sets(
     bigrams_a: frozenset[tuple[str, str]],
     bigrams_b: frozenset[tuple[str, str]],
 ) -> float:
@@ -186,7 +191,9 @@ def _bigram_jaccard_cached(
     if not bigrams_a or not bigrams_b:
         return 0.0
     intersection = len(bigrams_a & bigrams_b)
-    union = len(bigrams_a | bigrams_b)
+    # Derived rather than built: ``a | b`` would allocate the larger of the
+    # two sets on every pair just to read its length.
+    union = len(bigrams_a) + len(bigrams_b) - intersection
     return intersection / union
 
 
@@ -198,31 +205,36 @@ def _mmr_rerank_generic(
 ) -> tuple[ScoredMemory, ...]:
     """MMR re-ranking with a caller-supplied similarity function.
 
+    Carries the same running maximum as the bigram path, which matters more
+    here: the injected function is handed raw text and cannot be assumed
+    cheap, so each pair is asked for exactly once.
+
     Returns:
         Tuple of ``ScoredMemory``.
     """
-    remaining = list(scored)
-    selected: list[ScoredMemory] = []
+    remaining_indices = list(range(len(scored)))
+    selected_indices: list[int] = []
+    max_sim_by_idx = [0.0] * len(scored)
 
-    while remaining:
-        best_idx = 0
+    while remaining_indices:
+        best_position = 0
         best_mmr = -math.inf
 
-        for i, candidate in enumerate(remaining):
-            relevance = diversity_lambda * candidate.combined_score
-            if selected:
-                max_sim = max(
-                    similarity_fn(candidate.entry.content, s.entry.content)
-                    for s in selected
-                )
-            else:
-                max_sim = 0.0
-            mmr = relevance - (1.0 - diversity_lambda) * max_sim
+        for position, idx in enumerate(remaining_indices):
+            relevance = diversity_lambda * scored[idx].combined_score
+            mmr = relevance - (1.0 - diversity_lambda) * max_sim_by_idx[idx]
             if mmr > best_mmr:
                 best_mmr = mmr
-                best_idx = i
+                best_position = position
 
-        selected.append(remaining.pop(best_idx))
+        chosen = remaining_indices.pop(best_position)
+        selected_indices.append(chosen)
+        chosen_content = scored[chosen].entry.content
+        for idx in remaining_indices:
+            max_sim_by_idx[idx] = max(
+                max_sim_by_idx[idx],
+                similarity_fn(scored[idx].entry.content, chosen_content),
+            )
 
     logger.info(
         MEMORY_DIVERSITY_RERANKED,
@@ -231,4 +243,4 @@ def _mmr_rerank_generic(
         similarity="custom",
     )
 
-    return tuple(selected)
+    return tuple(scored[i] for i in selected_indices)
