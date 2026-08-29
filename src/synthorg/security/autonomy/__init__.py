@@ -10,7 +10,6 @@ Import them directly from their modules when needed.
 from synthorg.security.autonomy.models import (
     BUILTIN_PRESETS,
     AutonomyConfig,
-    AutonomyOverride,
     AutonomyPreset,
 )
 from synthorg.security.autonomy.protocol import AutonomyChangeStrategy
@@ -19,6 +18,5 @@ __all__ = [
     "BUILTIN_PRESETS",
     "AutonomyChangeStrategy",
     "AutonomyConfig",
-    "AutonomyOverride",
     "AutonomyPreset",
 ]

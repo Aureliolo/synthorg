@@ -4,8 +4,8 @@ template:
     A content and marketing studio focused on campaigns, copy, and
     growth experiments on a tight budget. A brand strategist leads
     content writers, with a data analyst measuring campaign performance
-    and a project manager coordinating delivery. Cost-disciplined:
-    auto-downgrade keeps spend in check.
+    and a project manager coordinating delivery. Cost-disciplined: the
+    budget ceiling parks a run rather than spending through it.
   version: "1.1.0"
   min_agents: 5
   max_agents: 8

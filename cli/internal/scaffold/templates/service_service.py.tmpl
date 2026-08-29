@@ -3,14 +3,23 @@
 A starting point for a SynthOrg async service: lifecycle lock per
 ``docs/reference/lifecycle-sync.md``, ``Clock`` seam per CLAUDE.md
 conventions, structured logging via
-``synthorg.observability.get_logger``. Replace the stub ``run()`` body
-with the real workload; everything else is conventions-correct out of
-the box.
+``synthorg.observability.get_logger``. Replace the stub ``start()``
+body with the real workload; everything else is conventions-correct out
+of the box.
+
+This is the IN-PLACE RUNNER variant that page describes: ``start()``
+runs the loop on the calling coroutine and returns only once ``stop()``
+has signalled, so the lifecycle lock guards the ``_running`` transition
+alone rather than the loop body. A service that instead spawns a
+background task and returns immediately holds the lock across the whole
+of both methods; extend ``AsyncCycleScheduler`` for the periodic case
+rather than reimplementing either shape here.
 """
 
 import asyncio
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.{{.Domain}}.errors import {{.ClassName}}AlreadyRunningError
 from synthorg.observability import get_logger
 from synthorg.observability.events.{{.Domain}} import (
     {{shout .Domain}}_SERVICE_STARTED,
@@ -34,21 +43,26 @@ class {{.ClassName}}Service:
         self._stop_event = asyncio.Event()
         # Dedicated lifecycle lock per docs/reference/lifecycle-sync.md.
         # Held only across the _running transition (not across the full
-        # run() body) so a second concurrent caller fails fast instead
+        # start() body) so a second concurrent caller fails fast instead
         # of deadlocking against the loop.
         self._lifecycle_lock = asyncio.Lock()
 
     @property
     def is_running(self) -> bool:
-        """Whether :meth:`run` is currently executing."""
+        """Whether :meth:`start` is currently executing."""
         return self._running
 
-    async def run(self) -> None:
-        """Run the service until :meth:`stop` is signalled."""
+    async def start(self) -> None:
+        """Run the service until :meth:`stop` is signalled.
+
+        Raises:
+            {{.ClassName}}AlreadyRunningError: If the service is already
+                running.
+        """
         async with self._lifecycle_lock:
             if self._running:
                 msg = "{{.ClassName}}Service is already running"
-                raise RuntimeError(msg)
+                raise {{.ClassName}}AlreadyRunningError(msg)
             self._running = True
             self._stop_event.clear()
             logger.debug({{shout .Domain}}_SERVICE_STARTED)
@@ -61,6 +75,6 @@ class {{.ClassName}}Service:
                 logger.debug({{shout .Domain}}_SERVICE_STOPPED)
 
     async def stop(self) -> None:
-        """Signal :meth:`run` to exit at its next checkpoint."""
+        """Signal :meth:`start` to exit at its next checkpoint."""
         async with self._lifecycle_lock:
             self._stop_event.set()

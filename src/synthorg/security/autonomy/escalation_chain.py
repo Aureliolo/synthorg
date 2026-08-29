@@ -6,7 +6,6 @@ auto-grants: it records the chain the request must traverse and
 returns ``False`` (pending) -- the actual per-role approvals arrive
 out-of-band through the normal approval surface, exactly like the
 human-only default but with the chain made explicit for operators.
-Downgrade / recovery / override-store ops delegate to the base.
 """
 
 from synthorg.core.autonomy_enums import AutonomyLevel
@@ -26,8 +25,7 @@ class EscalationChainPromotionStrategy(BaseDelegatingStrategy):
     """Route promotion through an ordered approver-role chain.
 
     Args:
-        base: Override-store-bearing strategy that downgrade /
-            recovery / override-store ops delegate to.
+        base: Strategy this wrapper is layered over.
         chain: Ordered approver roles the request must traverse. An
             empty chain means the request is always pending (no
             configured approvers).

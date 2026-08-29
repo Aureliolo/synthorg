@@ -1,17 +1,13 @@
-"""Tests for autonomy models -- presets, config, effective autonomy, overrides."""
-
-from datetime import UTC, datetime
+"""Tests for autonomy models -- presets, config, effective autonomy."""
 
 import pytest
 from pydantic import ValidationError
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.effective_autonomy import EffectiveAutonomy
-from synthorg.security.autonomy.enums import DowngradeReason
 from synthorg.security.autonomy.models import (
     BUILTIN_PRESETS,
     AutonomyConfig,
-    AutonomyOverride,
     AutonomyPreset,
     AutonomyUpdate,
     AutonomyUpdateResult,
@@ -331,46 +327,3 @@ class TestBuiltinPresetsImmutability:
     def test_cannot_delete_key(self) -> None:
         with pytest.raises(TypeError):
             del BUILTIN_PRESETS[AutonomyLevel.FULL]  # type: ignore[attr-defined]
-
-
-class TestAutonomyOverride:
-    """AutonomyOverride model tests."""
-
-    @pytest.mark.unit
-    def test_creation(self) -> None:
-        now = datetime.now(UTC)
-        override = AutonomyOverride(
-            agent_id="agent-1",
-            original_level=AutonomyLevel.SEMI,
-            current_level=AutonomyLevel.SUPERVISED,
-            reason=DowngradeReason.HIGH_ERROR_RATE,
-            downgraded_at=now,
-        )
-        assert override.agent_id == "agent-1"
-        assert override.requires_human_recovery is True
-
-    @pytest.mark.unit
-    def test_override_frozen(self) -> None:
-        now = datetime.now(UTC)
-        override = AutonomyOverride(
-            agent_id="agent-1",
-            original_level=AutonomyLevel.FULL,
-            current_level=AutonomyLevel.LOCKED,
-            reason=DowngradeReason.SECURITY_INCIDENT,
-            downgraded_at=now,
-        )
-        with pytest.raises(ValidationError):
-            override.current_level = AutonomyLevel.FULL  # type: ignore[misc]
-
-    @pytest.mark.unit
-    def test_current_above_original_rejected(self) -> None:
-        """Downgrade validator rejects current_level > original_level."""
-        now = datetime.now(UTC)
-        with pytest.raises(ValidationError, match="higher than"):
-            AutonomyOverride(
-                agent_id="agent-1",
-                original_level=AutonomyLevel.SUPERVISED,
-                current_level=AutonomyLevel.FULL,
-                reason=DowngradeReason.HIGH_ERROR_RATE,
-                downgraded_at=now,
-            )

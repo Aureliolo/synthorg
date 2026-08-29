@@ -16,55 +16,29 @@ lost 14 of 27 native-loop runs this way, at turn 2 or 3, while the bundled
 harness (which parses its tool calls inside its own container) could not hit
 it at all.
 
-The correction fires a bounded number of times in a row
-(:data:`MAX_CONSECUTIVE_CORRECTIONS`), and any productive turn resets the
-count. Past the bound the next unusable turn falls through, so a provider
-returning nothing usable at all still ends the run rather than looping.
+The correction fires a bounded number of times in a row, and any productive
+turn resets the count. Past the bound the next unusable turn falls through, so
+a provider returning nothing usable at all still ends the run rather than
+looping. The bound and the count both live in :mod:`.loop_correction_budget`,
+shared with :mod:`.loop_silent_turn`, because one budget per shape is no budget
+at all against a model that alternates between them.
 """
-
-from typing import Final
 
 from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.context import AgentContext
 from synthorg.engine.failure_classification import UNUSABLE_OUTPUT_MARKER
+from synthorg.engine.loop_correction_budget import (
+    DROPPED_CALL_NUDGE,
+    MAX_CONSECUTIVE_CORRECTIONS,
+    NO_CALL_NUDGE,
+    consecutive_corrections,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import EXECUTION_LOOP_UNUSABLE_TURN
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage, CompletionResponse
 
 logger = get_logger(__name__)
-
-#: A call arrives and is dropped for three different reasons: it carried no
-#: function at all, it named no tool or no id, or its arguments were not a
-#: well-formed JSON object. Naming only the last would tell a model that sent
-#: perfectly good arguments to go and fix them, which is the same unactionable
-#: instruction the no-call wording below exists to avoid.
-DROPPED_CALL_NUDGE: Final[str] = (
-    "Your last turn asked to call a tool but the call did not arrive in a "
-    "usable form: it was missing the name or id that identifies it, or its "
-    "arguments were not a well-formed JSON object. Re-issue it as one "
-    "well-formed call with complete arguments, or state your result in the "
-    "reply itself."
-)
-
-#: The other way a turn claims a tool and delivers none: the provider sent no
-#: call at all. Kept apart from the dropped-call wording, which would tell the
-#: model to fix arguments it never sent and so describes nothing it can act on.
-NO_CALL_NUDGE: Final[str] = (
-    "Your last turn ended as a tool call but carried no call at all, so "
-    "nothing ran. Send exactly one tool call now, or answer in the reply "
-    "itself if you have what you need."
-)
-
-#: Both corrections, so the consecutive-count walk recognises either.
-_NUDGES: Final[frozenset[str]] = frozenset({DROPPED_CALL_NUDGE, NO_CALL_NUDGE})
-
-# A model that stumbles can recover, and one turn of grace was not enough to
-# let it: correcting only once in a row still lost most of the runs the
-# correction was written for. Consecutive, so any productive turn resets it,
-# and small, so a provider returning nothing usable at all still ends the run
-# well inside the turn budget rather than spending the whole thing.
-MAX_CONSECUTIVE_CORRECTIONS: Final[int] = 3
 
 
 def unusable_turn_error(turn_number: int) -> str:
@@ -134,7 +108,7 @@ def continue_unusable_turn(
     """
     if not is_unusable_turn(response):
         return None
-    consecutive = _consecutive_corrections(ctx)
+    consecutive = consecutive_corrections(ctx)
     # Reported whether or not it is corrected: a run that dies on an unusable
     # turn must say so by name, or the failure is attributed to the provider
     # rather than to the model's own output.
@@ -157,33 +131,3 @@ def continue_unusable_turn(
     if not corrected:
         return None
     return ctx.with_message(ChatMessage(role=MessageRole.USER, content=nudge))
-
-
-def _consecutive_corrections(ctx: AgentContext) -> int:
-    """Count the corrections issued since the last productive turn.
-
-    Walks the tail of the conversation, counting nudges and stepping over the
-    call-less assistant turn each one answers, and stops at anything else. A
-    productive turn ends in a tool call and its result, so both stop the walk;
-    skipping every non-user message instead would read straight past them, and
-    a nudge from earlier in the run would count as consecutive with a later
-    one, spending the bound across unrelated failures rather than one stuck
-    stretch.
-
-    Returns:
-        The number of consecutive corrections at the end of the run.
-    """
-    consecutive = 0
-    for message in reversed(ctx.conversation):
-        if message.role is MessageRole.USER:
-            if message.content not in _NUDGES:
-                break
-            consecutive += 1
-            continue
-        if message.role is MessageRole.ASSISTANT and not message.tool_calls:
-            # The unusable turn the nudge above answers. It can carry text (a
-            # dropped call typically follows a preamble), so the discriminator
-            # is the absent call, not empty content.
-            continue
-        break
-    return consecutive

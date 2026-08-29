@@ -74,6 +74,16 @@ func TestServiceTemplateConventions(t *testing.T) {
 	mustContain(t, body, "clock: Clock | None = None")
 	mustContain(t, body, "SystemClock()")
 
+	// CLAUDE.md Errors: the service raises its own generated domain error,
+	// never a bare RuntimeError. Asserted on service.py and not only on
+	// errors.py, because the duplicate-start raise lives here and shipped a
+	// RuntimeError while the errors-module fence read green.
+	mustContain(t, body, "from synthorg.ping.errors import PingAlreadyRunningError")
+	mustContain(t, body, "raise PingAlreadyRunningError(msg)")
+	if strings.Contains(body, "raise Exception") || strings.Contains(body, "raise RuntimeError") {
+		t.Error("service.py must not raise bare Exception / RuntimeError (domain-error gate)")
+	}
+
 	// PEP 758 Python 3.14 + no __future__: forbidden imports/tokens
 	// must NOT appear (regression fence).
 	if strings.Contains(body, "from __future__") {
@@ -103,6 +113,7 @@ func TestServiceErrorsConventions(t *testing.T) {
 	mustContain(t, body, "from synthorg.core.domain_errors import DomainError, NotFoundError")
 	mustContain(t, body, "class PingError(DomainError):")
 	mustContain(t, body, "class PingNotFoundError(NotFoundError):")
+	mustContain(t, body, "class PingAlreadyRunningError(PingError):")
 	if strings.Contains(body, "raise Exception") || strings.Contains(body, "raise RuntimeError") {
 		t.Error("errors.py must not raise bare Exception / RuntimeError")
 	}
@@ -123,6 +134,13 @@ func TestServiceTestTemplateConventions(t *testing.T) {
 	mustContain(t, body, "pytestmark = pytest.mark.unit")
 	mustContain(t, body, "from tests._shared.fake_clock import FakeClock")
 	mustContain(t, body, "asyncio.TaskGroup")
+
+	// The duplicate-start test must name the generated domain error. Asserted
+	// separately from the service body because the two regress independently:
+	// a test still expecting RuntimeError fails against a correct service,
+	// and a generated suite that does not compile is worse than one that
+	// checks the wrong type.
+	mustContain(t, body, "PingAlreadyRunningError, match=\"already running\"")
 
 	// check_mock_spec.py: any Mock/AsyncMock/MagicMock must declare
 	// spec=. The current service test fixture has no mocks, but if a

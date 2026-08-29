@@ -4,17 +4,17 @@ from typing import Protocol, runtime_checkable
 
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
-from synthorg.security.autonomy.enums import DowngradeReason
 
 
 # HumanOnlyPromotionStrategy impl in autonomy/change_strategy.py;
-# pluggable promotion/downgrade strategy seam.
+# pluggable promotion strategy seam.
 @runtime_checkable
 class AutonomyChangeStrategy(Protocol):
-    """Strategy for managing runtime autonomy level changes.
+    """Strategy for deciding a runtime autonomy promotion request.
 
-    Implementations control how promotion requests, automatic
-    downgrades, and recovery requests are handled.
+    Promotion is the only direction on this seam. An operator grants a
+    level and nothing in the runtime lowers one, so there is no downgrade
+    or recovery to implement.
     """
 
     def request_promotion(
@@ -30,40 +30,6 @@ class AutonomyChangeStrategy(Protocol):
 
         Returns:
             ``True`` if the promotion is immediately granted,
-            ``False`` if it requires human approval.
-        """
-        ...
-
-    def auto_downgrade(
-        self,
-        agent_id: NotBlankStr,
-        reason: DowngradeReason,
-        current_level: AutonomyLevel | None = None,
-    ) -> AutonomyLevel:
-        """Automatically downgrade an agent's autonomy level.
-
-        Args:
-            agent_id: The agent to downgrade.
-            reason: Why the downgrade is happening.
-            current_level: The agent's current effective autonomy level.
-                Used as ``original_level`` when no prior override exists.
-
-        Returns:
-            The new (lower) autonomy level.
-        """
-        ...
-
-    def request_recovery(
-        self,
-        agent_id: NotBlankStr,
-    ) -> bool:
-        """Request recovery from a previous downgrade.
-
-        Args:
-            agent_id: The agent requesting recovery.
-
-        Returns:
-            ``True`` if recovery is immediately granted,
             ``False`` if it requires human approval.
         """
         ...

@@ -14,7 +14,7 @@ from tests.evals.prompt._harness import (
 class TestCharterStrategyPromptContract:
     """Guard rails for the charter interview prompt surface."""
 
-    PINNED_FP = "6f70fd521866e1df"
+    PINNED_FP = "85f8991e3ee33896"
 
     def test_temperature_is_config_sourced(self) -> None:
         """Interview temperature must be drawn from config, not a literal."""

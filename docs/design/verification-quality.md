@@ -7,6 +7,20 @@ description: Verification stage, harness middleware layer, review pipeline, and 
 
 This page covers the quality-assurance pipeline attached to agent output: the verification stage that runs after an agent completes a task, the harness middleware that wraps every agent invocation, the review pipeline that validates produced artifacts, and the intake engine that ingests new work.
 
+!!! info "Scope"
+
+    [The Build Loop](build-loop.md) is authoritative on where verification sits
+    in the loop and on what a reviewer is shown. This page owns the review
+    gate's internals: reviewer selection, session narrowing, the verdict and
+    finding models, and the build/test oracle.
+
+    Two things here are superseded by that page. A reviewer is shown **the diff**
+    against the trunk commit its unit branched from, not a deliverable string,
+    and its findings are anchored to a path and line range within that diff. A
+    reviewer never runs the build or the tests: the system runs every
+    deterministic check on the commit and the reviewer reads the cached,
+    attributable result.
+
 ## What these gates establish, and what they do not
 
 Every gate on this page answers one narrow question: was the work checked by

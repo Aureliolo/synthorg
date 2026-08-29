@@ -1,5 +1,5 @@
 site_name: SynthOrg Documentation
-site_description: 'Framework for building synthetic organisations: role-based AI agents run as a supervised company, under an oversight mode you set'
+site_description: 'Splits a software build into independently buildable parts, builds them in parallel, and has each part checked by something that did not write it'
 site_url: https://synthorg.io/docs
 site_dir: _site/docs
 # A broken link or dead anchor is a docs defect, and a warning nobody reads
@@ -175,6 +175,7 @@ nav:
       - Agent MCP Governance: design/agent-mcp-governance.md
       - Mid-Flight Steering: design/mid-flight-steering.md
       - The Org Asks: design/org-questions.md
+      - The Build Loop: design/build-loop.md
       - Coordination & Resilience: design/coordination.md
       - Recursive Decomposition: design/recursive-decomposition.md
       - Verification & Quality: design/verification-quality.md

@@ -11,7 +11,7 @@ description: >-
 
 How SynthOrg compares to agent frameworks, platforms, workflow engines, and developer tools.
 
-Comparison data last changed: 2026-08-28
+Comparison data last changed: 2026-08-29
 
 Rows are compiled from each project's own documentation and repository. Only a row carrying `source_verified_at` has a recorded check date; the rest are point-in-time and may have drifted since.
 

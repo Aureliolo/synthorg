@@ -227,13 +227,6 @@ SECURITY_AUTONOMY_STRATEGY_CONFIG_INVALID: Final[str] = (
 SECURITY_AUTONOMY_PROMOTION_AUDIT_FAILED: Final[str] = (
     "security.autonomy.promotion.audit_failed"
 )
-SECURITY_AUTONOMY_DOWNGRADE_TRIGGERED: Final[str] = (
-    "security.autonomy.downgrade.triggered"
-)
-SECURITY_AUTONOMY_RECOVERY_REQUESTED: Final[str] = (
-    "security.autonomy.recovery.requested"
-)
-SECURITY_AUTONOMY_OVERRIDE_CLEARED: Final[str] = "security.autonomy.override.cleared"
 
 # ── Provider / API-key management (signed) ─────────────────────
 # Validation failures stay under provider.management.* (operational).

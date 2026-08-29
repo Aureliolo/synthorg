@@ -41,7 +41,9 @@ in its own workspace, and the tree is assembled from the bottom up.
   [Verification Quality](design/verification-quality.md).
 - **Assembly** is a gated stage of its own, not a side effect of the last unit finishing: an
   accountable assembly task, then an evaluation pass scored against the plan's own criteria.
-  See [Initiative Tail](design/initiative-tail.md).
+  See [Initiative Tail](design/initiative-tail.md). That is the loop as built; [The Build
+  Loop](design/build-loop.md) is the authority on where it goes next, and retires assembly
+  as a stage in favour of merging each unit onto a trunk that stays green.
 
 ## Where it runs
 

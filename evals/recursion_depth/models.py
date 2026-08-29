@@ -269,6 +269,15 @@ class UnitRecord(BaseModel):
             empty package marker its own passing suite proved it did not need.
             Recorded because an over-declaring planner is worth seeing, and
             separated because what it measures is the planner.
+        terminations: How each of this unit's BUILDING sessions ended, in the
+            order they ran, empty on a planning unit and on a recording made
+            before the field existed. Computed per session all along and only
+            logged, which left every other field unable to tell "the agent
+            produced nothing" from "the loop stopped it before it could": a
+            merge whose three attempts ended ``no_op``, ``budget_exhausted``
+            and ``budget_exhausted`` reads here in one line, and reading it
+            off the transcripts instead is what it cost before. A review's
+            ending is absent for the reason its turns are, see ``turns``.
     """
 
     # populate_by_name so the field is settable by its own name despite
@@ -299,6 +308,7 @@ class UnitRecord(BaseModel):
         default=(),
         validation_alias=AliasChoices("missing_declared_paths", "undeclared_paths"),
     )
+    terminations: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def _delivered_units_carry_no_reason(self) -> Self:

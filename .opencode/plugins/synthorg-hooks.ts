@@ -19,6 +19,7 @@
  *   PreToolUse (Bash): scripts/check_no_cd_prefix.sh
  *   PreToolUse (Bash): scripts/check_no_local_coverage.sh
  *   PreToolUse (Bash): scripts/check_enforce_parallel_tests.sh
+ *   PreToolUse (Bash): scripts/check_no_unapproved_e2e_tests.sh
  *   PreToolUse (Bash): scripts/check_no_bulk_edit.py (shell in-place only)
  *   PreToolUse (Edit|Write): scripts/check_mock_spec_ratchet.py
  *   PreToolUse (Edit|Write): scripts/check_no_edit_migration.sh
@@ -410,6 +411,7 @@ export const SynthOrgHooks: Plugin = async ({ $, worktree }) => {
               "scripts/check_no_cd_prefix.sh",
               "scripts/check_no_local_coverage.sh",
               "scripts/check_enforce_parallel_tests.sh",
+              "scripts/check_no_unapproved_e2e_tests.sh",
             ]) {
               const outcome = runHookScript(script, { command }, 5000, "Bash");
               const denyReason = denyReasonFromOutcome(outcome);

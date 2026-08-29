@@ -6,6 +6,25 @@ that replans an initiative which can no longer advance.
 [Project Lifecycle](project-lifecycle.md) owns the graph and the rollup that
 opens this tail; [Plan Review](plan-review.md) owns everything before dispatch.
 
+!!! info "Scope"
+
+    [The Build Loop](build-loop.md) is authoritative on assembly. This page owns
+    the evaluation stage, the stalled-initiative replan and its generation cap,
+    and degraded-boot parking.
+
+    `INTEGRATING` is what the loop does **today**, and the rest of this page
+    describes it as built and enforced. The build loop retires it: assembly
+    stops being a stage, a unit merges onto the trunk as it finishes, the trunk
+    is green at all times, and the software boots at the end of every slice.
+    What this stage exists to catch, a set of individually-verified parts that
+    nobody ever ran together, is answered continuously by the trunk gates
+    instead of once at the end. Until the trunk gates exist, `INTEGRATING` is
+    the only thing catching it, so the state diagram and `## INTEGRATE` below
+    remain the contract rather than a superseded one.
+
+    `EVALUATING` survives unchanged. Scoring the delivered whole against the
+    charter's criteria is a judgement no gate makes, and it stays fail-closed.
+
 ## The problem
 
 The general loop ran **plan, execute, and verify**, then stopped. Every plan item

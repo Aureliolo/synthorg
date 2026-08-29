@@ -11,6 +11,17 @@ in-memory and compares the result against the committed file.
 The gate never writes the file; it only reads. Remediation is a single
 generator run.
 
+One rendered line is excluded from the comparison, and only when the YAML
+declares the ``auto`` sentinel: the "Comparison data last changed" date, which
+the generator derives from the committer date of the last commit touching
+``data/competitors.yaml``. A squash-merge mints a new commit with a new date,
+so the date the page must carry changes at the moment of merge, after the last
+point anyone could have regenerated it. That left main red on a page whose
+content was correct, and it recurred on every merge touching the YAML, because
+the gate was asserting a property the merge itself rewrites. A pinned date is
+authored content and stays compared: it cannot be changed by a merge, so drift
+there is real.
+
 Exit codes
 ----------
 * ``0`` -- committed Markdown matches the freshly-generated output.
@@ -19,9 +30,16 @@ Exit codes
 
 import difflib
 import importlib.util
+import re
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
+
+import yaml
+from pydantic import BaseModel, ConfigDict
+
+from synthorg.core.boundary import parse_typed
+from synthorg.observability import safe_error_description
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -31,6 +49,34 @@ _OUTPUT_FILE: Final[Path] = REPO_ROOT / "docs" / "reference" / "comparison.md"
 _GENERATOR_PATH: Final[Path] = REPO_ROOT / "scripts" / "generate_comparison.py"
 
 _REMEDIATION: Final[str] = "Run: uv run python scripts/generate_comparison.py"
+
+#: The one rendered line whose value the generator derives from git rather than
+#: from the YAML, and which a merge therefore rewrites out from under a
+#: correctly-generated page.
+_DERIVED_DATE_LINE: Final[re.Pattern[str]] = re.compile(
+    r"^(Comparison data last changed: ).*$", re.MULTILINE
+)
+_DERIVED_DATE_MASK: Final[str] = r"\1<derived from git>"
+
+
+class _CompetitorsMeta(BaseModel):
+    """The ``meta`` block of ``data/competitors.yaml``.
+
+    Only ``last_updated`` is read here; the generator owns the rest. Extra keys
+    are accepted so a field added for the generator does not fail this gate.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="allow", allow_inf_nan=False)
+
+    last_updated: str | None = None
+
+
+class _CompetitorsFile(BaseModel):
+    """The top level of ``data/competitors.yaml``, as far as this gate reads."""
+
+    model_config = ConfigDict(frozen=True, extra="allow", allow_inf_nan=False)
+
+    meta: _CompetitorsMeta = _CompetitorsMeta()
 
 
 def _load_generator() -> ModuleType:
@@ -55,6 +101,35 @@ def _expected_markdown(gen_mod: ModuleType) -> str:
     data = gen_mod._load_data()  # noqa: SLF001
     markdown: str = gen_mod._generate_markdown(data)  # noqa: SLF001
     return markdown
+
+
+def _declares_auto_date(gen_mod: ModuleType) -> bool:
+    """Report whether the YAML asks for a git-derived date.
+
+    Read from the raw file rather than from ``_load_data``, which has already
+    resolved the sentinel into a date and cannot say which it was.
+
+    Args:
+        gen_mod: The imported generator, for its sentinel and data path.
+
+    Returns:
+        True when ``meta.last_updated`` is the auto sentinel.
+    """
+    raw = yaml.safe_load(gen_mod.DATA_FILE.read_text(encoding="utf-8"))
+    parsed = parse_typed("comparison.yaml", raw, _CompetitorsFile)
+    return bool(parsed.meta.last_updated == gen_mod.AUTO_SENTINEL)
+
+
+def _mask_derived_date(text: str) -> str:
+    """Blank the git-derived date so a merge-rewritten commit date is not drift.
+
+    Args:
+        text: Rendered Markdown, committed or freshly generated.
+
+    Returns:
+        The same text with the derived date line's value replaced.
+    """
+    return _DERIVED_DATE_LINE.sub(_DERIVED_DATE_MASK, text)
 
 
 def main() -> int:
@@ -82,13 +157,22 @@ def main() -> int:
     try:
         gen_mod = _load_generator()
         expected = _expected_markdown(gen_mod)
+        auto_date = _declares_auto_date(gen_mod)
     except Exception as exc:
+        # Never interpolate a raw exception: the typed parse above raises a
+        # ValidationError carrying whatever the YAML held, and this line lands
+        # in CI output. The helper already leads with the exception type, so
+        # naming it again reads back as `ValidationError: ValidationError: ...`.
         print(
             f"error: could not generate expected comparison page: "
-            f"{type(exc).__name__}: {exc}",
+            f"{safe_error_description(exc)}",
             file=sys.stderr,
         )
         return 1
+
+    if auto_date:
+        committed = _mask_derived_date(committed)
+        expected = _mask_derived_date(expected)
 
     # The generator joins lines without a trailing newline; normalise so a
     # final-newline-only difference does not flap the gate.

@@ -352,6 +352,12 @@ def _markdown(report: RecursionDepthReport) -> str:
         "made at. The same rows are in `depth_curve.json` under each cell's",
         "`units`.",
         "",
+        "`Attempts ended` names how each assembling session stopped. A merge",
+        "that delivered nothing because it was cut off at its budget and one",
+        "that ran freely and assembled nothing are the same row in every other",
+        "column, and only the first is a statement about the budget rather",
+        "than about the work.",
+        "",
         *_merge_table(report),
         "",
         "## Caveats",
@@ -634,16 +640,17 @@ def _merge_table(report: RecursionDepthReport) -> list[str]:
     rows = [
         (
             "| Cell | Depth | Assembly | Assembled by | Judged by | Verdict "
-            "| Parked | Amendments | Delivered |"
+            "| Parked | Amendments | Delivered | Attempts ended |"
         ),
-        "|---|---:|---|---|---|---|---|---:|---|",
+        "|---|---:|---|---|---|---|---|---:|---|---|",
     ]
     rows.extend(
         f"| {cell_key(cell.depth_cap, cell.arm, cell.repetition)} | {unit.depth} "
         f"| {_cell(unit.title)} | {_cell(_pair_label(unit.executor))} "
         f"| {_cell(_pair_label(unit.reviewer))} | {_cell(unit.verdict or 'none')} "
         f"| {'yes' if unit.parked else 'no'} | {unit.amendments} "
-        f"| {'yes' if unit.delivered else 'no'} |"
+        f"| {'yes' if unit.delivered else 'no'} "
+        f"| {_cell(', '.join(unit.terminations) or 'not recorded')} |"
         for cell, unit in _merges_of(report)
     )
     return rows

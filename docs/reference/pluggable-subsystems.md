@@ -14,7 +14,7 @@ On-demand reference. The rule in `CLAUDE.md` is: new cross-cutting subsystems fo
 
 Three registry classes replace the hand-rolled `if config.type == "...": ... elif ...` chains every factory used to carry. Each is immutable after construction (`MappingProxyType`-backed) and emits structured `registry.*` events for built / lookup / failure paths.
 
-- `synthorg.core.registry.StrategyRegistry[T]`: generic strategy dispatch keyed by a `config.type` discriminator. Used across the codebase by factories for pruning, propagation, identity store, evolution triggers, evolution proposers, execution loops, procedural capture, notification sinks, secret backends, sandbox backends, per-op rate-limit stores, per-op inflight stores, memory-consolidation strategies (selector + op composite, ADR-0005), risk-tier classifiers (timeout policy seam), and autonomy change strategies (promotion/downgrade plugin).
+- `synthorg.core.registry.StrategyRegistry[T]`: generic strategy dispatch keyed by a `config.type` discriminator. Used across the codebase by factories for pruning, propagation, identity store, evolution triggers, evolution proposers, execution loops, procedural capture, notification sinks, secret backends, sandbox backends, per-op rate-limit stores, per-op inflight stores, memory-consolidation strategies (selector + op composite, ADR-0005), risk-tier classifiers (timeout policy seam), and autonomy change strategies (promotion plugin).
 - `synthorg.persistence.registry.PersistenceBackendRegistry`: domain-specific dispatch keyed by `PersistenceConfig.backend`; preserves the lazy import of the optional `postgres` extra.
 - `synthorg.memory.registry.MemoryBackendRegistry`: domain-specific dispatch keyed by `CompanyMemoryConfig.backend`; the composite-backend child loop reuses a separate "leaf" registry to keep the wiring acyclic.
 
@@ -119,10 +119,10 @@ Domain errors live at `meta/errors.py::RollbackMutationDeniedError` (409) and `U
 - `risk_classifier_config.py::RiskClassifierType` discriminator + frozen `RiskClassifierConfig` + `RiskClassifierDeps` (in-flight probe / `Clock` collaborators).
 - `risk_classifier_factory.py::build_risk_tier_classifier()`: `StrEnum`-keyed `StrategyRegistry` dispatch; `RiskClassifierConfigError` surfaces a missing required dep. Wired at `timeout/factory.py::create_timeout_policy` (tiered seam); `SecOpsService` + approval-tool consumers stay on the default pending a `SecurityConfig.risk_classifier` field.
 
-### Autonomy change strategy (promotion/downgrade plugin)
+### Autonomy change strategy (promotion plugin)
 
-- `security/autonomy/protocol.py::AutonomyChangeStrategy` Protocol (`request_promotion` / `auto_downgrade` / `request_recovery`).
-- Impls: `change_strategy.py::HumanOnlyPromotionStrategy` (safe default + override store), `budget_aware.py`, `escalation_chain.py` (each wraps the base via `_base_delegate.py::BaseDelegatingStrategy`).
+- `security/autonomy/protocol.py::AutonomyChangeStrategy` Protocol (`request_promotion`). Promotion is the only direction: an operator owns the autonomy level and nothing in the runtime lowers one.
+- Impls: `change_strategy.py::HumanOnlyPromotionStrategy` (safe default), `budget_aware.py`, `escalation_chain.py` (each holds the base via `_base_delegate.py::BaseDelegatingStrategy`).
 - Signal Protocols: `signals.py::RiskBudgetSignalProvider` (injected, never a concrete `budget/` import), satisfied structurally by `budget/risk_tracker.py::RiskTracker.headroom_fraction()`.
 - `change_strategy_config.py::AutonomyStrategyType` discriminator + frozen `AutonomyStrategyConfig` + `AutonomyStrategyDeps`.
 - `change_strategy_factory.py::build_autonomy_change_strategy()`: `StrEnum`-keyed `StrategyRegistry` dispatch; `AutonomyStrategyConfigError` surfaces a missing required signal provider. Wired at `api/construction_phase.py`, which builds the one `RiskTracker` both the strategy and the budget slice use, so every declared kind is selectable and satisfiable.

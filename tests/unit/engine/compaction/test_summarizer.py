@@ -12,6 +12,11 @@ from synthorg.engine.compaction.memory_offload import MemoryOffloader
 from synthorg.engine.compaction.models import CompactionConfig
 from synthorg.engine.compaction.summarizer import make_compaction_callback
 from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_correction_budget import (
+    DROPPED_CALL_NUDGE,
+    NO_CALL_NUDGE,
+    consecutive_corrections,
+)
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
@@ -121,6 +126,51 @@ class TestMakeCompactionCallback:
         assert result.compression_metadata is not None
         assert result.compression_metadata.compactions_performed == 1
         assert result.compression_metadata.archived_turns > 0
+
+    async def test_correction_tail_survives_compaction(
+        self,
+        sample_agent: AgentIdentity,
+    ) -> None:
+        """The correction stretch is never archived, whatever the window.
+
+        The consecutive-correction bound is derived from the trailing run of
+        nudges, so archiving any of them tells the next turn the run has
+        earned fewer corrections than it has, and a model returning nothing
+        usable is corrected past the limit. ``preserve_recent_turns=1`` is the
+        minimum an operator can set and would otherwise keep two messages
+        against a stretch of four.
+        """
+        config = CompactionConfig(
+            fill_threshold_percent=80.0,
+            min_messages_to_compact=4,
+            preserve_recent_turns=1,
+        )
+        callback = make_compaction_callback(config=config)
+
+        messages = (
+            _msg(MessageRole.SYSTEM, "system prompt"),
+            _msg(MessageRole.USER, "question 1"),
+            _msg(MessageRole.ASSISTANT, "answer 1"),
+            _msg(MessageRole.USER, "question 2"),
+            _msg(MessageRole.ASSISTANT, "answer 2"),
+            # Two unusable turns and the corrections answering them.
+            _msg(MessageRole.ASSISTANT, "let me read the file"),
+            _msg(MessageRole.USER, DROPPED_CALL_NUDGE),
+            _msg(MessageRole.ASSISTANT, "let me try again"),
+            _msg(MessageRole.USER, NO_CALL_NUDGE),
+        )
+        ctx = _build_context(
+            sample_agent,
+            messages=messages,
+            capacity=1000,
+            fill=850,
+        )
+
+        result = await callback(ctx)
+
+        assert result is not None
+        assert result.conversation[-4:] == messages[-4:]
+        assert consecutive_corrections(result) == consecutive_corrections(ctx) == 2
 
     async def test_too_few_messages_returns_none(
         self,

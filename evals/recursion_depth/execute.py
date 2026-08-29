@@ -105,6 +105,7 @@ class LeafOutcome:
             over-declaring planner is worth seeing and must not be able to
             zero a unit that did the work.
         detail: Why it is not delivered, for a human reading the run.
+        terminations: How each of its sessions ended, in order.
     """
 
     workspace: CellWorkspace
@@ -117,6 +118,7 @@ class LeafOutcome:
     executor: ModelPair | None = None
     missing_declared_paths: tuple[str, ...] = ()
     detail: str = ""
+    terminations: tuple[str, ...] = ()
 
 
 def leaf_task(
@@ -291,6 +293,7 @@ async def run_leaf(
         executor=ModelPair.of(owner, deps.declared_pairs),
         missing_declared_paths=final.missing,
         detail=delivery.reason,
+        terminations=spent.terminations,
     )
 
 
@@ -302,11 +305,16 @@ class _Spend:
         turns: Turns taken, summed over the attempts.
         cost: Money booked, summed over the attempts.
         tokens: Tokens booked, summed over the attempts.
+        terminations: How each session ended, in the order they ran. Kept as a
+            sequence rather than a last-one-wins field because the attempts
+            fail for different reasons and the earlier one is usually the one
+            worth reading.
     """
 
     turns: int
     cost: float
     tokens: int
+    terminations: tuple[str, ...]
 
     @classmethod
     def of(cls, outcome: SessionOutcome) -> _Spend:
@@ -318,7 +326,12 @@ class _Spend:
         Returns:
             The total so far.
         """
-        return cls(turns=outcome.turns, cost=outcome.cost, tokens=outcome.tokens)
+        return cls(
+            turns=outcome.turns,
+            cost=outcome.cost,
+            tokens=outcome.tokens,
+            terminations=(outcome.termination,),
+        )
 
     def plus(self, outcome: SessionOutcome) -> _Spend:
         """Add a further session's figures.
@@ -333,6 +346,7 @@ class _Spend:
             turns=self.turns + outcome.turns,
             cost=self.cost + outcome.cost,
             tokens=self.tokens + outcome.tokens,
+            terminations=(*self.terminations, outcome.termination),
         )
 
 

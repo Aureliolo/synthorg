@@ -270,7 +270,7 @@ its name.
 edits the org configuration rather than performing a runtime autonomy change,
 and it takes no reason.
 
-Automatic demotions happen on four declared reasons. A sustained high error rate steps the agent down exactly one level from wherever it is (`full` to `semi` to `supervised` to `locked`), because a noisy run is a graded signal. Budget exhaustion and risk-budget exhaustion drop it to a fixed floor of `supervised`, and a security incident to `locked`, regardless of the level it held. Recovery from an auto-downgrade is human-only.
+Nothing demotes an agent automatically. You set the level and you are the only one who changes it, in either direction. The situations that might have triggered an automatic demotion already have their own controls: a run that reaches its cost ceiling parks itself and waits for you, and an action the security gate refuses is refused at the gate.
 
 ### Set a department-level override
 

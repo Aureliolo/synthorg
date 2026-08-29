@@ -1,4 +1,4 @@
-"""Research mode: a real research subsystem for synthetic organisations.
+"""Research mode: a real research subsystem.
 
 Given a research brief, the subsystem plans queries, fans out across
 multiple retrieval sources (the internal knowledge substrate plus

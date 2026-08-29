@@ -27,7 +27,7 @@ from synthorg.{{.Domain}}.service import {{.ClassName}}Service
 async def _start_{{.Domain}}_service(app_state: Any) -> {{.ClassName}}Service:
     service = {{.ClassName}}Service()
     app_state.{{.Domain}}_service = service
-    asyncio.create_task(service.run())
+    asyncio.create_task(service.start())
     return service
 ```
 
@@ -38,10 +38,14 @@ unreachable -- the `unwired-settings` /
 settings, but a service without a setting flies under the radar; only
 add a setting once the service has a real configurable knob.
 
-## 3. Add real workload to `run()`
+## 3. Add real workload to `start()`
 
-The generated `run()` blocks on the stop event so the service is a
-no-op until you replace the body with the real workload. Remember:
+The generated service is the in-place runner variant described in
+`docs/reference/lifecycle-sync.md`: `start()` runs on the calling
+coroutine and returns only once `stop()` has signalled, which is why it
+is spawned as a task above rather than awaited directly. It blocks on
+the stop event, so the service is a no-op until you replace the body
+with the real workload. Remember:
 
 - Use `self._clock` for any time read or sleep (lets `FakeClock`
   drive deterministic tests).

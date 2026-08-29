@@ -16,7 +16,7 @@ from tests.evals.prompt._harness import fingerprint_prompt
 class TestTurnIntentPromptContract:
     """Guard rails for the per-turn capability classifier prompt."""
 
-    PINNED_FP = "5137f1ae8219e2c4"
+    PINNED_FP = "a5eded8736bb1124"
 
     def test_prompt_fingerprint_is_pinned(self) -> None:
         """Detect silent drift of the turn-intent SYSTEM + USER prompt."""

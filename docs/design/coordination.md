@@ -7,6 +7,18 @@ description: Agent crash recovery, graceful shutdown protocol, concurrent worksp
 
 This page covers system-level features that span multiple agents and protect against failure: crash recovery with checkpoint resume, graceful shutdown strategies, concurrent workspace isolation (Git worktrees / virtual filesystem / per-branch), and multi-agent coordination topology (centralised, decentralised, context-dependent dispatchers).
 
+!!! info "Scope"
+
+    [The Build Loop](build-loop.md) is authoritative on the loop itself: which
+    stages run, who owns each decision, what runs mechanically, and how work
+    reaches the operator. This page owns what sits beneath that: transport,
+    isolation, recovery, shutdown, and the wave machinery.
+
+    Where the two disagree, the build loop wins. In particular, that page
+    replaces bottom-up assembly with continuous integration onto a green trunk,
+    so the wave machinery described here dispatches units that merge as they
+    finish rather than accumulating for one assembly at the end.
+
 ## Agent Crash Recovery
 
 When an agent execution fails unexpectedly (unhandled exception, OOM, process

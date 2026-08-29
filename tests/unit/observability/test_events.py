@@ -810,10 +810,8 @@ class TestEventConstants:
             AUTONOMY_SENIORITY_VIOLATION,
         )
         from synthorg.observability.events.security import (
-            SECURITY_AUTONOMY_DOWNGRADE_TRIGGERED,
             SECURITY_AUTONOMY_PROMOTION_DENIED,
             SECURITY_AUTONOMY_PROMOTION_REQUESTED,
-            SECURITY_AUTONOMY_RECOVERY_REQUESTED,
         )
 
         assert AUTONOMY_RESOLVED == "autonomy.resolved"
@@ -822,12 +820,6 @@ class TestEventConstants:
         )
         assert SECURITY_AUTONOMY_PROMOTION_DENIED == (
             "security.autonomy.promotion.denied"
-        )
-        assert SECURITY_AUTONOMY_DOWNGRADE_TRIGGERED == (
-            "security.autonomy.downgrade.triggered"
-        )
-        assert SECURITY_AUTONOMY_RECOVERY_REQUESTED == (
-            "security.autonomy.recovery.requested"
         )
         assert AUTONOMY_SENIORITY_VIOLATION == "autonomy.seniority.violation"
         assert AUTONOMY_PRESET_EXPANDED == "autonomy.preset.expanded"

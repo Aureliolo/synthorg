@@ -35,8 +35,8 @@ conventions, structured logging via `synthorg.observability.get_logger`.
 Files:
 
 - `src/synthorg/<domain>/__init__.py` -- package marker
-- `src/synthorg/<domain>/service.py` -- `<ClassName>Service` with `run` / `stop` and `is_running`
-- `src/synthorg/<domain>/errors.py` -- `<ClassName>Error(DomainError)` + `<ClassName>NotFoundError(NotFoundError)`
+- `src/synthorg/<domain>/service.py` -- `<ClassName>Service` with `start` / `stop` and `is_running`
+- `src/synthorg/<domain>/errors.py` -- `<ClassName>Error(DomainError)` + `<ClassName>NotFoundError(NotFoundError)` + `<ClassName>AlreadyRunningError(<ClassName>Error)`
 - `src/synthorg/observability/events/<domain>.py` -- service lifecycle event constants
 - `tests/unit/<domain>/__init__.py` -- test package marker
 - `tests/unit/<domain>/test_service.py` -- FakeClock + `asyncio.TaskGroup` smoke

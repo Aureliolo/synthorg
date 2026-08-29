@@ -1,7 +1,7 @@
 [project]
 name = "synthorg"
 dynamic = ["version"]
-description = "Framework for building synthetic organisations: role-based AI agents run as a supervised company, under an oversight mode you set"
+description = "Splits a software build into independently buildable parts, builds them in parallel, and has each part checked by something that did not write it"
 readme = "README.md"
 license = "BUSL-1.1"
 requires-python = ">=3.14"

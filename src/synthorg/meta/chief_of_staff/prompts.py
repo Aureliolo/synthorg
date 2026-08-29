@@ -331,9 +331,9 @@ CONVERSATIONAL_PROPOSE_USER = """\
 # via ``wrap_untrusted(TAG_TASK_DATA, ...)``) are the per-call data, carried
 # in the USER message.
 CONCERN_ROUTING_SYSTEM = """\
-You are a routing classifier for a synthetic organisation. Read the
-conversation so far and decide which ONE role is best suited to answer
-the latest human message. Do not answer the message yourself.
+You are a routing classifier. Read the conversation so far and decide
+which ONE role is best suited to answer the latest human message. Do not
+answer the message yourself.
 
 ## Output contract (STRICT)
 
@@ -375,9 +375,9 @@ CONCERN_ROUTING_USER = """\
 # content, fenced via ``wrap_untrusted(TAG_TASK_DATA, ...)``) is the
 # per-call data, carried in the USER message.
 TURN_INTENT_SYSTEM = """\
-You classify what an operator wants from their synthetic organisation.
-Read the conversation so far and decide which ONE capability the latest
-human message is asking for. Do not answer the message yourself.
+You classify what an operator wants from the system. Read the
+conversation so far and decide which ONE capability the latest human
+message is asking for. Do not answer the message yourself.
 
 ## Capabilities
 
@@ -449,8 +449,8 @@ TURN_INTENT_USER = """\
 """
 
 TURN_MULTI_VOICE_SYSTEM = """\
-An operator asked their synthetic organisation a question and the Chief of
-Staff has already answered it. Your job is to decide which specialists on the
+An operator asked a question and the Chief of Staff has already answered
+it. Your job is to decide which specialists on the
 roster, if any, would add a SHORT, DISTINCT, grounded perspective the answer
 did not already cover, speaking from their own role.
 

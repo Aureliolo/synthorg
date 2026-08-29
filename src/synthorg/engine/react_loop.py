@@ -65,7 +65,11 @@ from .loop_protocol import (
     TurnObserver,
 )
 from .loop_quality_signals import attach_whole_run_signals
-from .loop_silent_turn import continue_silent_turn
+from .loop_silent_turn import (
+    continue_silent_turn,
+    is_silent_turn,
+    silent_turn_error,
+)
 from .loop_streaming import (
     InterruptWatch,
     _TurnInterrupted,
@@ -86,6 +90,31 @@ from .loop_unusable_turn import (
 )
 
 logger = get_logger(__name__)
+
+
+def _spent_corrections_error(
+    response: CompletionResponse, turn_number: int
+) -> str | None:
+    """Name the run-ending failure for a turn no correction could fix.
+
+    Asked only once both correction paths have declined, so a shape that
+    still had a correction owing never reaches here. Each shape supplies its
+    own wording, because the message is also what classifies the failure and
+    a model told the wrong thing is told nothing it can use.
+
+    Args:
+        response: The turn's completion.
+        turn_number: The 1-based number of that turn.
+
+    Returns:
+        The error the run ends on, or ``None`` when the turn is neither shape
+        and the ordinary completion path still owns it.
+    """
+    if is_unusable_turn(response):
+        return unusable_turn_error(turn_number)
+    if is_silent_turn(response):
+        return silent_turn_error(turn_number)
+    return None
 
 
 class ReactLoop:
@@ -490,12 +519,15 @@ class ReactLoop:
             retried = continue_unusable_turn(ctx, response, turn_number)
             if retried is not None:
                 return retried
-            if is_unusable_turn(response):
-                # Out of corrections, so the run ends here -- as an error. The
-                # turn produced nothing, and falling through would reach the
-                # ordinary completion path and report a run that delivered
-                # nothing as a success.
-                error_msg = unusable_turn_error(turn_number)
+            # Out of corrections, so the run ends here -- as an error. The turn
+            # produced nothing, and falling through would reach the ordinary
+            # completion path and report a run that delivered nothing as a
+            # success. Silence counts for the same reason it earns a correction
+            # in the first place: reasoning reaches the reader and never this
+            # loop, so a run ended on it did not finish, and saying it did is
+            # what a harness reads back as work that produced nothing.
+            error_msg = _spent_corrections_error(response, turn_number)
+            if error_msg is not None:
                 logger.error(
                     EXECUTION_LOOP_ERROR,
                     execution_id=ctx.execution_id,
