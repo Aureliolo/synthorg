@@ -11,6 +11,7 @@ reproducible with no SynthOrg present.
 
 import asyncio
 import hashlib
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Final
 
@@ -36,6 +37,7 @@ from synthorg.observability.events.workspace import (
     ENVIRONMENT_PROVISION_START,
     ENVIRONMENT_PROVISIONED,
 )
+from synthorg.persistence.code_execution_protocol import CodeExecutionPurpose
 
 logger = get_logger(__name__)
 
@@ -67,26 +69,6 @@ class PendingTest(BaseModel):
     test_id: NotBlankStr
 
 
-class DependencyPolicy(BaseModel):
-    """What the project may and may not depend on.
-
-    Stated as two lists rather than one, because "nothing outside this set" and
-    "anything except this set" are different claims and a project needs to be
-    able to make either. An empty ``allowed`` means no allowlist is in force,
-    which is not the same as allowing nothing.
-
-    Attributes:
-        allowed: Package names admitted. Empty means no allowlist applies.
-        denied: Package names refused, checked whether or not an allowlist is
-            in force, so a denial cannot be undone by widening the allowlist.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    allowed: tuple[str, ...] = ()
-    denied: tuple[str, ...] = ()
-
-
 class EnvironmentManifest(BaseModel):
     """The committed bootstrap-manifest declaration, and the project's gates.
 
@@ -107,10 +89,13 @@ class EnvironmentManifest(BaseModel):
         lint_command: How a fresh clone lints. Absent means no lint gate.
         format_command: How a fresh clone checks formatting. Absent means no
             formatting gate.
-        coverage_floor: The minimum coverage fraction a run must reach. Absent
-            means no floor, which is not the same as a floor of zero: a floor
-            of zero is a declared decision and is reported as met.
-        dependency_policy: What the project may depend on.
+        dependency_check_command: How a fresh clone checks its own dependency
+            rules. Absent means no dependency gate. A command rather than a
+            list of allowed and denied names, because the project's own tooling
+            already reads those and a second copy here is a second answer to
+            what the project may depend on. A coverage floor is declared the
+            same way, inside ``test_command``: the runner enforces it by exit
+            status, and a separate number would be two owners of one figure.
         test_report_path: Where the test runner writes machine-readable
             per-test results, relative to the workspace root. Absent means the
             runner reports only an exit status, which is enough to say a run
@@ -132,10 +117,32 @@ class EnvironmentManifest(BaseModel):
     env: dict[str, str] = Field(default_factory=dict)
     lint_command: NotBlankStr | None = None
     format_command: NotBlankStr | None = None
-    coverage_floor: float | None = Field(default=None, ge=0.0, le=1.0)
-    dependency_policy: DependencyPolicy = Field(default_factory=DependencyPolicy)
+    dependency_check_command: NotBlankStr | None = None
     test_report_path: str | None = None
     pending: tuple[PendingTest, ...] = ()
+
+    @property
+    def declared_gates(self) -> Mapping[CodeExecutionPurpose, str]:
+        """The gate commands this project declares, by what each one proves.
+
+        Derived rather than listed, so a gate added to the model is a gate the
+        oracle requires: a hand-written map is one field away from declaring a
+        command nothing ever asks for evidence of, which is the unread knob
+        this whole shape exists to refuse.
+
+        Returns:
+            One entry per declared gate; absent gates are simply not there.
+        """
+        declared = {
+            CodeExecutionPurpose.LINT: self.lint_command,
+            CodeExecutionPurpose.FORMAT: self.format_command,
+            CodeExecutionPurpose.DEPENDENCY: self.dependency_check_command,
+        }
+        return {
+            purpose: str(command)
+            for purpose, command in declared.items()
+            if command is not None
+        }
 
     @model_validator(mode="after")
     def _validate_pending(self) -> EnvironmentManifest:

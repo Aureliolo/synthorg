@@ -118,10 +118,15 @@ Commit exactly three things.
 {_criteria_block(plan)}
 
 3. THE GATE CONFIGURATION, in `{MANIFEST_PATH}`.
-   How a fresh clone is set up and booted, how it runs its tests, how it lints
-   and formats, its coverage floor, its dependency policy, where the test runner
-   writes a machine-readable per-test report, and the pending set pairing each
-   criterion with the test id that will decide it.
+   How a fresh clone is set up and booted, how it runs its tests, how it lints,
+   how it checks formatting, how it checks its own dependency rules, where the
+   test runner writes a machine-readable per-test report, and the pending set
+   pairing each criterion with the test id that will decide it.
+
+   Every gate is a COMMAND, and every unit after you must produce a passing run
+   of each one before its work is accepted, so declare only gates a fresh clone
+   can actually run. A coverage floor goes inside the test command, where the
+   runner enforces it.
 
    The report path is load-bearing. An exit status says a run failed, never why
    one test did, so without it every pending test has to be read as a failure

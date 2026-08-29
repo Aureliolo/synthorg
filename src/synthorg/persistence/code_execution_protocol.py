@@ -35,13 +35,23 @@ __all__ = [
 class CodeExecutionPurpose(StrEnum):
     """Why the agent ran code in the sandbox.
 
-    ``GENERAL`` executions are not persisted (they are routine work);
-    ``TESTS`` executions are captured so a deliverable receipt can claim
-    test results that reconcile against a stored record.
+    ``GENERAL`` executions are not persisted (they are routine work); every
+    other member is a gate the build/test oracle asks for evidence of, so a run
+    is captured exactly when a deliverable receipt could need to reconcile
+    against it.
+
+    ``TESTS`` is recognised from the invoked program, because every project
+    runs a test suite and the runners are known. The rest are recognised from
+    the project's own committed manifest, because how a project lints, formats
+    or checks its dependencies is the project's decision and no fixed list of
+    programs could hold it.
     """
 
     GENERAL = "general"
     TESTS = "tests"
+    LINT = "lint"
+    FORMAT = "format"
+    DEPENDENCY = "dependency"
 
 
 class CodeExecutionRecord(BaseModel):

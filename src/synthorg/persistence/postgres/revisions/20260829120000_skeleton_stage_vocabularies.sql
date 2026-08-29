@@ -1,5 +1,5 @@
 -- transactional: false
--- A lifecycle stage the loop performs and the database would refuse.
+-- Two vocabularies the skeleton stage produces and the database would refuse.
 --
 -- ``PlanStatus.SKELETON`` is the head stage: the contract becomes code, as
 -- module layout, one pending test per acceptance criterion and the project's
@@ -45,3 +45,18 @@ ADD CONSTRAINT plans_status_check CHECK (
 ) NOT VALID;
 
 ALTER TABLE plans VALIDATE CONSTRAINT plans_status_check;
+
+-- The gate configuration the skeleton commits declares how a project lints,
+-- formats and checks its dependencies, and the oracle requires a passing
+-- recorded run of each. Those runs are captured under their own purpose, so
+-- without the widening every one of them would violate this constraint, the
+-- receipt would be swallowed by the capture's best-effort handler, and the
+-- oracle would block the unit for evidence that was produced and refused.
+ALTER TABLE code_execution_record
+DROP CONSTRAINT IF EXISTS code_execution_record_purpose_check,
+ADD CONSTRAINT code_execution_record_purpose_check CHECK (
+    purpose IN ('general', 'tests', 'lint', 'format', 'dependency')
+) NOT VALID;
+
+ALTER TABLE code_execution_record
+VALIDATE CONSTRAINT code_execution_record_purpose_check;

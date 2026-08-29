@@ -52,7 +52,7 @@ for it is the one ``echo`` exited with.
 
 import shlex
 from collections.abc import Mapping, Sequence
-from pathlib import PurePosixPath, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import MappingProxyType
 from typing import Final
 
@@ -69,6 +69,7 @@ from synthorg.persistence.code_execution_protocol import (
     CodeExecutionRecord,
     CodeExecutionRecordRepository,
 )
+from synthorg.tools._declared_gate_runs import declared_gate_purpose
 from synthorg.tools.sandbox.result import SandboxResult
 
 logger = get_logger(__name__)
@@ -461,6 +462,29 @@ def _is_package_manager_test(arguments: tuple[str, ...]) -> bool:
     )
 
 
+def _gate_purpose(
+    command: str,
+    *,
+    workspace_root: Path | None,
+    project_id: str,
+) -> CodeExecutionPurpose | None:
+    """Which gate *command* ran, if any.
+
+    The single owner of that decision. The test suite is answered here from the
+    command alone; every other gate is the project's own declaration, read by
+    :mod:`synthorg.tools._declared_gate_runs`, and the stamping stays here so
+    one module decides what a run counts as.
+
+    Returns:
+        The purpose to record under, or ``None`` when the line ran no gate.
+    """
+    if is_test_run(command):
+        return CodeExecutionPurpose.TESTS
+    return declared_gate_purpose(
+        command, workspace_root=workspace_root, project_id=project_id
+    )
+
+
 async def record_if_test_run(
     result: SandboxResult,
     *,
@@ -469,13 +493,21 @@ async def record_if_test_run(
     clock: Clock,
     command_repr_limit: int,
     output_tail_limit: int,
+    workspace_root: Path | None = None,
 ) -> None:
-    """Persist *result* as test evidence when *command* ran a test suite.
+    """Persist *result* as gate evidence when *command* ran one.
 
-    No-ops when the command is not a test run, when no repository is wired,
-    or when called outside a bound execution scope. Best-effort: a capture
-    failure logs and returns rather than failing the tool call, because
-    losing the receipt must not lose the run.
+    A test suite is one gate and the others are the project's own: how it lints,
+    formats and checks its dependencies, each declared in its committed manifest
+    and each required by the build/test oracle. The suite is recognised from the
+    invoked program because the runners are a known set; the rest are recognised
+    from the declaration, because they are the project's decision and no list of
+    programs could hold them.
+
+    No-ops when the command ran no gate, when no repository is wired, or when
+    called outside a bound execution scope. Best-effort: a capture failure logs
+    and returns rather than failing the tool call, because losing the receipt
+    must not lose the run.
 
     The record is a MEASUREMENT: ``passed`` says the command exited zero and
     nothing else, which a validator and a database CHECK both hold it to. What
@@ -494,11 +526,19 @@ async def record_if_test_run(
         clock: Clock seam stamping the record.
         command_repr_limit: Characters of *command* kept on the record.
         output_tail_limit: Characters of stdout/stderr kept on the record.
+        workspace_root: Base directory projects live under, needed to read the
+            project's declared gates. ``None`` recognises the test suite alone,
+            which is what a caller with no workspace can honestly claim.
     """
-    if records is None or not is_test_run(command):
+    if records is None:
         return
     identity = current_execution_identity()
     if identity is None or identity.project_id is None:
+        return
+    purpose = _gate_purpose(
+        command, workspace_root=workspace_root, project_id=identity.project_id
+    )
+    if purpose is None:
         return
     try:
         await records.append(
@@ -506,7 +546,7 @@ async def record_if_test_run(
                 task_id=identity.task_id,
                 execution_id=identity.execution_id,
                 project_id=identity.project_id,
-                purpose=CodeExecutionPurpose.TESTS,
+                purpose=purpose,
                 command=command[:command_repr_limit],
                 returncode=result.returncode,
                 passed=result.success,

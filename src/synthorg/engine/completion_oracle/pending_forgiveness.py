@@ -38,7 +38,7 @@ is a worse failure than the one it guards. A workspace with NO manifest is a
 different fact entirely: nothing was ever declared, and the run's status stands.
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Final
 
@@ -53,6 +53,7 @@ from synthorg.engine.workspace.environment.pending import classify_pending
 from synthorg.engine.workspace.paths import project_workspace_dir
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.workspace import ENVIRONMENT_PENDING_MANIFEST_UNREAD
+from synthorg.persistence.code_execution_protocol import CodeExecutionPurpose
 
 logger = get_logger(__name__)
 
@@ -166,4 +167,27 @@ def unclaimed_criteria(
     )
 
 
-__all__ = ["failure_was_declared", "unclaimed_criteria"]
+def declared_gates(
+    *,
+    workspace_root: Path | None,
+    project_id: str,
+) -> Mapping[CodeExecutionPurpose, str]:
+    """The gate commands the project declares, by what each one proves.
+
+    The oracle asks for a passing run of each, so a gate the manifest declares
+    and the run never exercised is a unit that is not finished. Derived from
+    the manifest rather than listed anywhere, which is what stops a field being
+    added that nothing ever requires evidence of.
+
+    Returns:
+        One entry per declared gate; empty when there is no readable manifest,
+        which is the same "nothing to require" as a project declaring none.
+    """
+    loaded = _load(workspace_root, project_id)
+    if loaded is None:
+        return {}
+    _workspace, manifest = loaded
+    return manifest.declared_gates
+
+
+__all__ = ["declared_gates", "failure_was_declared", "unclaimed_criteria"]

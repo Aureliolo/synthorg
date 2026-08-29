@@ -1,4 +1,4 @@
--- A lifecycle stage the loop performs and the database would refuse.
+-- Two vocabularies the skeleton stage produces and the database would refuse.
 --
 -- ``PlanStatus.SKELETON`` is the head stage: the contract becomes code, as
 -- module layout, one pending test per acceptance criterion and the project's
@@ -115,3 +115,59 @@ CREATE INDEX idx_plans_project_status ON plans (project, status, id);
 -- The task-delete guard reads `WHERE parent_task_id = ? ORDER BY id LIMIT 1`,
 -- so `id` rides the index: equality first, then the ordering.
 CREATE INDEX idx_plans_parent_task ON plans (parent_task_id, id);
+
+-- The gate configuration the skeleton commits declares how a project lints,
+-- formats and checks its dependencies, and the oracle requires a passing
+-- recorded run of each. Those runs are captured under their own purpose, so
+-- without the widening every one of them would violate this constraint, the
+-- receipt would be swallowed by the capture's best-effort handler, and the
+-- oracle would block the unit for evidence that was produced and refused.
+CREATE TABLE code_execution_record_new (
+    record_id TEXT NOT NULL PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    execution_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    purpose TEXT NOT NULL
+    CHECK (purpose IN ('general', 'tests', 'lint', 'format', 'dependency')),
+    command TEXT NOT NULL,
+    returncode INTEGER NOT NULL,
+    passed INTEGER NOT NULL CHECK (passed IN (0, 1)),
+    timed_out INTEGER NOT NULL CHECK (timed_out IN (0, 1)),
+    stdout_tail TEXT,
+    stderr_tail TEXT,
+    executed_at TEXT NOT NULL,
+    -- Parity note: Postgres stores ``timed_out`` as BOOLEAN and writes this
+    -- CHECK as ``NOT timed_out``; SQLite stores it as INTEGER 0/1 so the
+    -- equivalent predicate is ``timed_out = 0``.
+    CHECK (passed = (returncode = 0 AND timed_out = 0))
+);
+
+INSERT INTO code_execution_record_new (
+    record_id, task_id, execution_id, project_id, purpose, command,
+    returncode, passed, timed_out, stdout_tail, stderr_tail, executed_at
+)
+SELECT
+    record_id,
+    task_id,
+    execution_id,
+    project_id,
+    purpose,
+    command,
+    returncode,
+    passed,
+    timed_out,
+    stdout_tail,
+    stderr_tail,
+    executed_at
+FROM code_execution_record;
+
+DROP TABLE code_execution_record;
+
+ALTER TABLE code_execution_record_new RENAME TO code_execution_record;
+
+CREATE INDEX idx_code_execution_execution
+ON code_execution_record (execution_id, executed_at DESC);
+CREATE INDEX idx_code_execution_task
+ON code_execution_record (task_id);
+CREATE INDEX idx_code_execution_project
+ON code_execution_record (project_id, executed_at DESC);

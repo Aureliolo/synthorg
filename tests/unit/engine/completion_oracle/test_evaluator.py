@@ -47,13 +47,19 @@ def _task(
     )
 
 
-def _record(*, passed: bool, task_id: str) -> CodeExecutionRecord:
+def _record(
+    *,
+    passed: bool,
+    task_id: str,
+    purpose: CodeExecutionPurpose = CodeExecutionPurpose.TESTS,
+    command: str = "pytest",
+) -> CodeExecutionRecord:
     return CodeExecutionRecord(
         task_id=task_id,
         execution_id="exec-1",
         project_id="p",
-        purpose=CodeExecutionPurpose.TESTS,
-        command="pytest",
+        purpose=purpose,
+        command=command,
         returncode=0 if passed else 1,
         passed=passed,
         timed_out=False,
@@ -86,7 +92,13 @@ class _FakeRecords:
         if self._raises:
             msg = "record store unavailable"
             raise RuntimeError(msg)
-        return self._records
+        # Honours the purpose filter, because the oracle now asks per gate and a
+        # double that ignored it would answer the lint query with test rows.
+        return tuple(
+            record
+            for record in self._records
+            if filter_spec.purpose is None or record.purpose is filter_spec.purpose
+        )
 
     async def purge_before(self, threshold: datetime, /) -> int:
         raise NotImplementedError
@@ -392,6 +404,78 @@ class TestWhatAProjectDeclaredPending:
         result = await oracle.evaluate(task, records=records)
 
         assert result.verdict is OracleVerdict.VERIFIED
+
+    async def test_a_declared_gate_with_no_passing_run_blocks(
+        self, tmp_path: Path
+    ) -> None:
+        """A definition of done nobody enforces is not a definition of done.
+
+        Before anything read these fields a project could declare how it lints,
+        never lint, and show a green badge over work no linter ever saw.
+        """
+        task = _unit_task()
+        workspace = tmp_path / "projects" / _PROJECT
+        workspace.mkdir(parents=True)
+        (workspace / DEFAULT_MANIFEST_FILENAME).write_text(
+            "language: python\ntest_command: pytest\nlint_command: ruff check .\n",
+            encoding="utf-8",
+        )
+        records = _FakeRecords((_record(passed=True, task_id=str(task.id)),))
+
+        result = await BuildTestOracle(workspace_root=tmp_path).evaluate(
+            task, records=records
+        )
+
+        assert result.verdict is OracleVerdict.BUILD_TEST_FAILED
+        assert "lint" in result.reason
+
+    async def test_a_declared_gate_that_ran_and_passed_does_not_block(
+        self, tmp_path: Path
+    ) -> None:
+        task = _unit_task()
+        workspace = tmp_path / "projects" / _PROJECT
+        workspace.mkdir(parents=True)
+        (workspace / DEFAULT_MANIFEST_FILENAME).write_text(
+            "language: python\ntest_command: pytest\nlint_command: ruff check .\n",
+            encoding="utf-8",
+        )
+        records = _FakeRecords(
+            (
+                _record(passed=True, task_id=str(task.id)),
+                _record(
+                    passed=True,
+                    task_id=str(task.id),
+                    purpose=CodeExecutionPurpose.LINT,
+                    command="ruff check .",
+                ),
+            )
+        )
+
+        result = await BuildTestOracle(workspace_root=tmp_path).evaluate(
+            task, records=records
+        )
+
+        assert result.verdict is OracleVerdict.VERIFIED
+
+    async def test_a_failing_suite_is_reported_before_a_missing_gate(
+        self, tmp_path: Path
+    ) -> None:
+        """Naming the linter alongside a red suite buries what actually broke."""
+        task = _unit_task()
+        workspace = tmp_path / "projects" / _PROJECT
+        workspace.mkdir(parents=True)
+        (workspace / DEFAULT_MANIFEST_FILENAME).write_text(
+            "language: python\ntest_command: pytest\nlint_command: ruff check .\n",
+            encoding="utf-8",
+        )
+        records = _FakeRecords((_record(passed=False, task_id=str(task.id)),))
+
+        result = await BuildTestOracle(workspace_root=tmp_path).evaluate(
+            task, records=records
+        )
+
+        assert result.verdict is OracleVerdict.BUILD_TEST_FAILED
+        assert "Latest test run failed" in result.reason
 
     async def test_an_unwired_workspace_keeps_the_pre_pending_behaviour(self) -> None:
         """A boot that resolved no workspace forgives nothing and blocks nothing."""

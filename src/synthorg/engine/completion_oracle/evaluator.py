@@ -28,6 +28,7 @@ from synthorg.engine.completion_oracle.build_test_models import (
 )
 from synthorg.engine.completion_oracle.classifier import classify_grounding_requirement
 from synthorg.engine.completion_oracle.pending_forgiveness import (
+    declared_gates,
     failure_was_declared,
     unclaimed_criteria,
 )
@@ -165,7 +166,58 @@ class BuildTestOracle:
         if page is None:
             return self._checker_fault_result(requirement)
 
-        return self._verdict_from_records(task, requirement, page)
+        evaluation = self._verdict_from_records(task, requirement, page)
+        if evaluation.blocks_completion or requirement is not (
+            GroundingRequirement.REQUIRED
+        ):
+            return evaluation
+        return await self._verdict_from_declared_gates(task, records, evaluation)
+
+    async def _verdict_from_declared_gates(
+        self,
+        task: Task,
+        records: CodeExecutionRecordRepository,
+        evaluation: OracleEvaluation,
+    ) -> OracleEvaluation:
+        """Require a passing run of every gate the project declares.
+
+        Asked only once the tests already passed, because a gate configuration
+        is a definition of done and reporting the linter alongside a red suite
+        buries the thing that actually broke.
+
+        A declared gate with no passing run is a unit that is not finished. The
+        alternative is what the manifest fields were before anything read them:
+        a project declares how it lints, an agent never lints, and the operator
+        reads a green badge over work no linter ever saw.
+
+        Returns:
+            The incoming evaluation, or a blocking one naming the gates that
+            produced no passing run.
+
+        Raises:
+            asyncio.CancelledError: Propagated when a record query is cancelled.
+        """
+        gates = declared_gates(
+            workspace_root=self._workspace_root, project_id=str(task.project)
+        )
+        unmet: list[str] = []
+        for purpose in sorted(gates):
+            page = await self._query_records_for(task, purpose, records)
+            if page is None or not page or not page[0].passed:
+                unmet.append(purpose.value)
+        if not unmet:
+            return evaluation
+        return OracleEvaluation(
+            verdict=OracleVerdict.BUILD_TEST_FAILED,
+            requirement=evaluation.requirement,
+            reason=(
+                f"The project declares a {', '.join(unmet)} gate that this run"
+                " produced no passing evidence for; run each declared command"
+                " in the session that claims the work."
+            ),
+            tests_seen=evaluation.tests_seen,
+            tests_failed=evaluation.tests_failed,
+        )
 
     async def _query_records(
         self,
@@ -182,10 +234,27 @@ class BuildTestOracle:
         Raises:
             asyncio.CancelledError: Propagated when the query is cancelled.
         """
-        spec = CodeExecutionFilterSpec(
-            task_id=str(task.id),
-            purpose=CodeExecutionPurpose.TESTS,
+        return await self._query_records_for(
+            task, CodeExecutionPurpose.TESTS, records, requirement=requirement
         )
+
+    async def _query_records_for(
+        self,
+        task: Task,
+        purpose: CodeExecutionPurpose,
+        records: CodeExecutionRecordRepository,
+        *,
+        requirement: GroundingRequirement = GroundingRequirement.REQUIRED,
+    ) -> tuple[CodeExecutionRecord, ...] | None:
+        """Fetch the task's records for one gate, newest-first.
+
+        Returns:
+            The records tuple, or ``None`` when the query raised.
+
+        Raises:
+            asyncio.CancelledError: Propagated when the query is cancelled.
+        """
+        spec = CodeExecutionFilterSpec(task_id=str(task.id), purpose=purpose)
         try:
             return await records.query(spec, limit=_TEST_RECORD_QUERY_LIMIT)
         except asyncio.CancelledError:

@@ -2317,7 +2317,7 @@ CREATE TABLE code_execution_record (
     task_id TEXT NOT NULL,
     execution_id TEXT NOT NULL,
     project_id TEXT NOT NULL,
-    purpose TEXT NOT NULL CHECK (purpose IN ('general', 'tests')),
+    purpose TEXT NOT NULL CHECK (purpose IN ('general', 'tests', 'lint', 'format', 'dependency')),
     command TEXT NOT NULL,
     returncode INTEGER NOT NULL,
     passed INTEGER NOT NULL CHECK (passed IN (0, 1)),
