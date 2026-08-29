@@ -236,6 +236,13 @@ The reviewer is shown three things: **the diff** between the leaf's head and the
 trunk commit it branched from, the cached gate results, and the acceptance
 criteria.
 
+Reconnaissance findings are deliberately **not** among them. Recon feeds the
+skeleton, the skeleton is the contract, and the reviewer judges the diff against
+that contract, so the facts recon established have already been distilled into
+code by the time review happens. Shipping the raw findings as well would re-open
+the read-everything pattern that cost one assembly 1,600,399 prompt tokens
+against 2,229 completion, for information the contract already carries.
+
 It reads, it runs nothing, it writes nothing, and it files one verdict with
 findings. The author fixes. A reviewer that edits becomes an author, and the
 independence the database constraint protects evaporates while the constraint
@@ -358,6 +365,33 @@ to notice that browser testing is now needed. The slice declares `ui:web` and
 the profile brings its gates. What an operator decides is whether a capability
 profile is right, once, when the profile is authored, and never per build.
 
+### Where a profile comes from, and what happens when none fits
+
+No catalogue anticipates every shape of project, so the loop does not pretend
+to one. Gate configuration is layered.
+
+**Central profiles** cover the shapes that recur: a web interface, an HTTP
+service, a command-line tool, a data pipeline. Each is authored and reviewed
+once, centrally, and reused by every project that declares its capability. This
+is where the weight sits, and it is why most projects need no gate authoring at
+all.
+
+**Project-local gates** cover what no profile does. A project needing a check
+the catalogue has never seen gets one drafted by an agent and approved by the
+operator at skeleton review, where the whole contract is being read anyway.
+
+One property makes that safe: **a project-local gate may only add checks, never
+relax or replace a profile's.** The profile is a floor an agent cannot lower,
+so the worst a weak draft can do is fail to catch something, never permit
+something the profile already refused. That is what stops "an agent can author
+gates" from meaning "an agent can author its way out of them".
+
+**Promotion closes the loop.** A project-local gate that recurs across projects
+is promoted into a profile, so the catalogue grows from what projects actually
+needed rather than from what somebody anticipated. A profile nobody could have
+written in advance is exactly the one worth having, and the only way to know
+which those are is to watch which local gates keep getting drafted.
+
 ### The ratchet
 
 ```mermaid
@@ -412,6 +446,7 @@ works from one list and does not care which produced each entry.
 | `contract-wrong` | the skeleton cannot express what is needed | the skeleton owner |
 | `blocked-by-fact` | a fact the plan assumed is false | reconnaissance, then the slice planner |
 | `scope-conflict` | two units both claim the same ground | the slice planner |
+| `misaligned` | it works, and it is not what was wanted | the charter, then the slice planner |
 | `needs-human` | a question only the operator can settle | the operator |
 
 `blocked-by-fact` is the one the current design cannot express at all. It is
@@ -652,16 +687,42 @@ and no-self-review constraints this design relies on unchanged. Strengthened:
 Single-Owner Decisions. The ownership table and the decision registry are that
 rule applied to this loop.
 
+## What no gate can catch
+
+A slice can pass every deterministic check, satisfy its contract, survive
+review, merge clean and boot, and still not be what was wanted. No gate catches
+that, because the gates check the work against the contract and the contract is
+what was wrong.
+
+The reviewer cannot catch it either. It judges the diff against the criteria it
+was handed, and those came from the same misunderstanding.
+
+**The only detector is a person looking at something running.** That is what the
+booting increment is for, and it is why the increment is a stage rather than a
+nicety. Everything else in this loop can be checked by machine; this cannot.
+
+Two consequences follow, and they are the reason slices are sized the way they
+are:
+
+- **The first slice produces something that boots.** Not scaffolding, not a
+  library with no caller, not a data layer nobody can see. Something the
+  operator can look at and recognise, or fail to. Wrongness then surfaces at
+  slice one instead of slice forty.
+- **A slice is sized to be disposable.** Its size is chosen by how much work you
+  are willing to have built wrong, because that is exactly what is at risk
+  between one increment and the next.
+
+An operator who looks at an increment and does not recognise it raises a
+`misaligned` finding. It routes to the charter and the slice planner, never to
+the author: the code did what it was asked, and what it was asked was wrong.
+That is a scope decision, so it is the operator's at every autonomy level.
+
 ## Open questions
 
-1. **Who authors the gate configuration.** Generating a project's linter, test
-   runner and CI definition is itself work, and an agent that writes gates can
-   weaken them. The ratchet covers loosening an existing gate; it does not
-   cover authoring a weak one in the first place.
-2. **Whether reconnaissance findings reach the reviewer.** It would improve
-   review quality and it re-opens the quadratic context cost that made assembly
-   unaffordable.
-3. **Work that is green on every gate and is not what was wanted.** No gate
-   catches it and the reviewer probably cannot either. The increment is the only
-   thing that surfaces it, which argues for shipping slices small and early
-   rather than getting them right.
+1. **How a `misaligned` finding prices what it invalidates.** Re-slicing is
+   cheap; a contract change that invalidates merged work is not, and the loop
+   does not yet distinguish them when routing one.
+2. **Whether a capability profile can be retired.** Gates ratchet one way per
+   project, but a profile that has stopped earning its cost across every project
+   is a different question, and the meta-finding rule is written per gate rather
+   than per profile.
