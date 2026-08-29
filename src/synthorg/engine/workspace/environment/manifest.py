@@ -15,9 +15,10 @@ from pathlib import Path
 from typing import Final
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.criterion_match import criterion_key
 from synthorg.core.project_enums import EnvironmentType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.errors import EnvironmentConfigError, EnvironmentProvisionError
@@ -45,16 +46,81 @@ _SHELL: Final[str] = "sh"
 _MAX_ERROR_OUTPUT_CHARS: Final[int] = 2000
 
 
+class PendingTest(BaseModel):
+    """One acceptance criterion, and the test that will decide it.
+
+    Both halves are named here because the manifest is the single authority on
+    what is pending. Matching a criterion to a test by reading the test's own
+    name would give the name runtime meaning, and a rename nobody thought was
+    load-bearing would then silently un-pend a criterion.
+
+    Attributes:
+        criterion: The criterion key, normalised through :func:`criterion_key`
+            so it survives a re-spelling of the objective it came from.
+        test_id: The runner's node id for the test asserting that criterion,
+            matched against the machine-readable report.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    criterion: NotBlankStr
+    test_id: NotBlankStr
+
+
+class DependencyPolicy(BaseModel):
+    """What the project may and may not depend on.
+
+    Stated as two lists rather than one, because "nothing outside this set" and
+    "anything except this set" are different claims and a project needs to be
+    able to make either. An empty ``allowed`` means no allowlist is in force,
+    which is not the same as allowing nothing.
+
+    Attributes:
+        allowed: Package names admitted. Empty means no allowlist applies.
+        denied: Package names refused, checked whether or not an allowlist is
+            in force, so a denial cannot be undone by widening the allowlist.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    allowed: tuple[str, ...] = ()
+    denied: tuple[str, ...] = ()
+
+
 class EnvironmentManifest(BaseModel):
-    """The committed bootstrap-manifest declaration.
+    """The committed bootstrap-manifest declaration, and the project's gates.
+
+    This file is both halves of the skeleton's contract with the units below
+    it: how a fresh clone is brought up, and what "done" means once it is. A
+    definition of done with nowhere to live is a definition of done nobody
+    enforces, so it lives here, committed, beside the commands that produce the
+    thing it judges.
 
     Attributes:
         language: Primary language of the deliverable (metadata).
         lockfiles: Version-pinning files hashed into the cache key.
         setup_commands: Ordered shell commands that install the toolchain
-            and dependencies into the working tree.
+            and dependencies into the working tree, and the command that boots
+            the result.
         test_command: How a fresh clone runs the project's tests.
         env: Toolchain / PATH additions applied to later tool calls.
+        lint_command: How a fresh clone lints. Absent means no lint gate.
+        format_command: How a fresh clone checks formatting. Absent means no
+            formatting gate.
+        coverage_floor: The minimum coverage fraction a run must reach. Absent
+            means no floor, which is not the same as a floor of zero: a floor
+            of zero is a declared decision and is reported as met.
+        dependency_policy: What the project may depend on.
+        test_report_path: Where the test runner writes machine-readable
+            per-test results, relative to the workspace root. Absent means the
+            runner reports only an exit status, which is enough to say a run
+            failed and not enough to say a pending test failed for its declared
+            reason, so a project with pending criteria needs one.
+        pending: The criteria whose tests are declared pending, each paired
+            with the test that will decide it. A unit clears its own entry in
+            the commit that makes its test pass, and that removal is the
+            readiness signal, so this field is mutable committed state on
+            purpose.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -64,6 +130,54 @@ class EnvironmentManifest(BaseModel):
     setup_commands: tuple[str, ...] = ()
     test_command: NotBlankStr
     env: dict[str, str] = Field(default_factory=dict)
+    lint_command: NotBlankStr | None = None
+    format_command: NotBlankStr | None = None
+    coverage_floor: float | None = Field(default=None, ge=0.0, le=1.0)
+    dependency_policy: DependencyPolicy = Field(default_factory=DependencyPolicy)
+    test_report_path: str | None = None
+    pending: tuple[PendingTest, ...] = ()
+
+    @model_validator(mode="after")
+    def _validate_pending(self) -> EnvironmentManifest:
+        """Reject a pending set that cannot be matched or cannot be classified.
+
+        Returns:
+            The validated manifest.
+
+        Raises:
+            ValueError: When a criterion is not already normalised, when one
+                criterion or one test is claimed twice, or when pending
+                criteria are declared with no report to classify them from.
+        """
+        criteria: set[str] = set()
+        tests: set[str] = set()
+        for entry in self.pending:
+            key = criterion_key(entry.criterion)
+            if key != entry.criterion:
+                msg = (
+                    f"pending criterion {entry.criterion!r} is not normalised; "
+                    f"expected {key!r}"
+                )
+                raise ValueError(msg)
+            if key in criteria:
+                msg = f"pending criterion {key!r} is declared twice"
+                raise ValueError(msg)
+            # Two criteria sharing one test cannot both be cleared
+            # independently, so the second unit to finish would find its marker
+            # already gone and read as done without having run.
+            if entry.test_id in tests:
+                msg = f"pending test {entry.test_id!r} is claimed by two criteria"
+                raise ValueError(msg)
+            criteria.add(key)
+            tests.add(entry.test_id)
+        if self.pending and self.test_report_path is None:
+            msg = (
+                "pending criteria need test_report_path: an exit status cannot "
+                "separate a declared assertion failure from a collection error, "
+                "so every pending test would have to classify red"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class ManifestEnvironmentStrategy:

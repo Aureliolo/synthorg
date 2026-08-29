@@ -43,7 +43,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import PersistenceVersionConflictError
 from synthorg.core.plan import Plan
 from synthorg.core.plan_enums import (
-    TAIL_STATUSES,
+    STAGE_STATUSES,
     TERMINAL_STATUSES,
     PlanStatus,
 )
@@ -376,10 +376,12 @@ class RunRecoveryReconciler:
         # whatever the rollup derives from them. Driving it anyway spends a
         # whole coordination pass to gate every wave out and change nothing,
         # every tick, for as long as the plan sits there.
-        if plan.status in TAIL_STATUSES or not revived.dispatchable:
-            # The tail stages key their work on an id derived from the plan
-            # and read their own state, so one rollup pass re-drives whichever
-            # stage the plan sits in without minting a second job.
+        if plan.status in STAGE_STATUSES or not revived.dispatchable:
+            # Every stage, head and tail alike, keys its work on an id derived
+            # from the plan and reads its own state, so one rollup pass
+            # re-drives whichever stage the plan sits in without minting a
+            # second job. Driving one instead would dispatch its waves while
+            # the stage's own task is still running.
             await self._recompute_plan(plan)
             logger.info(
                 RUN_RECOVERY_PLAN_RESUMED,
@@ -387,7 +389,9 @@ class RunRecoveryReconciler:
                 plan_status=plan.status.value,
                 requeued=requeued,
                 rejudged=rejudged,
-                how="tail-recompute" if plan.status in TAIL_STATUSES else "recompute",
+                how=(
+                    "stage-recompute" if plan.status in STAGE_STATUSES else "recompute"
+                ),
             )
             return _one(recomputed=1, requeued=requeued, rejudged=rejudged)
         if plan.status not in DRIVEN_STATUSES:

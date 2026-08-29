@@ -37,7 +37,7 @@ import argparse
 import sys
 from collections.abc import Iterator, Mapping
 
-from synthorg.core.plan_enums import TAIL_STATUSES, TERMINAL_STATUSES, PlanStatus
+from synthorg.core.plan_enums import STAGE_STATUSES, TERMINAL_STATUSES, PlanStatus
 from synthorg.engine.run_recovery.reconciler import (
     AWAITING_HUMAN_STATUSES,
     DRIVEN_STATUSES,
@@ -46,12 +46,18 @@ from synthorg.engine.run_recovery.reconciler import (
 
 #: Each group with the answer it gives, so a violation says what the status
 #: would have got rather than only which set it is missing from.
+#:
+#: The stage group covers head and tail together because the recovery question
+#: is the same for both: a stage owns its own advance off a derived task id, so
+#: one recompute re-drives it. Splitting them here would let a status sit in the
+#: head set while the reconciler only reads the tail one, which is precisely the
+#: silent-gap shape this gate exists to refuse.
 _GROUPS: Mapping[str, frozenset[PlanStatus]] = {
     "terminal (nothing left to do)": TERMINAL_STATUSES,
     "awaiting a human (parked correctly)": AWAITING_HUMAN_STATUSES,
     "unfillable (failed with a reason)": UNFILLED_STATUSES,
     "driven (waves handed to the coordinator)": DRIVEN_STATUSES,
-    "tail (one rollup pass re-drives the stage)": TAIL_STATUSES,
+    "stage (one rollup pass re-drives the stage)": STAGE_STATUSES,
 }
 
 

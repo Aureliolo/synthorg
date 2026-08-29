@@ -59,12 +59,10 @@ from synthorg.engine.initiative.ports import (
 from synthorg.engine.initiative.project_writes import advance_project_status
 from synthorg.engine.initiative.rollup_parent_task import advance_objective_task
 from synthorg.engine.initiative.rollup_plan_advance import advance_plan
+from synthorg.engine.initiative.stage_state import StageOutcome
 from synthorg.engine.initiative.stall_escalation import StallEscalationService
 from synthorg.engine.initiative.stall_route import escalate_stall, route_stall
-from synthorg.engine.initiative.tail_stages import (
-    IntegrationOutcome,
-    read_integration_state,
-)
+from synthorg.engine.initiative.tail_stages import read_integration_state
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_models import TaskStateChanged
 from synthorg.observability import get_logger, log_exception_redacted
@@ -79,10 +77,11 @@ from synthorg.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
 
-#: Integration outcomes the stage can act on by dispatching: no attempt yet, or
-#: one whose row was persisted and then never handed to the pipeline.
-_DISPATCHABLE_OUTCOMES: Final[frozenset[IntegrationOutcome]] = frozenset(
-    {IntegrationOutcome.ABSENT, IntegrationOutcome.PENDING}
+#: Stage outcomes a stage can act on by dispatching: no attempt yet, or one
+#: whose row was persisted and then never handed to the pipeline. Shared by the
+#: head and tail stages, which answer this question identically.
+_DISPATCHABLE_OUTCOMES: Final[frozenset[StageOutcome]] = frozenset(
+    {StageOutcome.ABSENT, StageOutcome.PENDING}
 )
 
 
@@ -508,9 +507,9 @@ class ProjectRollupService:
         if state.outcome in _DISPATCHABLE_OUTCOMES:
             self._integration.schedule(plan=plan, attempt=state.attempt)
             return plan
-        if state.outcome is IntegrationOutcome.PASSED:
+        if state.outcome is StageOutcome.PASSED:
             return await self._advance_plan(plan, PlanStatus.EVALUATING) or plan
-        if state.outcome is IntegrationOutcome.FAILED:
+        if state.outcome is StageOutcome.FAILED:
             # The pieces work and the whole does not, which no derivation over
             # items can see: every item is COMPLETED here. Asked rather than
             # assumed, so a refusal reaches the operator instead of being
@@ -523,7 +522,7 @@ class ProjectRollupService:
                 escalation=self._stall_escalation,
                 fail_plan=self._fail_plan,
             )
-        if state.outcome is IntegrationOutcome.RUNNING:
+        if state.outcome is StageOutcome.RUNNING:
             # Logged rather than passed over in silence: an assembly job that
             # is genuinely working and one that died without terminalising its
             # row look identical from here, and this line is the only place an

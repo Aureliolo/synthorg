@@ -34,10 +34,12 @@ export function planSolicitsReview(status: PlanStatus): boolean {
 
 /**
  * The statuses where the org is working the plan: approved and waiting for the
- * first wave, running one, assembling, or scoring the result.
+ * skeleton, writing the contract, running a wave, assembling, or scoring the
+ * result.
  */
 const RUNNING_STATUSES: ReadonlySet<PlanStatus> = new Set<PlanStatus>([
   'approved',
+  'skeleton',
   'executing',
   'integrating',
   'evaluating',

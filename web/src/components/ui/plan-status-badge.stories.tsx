@@ -29,6 +29,10 @@ export const Approved: Story = {
   args: { status: 'approved' },
 }
 
+export const Skeleton: Story = {
+  args: { status: 'skeleton' },
+}
+
 export const Executing: Story = {
   args: { status: 'executing' },
 }
@@ -67,6 +71,7 @@ export const AllStatuses: Story = {
           'draft',
           'pending_review',
           'approved',
+          'skeleton',
           'executing',
           'integrating',
           'evaluating',

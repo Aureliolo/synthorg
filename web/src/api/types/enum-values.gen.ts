@@ -666,6 +666,7 @@ export const PLAN_STATUS_VALUES = [
     'draft',
     'pending_review',
     'approved',
+    'skeleton',
     'executing',
     'integrating',
     'evaluating',
