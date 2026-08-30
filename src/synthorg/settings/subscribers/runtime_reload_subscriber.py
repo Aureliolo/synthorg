@@ -126,6 +126,12 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         # The browser tool resolves its settings once into a frozen model, so
         # the content-mode budget reaches a session only through a rebuild.
         ("tools", "browser_content_max_characters"),
+        # The Docker sandbox reads its background-job concurrency and
+        # output-byte-cap bounds once, at construction, into
+        # ``ToolCeilings``. Without a rebuild an operator raising or
+        # lowering either applies no earlier than an unrelated rebuild.
+        ("tools", "shell_command_background_max_concurrent_jobs"),
+        ("tools", "shell_command_background_output_byte_cap"),
         # The effective capability map is composed once, while the stakes
         # router's ``ModelResolver`` is assembled, and the resolver then answers
         # every routing question from that snapshot. An operator correcting a

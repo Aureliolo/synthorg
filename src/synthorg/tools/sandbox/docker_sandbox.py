@@ -51,6 +51,7 @@ from synthorg.observability.events.sandbox import (
 from synthorg.persistence.tracked_container_protocol import (
     TrackedContainerRepository,
 )
+from synthorg.tools.ceilings import ToolCeilings
 from synthorg.tools.sandbox._container_limits import nano_cpus, parse_memory_limit
 from synthorg.tools.sandbox._mount_mode import MountMode, resolve_mount_mode
 from synthorg.tools.sandbox._mount_paths import CONTAINER_TMP, CONTAINER_WORKSPACE
@@ -175,6 +176,7 @@ class DockerSandbox(
         tracked_container_repo: TrackedContainerRepository | None = None,
         lifecycle_strategy: SandboxLifecycleStrategy | None = None,
         background_jobs: BackgroundJobRegistry | None = None,
+        ceilings: ToolCeilings | None = None,
     ) -> None:
         """Initialize the Docker sandbox.
 
@@ -204,6 +206,12 @@ class DockerSandbox(
                 the lifecycle strategy's own pin check is never wired,
                 so container teardown timing is unchanged from before
                 this feature existed.
+            ceilings: Resolved tool ceilings this sandbox reads its
+                background-job concurrency (``background_max_concurrent_
+                jobs``) and output-byte-cap (``background_output_byte_
+                cap``) bounds from. ``None`` uses ``ToolCeilings``'s own
+                defaults. One parameter rather than two so construction
+                stays under the argument-count cap.
 
         Raises:
             ValueError: If *workspace* is not absolute or does not exist.
@@ -233,6 +241,11 @@ class DockerSandbox(
             tracked_container_repo
         )
         self._background_jobs: BackgroundJobRegistry | None = background_jobs
+        resolved_ceilings = ceilings if ceilings is not None else ToolCeilings()
+        self._background_max_concurrent_jobs = (
+            resolved_ceilings.background_max_concurrent_jobs
+        )
+        self._background_output_byte_cap = resolved_ceilings.background_output_byte_cap
         self._lock = asyncio.Lock()
         self._init_execution_leases(command_timeout=self._config.timeout_seconds)
         self._clock = clock or SystemClock()

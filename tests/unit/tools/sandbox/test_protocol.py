@@ -63,6 +63,7 @@ class _FakeSandbox:
         category: str = "",
         owner_id: NotBlankStr | None = None,
         project_id: NotBlankStr | None = None,
+        max_duration_seconds: float | None = None,
     ) -> NotBlankStr:
         return NotBlankStr("fake-job")
 

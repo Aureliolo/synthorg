@@ -82,20 +82,17 @@ _CANCEL_GRACE_SECONDS: Final[float] = 5.0
 #: daemon.
 _CONTROL_EXEC_TIMEOUT_SECONDS: Final[float] = 10.0
 
-#: Per-owner concurrent-job ceiling until Settings wiring (a later
-#: phase) threads the resolved ``tools.shell_command_background_max_
-#: concurrent_jobs`` value through instead.
-_DEFAULT_MAX_CONCURRENT_JOBS: Final[int] = 5
-
-#: Default per-job duration ceiling until Settings wiring threads the
-#: resolved ``tools.shell_command_background_max_duration_seconds``
-#: value through instead.
+#: Fallback per-job duration ceiling when a caller supplies none to
+#: ``start_background`` (e.g. a direct call bypassing the tool layer).
+#: The tool layer itself always resolves and passes the live
+#: ``tools.shell_command_background_max_duration_seconds`` value
+#: (Shape A -- read per call, since the ceiling in force when a job
+#: starts governs its own lifetime). The per-owner concurrent-job
+#: ceiling and the output byte cap are Shape B instead (resolved once
+#: at construction into ``self._background_max_concurrent_jobs`` /
+#: ``self._background_output_byte_cap``, via ``ToolCeilings``), since
+#: they bound registry/tmpfs capacity rather than one call's behaviour.
 _DEFAULT_MAX_DURATION_SECONDS: Final[float] = 3600.0
-
-#: Default per-job output byte cap until Settings wiring threads the
-#: resolved ``tools.shell_command_background_output_byte_cap`` value
-#: through instead.
-_DEFAULT_OUTPUT_BYTE_CAP: Final[int] = 1_000_000
 
 
 class DockerSandboxBackgroundMixin:
@@ -111,6 +108,8 @@ class DockerSandboxBackgroundMixin:
         _docker: aiodocker.Docker | None
         _lifecycle_strategy: SandboxLifecycleStrategy
         _background_jobs: BackgroundJobRegistry | None
+        _background_max_concurrent_jobs: int
+        _background_output_byte_cap: int
 
         async def _ensure_docker(self) -> aiodocker.Docker: ...
 
@@ -392,6 +391,7 @@ class DockerSandboxBackgroundMixin:
         category: str = "",
         owner_id: NotBlankStr | None = None,
         project_id: NotBlankStr | None = None,
+        max_duration_seconds: float | None = None,
     ) -> NotBlankStr:
         """See ``SandboxBackend.start_background``.
 
@@ -444,10 +444,11 @@ class DockerSandboxBackgroundMixin:
             raise SandboxBackgroundNoReusableContainerError(msg)
 
         live_count = await registry.count_live_by_owner(owner_key)
-        if live_count >= _DEFAULT_MAX_CONCURRENT_JOBS:
+        if live_count >= self._background_max_concurrent_jobs:
             msg = (
                 f"{owner_key} already holds {live_count} live background "
-                f"job(s), at the {_DEFAULT_MAX_CONCURRENT_JOBS}-job ceiling."
+                f"job(s), at the {self._background_max_concurrent_jobs}-job "
+                "ceiling."
             )
             raise SandboxBackgroundJobLimitError(msg)
 
@@ -511,7 +512,11 @@ class DockerSandboxBackgroundMixin:
             output_path=output_path(job_id),
             started_at=now,
             updated_at=now,
-            max_duration_seconds=_DEFAULT_MAX_DURATION_SECONDS,
+            max_duration_seconds=(
+                max_duration_seconds
+                if max_duration_seconds is not None and max_duration_seconds > 0
+                else _DEFAULT_MAX_DURATION_SECONDS
+            ),
         )
         await registry.save(record)
         logger.info(
@@ -590,7 +595,7 @@ class DockerSandboxBackgroundMixin:
             raise SandboxBackgroundJobNotFoundError(msg)
         handle = ContainerHandle(container_id=record.container_id)
         program, args = build_read_output_command(
-            job_id, byte_cap=byte_cap or _DEFAULT_OUTPUT_BYTE_CAP
+            job_id, byte_cap=byte_cap or self._background_output_byte_cap
         )
         return await self._run_control_exec(
             handle, program, args, timeout=_CONTROL_EXEC_TIMEOUT_SECONDS

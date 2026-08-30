@@ -40,7 +40,15 @@ _FS_TOOL_NAMES: frozenset[str] = frozenset(
 )
 
 _WEB_TOOL_NAMES: frozenset[str] = frozenset({"http_request", "html_parser"})
-_TERMINAL_TOOL_NAMES: frozenset[str] = frozenset({"shell_command"})
+_TERMINAL_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "shell_command",
+        "check_background_job",
+        "read_background_job_output",
+        "cancel_background_job",
+        "list_background_jobs",
+    }
+)
 
 _EXPECTED_TOOL_COUNT: int = (
     len(_GIT_TOOL_NAMES)

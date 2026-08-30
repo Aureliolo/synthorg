@@ -111,6 +111,10 @@ _WEB_TIMEOUT_KEY: str = "web_request_timeout_seconds"
 _TOOLS_NS: str = "tools"
 _GIT_LOG_MAX_COUNT_KEY: str = "git_log_max_count"
 _CODE_RUNNER_OUTPUT_TAIL_KEY: str = "code_runner_output_tail_limit"
+_BACKGROUND_MAX_CONCURRENT_JOBS_KEY: str = (
+    "shell_command_background_max_concurrent_jobs"
+)
+_BACKGROUND_OUTPUT_BYTE_CAP_KEY: str = "shell_command_background_output_byte_cap"
 _EXTERNAL_API_NS: str = SettingNamespace.EXTERNAL_API.value
 
 
@@ -153,6 +157,18 @@ async def _build_tool_registry(
     code_runner_output_tail_limit = await resolver.get_int(
         _TOOLS_NS, _CODE_RUNNER_OUTPUT_TAIL_KEY
     )
+    background_max_concurrent_jobs = await resolver.get_int(
+        _TOOLS_NS, _BACKGROUND_MAX_CONCURRENT_JOBS_KEY
+    )
+    background_output_byte_cap = await resolver.get_int(
+        _TOOLS_NS, _BACKGROUND_OUTPUT_BYTE_CAP_KEY
+    )
+    ceilings = ToolCeilings(
+        git_log_max_count=git_log_max_count,
+        code_runner_output_tail_limit=code_runner_output_tail_limit,
+        background_max_concurrent_jobs=background_max_concurrent_jobs,
+        background_output_byte_cap=background_output_byte_cap,
+    )
     from synthorg.tools.browser._settings import (  # noqa: PLC0415
         resolve_browser_settings,
     )
@@ -181,6 +197,7 @@ async def _build_tool_registry(
         tracked_container_repo=_tracked_container_repo_or_none(app_state),
         lifecycle_strategy=lifecycle_strategy,
         background_jobs=background_jobs,
+        ceilings=ceilings,
     )
     if background_jobs is not None and isinstance(
         lifecycle_strategy, PerAgentStrategy | PerTaskStrategy
@@ -201,10 +218,7 @@ async def _build_tool_registry(
         workspace=workspace_root,
         config=app_state.config,
         sandbox_backends=sandbox_backends,
-        ceilings=ToolCeilings(
-            git_log_max_count=git_log_max_count,
-            code_runner_output_tail_limit=code_runner_output_tail_limit,
-        ),
+        ceilings=ceilings,
         # Handed the resolver rather than a resolved number: the command
         # ceiling is read per command, so an operator raising it applies to
         # the next command an agent runs rather than to the next rebuild.

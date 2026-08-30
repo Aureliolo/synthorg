@@ -27,6 +27,7 @@ from synthorg.persistence.tracked_container_protocol import (
     TrackedContainerRepository,
 )
 from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.tools.ceilings import ToolCeilings
 from synthorg.tools.sandbox._image_resolution import (
     get_resolved_sandbox_image,
     get_resolved_sidecar_image,
@@ -72,10 +73,11 @@ def _build_subprocess_backend(
     tracked_container_repo: TrackedContainerRepository | None = None,
     lifecycle_strategy: SandboxLifecycleStrategy | None = None,
     background_jobs: BackgroundJobRegistry | None = None,
+    ceilings: ToolCeilings | None = None,
 ) -> SandboxBackend:
     # Subprocess backend has no Docker containers to track or reuse;
-    # the repo / lifecycle / background-job parameters are accepted to
-    # keep a uniform registry signature.
+    # the repo / lifecycle / background-job / ceilings parameters are
+    # accepted to keep a uniform registry signature.
     """Build subprocess backend.
 
     Returns:
@@ -84,7 +86,7 @@ def _build_subprocess_backend(
     Raises:
         Exception: Raised when the relevant invariant fails.
     """
-    del tracked_container_repo, lifecycle_strategy, background_jobs
+    del tracked_container_repo, lifecycle_strategy, background_jobs, ceilings
     try:
         return SubprocessSandbox(
             config=config.subprocess,
@@ -139,6 +141,7 @@ def _build_docker_backend(
     tracked_container_repo: TrackedContainerRepository | None = None,
     lifecycle_strategy: SandboxLifecycleStrategy | None = None,
     background_jobs: BackgroundJobRegistry | None = None,
+    ceilings: ToolCeilings | None = None,
 ) -> SandboxBackend:
     """Build docker backend.
 
@@ -155,6 +158,7 @@ def _build_docker_backend(
             tracked_container_repo=tracked_container_repo,
             lifecycle_strategy=lifecycle_strategy,
             background_jobs=background_jobs,
+            ceilings=ceilings,
         )
     except Exception as exc:
         log_exception_redacted(
@@ -204,6 +208,7 @@ def build_sandbox_backends(
     tracked_container_repo: TrackedContainerRepository | None = None,
     lifecycle_strategy: SandboxLifecycleStrategy | None = None,
     background_jobs: BackgroundJobRegistry | None = None,
+    ceilings: ToolCeilings | None = None,
 ) -> MappingProxyType[str, SandboxBackend]:
     """Build only the backend instances actually referenced by *config*.
 
@@ -226,6 +231,10 @@ def build_sandbox_backends(
             / ``poll_background`` / ``read_background_output`` /
             ``cancel_background`` (each refuses loudly rather than
             silently no-opping).  Subprocess backend ignores it.
+        ceilings: Resolved tool ceilings; the Docker backend reads its
+            background-job concurrency and output-byte-cap bounds from
+            it.  ``None`` uses ``ToolCeilings``'s own defaults.
+            Subprocess backend ignores it.
 
     Returns:
         A read-only mapping of backend name to backend instance.
@@ -255,6 +264,7 @@ def build_sandbox_backends(
             tracked_container_repo=tracked_container_repo,
             lifecycle_strategy=lifecycle_strategy,
             background_jobs=background_jobs,
+            ceilings=ceilings,
         )
         for name in sorted(needed)
     }

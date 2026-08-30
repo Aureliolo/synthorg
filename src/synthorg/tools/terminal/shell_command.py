@@ -31,7 +31,11 @@ from synthorg.tools._workspace_scope import require_project_id
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError, agent_facing_message
 from synthorg.tools.sandbox.protocol import SandboxBackend
-from synthorg.tools.terminal._settings import resolve_shell_command_timeout
+from synthorg.tools.terminal._settings import (
+    resolve_shell_command_background_enabled,
+    resolve_shell_command_background_max_duration_seconds,
+    resolve_shell_command_timeout,
+)
 from synthorg.tools.terminal.base_terminal_tool import BaseTerminalTool
 from synthorg.tools.terminal.config import TerminalConfig
 
@@ -42,6 +46,14 @@ _COMMAND_REPR_LIMIT: Final[int] = 500
 
 #: Maximum characters of captured stdout/stderr kept on a test record.
 _OUTPUT_TAIL_LIMIT: Final[int] = 2000
+
+#: Fallback for ``shell_command_background_enabled`` when the resolver is
+#: unavailable; matches the setting's own registered default.
+_DEFAULT_BACKGROUND_ENABLED: Final[bool] = True
+
+#: Fallback for ``shell_command_background_max_duration_seconds`` when the
+#: resolver is unavailable; matches the setting's own registered default.
+_DEFAULT_BACKGROUND_MAX_DURATION_SECONDS: Final[float] = 3600.0
 
 
 class ShellCommandArgs(BaseModel):
@@ -347,11 +359,27 @@ class ShellCommandTool(BaseTerminalTool):
             msg = "_execute_background called without sandbox"
             raise RuntimeError(msg)
 
+        if not await resolve_shell_command_background_enabled(
+            self._config_resolver, fallback=_DEFAULT_BACKGROUND_ENABLED
+        ):
+            return ToolExecutionResult(
+                content=(
+                    "Backgrounded shell commands are disabled on this "
+                    "deployment (tools.shell_command_background_enabled)."
+                ),
+                is_error=True,
+            )
+
         cwd_or_error = self._validate_working_dir(working_dir)
         if isinstance(cwd_or_error, ToolExecutionResult):
             return cwd_or_error
         cwd = cwd_or_error
 
+        max_duration_seconds = (
+            await resolve_shell_command_background_max_duration_seconds(
+                self._config_resolver, fallback=_DEFAULT_BACKGROUND_MAX_DURATION_SECONDS
+            )
+        )
         program, args = shell_invocation(command)
         try:
             # owner_id deliberately omitted: `None` derives the SAME
@@ -365,6 +393,7 @@ class ShellCommandTool(BaseTerminalTool):
                 cwd=cwd,
                 category=self.category.value,
                 project_id=require_project_id(),
+                max_duration_seconds=max_duration_seconds,
             )
         except SandboxError as exc:
             logger.warning(

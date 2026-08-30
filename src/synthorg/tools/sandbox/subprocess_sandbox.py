@@ -437,6 +437,7 @@ class SubprocessSandbox(_EnvFilterMixin):
         category: str = "",  # noqa: ARG002
         owner_id: NotBlankStr | None = None,  # noqa: ARG002
         project_id: NotBlankStr | None = None,  # noqa: ARG002
+        max_duration_seconds: float | None = None,  # noqa: ARG002
     ) -> NotBlankStr:
         """Refuse: no persistent container a background job could run in.
 

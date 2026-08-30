@@ -157,8 +157,18 @@ class _LocalPythonSandbox:
         category: str = "",
         owner_id: NotBlankStr | None = None,
         project_id: NotBlankStr | None = None,
+        max_duration_seconds: float | None = None,
     ) -> NotBlankStr:
-        del command, args, cwd, env_overrides, category, owner_id, project_id
+        del (
+            command,
+            args,
+            cwd,
+            env_overrides,
+            category,
+            owner_id,
+            project_id,
+            max_duration_seconds,
+        )
         msg = "_LocalPythonSandbox holds no per-owner container; no backgrounding."
         raise SandboxBackgroundUnsupportedError(msg)
 

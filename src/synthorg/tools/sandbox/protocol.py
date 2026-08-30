@@ -132,6 +132,7 @@ class SandboxBackend(Protocol):
         category: str = "",
         owner_id: NotBlankStr | None = None,
         project_id: NotBlankStr | None = None,
+        max_duration_seconds: float | None = None,
     ) -> NotBlankStr:
         """Start *command* detached; the caller polls/reads/cancels it later.
 
@@ -160,6 +161,14 @@ class SandboxBackend(Protocol):
                 background job has no per-call semantics to fall back
                 to.
             project_id: Owning project; see ``execute``.
+            max_duration_seconds: Ceiling on how long the job may run
+                before it is force-cancelled and marked ``timed_out``,
+                resolved live by the caller (from
+                ``tools.shell_command_background_max_duration_seconds``)
+                at the moment the job starts, so a later operator change
+                only affects jobs started after it. ``None`` or a
+                non-positive value falls back to the backend's own
+                default.
 
         Returns:
             The started job's id, addressed by every other

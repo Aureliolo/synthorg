@@ -201,6 +201,7 @@ class FakeSandbox:
         category: str = "",
         owner_id: NotBlankStr | None = None,
         project_id: NotBlankStr | None = None,
+        max_duration_seconds: float | None = None,
     ) -> NotBlankStr:
         """Record the call and return the canned job id.
 
