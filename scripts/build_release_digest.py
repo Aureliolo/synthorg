@@ -66,7 +66,7 @@ _INDENTED = re.compile(r"^\s+\S")
 # the substance along with the trailer.
 _ISSUE_REF = re.compile(
     r"^\s*(?:closes|fixes|resolves|refs|part of)\s+"
-    r"(?:#\d+|[\w.-]+/[\w.-]+#\d+|https?://\S+)\s*[.,;]?\s*$",
+    r"(?:#\d+|[\w.-]+/[\w.-]+#\d+|https?://\S+)\s*(?:[.,;]\s*)?$",
     re.IGNORECASE,
 )
 _TRAILER = re.compile(
@@ -74,11 +74,18 @@ _TRAILER = re.compile(
     r"acked-by|tested-by):",
     re.IGNORECASE,
 )
-_HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+# Unrolled rather than the obvious ``<!--.*?-->``: a body carrying many
+# unterminated ``<!--`` makes the lazy form rescan to end-of-string once per
+# opener, which is quadratic in a commit message anyone who lands a commit
+# gets to write. This form fails at the first ``-`` that does not open ``-->``,
+# so a failed match advances instead of restarting.
+_HTML_COMMENT = re.compile(r"<!--[^-]*(?:-(?!->)[^-]*)*-->", re.DOTALL)
 
 # A link's text carries the reference a reader needs (``#2883``, a design page
 # name); its URL is pure token cost and no summary ever quotes one.
-_MD_LINK = re.compile(r"\[([^\]]+)\]\([^)]*\)")
+# ``[`` is excluded from the label for the same reason as above: allowing it
+# lets every ``[`` in a run start a scan that runs to the next ``]``.
+_MD_LINK = re.compile(r"\[([^\][]+)\]\([^)]*\)")
 _BARE_URL = re.compile(r"https?://\S+")
 
 _BLANK_RUN = re.compile(r"\n{3,}")
@@ -108,7 +115,7 @@ _REVIEW_OPENER = re.compile(
 # backup rotation job" and deleted the sentence with the label.
 _SEVERITY_HEADER = re.compile(
     r"^\s*\*\*(?:critical|important|high|major|medium|moderate|minor|low|"
-    r"nit|blocking|trivial|suggestions?)\b[^*]*\*\*\s*:?\s*$",
+    r"nit|blocking|trivial|suggestions?)\b[^*]*\*\*\s*(?::\s*)?$",
     re.IGNORECASE,
 )
 

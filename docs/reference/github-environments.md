@@ -223,6 +223,7 @@ installation token (valid ≤1 hour) via the
    (both SHA-pinned in-workflow). The latter backs the weekly GHCR prune
    job; an Actions-restricted fork that omits it fails the cleanup at
    action-resolution time.
+
 **No rotation schedule**. Installation tokens are ephemeral:
 minted per workflow run and valid for at most one hour, then
 discarded. The only long-lived secret is the App private key,
@@ -254,11 +255,18 @@ a failure opens the self-closing `Release Highlights generation is
 failing` tracker, and the block already published survives, because the
 sticky comment is only rewritten on a successful generation.
 
-Mistral's free plan carries **$10/month in API credits** (Pro: $30); it
-is not a token quota. The model is declared once as `HIGHLIGHTS_MODEL`
-in `release-cut.yml`. Which models a plan admits is published nowhere,
-so when one starts returning `403 tier_not_allowed` the answer is to
-dispatch `release-highlights-dryrun.yml`, which lists what the key can
+Deliberately no plan or allowance figures here: Mistral's tiers and
+their included usage change, and a number copied into this page is one
+nobody re-checks. Read the current terms from
+[Mistral's pricing page](https://mistral.ai/pricing/) and the account's
+own Admin Console, which is the only place this key's actual balance
+and rate limits appear.
+
+What matters operationally is that **which models a key may call is
+published nowhere**, and a plan can withdraw one without notice. The
+model is declared once as `HIGHLIGHTS_MODEL` in `release-cut.yml`; when
+it starts returning `403 tier_not_allowed`, dispatch
+`release-highlights-dryrun.yml`, which lists what the key can currently
 call and rehearses the real prompt and digest against any candidate.
 
 ## Testing the `apko-lock` gate

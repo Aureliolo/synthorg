@@ -73,6 +73,12 @@ jobs:
       # render or publish failure left this reading `ok`, and the recovery job
       # below then closed the tracker asserting a success that never happened.
       highlights_status: ${{ steps.highlights.outputs.status }}
+      # The digest fails BEFORE a model is ever called, and those paths exit 0
+      # so the release still cuts. Without this output the tracker condition
+      # below sees three empty statuses and stays quiet, so a sustained
+      # `releases/latest` or `compare` outage would stop Highlights in exactly
+      # the silence the tracker exists to end.
+      highlights_digest_status: ${{ steps.digest.outputs.status }}
       highlights_render: ${{ steps.render.outputs.status }}
       highlights_publish: ${{ steps.publish.outputs.status }}
       highlights_skipped: ${{ steps.digest.outputs.skip }}
@@ -176,7 +182,7 @@ jobs:
             gh api --method PUT "repos/$GITHUB_REPOSITORY/contents/LICENSE" --input "$payload"
 
       # ── Release-notes tagline + Highlights ──
-      # Generate a one-line tagline and a three-section Highlights summary,
+      # Generate a one-line tagline and a two-section Highlights summary,
       # publish both to a sticky comment on the release PR, and mirror them
       # into the PR body. Opt-out: a `No-Highlights:` trailer
       # (case-insensitive) anywhere in the PR body.
@@ -274,7 +280,7 @@ jobs:
           if grep -q 'digest is partial' digest-stderr.txt; then
             echo "truncated=true" >> "$GITHUB_OUTPUT"
           fi
-          if [ -z "${DIGEST// /}" ]; then
+          if [ -z "${DIGEST//[[:space:]]/}" ]; then
             echo "::warning::digest for ${BASE}...${HEAD_SHA} came out empty; skipping Highlights"
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -331,9 +337,11 @@ jobs:
             fi
           fi
           echo "regenerate=${REGENERATE} (${REASON})"
-          echo "regenerate=${REGENERATE}" >> "$GITHUB_OUTPUT"
-          echo "total_commits=${TOTAL}" >> "$GITHUB_OUTPUT"
-          echo "base=${BASE}" >> "$GITHUB_OUTPUT"
+          {
+            echo "regenerate=${REGENERATE}"
+            echo "total_commits=${TOTAL}"
+            echo "base=${BASE}"
+          } >> "$GITHUB_OUTPUT"
 
           # Written to a file because GITHUB_OUTPUT does not handle multi-line
           # content well. The digest arrives already fenced: the script owns
@@ -472,7 +480,7 @@ jobs:
               | sed -n "${TAGLINE_LINE}s/^[[:space:]]*TAGLINE:[[:space:]]*//p")
           fi
 
-          if [ -n "${TAGLINE// /}" ]; then
+          if [ -n "${TAGLINE//[[:space:]]/}" ]; then
             BULLETS=$(printf '%s\n' "$SAFE" | sed "${TAGLINE_LINE}d")
           else
             echo "::warning::model emitted no TAGLINE line; rendering Highlights without one."
@@ -491,9 +499,10 @@ jobs:
           TRIMMED_BULLETS=$(printf '%s' "$BULLETS" | sed -e 's/^[[:space:]]*$//' -e '/./,$!d')
           {
             printf '<!-- HIGHLIGHTS_START -->\n## Highlights\n\n'
-            if [ -n "${TAGLINE// /}" ]; then
+            if [ -n "${TAGLINE//[[:space:]]/}" ]; then
               printf '_%s_\n\n' "$TAGLINE"
             fi
+            # shellcheck disable=SC2016  # backticks in the printf format are literal markdown code spans
             printf '> _AI-generated summary (model: `%s` via Mistral). Commit-based changelog below._\n\n' "$MISTRAL_MODEL"
             printf '%s\n\n' "$TRIMMED_BULLETS"
             printf '<!-- HIGHLIGHTS_END -->'
@@ -602,6 +611,12 @@ jobs:
             fi
             CLEANED="$CUR_BODY"
           fi
+          # The range delete removes the marker lines and leaves the blank one
+          # that followed the block, so CLEANED opens on an empty line and the
+          # reassembly below adds one more than the body had. Unstripped, the
+          # comparison never matches: `gh pr edit` would run on every push to
+          # main and the stored body would gain a blank line each time.
+          CLEANED=$(sed -e '/./,$!d' <<< "$CLEANED")
           NEW_BODY=$(printf '%s\n\n%s' "$BLOCK" "$CLEANED")
           if [ "$NEW_BODY" = "$CUR_BODY" ]; then
             echo "PR body already carries this block; no edit needed."
@@ -760,6 +775,7 @@ jobs:
       && needs.release-please.result == 'success'
       && (
         needs.release-please.outputs.highlights_truncated == 'true'
+        || needs.release-please.outputs.highlights_digest_status != ''
         || (
           needs.release-please.outputs.highlights_skipped != 'true'
           && (
@@ -786,6 +802,7 @@ jobs:
       - name: Compose body
         id: body
         env:
+          DIGEST: ${{ needs.release-please.outputs.highlights_digest_status }}
           STATUS: ${{ needs.release-please.outputs.highlights_status }}
           RENDER: ${{ needs.release-please.outputs.highlights_render }}
           PUBLISH: ${{ needs.release-please.outputs.highlights_publish }}
@@ -802,6 +819,7 @@ jobs:
           Release-notes Highlights degraded at $(date -u +%Y-%m-%dT%H:%M:%SZ) on $HEAD_SHA.
 
           Model: \`${MODEL}\`
+          Digest: \`${DIGEST:-ok}\`
           Generation: \`${STATUS:-not reached}\`
           Render: \`${RENDER:-not reached}\`
           Publish: \`${PUBLISH:-not reached}\`
@@ -846,6 +864,7 @@ jobs:
     if: >-
       always()
       && !github.event.repository.fork
+      && needs.release-please.outputs.highlights_digest_status == ''
       && needs.release-please.outputs.highlights_status == 'ok'
       && needs.release-please.outputs.highlights_render == 'ok'
       && needs.release-please.outputs.highlights_publish == 'ok'

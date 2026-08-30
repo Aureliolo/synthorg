@@ -90,7 +90,11 @@ jobs:
           # id appearing here is necessary but not sufficient; a completion
           # is the only real entitlement test, and that is what the generate
           # step below performs for the selected model.
-          RESP=$(curl -sS -w '\n%{http_code}' \
+          # Deadlines, because a server that accepts the connection and then
+          # stalls would otherwise spend the whole 10-minute job budget here
+          # and the generate step below would never run.
+          RESP=$(curl -sS --connect-timeout 15 --max-time 60 \
+            -w '\n%{http_code}' \
             https://api.mistral.ai/v1/models \
             -H "Authorization: Bearer $MISTRAL_API_KEY") || {
               echo "::warning::could not reach the models endpoint"
@@ -137,7 +141,7 @@ jobs:
             esac
           done
 
-          if [ -n "${SAMPLE// /}" ]; then
+          if [ -n "${SAMPLE//[[:space:]]/}" ]; then
             # The sample is fenced by the same code path as a real digest, so
             # a hand-pasted payload rehearses the escape too.
             printf '%s' "$SAMPLE" \
@@ -217,7 +221,11 @@ jobs:
             echo "**Model**: \`${MISTRAL_MODEL}\` via Mistral"
             echo "**Tokens**: ${USAGE}"
             echo ""
-            if [ -z "${RESPONSE// /}" ]; then
+            # Every kind of whitespace, not just spaces: a reply of newlines
+            # or tabs passes a space-only test, and the `grep` below then
+            # matches nothing and exits non-zero, which under `pipefail`
+            # kills the step before it can print this fallback.
+            if [ -z "${RESPONSE//[[:space:]]/}" ]; then
               echo "_No response returned. Check the preceding step's log._"
               exit 0
             fi
@@ -236,7 +244,7 @@ jobs:
               TAGLINE=$(printf '%s\n' "$RESPONSE" \
                 | sed -n "${TAGLINE_LINE}s/^[[:space:]]*TAGLINE:[[:space:]]*//p")
             fi
-            if [ -n "${TAGLINE// /}" ]; then
+            if [ -n "${TAGLINE//[[:space:]]/}" ]; then
               printf '_%s_\n\n' "$TAGLINE"
               echo "> _AI-generated summary (model: \`${MISTRAL_MODEL}\` via Mistral). Commit-based changelog below._"
               echo ""
