@@ -310,6 +310,10 @@ class PerTaskStrategy:
         )
 
         async def _wait_then_destroy() -> None:
+            # Upper-bounded by pin_check's own self-cleaning expiry;
+            # tracked in _pending_teardowns so cleanup_all() cancels it.
+            # lint-allow: long-running-loop-kill-switch -- bounded by
+            # pin_check expiry; cleanup cancels.
             while True:
                 async with self._lock:
                     handle = self._containers.get(owner_id)
