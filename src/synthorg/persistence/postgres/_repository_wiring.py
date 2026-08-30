@@ -37,6 +37,9 @@ from synthorg.persistence.postgres.audit_chain_repo import (
     PostgresAuditChainRepository,
 )
 from synthorg.persistence.postgres.audit_repository import PostgresAuditRepository
+from synthorg.persistence.postgres.background_job_repo import (
+    PostgresBackgroundJobRepository,
+)
 from synthorg.persistence.postgres.capability_source_status_repo import (
     PostgresCapabilitySourceStatusRepository,
 )
@@ -289,6 +292,7 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._capability_source_statuses = None
         self._provider_failover_events = None
         self._tracked_containers = None
+        self._background_jobs = None
         self._project_cost_aggregates = None
         self._sessions = None
         self._refresh_tokens = None
@@ -412,6 +416,7 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         )
         self._provider_failover_events = PostgresProviderFailoverEventRepository(pool)
         self._tracked_containers = PostgresTrackedContainerRepository(pool)
+        self._background_jobs = PostgresBackgroundJobRepository(pool)
         self._project_cost_aggregates = PostgresProjectCostAggregateRepository(pool)
         self._sessions = PostgresSessionRepository(pool)
         self._refresh_tokens = PostgresRefreshTokenRepository(pool)

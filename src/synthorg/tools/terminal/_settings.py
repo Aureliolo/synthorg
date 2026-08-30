@@ -53,4 +53,89 @@ async def resolve_shell_command_timeout(
     return resolved if resolved > 0 else fallback
 
 
-__all__ = ["resolve_shell_command_timeout"]
+async def resolve_shell_command_background_enabled(
+    resolver: ConfigResolverProtocol | None,
+    *,
+    fallback: bool,
+) -> bool:
+    """Resolve whether ``shell_command`` may be run with ``background=true``.
+
+    Read only when a caller actually asks to background a command: an
+    operator can disable new backgrounded jobs without touching ordinary
+    foreground commands, without a rebuild.
+
+    Args:
+        resolver: Live settings resolver, or ``None`` when none is wired.
+        fallback: The configured default to use when no resolver is wired.
+
+    Returns:
+        Whether backgrounding is enabled; *fallback* only when no
+        resolver is wired at all. A resolver that is wired but fails to
+        answer degrades to disabled, never to *fallback*: an operator
+        who explicitly disabled backgrounding must not have it silently
+        re-enabled by a settings-backend hiccup.
+    """
+    if resolver is None:
+        return fallback
+    try:
+        return await resolver.get_bool("tools", "shell_command_background_enabled")
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort settings read; fails
+        # closed rather than falling back to the configured default
+        reraise_critical(exc)
+        logger.warning(
+            TERMINAL_COMMAND_FAILED,
+            key="shell_command_background_enabled",
+            reason="settings_read_degraded",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return False
+
+
+async def resolve_shell_command_background_max_duration_seconds(
+    resolver: ConfigResolverProtocol | None,
+    *,
+    fallback: float,
+) -> float:
+    """Resolve the duration ceiling a NEW background job starts under.
+
+    Read once at job start (not on every later poll): the ceiling in force
+    when a job starts governs its own lifetime, exactly like the foreground
+    ``shell_command_timeout_seconds`` precedent, so a later operator change
+    only affects jobs started after it.
+
+    Args:
+        resolver: Live settings resolver, or ``None`` when none is wired.
+        fallback: The configured default to use when nothing resolves.
+
+    Returns:
+        The ceiling in seconds; *fallback* when the read is unavailable or
+        yields a non-positive value.
+    """
+    if resolver is None:
+        return fallback
+    try:
+        resolved = await resolver.get_float(
+            "tools", "shell_command_background_max_duration_seconds"
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort settings read; the job
+        # still starts, under the configured default
+        reraise_critical(exc)
+        logger.warning(
+            TERMINAL_COMMAND_FAILED,
+            key="shell_command_background_max_duration_seconds",
+            reason="settings_read_degraded",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return fallback
+    return resolved if resolved > 0 else fallback
+
+
+__all__ = [
+    "resolve_shell_command_background_enabled",
+    "resolve_shell_command_background_max_duration_seconds",
+    "resolve_shell_command_timeout",
+]

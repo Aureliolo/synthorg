@@ -40,6 +40,9 @@ from synthorg.persistence.auth_protocol import (
     RefreshTokenRepository,
     SessionRepository,
 )
+from synthorg.persistence.background_job_protocol import (
+    BackgroundJobRepository,
+)
 from synthorg.persistence.capability_source_status_protocol import (
     CapabilitySourceStatusRepository,
 )
@@ -302,6 +305,7 @@ class _PostgresBackendRepositoryAccessors:
     _capability_source_statuses: CapabilitySourceStatusRepository | None
     _provider_failover_events: ProviderFailoverEventRepository | None
     _tracked_containers: TrackedContainerRepository | None
+    _background_jobs: BackgroundJobRepository | None
     _sessions: PostgresSessionRepository | None
     _refresh_tokens: PostgresRefreshTokenRepository | None
     _idempotency_keys: PostgresIdempotencyRepository | None
@@ -674,6 +678,11 @@ class _PostgresBackendRepositoryAccessors:
     def tracked_containers(self) -> TrackedContainerRepository:
         """Repository for Docker sandbox tracked-container records."""
         return self._require_connected(self._tracked_containers, "tracked_containers")
+
+    @property
+    def background_jobs(self) -> BackgroundJobRepository:
+        """Repository for backgrounded shell job records."""
+        return self._require_connected(self._background_jobs, "background_jobs")
 
     @property
     def project_cost_aggregates(self) -> ProjectCostAggregateRepository:

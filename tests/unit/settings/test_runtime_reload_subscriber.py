@@ -134,6 +134,10 @@ _EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
     ("tools", "publish_tools_timeout_seconds"),
     ("tools", "publish_tools_max_manifest_bytes"),
     ("tools", "publish_tools_max_image_bytes"),
+    # The Docker sandbox reads its background-job concurrency and
+    # output-byte-cap bounds once, at construction, into ``ToolCeilings``.
+    ("tools", "shell_command_background_max_concurrent_jobs"),
+    ("tools", "shell_command_background_output_byte_cap"),
 )
 
 

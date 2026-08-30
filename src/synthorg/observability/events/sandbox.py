@@ -51,6 +51,9 @@ SANDBOX_LIFECYCLE_DESTROY_FAILED: Final[str] = "sandbox.lifecycle.destroy_failed
 SANDBOX_LIFECYCLE_STALE_EVICTED: Final[str] = "sandbox.lifecycle.stale_evicted"
 SANDBOX_LIFECYCLE_DISPATCH: Final[str] = "sandbox.lifecycle.dispatch"
 SANDBOX_LIFECYCLE_OWNER_DEGRADED: Final[str] = "sandbox.lifecycle.owner.degraded"
+SANDBOX_LIFECYCLE_TEARDOWN_PINNED: Final[str] = "sandbox.lifecycle.teardown.pinned"
+SANDBOX_LIFECYCLE_PIN_CHECK_FAILED: Final[str] = "sandbox.lifecycle.pin_check.failed"
+SANDBOX_LIFECYCLE_PIN_CHECK_UNBOUND: Final[str] = "sandbox.lifecycle.pin_check.unbound"
 SANDBOX_CONTAINER_TRACK_FAILED: Final[str] = "sandbox.container.track.failed"
 SANDBOX_CONTAINER_UNTRACK_FAILED: Final[str] = "sandbox.container.untrack.failed"
 SANDBOX_CONTAINER_LOGS_COLLECT_FAILED: Final[str] = (
@@ -59,3 +62,9 @@ SANDBOX_CONTAINER_LOGS_COLLECT_FAILED: Final[str] = (
 SANDBOX_WORKSPACE_SHARING_UNAVAILABLE: Final[str] = (
     "sandbox.workspace.sharing.unavailable"
 )
+SANDBOX_BACKGROUND_JOB_STARTED: Final[str] = "sandbox.background_job.started"
+SANDBOX_BACKGROUND_JOB_START_FAILED: Final[str] = "sandbox.background_job.start.failed"
+SANDBOX_BACKGROUND_JOB_TIMED_OUT: Final[str] = "sandbox.background_job.timed_out"
+SANDBOX_BACKGROUND_JOB_REAPED: Final[str] = "sandbox.background_job.reaped"
+SANDBOX_BACKGROUND_JOB_REAP_FAILED: Final[str] = "sandbox.background_job.reap.failed"
+SANDBOX_BACKGROUND_JOB_CANCELLED: Final[str] = "sandbox.background_job.cancelled"

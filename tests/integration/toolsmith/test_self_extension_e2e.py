@@ -48,6 +48,7 @@ from synthorg.meta.toolsmith.dynamic_registry import (
 )
 from synthorg.meta.toolsmith.factory import build_toolsmith
 from synthorg.meta.toolsmith.models import ToolBlueprint, ToolSandboxBackend
+from synthorg.persistence.background_job_protocol import BackgroundJobRecord
 from synthorg.persistence.tool_blueprint_protocol import ToolBlueprintFilterSpec
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
@@ -60,6 +61,7 @@ from synthorg.providers.models import (
     ToolDefinition,
 )
 from synthorg.settings.resolver import ConfigResolver
+from synthorg.tools.sandbox.errors import SandboxBackgroundUnsupportedError
 from synthorg.tools.sandbox.result import SandboxResult
 from tests._shared import FakeClock, mock_of
 from tests._shared.model_binding import bound_ref, one_connection
@@ -144,6 +146,83 @@ class _LocalPythonSandbox:
 
     def get_backend_type(self) -> NotBlankStr:
         return NotBlankStr("subprocess")
+
+    async def start_background(
+        self,
+        *,
+        command: str,
+        args: tuple[str, ...],
+        cwd: Path | None = None,
+        env_overrides: Mapping[str, str] | None = None,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
+        max_duration_seconds: float | None = None,
+    ) -> NotBlankStr:
+        del (
+            command,
+            args,
+            cwd,
+            env_overrides,
+            category,
+            owner_id,
+            project_id,
+            max_duration_seconds,
+        )
+        msg = "_LocalPythonSandbox holds no per-owner container; no backgrounding."
+        raise SandboxBackgroundUnsupportedError(msg)
+
+    async def poll_background(
+        self,
+        job_id: NotBlankStr,
+        *,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
+    ) -> BackgroundJobRecord:
+        del job_id, category, owner_id, project_id
+        msg = (
+            "_LocalPythonSandbox cannot start a background job, so it has none to poll."
+        )
+        raise SandboxBackgroundUnsupportedError(msg)
+
+    async def read_background_output(
+        self,
+        job_id: NotBlankStr,
+        *,
+        byte_cap: int,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
+    ) -> str:
+        del job_id, byte_cap, category, owner_id, project_id
+        msg = "_LocalPythonSandbox cannot start a background job, so it has no output."
+        raise SandboxBackgroundUnsupportedError(msg)
+
+    async def cancel_background(
+        self,
+        job_id: NotBlankStr,
+        *,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
+    ) -> BackgroundJobRecord:
+        del job_id, category, owner_id, project_id
+        msg = (
+            "_LocalPythonSandbox cannot start a background job, so it has "
+            "none to cancel."
+        )
+        raise SandboxBackgroundUnsupportedError(msg)
+
+    async def list_background_jobs(
+        self,
+        owner_id: NotBlankStr | None = None,
+        *,
+        category: str = "",
+        project_id: NotBlankStr | None = None,
+    ) -> tuple[BackgroundJobRecord, ...]:
+        del owner_id, category, project_id
+        return ()
 
 
 class _FakeProvider(BaseCompletionProvider):

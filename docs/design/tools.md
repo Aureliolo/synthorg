@@ -16,7 +16,7 @@ Agents act on the world through tools. SynthOrg defines a pluggable tool system 
 | **Version Control** | Git operations, PR management | Developers, DevOps |
 | **Web** | `http_request` (raw HTTP under an SSRF policy), `html_parser`, `web_search` (vendor-agnostic, with declared recency / domain filters) and `web_fetch` (one page as markdown over an explicit `local` / `proxy` / `render` ladder). See [web-research.md](web-research.md) | Researchers, analysts, any agent working against a third-party API |
 | **Database** | Query, migrate, admin | Backend devs, DBAs |
-| **Terminal** | Shell commands (sandboxed) | DevOps, senior devs |
+| **Terminal** | Shell commands (sandboxed); `shell_command` can run one in the background (`background=True`, when `tools.shell_command_background_enabled`), returning a job id that `check_background_job` / `read_background_job_output` / `cancel_background_job` / `list_background_jobs` address on a later turn. See [Background Shell Commands](#background-shell-commands) | DevOps, senior devs |
 | **Design** | Image generation, mockup tools | Designers |
 | **Communication** | Email / notification dispatcher tools (the Slack notification sink lives here; agent-invocable Slack access is the `chat_*` tools under External Data) plus `delegate_and_await`, the blocking sub-agent delegation tool that runs a child Task inline and returns its transcript (gated on a wired `SubAgentRunner`) | PMs, executives |
 | **Analytics** | Metrics, dashboards, reporting | Data analysts, CFO |
@@ -291,11 +291,111 @@ after every agent drain, so an in-flight command has finished and its own
 per-task release has run. Without that step the warm container waits for a next
 boot, and an operator scaling down is not an operator restarting.
 
+The task-boundary point is no longer unconditional once background shell
+commands are wired: grace/idle destroy is now gated on the container's own
+`pin_check` (see [Container pinning](#background-shell-commands) below), so a
+container a live background job is still running in survives its own
+grace/idle window rather than being destroyed on schedule.
+
 Its population is derived rather than listed. Four sites build backends
 independently (the agent runtime, the tool factory when handed none, the
 toolsmith wiring, the self-improvement code applier) and nothing memoises, so
 no owner holds them all; the factory records what it builds, weakly, and the
 shutdown step drains that record.
+
+### Background Shell Commands
+
+`shell_command` accepts a `background: bool` flag (default `False`,
+mutually exclusive with the foreground `timeout` field). A backgrounded
+command returns a job id immediately; four sibling terminal tools address
+it on a later turn: `check_background_job`, `read_background_job_output`,
+`cancel_background_job`, `list_background_jobs`. Docker-only (`SubprocessSandbox`
+refuses loudly with `SandboxBackgroundUnsupportedError`; the CODE_EXECUTION/
+TERMINAL categories are already force-routed to `docker`, so this is a
+correctness formality). The `per-call` lifecycle strategy refuses to run a
+job in the background at all (`SandboxBackgroundNoReusableContainerError`):
+it has no persistent container for a job to outlive its own single
+invocation, so `start_background` checks the resolved strategy's
+`reuses_container` property before doing anything else.
+
+**Owner key, not raw id.** A job's persisted `owner_id` is the *resolved*
+lifecycle owner key `start_background` and `list_background_jobs` both
+derive via `_resolve_background_owner_key`, not the caller's raw
+`owner_id` argument. That resolution folds in the same `resolve_mount_mode`
+segment `execute()` already applies to a foreground call's own container
+key. Omitting it would file a background job's rows under an unqualified
+owner while the agent's own foreground calls key their container under the
+mount-mode-suffixed form, so the job would silently pin a container the
+agent never actually uses. The per-owner concurrent-job cap
+(`tools.shell_command_background_max_concurrent_jobs`) is enforced against
+this same resolved key.
+
+**Container pinning.** A live background job keeps its container alive
+past the lifecycle strategy's own grace/idle expiry: `PerAgentStrategy`
+and `PerTaskStrategy` each take an optional `pin_check: Callable[[str],
+Awaitable[bool]]` consulted immediately before a container would
+otherwise be destroyed; while it returns `True`, the strategy reschedules
+the check instead of tearing the container down. `DockerSandbox.pin_check`
+is the bound method wired in as that callable -- it also self-cleans,
+force-cancelling (kill, then mark `TIMED_OUT`) any job past its own
+`max_duration_seconds` before reporting whether anything genuinely live
+remains, so no separate sweep task is needed for the duration ceiling.
+
+Wiring `pin_check` has a real construction-order cycle: `create_lifecycle_strategy`
+must build the strategy before `build_sandbox_backends` can construct the
+`DockerSandbox` whose bound `pin_check` method the strategy needs, but the
+strategy needs that same callable to exist. Boot wiring (`_engine_assembly.py`)
+breaks the cycle in two steps -- the strategy is constructed first with no
+pin check, then, once the `DockerSandbox` exists, `strategy.bind_pin_check(docker_backend.pin_check)`
+sets it as a second step. `bind_pin_check_if_wired` (`workers/_background_job_wiring.py`)
+declines that second step -- leaving `pin_check` unbound -- on any of three
+gates: no background-job repository resolved yet (persistence not connected),
+the configured lifecycle strategy is not `PerAgentStrategy` / `PerTaskStrategy`
+(`per-call` has no persistent container to pin), or no `docker` entry exists in
+the constructed sandbox backends. A test double built without this second step
+observes the same thing: `pin_check is None` degrades to unconditional
+destroy-on-expiry, unchanged from before this feature existed.
+
+**Mechanism.** A background job is a wrapper script, not `aiodocker`'s
+`Detach: true` path: it `setsid`s the real command (so its PID is a
+process-group leader that can be signalled as a group), redirects
+stdout+stderr through a
+bounded-byte-count copy into a job-scoped file under the container's
+`/tmp` (a separate tmpfs mount, outside the workspace bind, so it is
+invisible to the zero-artifact workspace scan), records the confirmed PID,
+and backgrounds the real work with `&` while the wrapper's own foreground
+half just confirms the PID over a short, fast-returning attached exec.
+Output is capped head-first at write time (same truncation direction
+`shell_command`'s own foreground path already uses), governed by
+`tools.shell_command_background_output_byte_cap`. Liveness is checked
+primarily through an exit-code sentinel file the wrapper writes on the
+tracked process's own exit, with a raw PID signal only as a fallback --
+a container's PID namespace is small and long-lived enough that a stale
+PID could in principle be reused. A job's network posture is whatever the
+container's own network setting already is: there is no per-exec network
+override in the Docker API, so this is inherited, not independently
+enforced.
+
+**Known gap.** The existing foreground-exec timeout path
+(`_drain_exec` in `docker_sandbox_exec.py`) still stops the *whole*
+container on a foreground command's own timeout, which collaterally
+kills any background job sharing that container. This is not yet scoped
+to spare a pinned container's sibling jobs (tracked as a follow-up).
+Boot reconciliation and every existing container-teardown path mark a
+job's row `ORPHANED`/`CANCELLED` when its container disappears out from
+under it, so an agent polling a collaterally-killed job gets an honest
+terminal status rather than a hang.
+
+**Settings** (all `group="Terminal"`, `SettingLevel.ADVANCED`):
+`shell_command_background_enabled` (bool, default `true`, read live per
+call), `shell_command_background_max_concurrent_jobs` (int, default `5`,
+resolved once into `ToolCeilings` at construction),
+`shell_command_background_output_byte_cap` (int, default `1000000` bytes,
+same `ToolCeilings` shape), `shell_command_background_max_duration_seconds`
+(float, default `3600.0`, read live at job-start time -- a job keeps the
+ceiling in force when it started for its own lifetime, mirroring
+`shell_command_timeout_seconds`'s own live-read precedent for foreground
+calls).
 
 ## Virtual Desktop & Vision Verification
 

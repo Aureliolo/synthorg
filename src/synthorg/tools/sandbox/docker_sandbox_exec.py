@@ -42,6 +42,7 @@ from synthorg.observability.events.docker import (
     DOCKER_EXECUTE_TIMEOUT,
 )
 from synthorg.observability.events.sandbox import (
+    SANDBOX_BACKGROUND_JOB_REAP_FAILED,
     SANDBOX_CONTAINER_LOGS_COLLECT_FAILED,
     SANDBOX_LIFECYCLE_OWNER_DEGRADED,
     SANDBOX_LIFECYCLE_RELEASE,
@@ -56,6 +57,7 @@ from synthorg.tools.sandbox._owner_key import (
     resolve_lifecycle,
     valid_owner,
 )
+from synthorg.tools.sandbox.background_jobs import BackgroundJobRegistry
 from synthorg.tools.sandbox.container_log_shipper import (
     build_correlation_env,
     collect_sidecar_logs,
@@ -97,6 +99,7 @@ class DockerSandboxExecMixin:
         _lifecycle_strategy: SandboxLifecycleStrategy
         _docker: aiodocker.Docker | None
         _log_shipping_config: ContainerLogShippingConfig
+        _background_jobs: BackgroundJobRegistry | None
 
         def _validate_env(
             self,
@@ -803,9 +806,33 @@ class DockerSandboxExecMixin:
         idempotent: a missing container is tolerated by
         ``_remove_container``.
 
+        Every existing teardown path funnels through this one choke
+        point, so it also reaps any background job row still live
+        against this container: with pinning (``pin_check``) in
+        effect a live job should already have kept teardown from
+        reaching here at all, so a live row found here means pinning
+        was bypassed (a per-call strategy's unconditional destroy, or
+        a forced/shutdown teardown) -- in which case the row is the
+        only remaining record that the job's container is gone.
+
         Args:
             handle: The container handle to destroy.
         """
+        if self._background_jobs is not None:
+            try:
+                await self._background_jobs.reap_for_container(
+                    handle.container_id, reason="container_destroyed"
+                )
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                # Teardown must proceed: an unreaped row is recoverable by
+                # boot reconciliation, a leaked container is not.
+                logger.warning(
+                    SANDBOX_BACKGROUND_JOB_REAP_FAILED,
+                    container_id=handle.container_id[:12],
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
         docker = self._docker
         if docker is None:
             return

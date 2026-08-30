@@ -1391,7 +1391,8 @@
         "create_lifecycle_strategy",
         "reconcile_tracked_containers",
         "AiodockerReconcileClient",
-        "ToolInvocationTracker"
+        "ToolInvocationTracker",
+        "BackgroundJobRegistry"
       ],
       "mcp_tool_names": [],
       "name": "tools",
@@ -1467,6 +1468,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-25T20:07:47.110889Z",
+  "generated_at": "2026-08-30T06:56:09.336543Z",
   "schema_version": 1
 }

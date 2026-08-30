@@ -60,6 +60,7 @@ from synthorg.tools.ceilings import ToolCeilings
 from synthorg.tools.factory import build_default_tools_from_config
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.registry import ToolRegistry
+from synthorg.tools.sandbox.background_jobs import BackgroundJobRegistry
 from synthorg.tools.sandbox.factory import (
     build_sandbox_backends,
     merge_secure_backend_defaults,
@@ -77,6 +78,11 @@ from synthorg.workers._agent_engine_collaborators import (
 )
 from synthorg.workers._agent_middleware_assembly import (
     build_agent_middleware_chain_or_none,
+)
+from synthorg.workers._background_job_wiring import (
+    background_job_repo_or_none,
+    bind_pin_check_if_wired,
+    resolve_background_job_ceilings,
 )
 from synthorg.workers._capability_policy_wiring import build_capability_policy
 from synthorg.workers._classification_assembly import build_classification
@@ -148,6 +154,16 @@ async def _build_tool_registry(
     code_runner_output_tail_limit = await resolver.get_int(
         _TOOLS_NS, _CODE_RUNNER_OUTPUT_TAIL_KEY
     )
+    (
+        background_max_concurrent_jobs,
+        background_output_byte_cap,
+    ) = await resolve_background_job_ceilings(resolver)
+    ceilings = ToolCeilings(
+        git_log_max_count=git_log_max_count,
+        code_runner_output_tail_limit=code_runner_output_tail_limit,
+        background_max_concurrent_jobs=background_max_concurrent_jobs,
+        background_output_byte_cap=background_output_byte_cap,
+    )
     from synthorg.tools.browser._settings import (  # noqa: PLC0415
         resolve_browser_settings,
     )
@@ -157,6 +173,12 @@ async def _build_tool_registry(
 
     browser_settings = await resolve_browser_settings(config_resolver_of(app_state))
     desktop_settings = await resolve_desktop_settings(config_resolver_of(app_state))
+    background_job_repo = background_job_repo_or_none(app_state)
+    background_jobs = (
+        BackgroundJobRegistry(background_job_repo, clock=app_state.clock)
+        if background_job_repo is not None
+        else None
+    )
     lifecycle_strategy = create_lifecycle_strategy(
         app_state.config.sandboxing.docker.lifecycle,
         clock=app_state.clock,
@@ -169,16 +191,20 @@ async def _build_tool_registry(
         workspace=workspace_root,
         tracked_container_repo=_tracked_container_repo_or_none(app_state),
         lifecycle_strategy=lifecycle_strategy,
+        background_jobs=background_jobs,
+        ceilings=ceilings,
+    )
+    bind_pin_check_if_wired(
+        lifecycle_strategy=lifecycle_strategy,
+        sandbox_backends=sandbox_backends,
+        background_jobs=background_jobs,
     )
     image_provider = await build_image_provider_or_none(app_state)
     default_tools = build_default_tools_from_config(
         workspace=workspace_root,
         config=app_state.config,
         sandbox_backends=sandbox_backends,
-        ceilings=ToolCeilings(
-            git_log_max_count=git_log_max_count,
-            code_runner_output_tail_limit=code_runner_output_tail_limit,
-        ),
+        ceilings=ceilings,
         # Handed the resolver rather than a resolved number: the command
         # ceiling is read per command, so an operator raising it applies to
         # the next command an agent runs rather than to the next rebuild.

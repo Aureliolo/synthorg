@@ -100,6 +100,8 @@ class TestBuildSandboxBackends:
             workspace=tmp_path,
             tracked_container_repo=None,
             lifecycle_strategy=None,
+            background_jobs=None,
+            ceilings=None,
         )
 
     @patch("synthorg.tools.sandbox.factory.DockerSandbox")
@@ -127,6 +129,8 @@ class TestBuildSandboxBackends:
             workspace=tmp_path,
             tracked_container_repo=None,
             lifecycle_strategy=strategy,
+            background_jobs=None,
+            ceilings=None,
         )
 
     @patch("synthorg.tools.sandbox.factory.DockerSandbox")
@@ -187,6 +191,8 @@ class TestBuildSandboxBackends:
             workspace=tmp_path,
             tracked_container_repo=None,
             lifecycle_strategy=None,
+            background_jobs=None,
+            ceilings=None,
         )
 
     @patch("synthorg.tools.sandbox.factory.SubprocessSandbox")

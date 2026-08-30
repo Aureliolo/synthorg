@@ -13,7 +13,7 @@ from synthorg.tools.git_tools import GitCloneTool
 from synthorg.tools.registry import ToolRegistry
 from tests._shared.web_timeout import DEFAULT_TEST_WEB_WIRING
 
-_EXPECTED_TOOL_COUNT: int = 17
+_EXPECTED_TOOL_COUNT: int = 21
 
 
 @pytest.mark.integration

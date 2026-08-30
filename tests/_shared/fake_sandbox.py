@@ -14,6 +14,9 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import NamedTuple
 
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence.background_job_protocol import BackgroundJobRecord
+from synthorg.tools.sandbox.errors import SandboxBackgroundJobNotFoundError
 from synthorg.tools.sandbox.result import SandboxResult
 
 
@@ -47,6 +50,36 @@ class SandboxCall(NamedTuple):
     project_id: str | None
 
 
+class BackgroundJobCall(NamedTuple):
+    """One recorded ``start_background`` call.
+
+    Attributes:
+        command: The program invoked.
+        args: Its argument vector.
+        cwd: Working directory, or ``None`` for the workspace root.
+        env_overrides: Environment the caller added.
+        category: The tool category (decides the mount-mode segment of
+            the resolved owner key on a real backend).
+        owner_id: Explicit lifecycle owner, or ``None`` to derive one
+            (this double records exactly what it was given -- it does
+            not perform real resolution).
+        project_id: The project whose workspace is mounted.
+        max_duration_seconds: The resolved ceiling this call was given.
+    """
+
+    command: str
+    args: tuple[str, ...]
+    cwd: Path | None
+    env_overrides: dict[str, str]
+    category: str
+    owner_id: str | None
+    project_id: str | None
+    max_duration_seconds: float | None
+
+
+_DEFAULT_BACKGROUND_JOB_ID = NotBlankStr("job-1")
+
+
 class FakeSandbox:
     """Returns a canned result (or raises) and records the call it was given.
 
@@ -54,6 +87,8 @@ class FakeSandbox:
         calls: Every ``execute`` call, in order.
         released: Every owner id passed to ``release_owner``.
         cleaned_up: Whether the backend was torn down.
+        background_calls: Every ``start_background`` call, in order.
+        cancelled_job_ids: Every job id passed to ``cancel_background``.
     """
 
     def __init__(
@@ -62,6 +97,11 @@ class FakeSandbox:
         *,
         error: Exception | None = None,
         backend_type: str = "subprocess",
+        background_job_id: NotBlankStr = _DEFAULT_BACKGROUND_JOB_ID,
+        background_record: BackgroundJobRecord | None = None,
+        background_output: str = "",
+        background_jobs: tuple[BackgroundJobRecord, ...] = (),
+        background_error: Exception | None = None,
     ) -> None:
         self._result = result or SandboxResult(stdout="", stderr="", returncode=0)
         self._error = error
@@ -69,6 +109,13 @@ class FakeSandbox:
         self.calls: list[SandboxCall] = []
         self.released: list[str] = []
         self.cleaned_up = False
+        self._background_job_id = background_job_id
+        self._background_record = background_record
+        self._background_output = background_output
+        self._background_jobs = background_jobs
+        self._background_error = background_error
+        self.background_calls: list[BackgroundJobCall] = []
+        self.cancelled_job_ids: list[str] = []
 
     @property
     def last_call(self) -> SandboxCall | None:
@@ -146,5 +193,119 @@ class FakeSandbox:
         """
         return self._backend_type
 
+    async def start_background(
+        self,
+        *,
+        command: str,
+        args: tuple[str, ...],
+        cwd: Path | None = None,
+        env_overrides: Mapping[str, str] | None = None,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
+        max_duration_seconds: float | None = None,
+    ) -> NotBlankStr:
+        """Record the call and return the canned job id.
 
-__all__ = ["FakeSandbox", "SandboxCall"]
+        Returns:
+            The job id this double was built with.
+
+        Raises:
+            Exception: The ``background_error`` this double was built
+                with, if any.
+        """
+        self.background_calls.append(
+            BackgroundJobCall(
+                command=command,
+                args=args,
+                cwd=cwd,
+                env_overrides=dict(env_overrides or {}),
+                category=category,
+                owner_id=owner_id,
+                project_id=project_id,
+                max_duration_seconds=max_duration_seconds,
+            )
+        )
+        if self._background_error is not None:
+            raise self._background_error
+        return self._background_job_id
+
+    async def poll_background(
+        self,
+        job_id: NotBlankStr,
+        *,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
+    ) -> BackgroundJobRecord:
+        """Return the canned tracking row.
+
+        Returns:
+            The record this double was built with.
+
+        Raises:
+            SandboxBackgroundJobNotFoundError: No record was configured.
+        """
+        del category, owner_id, project_id
+        if self._background_record is None:
+            msg = f"No background job matches {job_id!r}"
+            raise SandboxBackgroundJobNotFoundError(msg)
+        return self._background_record
+
+    async def read_background_output(
+        self,
+        job_id: NotBlankStr,
+        *,
+        byte_cap: int,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
+    ) -> str:
+        """Return the canned output, truncated to *byte_cap* bytes.
+
+        Returns:
+            The captured output this double was built with.
+        """
+        del job_id, category, owner_id, project_id
+        return self._background_output.encode()[:byte_cap].decode("utf-8", "ignore")
+
+    async def cancel_background(
+        self,
+        job_id: NotBlankStr,
+        *,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
+    ) -> BackgroundJobRecord:
+        """Record the call and return the canned tracking row.
+
+        Returns:
+            The record this double was built with.
+
+        Raises:
+            SandboxBackgroundJobNotFoundError: No record was configured.
+        """
+        del category, owner_id, project_id
+        self.cancelled_job_ids.append(job_id)
+        if self._background_record is None:
+            msg = f"No background job matches {job_id!r}"
+            raise SandboxBackgroundJobNotFoundError(msg)
+        return self._background_record
+
+    async def list_background_jobs(
+        self,
+        owner_id: NotBlankStr | None = None,
+        *,
+        category: str = "",
+        project_id: NotBlankStr | None = None,
+    ) -> tuple[BackgroundJobRecord, ...]:
+        """Return the canned job list.
+
+        Returns:
+            The job rows this double was built with.
+        """
+        del owner_id, category, project_id
+        return self._background_jobs
+
+
+__all__ = ["BackgroundJobCall", "FakeSandbox", "SandboxCall"]

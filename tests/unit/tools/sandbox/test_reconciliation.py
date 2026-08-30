@@ -22,6 +22,12 @@ from typing import override
 
 import pytest
 
+from synthorg.core.types import NotBlankStr
+from synthorg.persistence.background_job_protocol import (
+    LIVE_BACKGROUND_JOB_STATUSES,
+    BackgroundJobRecord,
+    BackgroundJobStatus,
+)
 from synthorg.persistence.tracked_container_protocol import (
     TrackedContainerRecord,
 )
@@ -29,8 +35,10 @@ from synthorg.tools.sandbox.reconciliation import (
     DockerClientProtocol,
     ManagedContainer,
     ReconciliationOutcome,
+    reap_orphaned_background_jobs,
     reconcile_tracked_containers,
 )
+from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
 
@@ -401,3 +409,149 @@ def test_docker_client_protocol_runtime_checkable() -> None:
     """The DockerClientProtocol is runtime-checkable for spec-based stubs."""
     stub = _StubDockerClient([])
     assert isinstance(stub, DockerClientProtocol)
+
+
+class _StubBackgroundJobRepo:
+    """Minimal stand-in for ``BackgroundJobRepository``."""
+
+    def __init__(self, records: Iterable[BackgroundJobRecord]) -> None:
+        self._rows: dict[str, BackgroundJobRecord] = {r.job_id: r for r in records}
+
+    async def load_all(self) -> tuple[BackgroundJobRecord, ...]:
+        return tuple(self._rows.values())
+
+    async def save(self, entity: BackgroundJobRecord) -> None:
+        self._rows[entity.job_id] = entity
+
+    async def save_if_live(self, entity: BackgroundJobRecord) -> bool:
+        current = self._rows.get(entity.job_id)
+        if current is None or current.status not in LIVE_BACKGROUND_JOB_STATUSES:
+            return False
+        self._rows[entity.job_id] = entity
+        return True
+
+    async def get(self, entity_id: str) -> BackgroundJobRecord | None:
+        return self._rows.get(entity_id)
+
+    async def delete(self, entity_id: str) -> bool:  # pragma: no cover
+        return self._rows.pop(entity_id, None) is not None
+
+    async def list_items(
+        self, *, limit: int = 100, offset: int = 0
+    ) -> tuple[BackgroundJobRecord, ...]:  # pragma: no cover
+        items = sorted(self._rows.values(), key=lambda r: r.job_id)
+        return tuple(items[offset : offset + limit])
+
+    async def list_by_container(
+        self,
+        container_id: str,
+        *,
+        statuses: frozenset[BackgroundJobStatus] | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[BackgroundJobRecord, ...]:
+        matches = [
+            r
+            for r in self._rows.values()
+            if r.container_id == container_id
+            and (statuses is None or r.status in statuses)
+        ]
+        return tuple(matches[offset : offset + limit])
+
+    async def count_live_by_owner(self, owner_id: str) -> int:  # pragma: no cover
+        return 0
+
+    async def list_by_owner(
+        self, owner_id: str, *, limit: int = 100, offset: int = 0
+    ) -> tuple[BackgroundJobRecord, ...]:  # pragma: no cover
+        return ()
+
+
+def _make_job_record(
+    *, job_id: str, container_id: str, status: BackgroundJobStatus
+) -> BackgroundJobRecord:
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    return BackgroundJobRecord(
+        job_id=NotBlankStr(job_id),
+        container_id=NotBlankStr(container_id),
+        owner_id=NotBlankStr("agent-1:rw"),
+        command_repr="sleep 300",
+        pid=42,
+        status=status,
+        output_path="/tmp/.synthorg-jobs/x/output",  # noqa: S108
+        started_at=now,
+        updated_at=now,
+        max_duration_seconds=3600.0,
+    )
+
+
+class TestReapOrphanedBackgroundJobs:
+    """The DB-only sweep run immediately after container reconciliation."""
+
+    async def test_live_job_on_a_dropped_container_is_orphaned(self) -> None:
+        repo = _StubBackgroundJobRepo(
+            [
+                _make_job_record(
+                    job_id="j1",
+                    container_id="gone",
+                    status=BackgroundJobStatus.RUNNING,
+                )
+            ]
+        )
+        reaped = await reap_orphaned_background_jobs(
+            repo=repo, kept_container_ids=frozenset(), clock=FakeClock()
+        )
+        assert reaped == ("gone",)
+        record = await repo.get("j1")
+        assert record is not None
+        assert record.status == BackgroundJobStatus.ORPHANED
+
+    async def test_live_job_on_a_kept_container_is_untouched(self) -> None:
+        repo = _StubBackgroundJobRepo(
+            [
+                _make_job_record(
+                    job_id="j1",
+                    container_id="kept",
+                    status=BackgroundJobStatus.RUNNING,
+                )
+            ]
+        )
+        reaped = await reap_orphaned_background_jobs(
+            repo=repo, kept_container_ids=frozenset({"kept"}), clock=FakeClock()
+        )
+        assert reaped == ()
+        record = await repo.get("j1")
+        assert record is not None
+        assert record.status == BackgroundJobStatus.RUNNING
+
+    async def test_already_terminal_job_on_a_dropped_container_is_untouched(
+        self,
+    ) -> None:
+        """A finished job's container being gone is not an orphan condition.
+
+        Its own terminal status already answers "what happened"; reaping
+        would overwrite that with a less informative one.
+        """
+        repo = _StubBackgroundJobRepo(
+            [
+                _make_job_record(
+                    job_id="j1",
+                    container_id="gone",
+                    status=BackgroundJobStatus.COMPLETED,
+                )
+            ]
+        )
+        reaped = await reap_orphaned_background_jobs(
+            repo=repo, kept_container_ids=frozenset(), clock=FakeClock()
+        )
+        assert reaped == ()
+        record = await repo.get("j1")
+        assert record is not None
+        assert record.status == BackgroundJobStatus.COMPLETED
+
+    async def test_no_rows_reaps_nothing(self) -> None:
+        repo = _StubBackgroundJobRepo([])
+        reaped = await reap_orphaned_background_jobs(
+            repo=repo, kept_container_ids=frozenset(), clock=FakeClock()
+        )
+        assert reaped == ()

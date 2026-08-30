@@ -45,6 +45,9 @@ from synthorg.persistence.auth_protocol import (
     RefreshTokenRepository,
     SessionRepository,
 )
+from synthorg.persistence.background_job_protocol import (
+    BackgroundJobRepository,
+)
 from synthorg.persistence.capability_source_status_protocol import (
     CapabilitySourceStatusRepository,
 )
@@ -693,6 +696,11 @@ class PersistenceBackend(Protocol):
     @property
     def tracked_containers(self) -> TrackedContainerRepository:
         """Repository for Docker sandbox tracked-container records."""
+        ...
+
+    @property
+    def background_jobs(self) -> BackgroundJobRepository:
+        """Repository for backgrounded shell job records."""
         ...
 
     @property

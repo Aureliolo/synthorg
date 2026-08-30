@@ -8,6 +8,7 @@ window cancels the timer and returns the warm container.
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
@@ -18,23 +19,48 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_DESTROY_FAILED,
     SANDBOX_LIFECYCLE_GRACE_EXPIRED,
     SANDBOX_LIFECYCLE_IDLE_EXPIRED,
+    SANDBOX_LIFECYCLE_PIN_CHECK_FAILED,
     SANDBOX_LIFECYCLE_RELEASE,
+    SANDBOX_LIFECYCLE_TEARDOWN_PINNED,
 )
-from synthorg.tools.sandbox.lifecycle._liveness import log_stale, probe_alive, reap
+from synthorg.tools.sandbox.lifecycle._liveness import (
+    PIN_CHECK_FAILURE_LIMIT,
+    log_stale,
+    probe_alive,
+    reap,
+)
 from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
 from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
 
 logger = get_logger(__name__)
 
+#: Default wait between pin rechecks while a grace/idle teardown is held
+#: off by a live background job. Independent of ``grace_period_seconds``:
+#: a short grace period should not turn into a tight poll loop, and a long
+#: one should not silently wait minutes to notice a job just finished.
+DEFAULT_PIN_RECHECK_SECONDS: Final[float] = 15.0
+
 
 class PerAgentStrategy:
-    """Reuse a container per *owner_id*, destroy after grace period."""
+    """Reuse a container per *owner_id*, destroy after grace period.
+
+    A container whose ``pin_check`` reports a live background job is not
+    torn down by either timer: grace/idle expiry reschedule themselves
+    instead of destroying, at ``pin_recheck_seconds`` intervals, until
+    the job ends (or its own ``max_duration_seconds`` ceiling force-ends
+    it, which is ``pin_check``'s own responsibility, not this
+    strategy's). Nothing else about the class changes: with no
+    ``pin_check`` wired (the default), every existing caller -- tests
+    included -- observes exactly today's grace/idle behaviour.
+    """
 
     def __init__(
         self,
         config: SandboxLifecycleConfig,
         *,
         clock: Clock | None = None,
+        pin_check: Callable[[str], Awaitable[bool]] | None = None,
+        pin_recheck_seconds: float = DEFAULT_PIN_RECHECK_SECONDS,
     ) -> None:
         """Initialize the per-agent lifecycle strategy.
 
@@ -43,16 +69,113 @@ class PerAgentStrategy:
             clock: Time source for grace + idle timers. Defaults to
                 ``SystemClock``; tests pass ``FakeClock`` for
                 deterministic timer expiry without real waiting.
+            pin_check: Async predicate, keyed by ``container_id``,
+                answering whether a live background job is still
+                running inside it. ``None`` (the default) means no
+                background-job feature is wired, so grace/idle expiry
+                behave exactly as they always have.
+            pin_recheck_seconds: How often a pinned container's
+                grace/idle teardown rechecks ``pin_check`` while held
+                off. Unused when ``pin_check`` is ``None``.
         """
         self._grace_seconds = config.grace_period_seconds
         self._max_idle = config.max_idle_seconds
         self._clock: Clock = clock if clock is not None else SystemClock()
+        self._pin_check = pin_check
+        self._pin_recheck_seconds = pin_recheck_seconds
         self._containers: dict[str, ContainerHandle] = {}
         self._last_used: dict[str, float] = {}
         self._timers: dict[str, asyncio.Task[None]] = {}
         self._idle_timers: dict[str, asyncio.Task[None]] = {}
         self._destroy_fns: dict[str, Callable[[ContainerHandle], Awaitable[None]]] = {}
         self._lock = asyncio.Lock()
+
+    def bind_pin_check(self, pin_check: Callable[[str], Awaitable[bool]]) -> None:
+        """Wire *pin_check* in after construction.
+
+        Exists because ``pin_check`` is naturally a bound method of the
+        Docker sandbox itself (it needs that sandbox's own background-job
+        registry and kill primitive), while this strategy must already
+        exist for ``build_sandbox_backends`` to construct that sandbox --
+        a genuine construction-order cycle, broken here rather than by
+        reaching into ``self._pin_check`` from outside the class. Callers
+        must bind before the first ``acquire()`` of a container that
+        should be pinnable; grace/idle expiry only ever reads
+        ``self._pin_check`` for a container it is already timing, so a
+        bind before any container exists is race-free by construction.
+        """
+        self._pin_check = pin_check
+
+    async def _await_unpinned(self, owner_id: str) -> ContainerHandle | None:
+        """Block until *owner_id*'s cached container is gone or unpinned.
+
+        Consulted by both grace and idle expiry immediately before they
+        would otherwise destroy a container, so neither can tear one
+        down out from under a live background job. Probed outside the
+        lock, like ``alive_fn`` in :meth:`_reusable_handle`: it may be a
+        DB round-trip, and holding the lock across it would serialise
+        every acquire in the process behind one pin check.
+
+        Returns:
+            The still-cached handle once nothing pins it (including
+            after :data:`PIN_CHECK_FAILURE_LIMIT` consecutive
+            ``pin_check`` failures give up waiting), or ``None`` once
+            the container is already gone (the other timer, or a
+            liveness eviction, got there first).
+        """
+        consecutive_failures = 0
+        # Upper-bounded by pin_check's own self-cleaning expiry (a job
+        # past its own max_duration_seconds is force-cancelled, so this
+        # never outlives a wedged job indefinitely); cleanup_all()
+        # cancels this task on shutdown like every other per-owner pump.
+        # lint-allow: long-running-loop-kill-switch -- bounded by
+        # pin_check expiry; cleanup cancels.
+        while True:
+            async with self._lock:
+                handle = self._containers.get(owner_id)
+            if handle is None:
+                return None
+            if self._pin_check is None:
+                return handle
+            try:
+                pinned = await self._pin_check(handle.container_id)
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                # A failed pin check treats the container as still pinned
+                # rather than raising out of this task (which would strand
+                # it in `self._containers` with no watchdog left) or
+                # destroying it on uncertain state (which could kill a
+                # container with a genuinely live job). Convergence
+                # normally relies on `pin_check`'s own self-cleaning
+                # expiry (`expire_overdue`'s own kill step is fail-soft
+                # for the same reason), but that expiry reads the same
+                # persistence layer this call just failed against, so a
+                # sustained outage leaves it unreachable too -- hence the
+                # bounded give-up below rather than retrying forever.
+                consecutive_failures += 1
+                logger.warning(
+                    SANDBOX_LIFECYCLE_PIN_CHECK_FAILED,
+                    strategy="per-agent",
+                    owner_id=owner_id,
+                    container_id=handle.container_id,
+                    consecutive_failures=consecutive_failures,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                if consecutive_failures >= PIN_CHECK_FAILURE_LIMIT:
+                    return handle
+                pinned = True
+            else:
+                consecutive_failures = 0
+            if not pinned:
+                return handle
+            logger.debug(
+                SANDBOX_LIFECYCLE_TEARDOWN_PINNED,
+                strategy="per-agent",
+                owner_id=owner_id,
+                container_id=handle.container_id,
+            )
+            await self._clock.sleep(self._pin_recheck_seconds)
 
     @property
     def reuses_container(self) -> bool:
@@ -239,9 +362,26 @@ class PerAgentStrategy:
             )
 
             async def _grace_expire() -> None:
-                """Tear down the per-agent container once the grace period elapses."""
+                """Tear down the per-agent container once the grace period elapses.
+
+                Waits out a live background job first: a container the pin
+                check reports live is not popped here at all, so a
+                concurrent ``acquire()`` still finds it cached and this
+                task's own cancellation (via ``_cancel_timer``) still works
+                normally while the wait is in progress.
+                """
                 await self._clock.sleep(self._grace_seconds)
+                pinned_handle = await self._await_unpinned(owner_id)
+                if pinned_handle is None:
+                    return
                 async with self._lock:
+                    # Identity-checked against the handle `_await_unpinned`
+                    # actually waited out: a concurrent acquire/evict may
+                    # have replaced the cache entry while this task slept
+                    # or rechecked the pin, and popping unconditionally
+                    # would destroy a container somebody else is now using.
+                    if self._containers.get(owner_id) is not pinned_handle:
+                        return
                     handle = self._containers.pop(owner_id, None)
                     self._last_used.pop(owner_id, None)
                     self._timers.pop(owner_id, None)
@@ -292,18 +432,24 @@ class PerAgentStrategy:
             self._idle_timers.clear()
             self._destroy_fns.clear()
 
-            for task in all_tasks:
-                task.cancel()
-            if all_tasks:
-                await asyncio.gather(
-                    *all_tasks,
-                    return_exceptions=True,
-                )
-
             handles = list(self._containers.values())
             count = len(handles)
             self._containers.clear()
             self._last_used.clear()
+
+        # Cancel and await outside the lock: a cancelled grace/idle task can
+        # itself try to acquire `self._lock` (its own teardown branch does)
+        # before observing the cancellation, and holding the lock across
+        # `gather()` here would deadlock it against this same await, and
+        # would otherwise serialise every unrelated owner's acquire/release
+        # behind shutdown teardown for no reason.
+        for task in all_tasks:
+            task.cancel()
+        if all_tasks:
+            await asyncio.gather(
+                *all_tasks,
+                return_exceptions=True,
+            )
 
         for handle in handles:
             try:
@@ -363,8 +509,18 @@ class PerAgentStrategy:
                 if remaining <= 0:
                     break
                 await self._clock.sleep(remaining)
-            # Idle timeout reached -- destroy.
+            # Idle timeout reached. A live background job holds this off
+            # exactly as it holds off grace expiry, via the same wait.
+            pinned_handle = await self._await_unpinned(owner_id)
+            if pinned_handle is None:
+                return
+            # Destroy. Identity-checked against the handle `_await_unpinned`
+            # actually waited out, for the same reason `_grace_expire` checks
+            # it: the cache entry may have been replaced while this task
+            # slept or rechecked the pin.
             async with self._lock:
+                if self._containers.get(owner_id) is not pinned_handle:
+                    return
                 handle = self._containers.pop(owner_id, None)
                 self._last_used.pop(owner_id, None)
                 self._idle_timers.pop(owner_id, None)

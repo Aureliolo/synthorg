@@ -33,14 +33,24 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docker import (
     DOCKER_CONTAINER_REMOVED,
 )
+from synthorg.observability.events.sandbox import (
+    SANDBOX_BACKGROUND_JOB_REAP_FAILED,
+)
+from synthorg.persistence.background_job_protocol import (
+    LIVE_BACKGROUND_JOB_STATUSES,
+    BackgroundJobRepository,
+)
 from synthorg.persistence.tracked_container_protocol import (
     TrackedContainerRepository,
 )
+from synthorg.tools.sandbox.background_jobs import BackgroundJobRegistry
 from synthorg.tools.sandbox.deployment_identity import path_is_within
 
 logger = get_logger(__name__)
@@ -266,3 +276,75 @@ async def reconcile_tracked_containers(
         docker_only_killed=tuple(docker_only),
         foreign_skipped=tuple(foreign),
     )
+
+
+async def reap_orphaned_background_jobs(
+    *,
+    repo: BackgroundJobRepository,
+    kept_container_ids: frozenset[str],
+    clock: Clock | None = None,
+) -> tuple[str, ...]:
+    """Mark every live background job whose container did not survive reconciliation.
+
+    A DB-only sweep, run immediately after :func:`reconcile_tracked_containers`
+    with its own ``kept`` set: the container-side cleanup (stop/remove) already
+    happened there, since a background job carries no Docker-level label of its
+    own and is invisible to that pass. This closes the loop on the job-record
+    side -- a job whose container is gone before it reached a terminal status
+    on its own has no process left to poll, cancel, or read output from.
+
+    Args:
+        repo: Background-job repository.
+        kept_container_ids: Container ids :func:`reconcile_tracked_containers`
+            kept (present in both DB and daemon). Any live job whose
+            ``container_id`` is not in this set is orphaned.
+        clock: Clock seam for the reaped rows' ``updated_at`` stamp;
+            defaults to ``SystemClock`` via :class:`BackgroundJobRegistry`.
+
+    Returns:
+        The distinct container ids whose jobs were reaped, sorted.
+    """
+    registry = BackgroundJobRegistry(repo, clock=clock)
+    try:
+        rows = await repo.load_all()
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        # The container-side sweep already completed and its outcome is
+        # trustworthy regardless: declining only this DB-only pass, not
+        # the caller's reconciliation stamp, lets the next boot (or the
+        # periodic resync) retry it rather than leaving this deployment
+        # permanently unreconciled over one read.
+        logger.warning(
+            SANDBOX_BACKGROUND_JOB_REAP_FAILED,
+            stage="load_all",
+            reason="boot_reconciliation",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return ()
+    orphaned_containers = {
+        r.container_id
+        for r in rows
+        if r.status in LIVE_BACKGROUND_JOB_STATUSES
+        and r.container_id not in kept_container_ids
+    }
+    for container_id in sorted(orphaned_containers):
+        try:
+            await registry.reap_for_container(
+                NotBlankStr(container_id), reason="boot_reconciliation"
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            # One row's write failing must not abort the remaining
+            # orphans, and must not prevent the reconciliation stamp
+            # this function's caller sets afterwards -- a stamped pass
+            # is never re-driven, so an unstamped one would re-attempt
+            # container reconciliation as well as the reap.
+            logger.warning(
+                SANDBOX_BACKGROUND_JOB_REAP_FAILED,
+                container_id=container_id[:12],
+                reason="boot_reconciliation",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+    return tuple(sorted(orphaned_containers))

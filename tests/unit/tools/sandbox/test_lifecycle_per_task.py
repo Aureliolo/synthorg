@@ -6,6 +6,9 @@ import pytest
 
 from synthorg.tools.sandbox.lifecycle.per_task import PerTaskStrategy
 from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
+from tests._shared.fake_clock import FakeClock
+from tests._shared.lifecycle_pin_check import CountingPin as _CountingPin
+from tests._shared.lifecycle_pin_check import settle as _settle
 
 pytestmark = pytest.mark.unit
 
@@ -431,3 +434,133 @@ class TestPerTaskDoubleRelease:
         await strategy.release(owner_id="t1", destroy_fn=destroy_fn)
         await strategy.release(owner_id="t1", destroy_fn=destroy_fn)
         assert destroyed == ["double-rel"]
+
+
+class TestPerTaskPinning:
+    """A live background job holds off release's immediate teardown."""
+
+    async def test_release_returns_without_destroying_a_pinned_container(
+        self,
+    ) -> None:
+        """release() must not block the task boundary on a running job."""
+        clock = FakeClock()
+        pin = _CountingPin(live_for=1000)
+        strategy = PerTaskStrategy(clock=clock, pin_check=pin, pin_recheck_seconds=0.01)
+        destroyed: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            return _make_handle("pinned")
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        await strategy.acquire(
+            owner_id="t1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
+        )
+        await strategy.release(owner_id="t1", destroy_fn=destroy_fn)
+        # release() itself already returned above; a settle here proves
+        # the container is genuinely held, not merely not-yet-checked.
+        assert destroyed == []
+        await _settle(ticks=10)
+        assert destroyed == []
+        assert len(pin.calls) >= 3
+
+        await strategy.cleanup_all(destroy_fn=destroy_fn)
+
+    async def test_deferred_teardown_runs_once_job_ends(self) -> None:
+        clock = FakeClock()
+        pin = _CountingPin(live_for=2)
+        strategy = PerTaskStrategy(clock=clock, pin_check=pin, pin_recheck_seconds=0.01)
+        destroyed: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            return _make_handle("pinned-then-free")
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        await strategy.acquire(
+            owner_id="t1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
+        )
+        await strategy.release(owner_id="t1", destroy_fn=destroy_fn)
+        await _settle(ticks=20)
+
+        assert destroyed == ["pinned-then-free"]
+        assert len(pin.calls) == 3
+
+    async def test_unpinned_release_destroys_immediately_as_before(self) -> None:
+        """``pin_check`` returning False keeps release fully synchronous."""
+
+        async def never_pinned(_container_id: str) -> bool:
+            return False
+
+        strategy = PerTaskStrategy(pin_check=never_pinned)
+        destroyed: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            return _make_handle("unpinned")
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        await strategy.acquire(
+            owner_id="t1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
+        )
+        await strategy.release(owner_id="t1", destroy_fn=destroy_fn)
+        # No settle: an unpinned release must have already destroyed by
+        # the time it returns, exactly like the no-pin_check default.
+        assert destroyed == ["unpinned"]
+
+    async def test_reacquire_while_pinned_wins_over_deferred_teardown(self) -> None:
+        """A concurrent acquire during the pinned wait keeps the container."""
+        clock = FakeClock()
+        pin = _CountingPin(live_for=1000)
+        strategy = PerTaskStrategy(clock=clock, pin_check=pin, pin_recheck_seconds=0.01)
+        destroyed: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            return _make_handle("reacquired")
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        h1 = await strategy.acquire(
+            owner_id="t1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
+        )
+        await strategy.release(owner_id="t1", destroy_fn=destroy_fn)
+        await _settle(ticks=5)
+        assert destroyed == []
+
+        h2 = await strategy.acquire(
+            owner_id="t1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
+        )
+        assert h1 is h2
+        await _settle(ticks=10)
+        assert destroyed == []
+
+        await strategy.cleanup_all(destroy_fn=destroy_fn)
+
+    async def test_cleanup_all_cancels_a_pending_pinned_teardown(self) -> None:
+        clock = FakeClock()
+        pin = _CountingPin(live_for=1000)
+        strategy = PerTaskStrategy(clock=clock, pin_check=pin, pin_recheck_seconds=0.01)
+        destroyed: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            return _make_handle("cleanup-pinned")
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        await strategy.acquire(
+            owner_id="t1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
+        )
+        await strategy.release(owner_id="t1", destroy_fn=destroy_fn)
+        await _settle(ticks=5)
+        assert destroyed == []
+
+        # Shutdown reclaims the still-pinned container directly, rather
+        # than leaving its fate to a background task that outlives the
+        # strategy's own cleanup.
+        await strategy.cleanup_all(destroy_fn=destroy_fn)
+        assert destroyed == ["cleanup-pinned"]

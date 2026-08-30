@@ -145,14 +145,15 @@ class TestFactoryToolCount:
 
     @pytest.mark.unit
     def test_default_tool_count(self, workspace: Path) -> None:
-        """Default: 5 fs + 6 git + 2 web + 1 terminal + 1 context + 1 echo,
-        plus code_runner, which registers without a sandbox so it can name the
-        deployment condition instead of going missing."""
+        """Default: 5 fs + 6 git + 2 web + 1 terminal + 4 background-job +
+        1 context + 1 echo, plus code_runner, which registers without a
+        sandbox so it can name the deployment condition instead of going
+        missing."""
         tools = build_default_tools(
             workspace=workspace,
             web=DEFAULT_TEST_WEB_WIRING,
         )
-        assert len(tools) == 17
+        assert len(tools) == 21
 
     @pytest.mark.unit
     def test_tools_sorted_by_name(self, workspace: Path) -> None:

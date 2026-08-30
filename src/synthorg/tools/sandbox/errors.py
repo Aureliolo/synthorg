@@ -129,6 +129,66 @@ class SandboxProjectScopeUnresolvedError(SandboxError):
     RETRYABLE: ClassVar[bool] = False
 
 
+class SandboxBackgroundUnsupportedError(SandboxError):
+    """This backend cannot start a detached, pollable background process.
+
+    Raised by ``SubprocessSandbox``, which holds no per-owner container a
+    background job's lifetime could tie to: every ``execute()`` call
+    fully closes and communicates, with nothing persisting between two
+    calls on the same owner. ``terminal``/``code_execution`` are
+    force-routed to the Docker backend regardless of operator config
+    (``UNTRUSTED_EXEC_CATEGORIES``), so this is reached only if that
+    routing is ever bypassed; raised loudly rather than silently
+    accepted and immediately orphaned.
+    """
+
+    AGENT_MESSAGE: ClassVar[str | None] = (
+        "This sandbox backend cannot run a command in the background; it has "
+        "no persistent container a background job could keep running in. "
+        "Run the command in the foreground instead."
+    )
+    RETRYABLE: ClassVar[bool] = False
+
+
+class SandboxBackgroundNoReusableContainerError(SandboxError):
+    """The resolved lifecycle strategy has no persistent container to pin.
+
+    Raised when ``background=True`` is requested under ``per-call``:
+    that strategy destroys its container immediately after every single
+    tool call, so a job started there would be orphaned by the very
+    call that started it, before anything could ever check on it.
+    """
+
+    AGENT_MESSAGE: ClassVar[str | None] = (
+        "This deployment's sandbox container is torn down after every "
+        "command, so there is nothing for a background job to keep running "
+        "in. Run the command in the foreground instead."
+    )
+    RETRYABLE: ClassVar[bool] = False
+
+
+class SandboxBackgroundJobLimitError(SandboxError):
+    """The per-owner background-job cap is already reached.
+
+    Retryable: the agent may cancel an existing job, wait for one to
+    finish, or simply try again once headroom exists.
+    """
+
+    AGENT_MESSAGE: ClassVar[str | None] = None
+    RETRYABLE: ClassVar[bool] = True
+
+
+class SandboxBackgroundJobNotFoundError(SandboxError):
+    """No background job matches the id a check/read/cancel call named.
+
+    Covers both a genuinely unknown id and a job whose container was
+    reclaimed (orphaned) before the caller acted on it.
+    """
+
+    AGENT_MESSAGE: ClassVar[str | None] = None
+    RETRYABLE: ClassVar[bool] = False
+
+
 def agent_facing_message(exc: SandboxError) -> str:
     """Return what an agent may be told about *exc*.
 
@@ -143,6 +203,10 @@ def agent_facing_message(exc: SandboxError) -> str:
 
 
 __all__ = [
+    "SandboxBackgroundJobLimitError",
+    "SandboxBackgroundJobNotFoundError",
+    "SandboxBackgroundNoReusableContainerError",
+    "SandboxBackgroundUnsupportedError",
     "SandboxError",
     "SandboxProjectScopeUnresolvedError",
     "SandboxShuttingDownError",

@@ -836,6 +836,7 @@ class FakePersistenceBackend(PersistenceBackend):
         self._fine_tune_checkpoints_stub: AsyncMock | None = None
         self._fine_tune_runs_stub: AsyncMock | None = None
         self._tracked_container_stub: AsyncMock | None = None
+        self._background_job_stub: AsyncMock | None = None
         self._idempotency_keys_stub: AsyncMock | None = None
         self._seen_claims_stub: AsyncMock | None = None
         self._principle_overrides_stub: AsyncMock | None = None
@@ -1408,6 +1409,29 @@ class FakePersistenceBackend(PersistenceBackend):
             stub.list_items.return_value = ()
             self._tracked_container_stub = stub
         return self._tracked_container_stub
+
+    @property
+    @override
+    def background_jobs(self) -> AsyncMock:
+        """Cached fake background-job repository."""
+        from unittest.mock import AsyncMock
+
+        from synthorg.persistence.background_job_protocol import (
+            BackgroundJobRepository,
+        )
+
+        if self._background_job_stub is None:
+            stub = AsyncMock(spec=BackgroundJobRepository)
+            stub.load_all.return_value = ()
+            stub.list_items.return_value = ()
+            # A truthy child mock here reads as "a job row exists" and
+            # would pass an absent-row assertion the real repo fails.
+            stub.get.return_value = None
+            stub.count_live_by_owner.return_value = 0
+            stub.list_by_container.return_value = ()
+            stub.list_by_owner.return_value = ()
+            self._background_job_stub = stub
+        return self._background_job_stub
 
     @property
     @override

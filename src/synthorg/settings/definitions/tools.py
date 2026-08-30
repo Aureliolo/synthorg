@@ -665,6 +665,92 @@ _r.register(
     )
 )
 
+# ── Background shell commands ─────────────────────────────────────
+# `shell_command_timeout_seconds` above bounds a FOREGROUND call; a
+# backgrounded one (``background=True``) has no such window and is
+# governed by these four instead. `enabled` and `max_duration_seconds`
+# are read live per call (Shape A, mirroring the foreground timeout's
+# own live-read precedent): a job started under one ceiling keeps it
+# for its own lifetime, and a later operator change only affects jobs
+# started after it. `max_concurrent_jobs` and `output_byte_cap` are
+# resolved once at wiring time into ``ToolCeilings`` (Shape B), since
+# they bound registry/tmpfs capacity rather than one call's behaviour.
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="shell_command_background_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Whether shell_command may be run with background=true. An"
+            " operator can turn new backgrounded jobs off without disabling"
+            " ordinary foreground commands; existing jobs are unaffected."
+        ),
+        group="Terminal",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="shell_command_background_max_concurrent_jobs",
+        type=SettingType.INTEGER,
+        default="5",
+        description=(
+            "Maximum number of live (pending or running) background jobs"
+            " one sandbox lifecycle owner may hold at once. A start_background"
+            " call past this ceiling is refused, not queued."
+        ),
+        group="Terminal",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=50,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="shell_command_background_output_byte_cap",
+        type=SettingType.INTEGER,
+        default="1000000",
+        description=(
+            "Maximum bytes of a background job's output returned when read"
+            " back (a job's own write volume is bounded instead by"
+            " max_concurrent_jobs and its own duration ceiling). Sized"
+            " against the Docker sandbox's tmpfs (64MB by default, shared"
+            " by every exec in a container): the default here keeps"
+            " max_concurrent_jobs simultaneous jobs comfortably under that"
+            " ceiling."
+        ),
+        group="Terminal",
+        level=SettingLevel.ADVANCED,
+        min_value=1_000,
+        max_value=50_000_000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="shell_command_background_max_duration_seconds",
+        type=SettingType.FLOAT,
+        default="3600.0",
+        description=(
+            "Ceiling on how long a background job may run before it is"
+            " force-cancelled and marked timed_out. Enforced by the same"
+            " pass that answers whether a container is still pinned open"
+            " by a live job, so it self-cleans without a separate sweep."
+        ),
+        group="Terminal",
+        level=SettingLevel.ADVANCED,
+        min_value=60.0,
+        max_value=86_400.0,
+    )
+)
+
 # ── Git command timeout (overall execution bound) ────────────────
 # Distinct from ``git_kill_grace_timeout_seconds`` (post-SIGTERM grace);
 # this caps total git subprocess wall-clock.
