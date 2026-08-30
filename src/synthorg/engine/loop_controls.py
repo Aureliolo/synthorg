@@ -16,6 +16,7 @@ from typing import TypedDict
 
 from synthorg.core.clock import Clock
 from synthorg.engine.approval_gate import ApprovalGate
+from synthorg.engine.background_job_watch import BackgroundJobWatcher
 from synthorg.engine.compaction.protocol import CompactionCallback
 from synthorg.engine.intervention.inbox import SteeringInbox
 from synthorg.engine.loop_protocol import TurnObserver
@@ -36,4 +37,5 @@ class LoopControls(TypedDict):
     steering_inbox: SteeringInbox | None
     step_classifier: StepQualityClassifier | None
     turn_observer: TurnObserver | None
+    background_job_watcher: BackgroundJobWatcher | None
     clock: Clock

@@ -22,6 +22,7 @@ import asyncio
 from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
+from uuid import uuid4
 
 import aiodocker
 from aiodocker.execs import Exec
@@ -46,9 +47,17 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_CONTAINER_LOGS_COLLECT_FAILED,
     SANDBOX_LIFECYCLE_OWNER_DEGRADED,
     SANDBOX_LIFECYCLE_RELEASE,
+    SANDBOX_PINNED_EXEC_CLEANUP_FAILED,
+    SANDBOX_PINNED_EXEC_KILLED,
+    SANDBOX_PINNED_EXEC_PID_UNREADABLE,
     SANDBOX_SIDECAR_REMOVE_FAILED,
     SANDBOX_SIDECAR_REMOVED,
     SANDBOX_SIDECAR_STARTED,
+)
+from synthorg.tools.sandbox._background_wrapper import (
+    build_pinned_exec_command,
+    build_read_pid_command,
+    job_dir,
 )
 from synthorg.tools.sandbox._mount_mode import MOUNT_MODES, MountMode
 from synthorg.tools.sandbox._owner_key import (
@@ -78,6 +87,12 @@ logger = get_logger(__name__)
 
 _KEEPALIVE_COMMAND: Final[str] = "tail"
 _KEEPALIVE_ARGS: Final[tuple[str, ...]] = ("-f", "/dev/null")
+
+#: Short attached-exec timeout for the pinned-exec kill path's own
+#: control execs (reading back a pidfile, best-effort cleanup): neither
+#: does real work, so a large timeout here would only delay surfacing a
+#: wedged daemon.
+_PINNED_CONTROL_EXEC_TIMEOUT_SECONDS: Final[float] = 10.0
 
 # aiodocker exec stream frame identifiers (non-TTY multiplexed stream).
 _EXEC_STREAM_STDOUT: Final[int] = 1
@@ -215,6 +230,27 @@ class DockerSandboxExecMixin:
             stderr: str,
         ) -> None:
             """Log execution outcome."""
+            ...
+
+        async def _kill_background_process_group(
+            self, container_id: NotBlankStr, pid: int
+        ) -> None:
+            """Kill *pid*'s process group inside *container_id*."""
+            ...
+
+        async def _run_control_exec(
+            self,
+            handle: ContainerHandle,
+            program: str,
+            args: tuple[str, ...],
+            *,
+            timeout: float,  # noqa: ASYNC109
+        ) -> str:
+            """Run a short control exec and return its stdout.
+
+            Returns:
+                The exec's captured stdout.
+            """
             ...
 
     # ------------------------------------------------------------------
@@ -610,52 +646,150 @@ class DockerSandboxExecMixin:
             await self._safe_close_stream(stream)
         return stdout, stderr, timed_out
 
-    async def _exec_command(
+    async def _drain_exec_pinned(
+        self,
+        docker: aiodocker.Docker,
+        exec_obj: Exec,
+        container_id: str,
+        timeout: float,  # noqa: ASYNC109
+        *,
+        pinned_job_id: str,
+    ) -> tuple[str, str, bool]:
+        """Run a pinned exec stream to completion or timeout.
+
+        Identical to :meth:`_drain_exec` except its timeout branch kills
+        only the timed-out exec's own process group instead of stopping
+        the whole container, so a background job sharing the container
+        survives.
+
+        Returns:
+            ``(stdout, stderr, timed_out)``.
+        """
+        stream = exec_obj.start(detach=False)
+        timed_out = False
+        stdout = ""
+        stderr = ""
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                self._collect_exec_output(stream),
+                timeout=timeout,
+            )
+        except TimeoutError:
+            timed_out = True
+            logger.warning(
+                DOCKER_EXECUTE_TIMEOUT,
+                container_id=container_id[:12],
+                timeout=timeout,
+            )
+            await self._kill_pinned_exec(docker, container_id, pinned_job_id)
+        finally:
+            await self._safe_close_stream(stream)
+        return stdout, stderr, timed_out
+
+    async def _kill_pinned_exec(
+        self,
+        docker: aiodocker.Docker,
+        container_id: str,
+        job_id: str,
+    ) -> None:
+        """Kill a pinned exec's own process group, or fall back to the container.
+
+        Reads the pid the wrapped exec recorded via a short control exec.
+        A parseable positive pid kills just that process group -- the
+        point of pinning: a sibling background job sharing the container
+        survives. An empty or unparseable pidfile means the pid genuinely
+        cannot be recovered, so this falls back to stopping the container,
+        today's unconditional behaviour and the honest floor.
+        """
+        handle = ContainerHandle(container_id=container_id)
+        program, args = build_read_pid_command(job_id)
+        pid_text = ""
+        try:
+            pid_text = (
+                await self._run_control_exec(
+                    handle, program, args, timeout=_PINNED_CONTROL_EXEC_TIMEOUT_SECONDS
+                )
+            ).strip()
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                SANDBOX_PINNED_EXEC_PID_UNREADABLE,
+                container_id=container_id[:12],
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+        if pid_text.isdigit() and int(pid_text) > 0:
+            logger.info(
+                SANDBOX_PINNED_EXEC_KILLED,
+                container_id=container_id[:12],
+                pid=int(pid_text),
+            )
+            await self._kill_background_process_group(
+                NotBlankStr(container_id), int(pid_text)
+            )
+        else:
+            logger.warning(
+                SANDBOX_PINNED_EXEC_PID_UNREADABLE,
+                container_id=container_id[:12],
+                pid_text=pid_text,
+            )
+            await self._stop_container(docker, container_id)
+
+    async def _cleanup_pinned_job_dir(self, container_id: str, job_id: str) -> None:
+        """Best-effort removal of a pinned exec's own scratch directory.
+
+        Never durable: nothing depends on this file surviving. Without
+        it, a long-lived pinned container would accumulate one pidfile
+        directory per foreground call for its whole lifetime.
+        """
+        handle = ContainerHandle(container_id=container_id)
+        try:
+            await self._run_control_exec(
+                handle,
+                "rm",
+                ("-rf", job_dir(job_id)),
+                timeout=_PINNED_CONTROL_EXEC_TIMEOUT_SECONDS,
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.debug(
+                SANDBOX_PINNED_EXEC_CLEANUP_FAILED,
+                container_id=container_id[:12],
+                job_id=job_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+
+    async def _finish_exec_result(
         self,
         *,
-        docker: aiodocker.Docker,
-        handle: ContainerHandle,
+        exec_obj: Exec,
         command: str,
         args: tuple[str, ...],
-        container_cwd: str,
-        exec_env: dict[str, str],
+        container_id: str,
+        drained: tuple[str, str, bool],
         timeout: float,  # noqa: ASYNC109
+        elapsed_ms: int,
     ) -> SandboxResult:
-        """Run *command* inside an already-running container via exec.
+        """Resolve the exit code, log the outcome, and build the result.
+
+        Shared tail for both the ordinary and pinned exec paths, so the
+        two cannot silently drift in what a caller receives back.
 
         Args:
-            docker: Docker client.
-            handle: Handle of the started keep-alive container.
-            command: Executable name or path.
-            args: Command arguments.
-            container_cwd: Working directory inside the container.
-            exec_env: Resolved, validated environment for the command.
-            timeout: Seconds before the command is killed.
+            exec_obj: The completed (or timed-out) exec instance.
+            command: Executable name or path that was run.
+            args: Its arguments.
+            container_id: The container the exec ran in.
+            drained: ``(stdout, stderr, timed_out)`` from
+                :meth:`_drain_exec` or :meth:`_drain_exec_pinned`.
+            timeout: Seconds the caller allowed before killing.
+            elapsed_ms: Wall-clock milliseconds the exec took.
 
         Returns:
             A ``SandboxResult`` with captured output and exit status.
-
-        Raises:
-            SandboxStartError: If the exec instance cannot be created.
         """
-        container_id = handle.container_id
-        exec_obj = await self._open_exec(
-            docker,
-            handle,
-            command=command,
-            args=args,
-            container_cwd=container_cwd,
-            exec_env=exec_env,
-        )
-        start_mono = self._clock.monotonic()
-        stdout, stderr, timed_out = await self._drain_exec(
-            docker,
-            exec_obj,
-            container_id,
-            timeout,
-        )
-        elapsed_ms = int((self._clock.monotonic() - start_mono) * 1000)
-
+        stdout, stderr, timed_out = drained
         if timed_out:
             returncode = -1
         else:
@@ -684,6 +818,147 @@ class DockerSandboxExecMixin:
             returncode=returncode,
             container_id=container_id,
             execution_time_ms=elapsed_ms,
+        )
+
+    async def _exec_command_pinned(
+        self,
+        *,
+        docker: aiodocker.Docker,
+        handle: ContainerHandle,
+        command: str,
+        args: tuple[str, ...],
+        container_cwd: str,
+        exec_env: dict[str, str],
+        timeout: float,  # noqa: ASYNC109
+    ) -> SandboxResult:
+        """Run *command* pinned: killable by process group, container spared.
+
+        Reached only when the container already has a live background
+        job pinning it (see ``_exec_command``); every other call takes
+        the ordinary, unmodified path. Streams stdout/stderr exactly
+        like an ordinary foreground exec (see
+        ``build_pinned_exec_command``); only the exec'd script and the
+        timeout branch's kill target differ.
+
+        Returns:
+            A ``SandboxResult`` with captured output and exit status.
+
+        Raises:
+            SandboxStartError: If the exec instance cannot be created.
+        """
+        container_id = handle.container_id
+        job_id = str(uuid4())
+        program, wrapped_args = build_pinned_exec_command(job_id, command, args)
+        exec_obj = await self._open_exec(
+            docker,
+            handle,
+            command=program,
+            args=wrapped_args,
+            container_cwd=container_cwd,
+            exec_env=exec_env,
+        )
+        start_mono = self._clock.monotonic()
+        try:
+            stdout, stderr, timed_out = await self._drain_exec_pinned(
+                docker,
+                exec_obj,
+                container_id,
+                timeout,
+                pinned_job_id=job_id,
+            )
+        finally:
+            await self._cleanup_pinned_job_dir(container_id, job_id)
+        elapsed_ms = int((self._clock.monotonic() - start_mono) * 1000)
+
+        return await self._finish_exec_result(
+            exec_obj=exec_obj,
+            command=command,
+            args=args,
+            container_id=container_id,
+            drained=(stdout, stderr, timed_out),
+            timeout=timeout,
+            elapsed_ms=elapsed_ms,
+        )
+
+    async def _exec_command(
+        self,
+        *,
+        docker: aiodocker.Docker,
+        handle: ContainerHandle,
+        command: str,
+        args: tuple[str, ...],
+        container_cwd: str,
+        exec_env: dict[str, str],
+        timeout: float,  # noqa: ASYNC109
+    ) -> SandboxResult:
+        """Run *command* inside an already-running container via exec.
+
+        Before opening the exec, checks (cheap, DB-backed) whether the
+        target container currently has live background jobs pinning it.
+        When it does, the command runs pinned (see
+        ``_exec_command_pinned``): a foreground timeout then kills only
+        this exec's own process group instead of stopping the whole
+        container, which would otherwise collaterally kill every
+        background job sharing it. When no background jobs are pinning
+        the container -- the overwhelming majority of calls, and every
+        call when no registry is wired at all -- this method's own
+        behaviour is unchanged.
+
+        Args:
+            docker: Docker client.
+            handle: Handle of the started keep-alive container.
+            command: Executable name or path.
+            args: Command arguments.
+            container_cwd: Working directory inside the container.
+            exec_env: Resolved, validated environment for the command.
+            timeout: Seconds before the command is killed.
+
+        Returns:
+            A ``SandboxResult`` with captured output and exit status.
+
+        Raises:
+            SandboxStartError: If the exec instance cannot be created.
+        """
+        container_id = handle.container_id
+        if (
+            self._background_jobs is not None
+            and await self._background_jobs.has_live_jobs(NotBlankStr(container_id))
+        ):
+            return await self._exec_command_pinned(
+                docker=docker,
+                handle=handle,
+                command=command,
+                args=args,
+                container_cwd=container_cwd,
+                exec_env=exec_env,
+                timeout=timeout,
+            )
+
+        exec_obj = await self._open_exec(
+            docker,
+            handle,
+            command=command,
+            args=args,
+            container_cwd=container_cwd,
+            exec_env=exec_env,
+        )
+        start_mono = self._clock.monotonic()
+        stdout, stderr, timed_out = await self._drain_exec(
+            docker,
+            exec_obj,
+            container_id,
+            timeout,
+        )
+        elapsed_ms = int((self._clock.monotonic() - start_mono) * 1000)
+
+        return await self._finish_exec_result(
+            exec_obj=exec_obj,
+            command=command,
+            args=args,
+            container_id=container_id,
+            drained=(stdout, stderr, timed_out),
+            timeout=timeout,
+            elapsed_ms=elapsed_ms,
         )
 
     @staticmethod

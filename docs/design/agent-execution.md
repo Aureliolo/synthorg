@@ -694,27 +694,52 @@ sorted per-turn for order-independent comparison.
   `BUDGET_EXHAUSTED`): a run that stopped mid-way has not delivered, and
   parking it at `IN_PROGRESS` hid it from the stall derivation
 
-### Background Job Stall Nudge (not shipped)
+### Background Job Stall Nudge
 
 Background shell commands (`docs/design/tools.md`, "Background Shell
 Commands") let an agent detach a long-running process and read its output on
-a later turn. A nudge telling the agent when a job it started has been
-running quietly for a while -- so it checks back rather than forgetting the
-job exists -- was scoped as part of that feature but is not implemented.
+a later turn. A nudge message informs the agent when a job it started has
+been running quietly for a while, so it checks back rather than forgetting
+the job
+exists. Off by default (`BackgroundJobStalenessConfig.enabled`,
+`config/schema.py`).
 
-The blocker is a layering gap, not missing plumbing: the nudge would need to
-ask "does this agent/task's owner have any live background jobs", but the
-owner key a job is actually filed under (see "Owner key, not raw id" in
-`tools.md`) is resolved deep inside `DockerSandbox`, from config the
-`ReactLoop`/`AgentContext` layer that would host the nudge has no way to
-reach or re-derive. Tools also cannot write into `AgentContext` themselves
-(a tool returns a `ToolExecutionResult`; only the loop mutates the context),
-so there is no cheap way for `shell_command`'s own background-start call to
-record "the agent now owns job X" into a loop-visible channel either. Both
-of the two ways the loop could learn which jobs are its own are blocked by
-the same seam. Closing it is a real design decision (a registry query keyed
-on something the engine layer *can* name, or a new context-write path for
-tools) and belongs in its own change, not bundled into this one.
+**Capture, not resolution.** An earlier design considered asking "does this
+agent/task's owner have any live background jobs", resolved via the owner
+key a job is actually filed under (see "Owner key, not raw id" in
+`tools.md`). That key is resolved deep inside `DockerSandbox`, and under the
+`per-agent` lifecycle strategy it is scoped to the *agent*, not the task: a
+query against it would surface a job orphaned by an earlier task as a nudge
+on the current, unrelated run reusing the same warm container. Instead, the
+loop captures the job id at the point it is created: `execute_tool_calls`
+(`loop_tool_execution.py`) already switches on `tc.name` to update
+`AgentContext` for `load_tool` / `load_tool_resource` results; a
+`shell_command(background=True)` call whose result parses as
+`{"job_id": ...}` is one more case in that same switch, recorded via
+`AgentContext.with_background_job_watched`. This needs no new boot
+collaborator beyond the `BackgroundJobRegistry` already constructed for
+sandbox wiring, and it is scoped to exactly the jobs *this run's context*
+started.
+
+**Mechanics.** `BackgroundJobWatchChannel` (`background_job_watch_channel.py`)
+is a dedicated `AgentContext` state channel, separate from `conversation`
+and untouched by compaction, holding one `WatchedJobRecord` per watched job
+id. `BackgroundJobWatcher.check` (`background_job_watch.py`) runs at the
+turn boundary, immediately after `check_steering`: for each watched record
+it re-reads the job from the registry, drops it once its status has left
+`PENDING`/`RUNNING` (or the row has vanished), and otherwise nudges -- a
+`ChatMessage` naming the job id, elapsed time, and the job's own
+`command_repr` fenced with `wrap_untrusted` -- once
+`nudge_after_seconds` has elapsed since the last nudge (or since the job was
+first observed). `check_background_job_watch` is the `None`-safe free
+function `ReactLoop` calls, mirroring `check_steering`'s own shape.
+
+A job started before a checkpoint resume with no surviving context is not
+retroactively discovered: `WatchedJobRecord` travels with the checkpointed
+`AgentContext` like any other in-context channel, so a resumed run keeps
+watching jobs it already knew about but does not re-derive jobs an earlier,
+now-orphaned attempt started. This is the same scoping trade-off as the
+capture decision above, not a separate gap.
 
 ## Context Budget Management
 

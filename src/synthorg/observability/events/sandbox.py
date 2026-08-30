@@ -68,3 +68,6 @@ SANDBOX_BACKGROUND_JOB_TIMED_OUT: Final[str] = "sandbox.background_job.timed_out
 SANDBOX_BACKGROUND_JOB_REAPED: Final[str] = "sandbox.background_job.reaped"
 SANDBOX_BACKGROUND_JOB_REAP_FAILED: Final[str] = "sandbox.background_job.reap.failed"
 SANDBOX_BACKGROUND_JOB_CANCELLED: Final[str] = "sandbox.background_job.cancelled"
+SANDBOX_PINNED_EXEC_KILLED: Final[str] = "sandbox.pinned_exec.killed"
+SANDBOX_PINNED_EXEC_PID_UNREADABLE: Final[str] = "sandbox.pinned_exec.pid_unreadable"
+SANDBOX_PINNED_EXEC_CLEANUP_FAILED: Final[str] = "sandbox.pinned_exec.cleanup.failed"

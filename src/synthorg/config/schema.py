@@ -35,6 +35,7 @@ from synthorg.core.company_departments import Department
 from synthorg.core.company_handoffs import EscalationPath, WorkflowHandoff
 from synthorg.core.role import CustomRole
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.background_job_watch import BackgroundJobStalenessConfig
 from synthorg.engine.compaction.models import CompactionConfig
 from synthorg.engine.coordination.section_config import CoordinationSectionConfig
 from synthorg.engine.evolution.config import EvolutionConfig
@@ -127,6 +128,8 @@ class RootConfig(BaseModel):
             a distributed bus backend such as NATS).
         coordination: Multi-agent coordination configuration.
         stagnation: Intra-loop stagnation detection selector and sub-configs.
+        background_job_staleness: Background-job stall-nudge threshold
+            (off by default).
         strategy: Strategy and trendslop mitigation configuration.
         knowledge: Knowledge-substrate configuration (on by default; disabled at
             runtime via the settings-service ``knowledge.enabled`` flag).
@@ -282,6 +285,10 @@ class RootConfig(BaseModel):
     stagnation: StagnationDetectionConfig = Field(
         default_factory=StagnationDetectionConfig,
         description="Intra-loop stagnation detection selector and sub-configs",
+    )
+    background_job_staleness: BackgroundJobStalenessConfig = Field(
+        default_factory=BackgroundJobStalenessConfig,
+        description="Background-job stall-nudge threshold (off by default)",
     )
     strategy: StrategyConfig = Field(
         default_factory=StrategyConfig,

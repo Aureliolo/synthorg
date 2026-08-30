@@ -43,6 +43,7 @@ if TYPE_CHECKING:
         ResearchToolFactoryProvider,
         StructureMapToolFactoryProvider,
     )
+    from synthorg.engine.background_job_watch import BackgroundJobWatcher
     from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.delegation.protocol import SubAgentRunner
     from synthorg.engine.intervention.inbox import SteeringInbox
@@ -97,6 +98,7 @@ class AgentEngineFactoriesMixin:
     _step_classifier: StepQualityClassifier | None
     _compaction_callback: CompactionCallback | None
     _steering_inbox: SteeringInbox | None
+    _background_job_watcher: BackgroundJobWatcher | None
     _loop: ExecutionLoop
     _memory_injection_strategy_provider: MemoryInjectionStrategyProvider | None
     _ontology_injection_strategy: OntologyInjectionStrategy | None
@@ -145,8 +147,8 @@ class AgentEngineFactoriesMixin:
 
         Returns:
             A :class:`ReactLoop` wired with this engine's approval gate,
-            stagnation detector, compaction callback, steering inbox and
-            step classifier.
+            stagnation detector, compaction callback, steering inbox,
+            step classifier and background-job stall-nudge watcher.
         """
         return ReactLoop(
             approval_gate=self._approval_gate,
@@ -154,6 +156,7 @@ class AgentEngineFactoriesMixin:
             compaction_callback=self._compaction_callback,
             steering_inbox=self._steering_inbox,
             step_classifier=self._step_classifier,
+            background_job_watcher=self._background_job_watcher,
         )
 
     def _make_approval_gate(self) -> ApprovalGate | None:

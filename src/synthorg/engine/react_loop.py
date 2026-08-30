@@ -13,6 +13,10 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.approval_gate import ApprovalGate
+from synthorg.engine.background_job_watch import (
+    BackgroundJobWatcher,
+    check_background_job_watch,
+)
 from synthorg.engine.checkpoint.callback import CheckpointCallback
 from synthorg.engine.compaction.protocol import CompactionCallback
 from synthorg.engine.intervention.inbox import SteeringInbox
@@ -148,9 +152,12 @@ class ReactLoop:
         turn_observer: Optional async callback invoked after each
             continuing turn with the tools it requested; ``None``
             disables it. Purely observational.
+        background_job_watcher: Optional watcher consulted at turn
+            boundaries for stalled background shell jobs; ``None``
+            disables the nudge.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         checkpoint_callback: CheckpointCallback | None = None,
         *,
@@ -160,6 +167,7 @@ class ReactLoop:
         steering_inbox: SteeringInbox | None = None,
         step_classifier: StepQualityClassifier | None = None,
         turn_observer: TurnObserver | None = None,
+        background_job_watcher: BackgroundJobWatcher | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._checkpoint_callback = checkpoint_callback
@@ -169,6 +177,7 @@ class ReactLoop:
         self._steering_inbox = steering_inbox
         self._step_classifier = step_classifier
         self._turn_observer = turn_observer
+        self._background_job_watcher = background_job_watcher
         self._clock: Clock = clock if clock is not None else SystemClock()
 
     async def _attach_whole_run_signals(
@@ -209,6 +218,11 @@ class ReactLoop:
         """Return the step-quality classifier, or ``None``."""
         return self._step_classifier
 
+    @property
+    def background_job_watcher(self) -> BackgroundJobWatcher | None:
+        """Return the background-job stall-nudge watcher, or ``None``."""
+        return self._background_job_watcher
+
     def rebuild_controls(self) -> LoopControls:
         """Return every control a copy of this loop must carry over.
 
@@ -226,6 +240,7 @@ class ReactLoop:
             steering_inbox=self._steering_inbox,
             step_classifier=self._step_classifier,
             turn_observer=self._turn_observer,
+            background_job_watcher=self._background_job_watcher,
             clock=self._clock,
         )
 
@@ -331,6 +346,12 @@ class ReactLoop:
             steered = await check_steering(ctx, self._steering_inbox)
             if steered is not None:
                 ctx = steered
+
+            nudged_stall = await check_background_job_watch(
+                ctx, self._background_job_watcher, clock=self._clock
+            )
+            if nudged_stall is not None:
+                ctx = nudged_stall
 
             # Refresh tool defs each turn so newly loaded tools appear
             tool_defs = get_tool_definitions(tool_invoker, ctx.loaded_tools)
@@ -561,6 +582,7 @@ class ReactLoop:
             turn_number,
             turns,
             approval_gate=self._approval_gate,
+            clock=self._clock,
         )
 
     async def _handle_completion(

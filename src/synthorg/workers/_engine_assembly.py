@@ -22,6 +22,7 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.agent_state_recording import AgentStateRepositoryProvider
 from synthorg.engine.artifacts.baseline_scope import workspace_run_probe
+from synthorg.engine.background_job_watch import create_background_job_watcher
 from synthorg.engine.flight_recording import FlightRecorderSink
 from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
 from synthorg.engine.recovery import RecoveryStrategy
@@ -568,6 +569,15 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         app_state,
         detector_timeout_seconds=classification_detector_timeout_seconds,
     )
+    background_job_repo = background_job_repo_or_none(app_state)
+    background_job_watcher = create_background_job_watcher(
+        app_state.config.background_job_staleness,
+        registry=(
+            BackgroundJobRegistry(background_job_repo, clock=app_state.clock)
+            if background_job_repo is not None
+            else None
+        ),
+    )
     return AgentEngine(
         agent_middleware_chain=await build_agent_middleware_chain_or_none(
             app_state,
@@ -661,6 +671,7 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         agent_state_repository_provider=agent_state_repository_provider(app_state),
         steering_inbox=boot_steering_inbox(app_state),
         stagnation_detector=create_stagnation_detector(app_state.config.stagnation),
+        background_job_watcher=background_job_watcher,
         step_classifier=step_classifier,
         compaction_callback=_build_compaction_callback(app_state, provider),
         recovery_strategy=_build_recovery_strategy(app_state),

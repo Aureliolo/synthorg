@@ -20,6 +20,10 @@ EXECUTION_LOOP_TURN_COMPLETE: Final[str] = "execution.loop.turn_complete"
 EXECUTION_LOOP_TOOL_CALLS: Final[str] = "execution.loop.tool_calls"
 EXECUTION_LOOP_TERMINATED: Final[str] = "execution.loop.terminated"
 EXECUTION_LOOP_EMPTY_RUN_NUDGED: Final[str] = "execution.loop.empty_run_nudged"
+EXECUTION_BACKGROUND_JOB_NUDGED: Final[str] = "execution.background_job.nudged"
+EXECUTION_BACKGROUND_JOB_WATCH_READ_FAILED: Final[str] = (
+    "execution.background_job.watch_read_failed"
+)
 EXECUTION_LOOP_SILENT_TURN: Final[str] = "execution.loop.silent_turn"
 EXECUTION_LOOP_UNUSABLE_TURN: Final[str] = "execution.loop.unusable_turn"
 EXECUTION_LOOP_REWORK: Final[str] = "execution.loop.rework"

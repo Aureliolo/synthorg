@@ -24,6 +24,10 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.background_job_watch_channel import (
+    BackgroundJobWatchChannel,
+    background_job_watched_update,
+)
 from synthorg.engine.compaction.models import CompressionMetadata
 from synthorg.engine.context_disclosure import (
     resource_loaded_update,
@@ -63,69 +67,31 @@ logger = get_logger(__name__)
 class AgentContext(BaseModel):
     """Frozen runtime context for agent execution.
 
-    All state evolution happens via ``model_copy(update=...)``.
-    The context tracks the conversation, accumulated cost, and
-    optionally a ``TaskExecution`` for task-bound agent runs.
-
-    Attributes:
-        execution_id: Unique identifier for this execution run.
-        identity: Frozen agent identity configuration.
-        task_execution: Current task execution state (if any).
-        conversation: Accumulated chat messages.
-        accumulated_cost: Running token usage and cost totals.
-        turn_count: Number of LLM turns completed.
-        max_turns: Hard limit on turns before the engine stops.
-        started_at: When this execution began.
-        context_fill_tokens: Estimated tokens currently in the full
-            context (system prompt + conversation + tool defs).
-        context_capacity_tokens: Model's max context window tokens,
-            or ``None`` when unknown.
-        compression_metadata: Metadata about conversation compression,
-            set when compaction has occurred.
-        async_task_state: Dedicated state channel for tracked async
-            tasks.  Separate from ``conversation`` -- not touched by
-            compaction or context reset.
-        loaded_tools: Tool names with L2 bodies active in context.
-        loaded_resources: ``(tool_name, resource_id)`` pairs with
-            L3 resources fetched.
-        tool_load_order: Insertion-ordered tool names for FIFO
-            auto-unload under budget pressure.
+    All state evolution happens via ``model_copy(update=...)``. The context
+    tracks the conversation, accumulated cost, and optionally a
+    ``TaskExecution`` for task-bound agent runs. See each field's own
+    ``description`` for what it holds.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    execution_id: NotBlankStr = Field(
-        description="Unique execution run identifier",
-    )
-    identity: AgentIdentity = Field(
-        description="Frozen agent identity config",
-    )
+    execution_id: NotBlankStr = Field(description="Unique execution run identifier")
+    identity: AgentIdentity = Field(description="Frozen agent identity config")
     task_execution: TaskExecution | None = Field(
-        default=None,
-        description="Current task execution state",
+        default=None, description="Current task execution state"
     )
     conversation: tuple[ChatMessage, ...] = Field(
-        default=(),
-        description="Accumulated conversation messages",
+        default=(), description="Accumulated conversation messages"
     )
     accumulated_cost: TokenUsage = Field(
-        default=ZERO_TOKEN_USAGE,
-        description="Running cost totals across all turns",
+        default=ZERO_TOKEN_USAGE, description="Running cost totals across all turns"
     )
-    turn_count: int = Field(
-        default=0,
-        ge=0,
-        description="Turns completed",
-    )
+    turn_count: int = Field(default=0, ge=0, description="Turns completed")
     max_turns: int = Field(
-        default=DEFAULT_MAX_TURNS,
-        gt=0,
-        description="Hard turn limit",
+        default=DEFAULT_MAX_TURNS, gt=0, description="Hard turn limit"
     )
     turn_extensions_remaining: int = Field(
-        default=0,
-        ge=0,
-        description="Further turn budgets this run may grant itself",
+        default=0, ge=0, description="Further turn budgets this run may grant itself"
     )
     turn_extensions_granted: int = Field(
         default=0,
@@ -158,22 +124,15 @@ class AgentContext(BaseModel):
             "park/resume round-trip."
         ),
     )
-    started_at: AwareDatetime = Field(
-        description="When execution began",
-    )
+    started_at: AwareDatetime = Field(description="When execution began")
     context_fill_tokens: int = Field(
-        default=0,
-        ge=0,
-        description="Estimated tokens in the full context",
+        default=0, ge=0, description="Estimated tokens in the full context"
     )
     context_capacity_tokens: int | None = Field(
-        default=None,
-        gt=0,
-        description="Model's max context window tokens",
+        default=None, gt=0, description="Model's max context window tokens"
     )
     compression_metadata: CompressionMetadata | None = Field(
-        default=None,
-        description="Compression metadata when compacted",
+        default=None, description="Compression metadata when compacted"
     )
 
     # ── Async task state channel ────────────────────────────────
@@ -186,22 +145,25 @@ class AgentContext(BaseModel):
 
     # ── Progressive tool disclosure state ─────────────────────────
     loaded_tools: frozenset[str] = Field(
-        default=frozenset(),
-        description="Tool names with L2 body active in context",
+        default=frozenset(), description="Tool names with L2 body active in context"
     )
     loaded_resources: frozenset[tuple[str, str]] = Field(
-        default=frozenset(),
-        description="(tool_name, resource_id) pairs with L3 active",
+        default=frozenset(), description="(tool_name, resource_id) pairs with L3 active"
     )
     tool_load_order: tuple[str, ...] = Field(
-        default=(),
-        description="Insertion-ordered tool names for FIFO unload",
+        default=(), description="Insertion-ordered tool names for FIFO unload"
     )
 
     # ── Mid-flight steering adoption state ────────────────────────
     adopted_steering_ids: frozenset[NotBlankStr] = Field(
         default=frozenset(),
         description="Steering directive entry ids already adopted by this run",
+    )
+
+    # ── Background-job stall-nudge watch state ────────────────────
+    background_job_watch: BackgroundJobWatchChannel = Field(
+        default_factory=BackgroundJobWatchChannel,
+        description="Background jobs this run is watching for staleness",
     )
 
     @model_validator(mode="after")
@@ -419,6 +381,44 @@ class AgentContext(BaseModel):
             New ``AgentContext`` with updated state channel.
         """
         return self.model_copy(update={"async_task_state": state})
+
+    def with_background_job_watch(
+        self,
+        channel: BackgroundJobWatchChannel,
+    ) -> AgentContext:
+        """Replace the background-job stall-nudge watch channel.
+
+        Args:
+            channel: New watch channel.
+
+        Returns:
+            New ``AgentContext`` with the updated channel.
+        """
+        return self.model_copy(update={"background_job_watch": channel})
+
+    def with_background_job_watched(
+        self,
+        job_id: NotBlankStr,
+        *,
+        watching_since: datetime,
+    ) -> AgentContext:
+        """Start watching a background job this run just started.
+
+        Idempotent: a job id already tracked is left unchanged (its
+        original ``started_watching_at`` is not reset).
+
+        Args:
+            job_id: The background job's own id.
+            watching_since: When the loop observed the job start.
+
+        Returns:
+            New ``AgentContext`` with the job added to the watch channel;
+            the same instance when it was already tracked.
+        """
+        update = background_job_watched_update(
+            self.background_job_watch, job_id, watching_since=watching_since
+        )
+        return self if update is None else self.model_copy(update=update)
 
     def with_compression(
         self,

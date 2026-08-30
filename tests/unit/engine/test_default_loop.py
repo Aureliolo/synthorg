@@ -20,6 +20,7 @@ import pytest
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.approval_gate import ApprovalGate
+from synthorg.engine.background_job_watch import BackgroundJobWatcher
 from synthorg.engine.checkpoint.callback import CheckpointCallback
 from synthorg.engine.compaction.protocol import CompactionCallback
 from synthorg.engine.context import AgentContext
@@ -65,6 +66,7 @@ def _controls() -> dict[str, object]:
         "step_classifier": mock_of[StepQualityClassifier](),
         "steering_inbox": mock_of[SteeringInbox](),
         "compaction_callback": _compaction,
+        "background_job_watcher": mock_of[BackgroundJobWatcher](),
     }
 
 
@@ -79,6 +81,9 @@ def _engine(controls: dict[str, object]) -> AgentEngine:
         step_classifier=cast("StepQualityClassifier", controls["step_classifier"]),
         steering_inbox=cast("SteeringInbox", controls["steering_inbox"]),
         compaction_callback=cast("CompactionCallback", controls["compaction_callback"]),
+        background_job_watcher=cast(
+            "BackgroundJobWatcher", controls["background_job_watcher"]
+        ),
     )
 
 
@@ -95,6 +100,7 @@ class TestEngineDefaultLoop:
         assert loop.steering_inbox is controls["steering_inbox"]
         assert loop.compaction_callback is controls["compaction_callback"]
         assert loop.step_classifier is controls["step_classifier"]
+        assert loop.background_job_watcher is controls["background_job_watcher"]
 
     def test_approval_gate_reaches_the_loop(self) -> None:
         # Built by the engine from its approval store rather than injected,

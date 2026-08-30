@@ -212,6 +212,50 @@ class TestExpireOverdue:
         assert updated.status == BackgroundJobStatus.TIMED_OUT
 
 
+class TestHasLiveJobs:
+    async def test_true_when_a_live_row_exists(self) -> None:
+        repo = _InMemoryBackgroundJobRepository()
+        registry = BackgroundJobRegistry(repo, clock=FakeClock())
+        await registry.save(
+            _record("job-a", container_id="c1", status=BackgroundJobStatus.RUNNING)
+        )
+
+        assert await registry.has_live_jobs("c1") is True
+
+    async def test_false_when_no_rows(self) -> None:
+        registry = BackgroundJobRegistry(_InMemoryBackgroundJobRepository())
+        assert await registry.has_live_jobs("c1") is False
+
+    async def test_false_when_only_terminal_rows(self) -> None:
+        repo = _InMemoryBackgroundJobRepository()
+        registry = BackgroundJobRegistry(repo, clock=FakeClock())
+        await registry.save(
+            _record("job-a", container_id="c1", status=BackgroundJobStatus.COMPLETED)
+        )
+
+        assert await registry.has_live_jobs("c1") is False
+
+    async def test_does_not_self_clean_overdue_jobs(self) -> None:
+        """Unlike expire_overdue/pin_check, this is a plain read-only check."""
+        repo = _InMemoryBackgroundJobRepository()
+        clock = FakeClock()
+        registry = BackgroundJobRegistry(repo, clock=clock)
+        record = _record(
+            "job-overdue",
+            container_id="c1",
+            started_at=clock.now(),
+            max_duration_seconds=10.0,
+        )
+        await registry.save(record)
+        clock.advance(9999)
+
+        assert await registry.has_live_jobs("c1") is True
+
+        updated = await registry.get("job-overdue")
+        assert updated is not None
+        assert updated.status == BackgroundJobStatus.RUNNING
+
+
 class TestReapForContainer:
     async def test_marks_live_rows_orphaned(self) -> None:
         repo = _InMemoryBackgroundJobRepository()

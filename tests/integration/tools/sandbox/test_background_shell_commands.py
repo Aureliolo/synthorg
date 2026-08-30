@@ -378,3 +378,61 @@ class TestBackgroundShellCommandEndToEnd:
             assert record.job_id == job_id
         finally:
             await sandbox.cleanup()
+
+    async def test_foreground_timeout_spares_a_pinned_container_and_its_job(
+        self, tmp_path: Path
+    ) -> None:
+        """#2880: a timed-out foreground call must not collaterally kill a
+        live sibling background job's container.
+
+        The foreground command's ``&&``-chained second half only runs if
+        the first half (``sleep``, longer than the timeout) is not
+        genuinely terminated -- proving the process itself was killed, not
+        merely that the harness stopped watching it. The background job
+        surviving as ``RUNNING`` afterwards proves the container itself
+        was never stopped.
+        """
+        sandbox = await self._make_sandbox(tmp_path)
+        try:
+            bg_job_id = await sandbox.start_background(
+                command="sleep 30",
+                args=(),
+                category="terminal",
+                owner_id="owner-pin",
+                max_duration_seconds=60,
+            )
+            live = await sandbox.poll_background(
+                bg_job_id, category="terminal", owner_id="owner-pin"
+            )
+            assert live.status == BackgroundJobStatus.RUNNING
+
+            result = await sandbox.execute(
+                command="sh",
+                args=("-c", "sleep 2 && touch /tmp/fg-should-be-killed"),
+                category="terminal",
+                owner_id="owner-pin",
+                timeout=0.2,
+            )
+            assert result.timed_out
+
+            marker = await sandbox.execute(
+                command="sh",
+                args=(
+                    "-c",
+                    "test -e /tmp/fg-should-be-killed && echo EXISTS || echo GONE",
+                ),
+                category="terminal",
+                owner_id="owner-pin",
+            )
+            assert marker.stdout.strip() == "GONE"
+
+            record = await sandbox.poll_background(
+                bg_job_id, category="terminal", owner_id="owner-pin"
+            )
+            assert record.status == BackgroundJobStatus.RUNNING
+
+            await sandbox.cancel_background(
+                bg_job_id, category="terminal", owner_id="owner-pin"
+            )
+        finally:
+            await sandbox.cleanup()

@@ -17,7 +17,9 @@ import pytest
 from synthorg.tools.sandbox._background_wrapper import (
     build_kill_command,
     build_liveness_command,
+    build_pinned_exec_command,
     build_read_output_command,
+    build_read_pid_command,
     build_start_command,
     exit_code_path,
     job_dir,
@@ -394,3 +396,106 @@ class TestBuildKillCommand:
     def test_rejects_non_positive_pid(self) -> None:
         with pytest.raises(ValueError, match="pid"):
             build_kill_command(0, grace_seconds=1.0)
+
+
+@_HAS_BASH
+class TestBuildPinnedExecCommand:
+    def test_returns_setsid_wrapping_bash_pipefail_c(self) -> None:
+        program, args = build_pinned_exec_command("job-pin", "bash", ("-c", "echo hi"))
+        assert program == "setsid"
+        assert args[0] == "bash"
+        assert args[1:3] == ("-o", "pipefail")
+        assert args[3] == "-c"
+
+    def test_runs_the_command_and_records_a_pid(self, patched_root: Path) -> None:
+        program, args = build_pinned_exec_command(
+            "job-pin-run", "bash", ("-c", "echo hello-world")
+        )
+        result = _run_in_shell(patched_root, program, args)
+        assert result.returncode == 0
+        assert result.stdout == "hello-world\n"
+
+        pid_file = patched_root / "job-pin-run" / "pid"
+        assert pid_file.read_text().strip().isdigit()
+
+    def test_stdout_and_stderr_stay_separate(self, patched_root: Path) -> None:
+        """Unlike build_start_command, nothing here merges the streams."""
+        program, args = build_pinned_exec_command(
+            "job-pin-streams", "bash", ("-c", "echo out; echo err 1>&2")
+        )
+        result = _run_in_shell(patched_root, program, args)
+        assert result.stdout == "out\n"
+        assert result.stderr == "err\n"
+
+    def test_nonzero_exit_code_propagates(self, patched_root: Path) -> None:
+        program, args = build_pinned_exec_command(
+            "job-pin-fail", "bash", ("-c", "exit 7")
+        )
+        result = _run_in_shell(patched_root, program, args)
+        assert result.returncode == 7
+
+    @pytest.mark.parametrize(
+        "command_args",
+        [
+            ("bash", ("-c", "echo 'has a single quote: '\\''here'\\'''")),
+            ("bash", ("-c", 'echo "has double quotes and $vars literally"')),
+            ("bash", ("-c", "printf 'line1\\nline2\\n'")),
+            ("bash", ("-c", "echo a && echo b")),
+            ("bash", ("-c", "echo a; echo b")),
+            ("bash", ("-c", "echo a | cat")),
+            ("echo", ("plain", "argv", "no", "shell")),
+        ],
+    )
+    def test_survives_adversarial_command_text(
+        self, patched_root: Path, command_args: tuple[str, tuple[str, ...]]
+    ) -> None:
+        command, cmd_args = command_args
+        program, args = build_pinned_exec_command("job-pin-adv", command, cmd_args)
+        result = _run_in_shell(patched_root, program, args)
+        assert result.returncode == 0
+
+    def test_kill_via_recorded_pid_terminates_the_process_group(
+        self, patched_root: Path
+    ) -> None:
+        program, args = build_pinned_exec_command(
+            "job-pin-kill", "bash", ("-c", "sleep 30")
+        )
+        proc = subprocess.Popen(  # noqa: S603 -- program/args built by the module under test
+            [program, *args],
+            cwd=str(patched_root),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            pid_file = patched_root / "job-pin-kill" / "pid"
+            pid = int(_wait_for_nonempty(pid_file).strip())
+
+            kill_program, kill_args = build_kill_command(pid, grace_seconds=0.1)
+            kill_result = _run_in_shell(patched_root, kill_program, kill_args)
+            assert kill_result.returncode == 0
+
+            proc.wait(timeout=_POLL_TIMEOUT_SECONDS)
+            assert proc.returncode != 0
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=5)
+
+
+@_HAS_BASH
+class TestBuildReadPidCommand:
+    def test_reads_a_recorded_pid(self, patched_root: Path) -> None:
+        start_program, start_args = build_pinned_exec_command(
+            "job-pin-read", "bash", ("-c", "echo hi")
+        )
+        _run_in_shell(patched_root, start_program, start_args)
+
+        program, args = build_read_pid_command("job-pin-read")
+        result = _run_in_shell(patched_root, program, args)
+        assert result.stdout.strip().isdigit()
+
+    def test_missing_pidfile_reads_empty(self, patched_root: Path) -> None:
+        program, args = build_read_pid_command("job-pin-ghost")
+        result = _run_in_shell(patched_root, program, args)
+        assert result.stdout.strip() == ""
+        assert result.returncode == 0

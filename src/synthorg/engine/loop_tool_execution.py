@@ -4,12 +4,15 @@ Extracted from :mod:`synthorg.engine.loop_helpers` to keep the main
 helpers module under the project size limit.
 """
 
+import json
 import re
 from collections.abc import Sequence
 from typing import Final
 
 from synthorg.approval.models import EscalationInfo
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (
@@ -107,6 +110,10 @@ if _MISSING_FENCE_TAGS:
         f"Add them so closing-tag breakout detection stays complete."
     )
     raise ValueError(_msg)
+
+#: The only tool whose result the loop reads for a background job id;
+#: named once so the capture branch and any future reference agree.
+_SHELL_COMMAND_TOOL_NAME: Final[str] = "shell_command"
 
 _INJECTION_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
     # Shared "override the system prompt" heuristics (single source in
@@ -276,6 +283,35 @@ async def _park_for_approval(
     )
 
 
+def _parsed_background_job_id(raw_content: str) -> NotBlankStr | None:
+    """Extract a ``job_id`` from a successful backgrounded ``shell_command`` result.
+
+    Reads the RAW (unwrapped) result content: ``_wrap_tool_result`` above
+    builds a separate ``wrapped`` object per result without reassigning
+    ``results`` itself, so the tuple this function's caller iterates
+    still holds each result's original, unfenced ``content``.
+
+    Best-effort by design: a parse failure or a missing/blank ``job_id``
+    means this is not a shape ``shell_command(background=True)`` would
+    ever actually return, not a contract the tool must satisfy, so
+    nothing is watched rather than raising.
+
+    Returns:
+        The job id, or ``None`` when *raw_content* is not a
+        ``{"job_id": "..."}`` JSON object.
+    """
+    try:
+        payload = json.loads(raw_content)
+    except ValueError, TypeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    job_id = payload.get("job_id")
+    if isinstance(job_id, str) and job_id.strip():
+        return NotBlankStr(job_id)
+    return None
+
+
 async def execute_tool_calls(
     ctx: AgentContext,
     tool_invoker: ToolInvokerProtocol | None,
@@ -284,6 +320,7 @@ async def execute_tool_calls(
     turns: list[TurnRecord],
     *,
     approval_gate: ApprovalGate | None = None,
+    clock: Clock | None = None,
 ) -> AgentContext | ExecutionResult:
     """Execute tool calls and append results to context.
 
@@ -358,6 +395,16 @@ async def execute_tool_calls(
                     execution_id=ctx.execution_id,
                     tool_name=t_name,
                     turn=turn_number,
+                )
+        elif (
+            tc.name == _SHELL_COMMAND_TOOL_NAME
+            and tc.arguments.get("background") is True
+        ):
+            job_id = _parsed_background_job_id(result.content)
+            if job_id is not None:
+                effective_clock = clock or SystemClock()
+                ctx = ctx.with_background_job_watched(
+                    job_id, watching_since=effective_clock.now()
                 )
         elif tc.name == "load_tool_resource":
             t_name = tc.arguments.get("tool_name")

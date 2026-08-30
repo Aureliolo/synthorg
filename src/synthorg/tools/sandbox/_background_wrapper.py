@@ -1,4 +1,8 @@
-"""Shell text for starting, polling, reading, and killing a background job.
+"""Shell text for starting, polling, reading, killing, and pinning jobs.
+
+Covers a background job's own lifecycle (start, poll, read, kill) and a
+foreground exec pinned so its timeout kill can target just its own
+process group, rather than the whole container.
 
 Pure string-building: nothing here touches Docker or the filesystem, so
 every function is testable without a daemon. The one contract that
@@ -290,11 +294,76 @@ def build_kill_command(
     return SHELL_PROGRAM, (*SHELL_ARGS_PREFIX, script)
 
 
+def build_pinned_exec_command(
+    job_id: str,
+    command: str,
+    args: tuple[str, ...],
+) -> tuple[str, tuple[str, ...]]:
+    """Build the ``(program, args)`` that run an already-split argv pinned.
+
+    Unlike :func:`build_start_command`, this never detaches and never
+    redirects the real command's own stdout/stderr: the exec this
+    produces is meant to be drained exactly like an ordinary foreground
+    exec (same attached stream, same separate stdout/stderr, no output
+    cap), so a caller sharing a container with a live background job can
+    keep today's foreground behaviour byte-for-byte while still being
+    able to kill just this one process group on timeout.
+
+    ``setsid`` execs directly into ``bash`` (its own argv[1]), so no fork
+    happens there. Inside the script, ``mkdir -p`` may fork (an ordinary,
+    non-final external command; the shell that forked it is unaffected),
+    ``echo $$ > pidfile`` is a builtin (no fork), and the final ``exec``
+    replaces the running image in place -- so the pid written to the
+    pidfile is, all the way through, the same pid ``setsid`` made into a
+    process-group leader. *command*/*args* arrive as an already-built
+    argv (e.g. from :func:`synthorg.tools._shell_invocation.shell_invocation`),
+    not raw text, so each element is quoted individually and the whole is
+    handed to ``exec`` as words -- no second parse of a command string,
+    unlike :func:`build_start_command`'s own raw-text embedding.
+
+    Args:
+        job_id: Scopes this pinned exec's pid file under its own
+            directory; never persisted as a real background job.
+        command: The program to run (first argv element).
+        args: The program's own arguments.
+
+    Returns:
+        The ``(program, args)`` pair to pass to the sandbox's attached
+        exec.
+    """
+    directory = job_dir(job_id)
+    pid_file = pid_path(job_id)
+    argv = " ".join(_quote(part) for part in (command, *args))
+    script = f"mkdir -p {_quote(directory)}; echo $$ > {_quote(pid_file)}; exec {argv}"
+    return "setsid", (SHELL_PROGRAM, *SHELL_ARGS_PREFIX, script)
+
+
+def build_read_pid_command(job_id: str) -> tuple[str, tuple[str, ...]]:
+    """Build the ``(program, args)`` that read a pinned exec's recorded pid.
+
+    Prints nothing (rather than raising) when the pidfile does not exist
+    yet, so a caller reading right at the very start of the exec sees an
+    empty result instead of a nonzero exit it would otherwise have to
+    special-case.
+
+    Args:
+        job_id: The pinned exec's own scoping id.
+
+    Returns:
+        The ``(program, args)`` pair for the sandbox's attached exec.
+    """
+    pid_file = pid_path(job_id)
+    script = f"cat {_quote(pid_file)} 2>/dev/null"
+    return SHELL_PROGRAM, (*SHELL_ARGS_PREFIX, script)
+
+
 __all__ = [
     "JOBS_ROOT",
     "build_kill_command",
     "build_liveness_command",
+    "build_pinned_exec_command",
     "build_read_output_command",
+    "build_read_pid_command",
     "build_start_command",
     "exit_code_path",
     "job_dir",
