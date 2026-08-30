@@ -24,12 +24,12 @@ from synthorg.engine.decomposition.models import (
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.initiative.completion import ReplanDisposition, StallReason
 from synthorg.engine.initiative.confirmed_stall import ConfirmedStall
+from synthorg.engine.initiative.extension_state import ExtensionDisposition
 from synthorg.engine.initiative.replan_trigger import (
     _DEFAULT_MAX_GENERATIONS,
     ACTOR,
     ReplanTriggerService,
 )
-from synthorg.engine.initiative.slice_state import SliceDisposition
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry_protocol import AgentRegistryProtocol
 from synthorg.security.action_types import ActionTypeRegistry
@@ -779,13 +779,13 @@ class TestWhoAuthorisedTheReplan:
             stall("")
 
 
-def _sliceable() -> tuple[Plan, PlanItem, PlanItem]:
+def _extensible() -> tuple[Plan, PlanItem, PlanItem]:
     """A workstream with one oversized-and-completed leaf, ready to be asked.
 
     Returns:
-        The plan, its workstream, and the leaf ``consider_slice`` is asked
-        about, all pre-built for the trigger's own delegation to
-        :mod:`slice_graft`.
+        The plan, its workstream, and the leaf ``consider_extension`` is
+        asked about, all pre-built for the trigger's own delegation to
+        :mod:`extension_graft`.
     """
     workstream = _item(sid("ws-1"))
     leaf = PlanItem(
@@ -801,11 +801,11 @@ def _sliceable() -> tuple[Plan, PlanItem, PlanItem]:
     return _plan(workstream, leaf), workstream, leaf
 
 
-class TestSliceAutonomyDelegation:
+class TestExtensionAutonomyDelegation:
     """The trigger resolves the deterministic gate through its own project."""
 
     async def test_full_autonomy_grafts_without_asking(self) -> None:
-        plan, workstream, leaf = _sliceable()
+        plan, workstream, leaf = _extensible()
         autonomy_resolver = AutonomyResolver(
             registry=ActionTypeRegistry(),
             config=AutonomyConfig(level=AutonomyLevel.FULL),
@@ -816,7 +816,7 @@ class TestSliceAutonomyDelegation:
             autonomy_resolver=autonomy_resolver,
         )
 
-        disposition = await service.consider_slice(
+        disposition = await service.consider_extension(
             plan=plan,
             tree=PlanTree.of(plan.items),
             workstream=workstream,
@@ -825,12 +825,12 @@ class TestSliceAutonomyDelegation:
         )
         await service.drain(timeout_sec=5.0)
 
-        assert disposition is SliceDisposition.GRAFTED
+        assert disposition is ExtensionDisposition.GRAFTED
         decompose.assert_awaited()
 
     async def test_default_autonomy_asks_before_any_decomposition(self) -> None:
         """SUPERVISED, the shipped default, never auto-approves this action."""
-        plan, workstream, leaf = _sliceable()
+        plan, workstream, leaf = _extensible()
         autonomy_resolver = AutonomyResolver(
             registry=ActionTypeRegistry(), config=AutonomyConfig()
         )
@@ -840,7 +840,7 @@ class TestSliceAutonomyDelegation:
             autonomy_resolver=autonomy_resolver,
         )
 
-        disposition = await service.consider_slice(
+        disposition = await service.consider_extension(
             plan=plan,
             tree=PlanTree.of(plan.items),
             workstream=workstream,
@@ -848,14 +848,14 @@ class TestSliceAutonomyDelegation:
             drive=None,
         )
 
-        assert disposition is SliceDisposition.ASKED
+        assert disposition is ExtensionDisposition.ASKED
         decompose.assert_not_awaited()
 
     async def test_no_autonomy_resolver_fails_closed_to_asked(self) -> None:
-        plan, workstream, leaf = _sliceable()
+        plan, workstream, leaf = _extensible()
         service, _, decompose = await _seed(plan, project=_project(lead=None))
 
-        disposition = await service.consider_slice(
+        disposition = await service.consider_extension(
             plan=plan,
             tree=PlanTree.of(plan.items),
             workstream=workstream,
@@ -863,15 +863,19 @@ class TestSliceAutonomyDelegation:
             drive=None,
         )
 
-        assert disposition is SliceDisposition.ASKED
+        assert disposition is ExtensionDisposition.ASKED
         decompose.assert_not_awaited()
 
-    async def test_grant_slice_bypasses_the_gate(self) -> None:
-        plan, _workstream, leaf = _sliceable()
+    async def test_grant_extension_bypasses_the_gate(self) -> None:
+        plan, workstream, leaf = _extensible()
         service, _, decompose = await _seed(plan, project=_project(lead=None))
 
-        started = await service.grant_slice(
-            plan=plan, leaf=leaf, drive=None, requested_by="an-operator"
+        started = await service.grant_extension(
+            plan=plan,
+            workstream=workstream,
+            leaf=leaf,
+            drive=None,
+            requested_by="an-operator",
         )
         await service.drain(timeout_sec=5.0)
 

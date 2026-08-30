@@ -34,6 +34,7 @@ should continue, so neither does, and the successor carries generation zero on
 the same rule a hand-authored re-plan already follows.
 """
 
+import asyncio
 from typing import Final
 
 from synthorg.core.agent import AgentIdentity
@@ -59,25 +60,27 @@ from synthorg.engine.initiative.completion import (
     stall_reason,
 )
 from synthorg.engine.initiative.confirmed_stall import ConfirmedStall
+from synthorg.engine.initiative.extension_autonomy import (
+    resolve_effective_autonomy_for_plan,
+)
+from synthorg.engine.initiative.extension_graft import ExtensionCollaborators
+from synthorg.engine.initiative.extension_graft import (
+    consider_extension as consider_extension_graft,
+)
+from synthorg.engine.initiative.extension_graft import (
+    grant_extension as grant_extension_graft,
+)
+from synthorg.engine.initiative.extension_state import ExtensionDisposition
 from synthorg.engine.initiative.item_progress import collect_item_progress
 from synthorg.engine.initiative.ports import InitiativeReplanPort, PlanDriver
 from synthorg.engine.initiative.replan_brief import build_replan_brief
-from synthorg.engine.initiative.slice_autonomy import (
-    resolve_effective_autonomy_for_plan,
-)
-from synthorg.engine.initiative.slice_graft import SliceCollaborators
-from synthorg.engine.initiative.slice_graft import (
-    consider_slice as consider_slice_graft,
-)
-from synthorg.engine.initiative.slice_graft import (
-    grant_slice as grant_slice_graft,
-)
-from synthorg.engine.initiative.slice_state import SliceDisposition
 from synthorg.engine.initiative.stage_runner import StageRunner
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry_protocol import AgentRegistryProtocol
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.initiative import (
+    INITIATIVE_EXTENSION_FAILED,
+    INITIATIVE_EXTENSION_SKIPPED,
     INITIATIVE_REPLAN_COMPLETED,
     INITIATIVE_REPLAN_FAILED,
     INITIATIVE_REPLAN_GRANTED,
@@ -116,7 +119,7 @@ class ReplanTriggerService:
             engine does not import the api controller layer).
         config_resolver: Live settings source, re-read per fire so an operator
             can disable auto-replan or retune the cap without a restart.
-        autonomy_resolver: Resolves a plan's autonomy for the slice ask's
+        autonomy_resolver: Resolves a plan's autonomy for the extension ask's
             gate. ``None`` fails it closed rather than open.
         clock: Clock seam seeding the background-task drain deadline.
     """
@@ -127,6 +130,7 @@ class ReplanTriggerService:
         "_clock",
         "_config_resolver",
         "_decomposition",
+        "_extension_runner",
         "_persistence",
         "_replan",
         "_runner",
@@ -161,6 +165,18 @@ class ReplanTriggerService:
             clock=clock,
             skipped_event=INITIATIVE_REPLAN_SKIPPED,
             failed_event=INITIATIVE_REPLAN_FAILED,
+        )
+        # Its own instance, not shared with replan: the two mechanisms raise
+        # unrelated decisions on unrelated schedules, and a shared runner
+        # would attribute an extension's own timeout or uncaught failure to
+        # ``INITIATIVE_REPLAN_FAILED``/``_SKIPPED``, reading as the unrelated
+        # replan mechanism failing while the extension mechanism itself
+        # appeared healthy.
+        self._extension_runner = StageRunner(
+            owner="initiative.extension",
+            clock=clock,
+            skipped_event=INITIATIVE_EXTENSION_SKIPPED,
+            failed_event=INITIATIVE_EXTENSION_FAILED,
         )
 
     async def consider(
@@ -258,10 +274,18 @@ class ReplanTriggerService:
         return started
 
     async def drain(self, *, timeout_sec: float) -> None:
-        """Wait for outstanding replans at shutdown, then bound them."""
-        await self._runner.drain(timeout_sec=timeout_sec)
+        """Wait for outstanding replans and extensions at shutdown, then bound them.
 
-    async def consider_slice(
+        Concurrently, not sequentially: each runner's own drain is already
+        bounded by *timeout_sec*, and awaiting them one after the other would
+        let the two runners' worst cases add up to twice the caller's actual
+        shutdown budget.
+        """
+        async with asyncio.TaskGroup() as tg:
+            _ = tg.create_task(self._runner.drain(timeout_sec=timeout_sec))
+            _ = tg.create_task(self._extension_runner.drain(timeout_sec=timeout_sec))
+
+    async def consider_extension(
         self,
         *,
         plan: Plan,
@@ -269,57 +293,59 @@ class ReplanTriggerService:
         workstream: PlanItem,
         leaf: PlanItem,
         drive: PlanDriver | None,
-    ) -> SliceDisposition:
-        """Graft another slice onto *leaf* if the org may still do so unasked.
+    ) -> ExtensionDisposition:
+        """Graft another extension onto *leaf* if the org may still do so unasked.
 
         A thin assembly of this service's own collaborators; the mechanism
-        and its guards live in :mod:`slice_graft`.
+        and its guards live in :mod:`extension_graft`.
 
         Returns:
             What became of the ask.
         """
-        return await consider_slice_graft(
+        return await consider_extension_graft(
             plan=plan,
             tree=tree,
             workstream=workstream,
             leaf=leaf,
             drive=drive,
-            collaborators=self._slice_collaborators(),
+            collaborators=self._extension_collaborators(),
         )
 
-    async def grant_slice(
+    async def grant_extension(
         self,
         *,
         plan: Plan,
+        workstream: PlanItem,
         leaf: PlanItem,
         drive: PlanDriver | None,
         requested_by: str,
     ) -> bool:
-        """Graft *leaf*'s slice once on a person's authority, gates aside.
+        """Graft *leaf*'s extension once on a person's authority, gates aside.
 
         Returns:
             Whether the detached graft started.
         """
-        return await grant_slice_graft(
+        return await grant_extension_graft(
             plan=plan,
+            workstream=workstream,
             leaf=leaf,
             drive=drive,
             requested_by=requested_by,
-            collaborators=self._slice_collaborators(),
+            collaborators=self._extension_collaborators(),
         )
 
-    def _slice_collaborators(self) -> SliceCollaborators:
-        """Assemble the bundle :mod:`slice_graft` needs, shared by both doors.
+    def _extension_collaborators(self) -> ExtensionCollaborators:
+        """Assemble the bundle :mod:`extension_graft` needs, shared by both doors.
 
         Returns:
             The collaborators.
         """
-        return SliceCollaborators(
+        return ExtensionCollaborators(
             persistence=self._persistence,
             task_engine=self._task_engine,
             decomposition_service=self._decomposition,
             config_resolver=self._config_resolver,
-            runner=self._runner,
+            runner=self._extension_runner,
             owner_resolver=self._owner,
             roster_resolver=self._roster,
             effective_autonomy=self._effective_autonomy,
@@ -327,7 +353,7 @@ class ReplanTriggerService:
         )
 
     async def _effective_autonomy(self, plan: Plan) -> EffectiveAutonomy | None:
-        """Resolve *plan*'s autonomy, delegating to :mod:`slice_graft`.
+        """Resolve *plan*'s autonomy, delegating to :mod:`extension_graft`.
 
         Returns:
             The resolved autonomy, or ``None`` when it could not be.

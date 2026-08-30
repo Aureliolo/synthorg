@@ -318,6 +318,7 @@ completion:
 | evaluate stage (no provider) | plan parks at `EVALUATING`, WARNING per recompute |
 | replan trigger (no coordinator) | a derived stall escalates to the operator as a decision, exactly as an exhausted budget does |
 | stall escalation (no approval store) | a derived stall fails the plan with its reason; parking it silently is what left a dead initiative reading `EXECUTING` |
+| extension escalation (no approval store) | a workstream needing another extension is not held at `EXECUTING`; the plan advances with the gap unaddressed, surfaced later at the judged `EVALUATING` gate rather than by a second parking mechanism |
 | retro capture (no memory layer) | finished work does not feed a retrospective back |
 
 Parking is the honest outcome **while something can still move it**: an
@@ -336,7 +337,7 @@ the plan exactly as a raised one does. Both were the same collapse in a live
 run: five tasks died in 1.85s and the plan sat at `EXECUTING` for ever, because
 only a raise had been treated as failure.
 
-**Independently means one subsystem each**, five of them, all separate from the
+**Independently means one subsystem each**, six of them, all separate from the
 rollup. The rollup activates once persistence and the task engine exist,
 which is before setup has configured a provider, so a first boot legitimately
 produces a rollup with no tail; each `initiative_*` spec waits on what that one
@@ -344,13 +345,17 @@ collaborator actually needs and activates on a later reconciler pass, attaching
 onto the already-wired rollup without re-registering the observer, so each comes
 online with no restart.
 
-Declaring the five as one subsystem would make the *union* of their
+Declaring the six as one subsystem would make the *union* of their
 requirements a precondition for any of them, and the table above would be a
 lie: a boot with no coordinator would get no integrate stage either. The stall
 escalation is its own subsystem for the sharper version of that reason: it is
 needed exactly when the replan trigger is absent or refusing, so folding it
 into the trigger's spec would leave a boot with one reading as covered for the
-other. Their
+other. Extension escalation is separate again, on the same reasoning: it
+raises a different decision under a different idempotency key (see
+[Workstream Extension](workstream-extension.md)), and a plan whose stall
+escalation is wired but whose extension escalation is not should still read
+that gap rather than borrow the sibling's liveness. Their
 liveness is read one probe per collaborator for the same reason: a shared probe
 let a tail whose retro capture never resolved (memory blocked because no
 embedder was chosen) read as converged, and the reconciler never revisits that.
@@ -386,6 +391,9 @@ run of it rather than needing a restart.
 | `engine.evaluation_session_max_turns` | 10 | evaluate session turn cap |
 | `engine.evaluation_session_cost_ceiling` | 1.0 | evaluate session spend ceiling |
 | `engine.evaluation_session_timeout_seconds` | 300 | evaluate wall-clock ceiling |
+| `coordination.jit_extension_planning_enabled` | false | master switch for the extension mechanism; see [Workstream Extension](workstream-extension.md) |
+| `engine.auto_extension_enabled` | true | automatic-authority switch for granting an extension unasked, once the master switch is on |
+| `engine.auto_extension_max_generations` | 2 | generation cap, per workstream, stopping a runaway extension chain |
 
 ## What proves the tail ran
 

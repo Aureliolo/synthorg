@@ -14,6 +14,9 @@ APPROVAL_GATE_PARK_TASKLESS: Final[str] = "approval_gate.park.taskless"
 APPROVAL_GATE_RESUME_STARTED: Final[str] = "approval_gate.resume.started"
 APPROVAL_GATE_CONTEXT_RESUMED: Final[str] = "approval_gate.context.resumed"
 APPROVAL_GATE_RESUME_FAILED: Final[str] = "approval_gate.resume.failed"
+#: A just-persisted decision's reread hit a transient error and is being
+#: retried before any resume flow gives up ownership of it.
+APPROVAL_GATE_REREAD_RETRIED: Final[str] = "approval_gate.reread.retried"
 APPROVAL_GATE_RESUME_DELETE_FAILED: Final[str] = "approval_gate.resume.delete_failed"
 APPROVAL_GATE_RESUME_TRIGGERED: Final[str] = "approval_gate.resume.triggered"
 APPROVAL_GATE_RESUME_DISPATCHED: Final[str] = "approval_gate.resume.dispatched"

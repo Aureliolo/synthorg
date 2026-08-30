@@ -21,7 +21,7 @@ from synthorg.core.plan_tree import PlanTree
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.initiative.completion import ReplanDisposition, StallReason
-from synthorg.engine.initiative.slice_state import SliceDisposition
+from synthorg.engine.initiative.extension_state import ExtensionDisposition
 
 
 @runtime_checkable
@@ -146,7 +146,7 @@ class ReplanTriggerPort(Protocol):
         """Await outstanding replans at shutdown, bounded by *timeout_sec*."""
         ...
 
-    async def consider_slice(
+    async def consider_extension(
         self,
         *,
         plan: Plan,
@@ -154,8 +154,8 @@ class ReplanTriggerPort(Protocol):
         workstream: PlanItem,
         leaf: PlanItem,
         drive: PlanDriver | None,
-    ) -> SliceDisposition:
-        """Graft another slice onto *leaf* if the org may still do so unasked.
+    ) -> ExtensionDisposition:
+        """Graft another extension onto *leaf* if the org may still do so unasked.
 
         The wave-completion counterpart to ``consider``: asked when a
         workstream's known tree is entirely done but *leaf* is still
@@ -168,20 +168,23 @@ class ReplanTriggerPort(Protocol):
         """
         ...
 
-    async def grant_slice(
+    async def grant_extension(
         self,
         *,
         plan: Plan,
+        workstream: PlanItem,
         leaf: PlanItem,
         drive: PlanDriver | None,
         requested_by: str,
     ) -> bool:
-        """Graft *leaf*'s slice once on a person's authority, gates aside.
+        """Graft *leaf*'s extension once on a person's authority, gates aside.
 
-        The other door on the same owner ``consider_slice`` is: neither the
-        master switch, the generation cap, nor the deterministic autonomy
+        The other door on the same owner ``consider_extension`` is: neither
+        the master switch, the generation cap, nor the deterministic autonomy
         gate applies, on the same reasoning ``grant`` overrides ``consider``'s
-        guards for a stall.
+        guards for a stall. *workstream* is needed as well as *leaf* because
+        the in-flight guard is keyed per workstream (see
+        ``extension_graft._in_flight_key``), not per leaf.
 
         Returns:
             Whether the detached graft started.

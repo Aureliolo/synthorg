@@ -641,18 +641,24 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
-        key="jit_slice_planning_enabled",
+        key="jit_extension_planning_enabled",
         type=SettingType.BOOLEAN,
         default="false",
         description=(
             "Once a workstream's currently-known tree is entirely done, check"
             " whether any of its leaves was dispatched despite the atomicity"
             " policy finding it still oversized (a depth or session backstop"
-            " stopped its split), and if so plan and graft another slice for"
-            " it rather than letting the plan advance as if that leaf's whole"
+            " stopped its split), and if so plan and graft another extension"
+            " for it rather than letting the plan advance as if that leaf's whole"
             " claimed scope was delivered. Off by default: unvalidated by any"
             " live round, unlike recursion itself. Read live per rollup"
             " recompute, so an operator's change applies without a restart."
+            " Deliberately the only one of the mechanism's three switches"
+            " defaulting off: ``engine.auto_extension_enabled`` defaults on,"
+            " on the same shape ``auto_replan_enabled`` already ships, so"
+            " flipping this master switch is the one conscious decision that"
+            " arms unattended grafting, not a second gate an operator must"
+            " also remember to flip."
         ),
         group="General",
         level=SettingLevel.ADVANCED,

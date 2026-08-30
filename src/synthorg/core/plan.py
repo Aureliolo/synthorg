@@ -87,7 +87,12 @@ class PlanItem(BaseModel):
         stakes: Stakes level for capability-based agent selection.
         unsplit_reason: Why this item is still larger than one agent's work,
             when a decomposition backstop stopped the split. ``None`` is the
-            ordinary state and means the size signal was satisfied.
+            ordinary state and means the size signal was satisfied. Never
+            cleared once written, including once the item is grafted
+            children to cover the gap it named: a workstream's extension
+            count is derived by counting descendants that are both a
+            container and still carrying this field, so clearing it on graft
+            would erase the very history the count depends on.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -156,7 +161,10 @@ class PlanItem(BaseModel):
         description="Why this item reached the plan still larger than one "
         "agent's work, when a decomposition backstop stopped the split. "
         "Written by the projection and never by an operator edit: a revised "
-        "item is not the one the note was about",
+        "item is not the one the note was about. Never cleared once "
+        "written, even once the item is grafted children: a workstream's "
+        "extension count is derived by counting container descendants "
+        "still carrying this field",
     )
 
     @model_validator(mode="after")

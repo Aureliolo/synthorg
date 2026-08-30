@@ -22,6 +22,8 @@ even after its feature is toggled off:
 parked-context flow in ``_approval_review_gate`` imports it from here.
 """
 
+from typing import Final
+
 from synthorg._core.features import require_service
 from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
@@ -29,6 +31,7 @@ from synthorg.core.actor_context import resolve_decided_by
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.domain_errors import ServiceUnavailableError
+from synthorg.core.resilience.general_retry import GeneralRetryHandler
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.state import agent_registry_of
 from synthorg.meta.chief_of_staff.group_models import ConversationInvite
@@ -39,6 +42,7 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.approval_gate import (
+    APPROVAL_GATE_REREAD_RETRIED,
     APPROVAL_GATE_RESUME_FAILED,
 )
 from synthorg.observability.events.chief_of_staff import (
@@ -51,6 +55,22 @@ from synthorg.observability.events.chief_of_staff import (
 logger = get_logger(__name__)
 
 
+#: A read microseconds after the caller's own write failing is transient by
+#: construction, so every exception is retried; a genuinely nonexistent item
+#: still reads back ``None`` from the store itself, unaffected by this.
+_REREAD_MAX_ATTEMPTS: Final[int] = 3
+_REREAD_BACKOFF_BASE_SECONDS: Final[float] = 0.0
+_REREAD_BACKOFF_CAP_SECONDS: Final[float] = 0.0
+
+_reread_retry = GeneralRetryHandler(
+    retryable=lambda _exc: True,
+    max_attempts=_REREAD_MAX_ATTEMPTS,
+    base=_REREAD_BACKOFF_BASE_SECONDS,
+    cap=_REREAD_BACKOFF_CAP_SECONDS,
+    event=APPROVAL_GATE_REREAD_RETRIED,
+)
+
+
 async def _reread_approval_item(
     app_state: AppState,
     approval_id: str,
@@ -58,10 +78,16 @@ async def _reread_approval_item(
     """Re-read the just-decided approval, degrading to ``None`` on error.
 
     The decision is already persisted by the caller; a failed reread
-    must not 500 the request. ``None`` routes the caller through the
-    flow chain so each flow can apply its own ownership probe
-    (Flow 0: yields to later flows; Flow 1: parked-context gate
-    probe; Flow 2: review-gate is a no-op without ``task_id``).
+    must not 500 the request. A transient store flake is retried, with no
+    sleep budget, before giving up: several ownership-probing flows down the
+    chain (Flow 0: yields to later flows; Flow 1: parked-context gate probe)
+    read a ``None`` here as "not mine", which would otherwise misroute an
+    approval whose ``task_id`` happens to be set for routing reasons
+    unrelated to a plain completion review (an initiative stall or
+    workstream-extension ask both carry the objective task's id) into Flow
+    2's review-gate transition. Past the retry budget, that residual gap
+    remains: a genuine store outage still degrades to ``None`` and can
+    still be misrouted.
 
     Returns:
         The ``ApprovalItem`` value when present, ``None`` otherwise.
@@ -70,7 +96,9 @@ async def _reread_approval_item(
         store = require_service(
             app_state.slice(ApprovalStateSlice).store, "Approval Store"
         )
-        return await store.get(approval_id)
+        return await _reread_retry.execute(
+            lambda: store.get(approval_id), approval_id=approval_id
+        )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         reraise_critical(exc)
         logger.warning(

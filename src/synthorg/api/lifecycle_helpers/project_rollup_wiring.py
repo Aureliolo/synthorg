@@ -187,26 +187,26 @@ async def attach_stall_escalation(app_state: AppState) -> None:
     _log_attached("initiative_stall_escalation")
 
 
-async def attach_slice_escalation(app_state: AppState) -> None:
+async def attach_extension_escalation(app_state: AppState) -> None:
     """Attach the extend-workstream escalation onto the wired rollup.
 
-    The activation the ``initiative_slice_escalation`` subsystem declares.
-    Its own dependency is the approval store, on the same reasoning
-    :func:`attach_stall_escalation` needs it: without one, an ``ASKED``
-    deterministic gate has nothing to park against, so the rollup does not
-    hold the plan for it (see :func:`~synthorg.engine.initiative.
-    rollup_stages.drive_slices`'s escalation-absent branch).
+    The activation the ``initiative_extension_escalation`` subsystem
+    declares. Its own dependency is the approval store, on the same
+    reasoning :func:`attach_stall_escalation` needs it: without one, an
+    ``ASKED`` deterministic gate has nothing to park against, so the rollup
+    does not hold the plan for it (see :func:`~synthorg.engine.initiative.
+    rollup_stages.drive_extensions`'s escalation-absent branch).
 
     Raises:
         SubsystemDeclinedError: No approval store, so nothing can ask.
     """
     from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
-    from synthorg.engine.initiative.slice_escalation import (  # noqa: PLC0415
-        SliceEscalationService,
+    from synthorg.engine.initiative.extension_escalation import (  # noqa: PLC0415
+        ExtensionEscalationService,
     )
     from synthorg.notifications.state import NotificationsStateSlice  # noqa: PLC0415
 
-    resolved = _tail_target(app_state, ProjectRollupService.has_slice_escalation)
+    resolved = _tail_target(app_state, ProjectRollupService.has_extension_escalation)
     if resolved is None:
         return
     _, rollup = resolved
@@ -215,13 +215,13 @@ async def attach_slice_escalation(app_state: AppState) -> None:
         msg = "no approval store; the escalation exists to ask a human"
         raise SubsystemDeclinedError(msg)
     rollup.attach_tail(
-        slice_escalation=SliceEscalationService(
+        extension_escalation=ExtensionEscalationService(
             approvals=store,
             notifications=lambda: app_state.slice(NotificationsStateSlice).dispatcher,
             clock=app_state.clock,
         )
     )
-    _log_attached("initiative_slice_escalation")
+    _log_attached("initiative_extension_escalation")
 
 
 async def attach_skeleton_stage(app_state: AppState) -> None:

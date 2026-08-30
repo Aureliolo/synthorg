@@ -47,6 +47,7 @@ from synthorg.engine.initiative.completion import (
     derive_project_status,
     stall_reason,
 )
+from synthorg.engine.initiative.extension_escalation import ExtensionEscalationService
 from synthorg.engine.initiative.item_progress import collect_item_progress
 from synthorg.engine.initiative.ports import (
     EvaluationPort,
@@ -66,9 +67,8 @@ from synthorg.engine.initiative.rollup_stages import (
     drive_evaluation,
     drive_integration,
     drive_skeleton,
-    slicing_holds,
+    extensions_hold,
 )
-from synthorg.engine.initiative.slice_escalation import SliceEscalationService
 from synthorg.engine.initiative.stall_escalation import StallEscalationService
 from synthorg.engine.initiative.stall_route import escalate_stall, route_stall
 from synthorg.engine.task_engine import TaskEngine
@@ -109,7 +109,7 @@ class ProjectRollupService:
             one whose pieces were never assembled has not delivered. Each
             arrives in a later boot phase, so a rollup built before them has
             none and fills them through :meth:`attach_tail`.
-        config_resolver: Live settings source for the just-in-time slice
+        config_resolver: Live settings source for the just-in-time extension
             master switch, re-read per recompute. ``None`` leaves it off,
             which is also its shipped default.
 
@@ -124,6 +124,7 @@ class ProjectRollupService:
         "_clock",
         "_config_resolver",
         "_evaluation",
+        "_extension_escalation",
         "_integration",
         "_locks",
         "_persistence",
@@ -132,7 +133,6 @@ class ProjectRollupService:
         "_replan_trigger",
         "_ship_retro_capture",
         "_skeleton",
-        "_slice_escalation",
         "_stall_escalation",
         "_task_engine",
     )
@@ -163,7 +163,7 @@ class ProjectRollupService:
         # Attached only through ``attach_tail``: it needs the approval store,
         # which the boot phase that builds this service has not reached.
         self._stall_escalation: StallEscalationService | None = None
-        self._slice_escalation: SliceEscalationService | None = None
+        self._extension_escalation: ExtensionEscalationService | None = None
         # Likewise: driving a plan needs the coordinator and the agent roster.
         self._plan_driver: PlanDriver | None = None
         # The observer dispatch is sequential, so events alone cannot overlap
@@ -181,7 +181,7 @@ class ProjectRollupService:
         evaluation: EvaluationPort | None = None,
         ship_retro_capture: RetroCapturePort | None = None,
         stall_escalation: StallEscalationService | None = None,
-        slice_escalation: SliceEscalationService | None = None,
+        extension_escalation: ExtensionEscalationService | None = None,
         plan_driver: PlanDriver | None = None,
     ) -> None:
         """Fill in stage collaborators that a later boot phase resolved.
@@ -216,8 +216,8 @@ class ProjectRollupService:
             self._ship_retro_capture = ship_retro_capture
         if self._stall_escalation is None:
             self._stall_escalation = stall_escalation
-        if self._slice_escalation is None:
-            self._slice_escalation = slice_escalation
+        if self._extension_escalation is None:
+            self._extension_escalation = extension_escalation
 
     async def detach_retro_capture(self, *, timeout_sec: float) -> None:
         """Drain and drop the retrospective capture, so a pass can rebuild it.
@@ -304,13 +304,13 @@ class ProjectRollupService:
         """
         return self._stall_escalation is not None
 
-    def has_slice_escalation(self) -> bool:
+    def has_extension_escalation(self) -> bool:
         """Whether the extend-workstream escalation is attached.
 
         Returns:
             ``True`` once the escalation collaborator is present.
         """
-        return self._slice_escalation is not None
+        return self._extension_escalation is not None
 
     def has_retro_capture(self) -> bool:
         """Whether the SHIP-time retrospective capture is attached.
@@ -466,15 +466,15 @@ class ProjectRollupService:
             items = await collect_item_progress(self._persistence, plan)
             item_count = len(items)
             if plan.status not in TERMINAL_STATUSES:
-                # A workstream mid-slice holds the plan here rather than let
-                # derive_plan_status open INTEGRATING under it.
-                held = plan.status is PlanStatus.EXECUTING and await slicing_holds(
+                # A workstream mid-extension holds the plan here rather than
+                # let derive_plan_status open INTEGRATING under it.
+                held = plan.status is PlanStatus.EXECUTING and await extensions_hold(
                     plan,
                     items,
                     config_resolver=self._config_resolver,
                     replan_trigger=self._replan_trigger,
                     drive=self._plan_driver,
-                    slice_escalation=self._slice_escalation,
+                    extension_escalation=self._extension_escalation,
                 )
                 if not held:
                     derived = derive_plan_status(items, current=plan.status)

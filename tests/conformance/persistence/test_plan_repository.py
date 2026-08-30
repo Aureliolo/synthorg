@@ -700,11 +700,11 @@ class TestPlanRepository:
     async def test_appending_items_under_a_version_guard_round_trips(
         self, backend: PersistenceBackend
     ) -> None:
-        """A slice graft's own write shape: append, bump the version, re-read.
+        """An extension graft's own write shape: append, bump version, re-read.
 
         ``Plan.items`` is a JSON column, so appending never touches DDL; this
         confirms both backends agree on what a version-guarded append actually
-        persists, matching the shape ``slice_graft._append_slice`` writes.
+        persists, matching the shape ``extension_graft._append_extension`` writes.
         """
         original = _plan(plan_id="p-graft")  # version 1
         await backend.plans.create(original)

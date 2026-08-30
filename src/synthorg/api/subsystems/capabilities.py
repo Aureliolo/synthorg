@@ -362,8 +362,10 @@ CAPABILITIES: tuple[Capability, ...] = (
         present=lambda s: _tail_attached(s, ProjectRollupService.has_stall_escalation),
     ),
     Capability(
-        id=CapabilityId.INITIATIVE_SLICE_ESCALATION,
-        present=lambda s: _tail_attached(s, ProjectRollupService.has_slice_escalation),
+        id=CapabilityId.INITIATIVE_EXTENSION_ESCALATION,
+        present=lambda s: _tail_attached(
+            s, ProjectRollupService.has_extension_escalation
+        ),
     ),
     Capability(
         id=CapabilityId.INITIATIVE_RETRO_CAPTURE,

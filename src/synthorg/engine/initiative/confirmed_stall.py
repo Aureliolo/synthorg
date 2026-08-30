@@ -1,11 +1,9 @@
 # module-kind: code
 """A stall the replan trigger has re-confirmed against persistence.
 
-Split out from :mod:`synthorg.engine.initiative.replan_trigger` for the same
-reason :mod:`synthorg.engine.initiative.slice_state` was split out of the
-trigger's other half: a self-contained type with no dependency on the
-service's own collaborators, kept apart to leave room in that file's own
-module-size budget.
+Split out from :mod:`synthorg.engine.initiative.replan_trigger`: a
+self-contained type with no dependency on the service's own collaborators,
+kept apart to leave room in that file's own module-size budget.
 """
 
 from typing import Self
@@ -43,7 +41,7 @@ class ConfirmedStall(BaseModel):
     plan: Plan = Field(description="The freshly read, still-stalled plan")
     reason: StallReason = Field(description="Live stall shape")
     items: tuple[ItemProgress, ...] = Field(description="Live item progress")
-    detail: str | None = Field(
+    detail: NotBlankStr | None = Field(
         default=None,
         description="What the scheduling stage observed",
     )

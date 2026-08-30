@@ -14079,7 +14079,7 @@ export type components = {
             readonly stakes: components["schemas"]["Stakes"];
             /** @description Short item title */
             readonly title: string;
-            /** @description Why this item reached the plan still larger than one agent's work, when a decomposition backstop stopped the split. Written by the projection and never by an operator edit: a revised item is not the one the note was about */
+            /** @description Why this item reached the plan still larger than one agent's work, when a decomposition backstop stopped the split. Written by the projection and never by an operator edit: a revised item is not the one the note was about. Never cleared once written, even once the item is grafted children: a workstream's extension count is derived by counting container descendants still carrying this field */
             readonly unsplit_reason: string | null;
         };
         /** PlanItemComment */
@@ -14228,7 +14228,7 @@ export type components = {
             readonly stakes: components["schemas"]["Stakes"];
             /** @description Short item title */
             readonly title: string;
-            /** @description Why this item reached the plan still larger than one agent's work, when a decomposition backstop stopped the split. Written by the projection and never by an operator edit: a revised item is not the one the note was about */
+            /** @description Why this item reached the plan still larger than one agent's work, when a decomposition backstop stopped the split. Written by the projection and never by an operator edit: a revised item is not the one the note was about. Never cleared once written, even once the item is grafted children: a workstream's extension count is derived by counting container descendants still carrying this field */
             readonly unsplit_reason: string | null;
         };
         /** PlanOption */

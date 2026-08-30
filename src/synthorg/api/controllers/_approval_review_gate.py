@@ -11,8 +11,8 @@ Exposes:
 - :func:`signal_resume_intent` -- orchestrates both flows.
 """
 
-from synthorg.api.controllers._approval_initiative_slice import (
-    try_initiative_slice_resume,
+from synthorg.api.controllers._approval_initiative_extension import (
+    try_initiative_extension_resume,
 )
 from synthorg.api.controllers._approval_initiative_stall import (
     try_initiative_stall_resume,
@@ -375,7 +375,7 @@ async def signal_resume_intent(
        dispatch the parked plan on approval, or cancel the parent task.
     0.75. **Stalled initiative** (:func:`try_initiative_stall_resume`):
        replan it on the operator's authority, or fail it with the stall reason.
-    0.76. **Slice ask** (:func:`try_initiative_slice_resume`):
+    0.76. **Extension ask** (:func:`try_initiative_extension_resume`):
        extend the workstream, or leave it as delivered.
     0.8. **Project decision** (:func:`record_project_decision`):
        record a project-shaping decision, then fall through.
@@ -451,9 +451,9 @@ async def signal_resume_intent(
     ):
         return
 
-    # Flow 0.76: a slice ask parked on the autonomy gate. Same claim reason
-    # as flow 0.75.
-    if await try_initiative_slice_resume(
+    # Flow 0.76: an extension ask parked on the autonomy gate. Same claim
+    # reason as flow 0.75.
+    if await try_initiative_extension_resume(
         app_state,
         approval_id,
         approved=approved,

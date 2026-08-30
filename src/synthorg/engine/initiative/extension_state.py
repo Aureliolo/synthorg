@@ -1,9 +1,10 @@
 # module-kind: code
-"""Pure derivation of whether a workstream needs another slice.
+"""Pure derivation of whether a workstream needs another extension.
 
-Split out from :mod:`synthorg.engine.initiative.completion` for the same
-reason :mod:`synthorg.engine.initiative.rollup_stages` was split out of the
-rollup: kept apart so both modules stay within their module-size tier.
+Kept apart from :mod:`synthorg.engine.initiative.completion` and
+:mod:`synthorg.engine.initiative.rollup_stages` for the same reason the
+latter is its own module: a focused, pure-derivation unit stays within its
+module-size tier on its own.
 
 The question this answers is deliberately narrower than "is the workstream's
 objective met": it asks whether the workstream's currently-known tree is
@@ -23,25 +24,26 @@ from synthorg.core.plan_tree import PlanTree
 from synthorg.engine.initiative.completion import ItemProgress, item_is_done
 
 
-class SliceDisposition(StrEnum):
-    """What the slice trigger did with a workstream it was asked to consider.
+class ExtensionDisposition(StrEnum):
+    """What the extension trigger did with a workstream it was asked to consider.
 
     Mirrors :class:`~synthorg.engine.initiative.completion.ReplanDisposition`
     on the same shape: "may a workstream that finished its planned tree
-    without covering its objective be handed another slice unasked" is the
-    trigger's decision, so a caller reading its mere presence as "a slice
-    will be planned" is a second authority that cannot see either refusal.
+    without covering its objective be handed another extension unasked" is
+    the trigger's decision, so a caller reading its mere presence as "an
+    extension will be planned" is a second authority that cannot see either
+    refusal.
 
     ``GRAFTED``: a detached graft started. ``ALREADY_RUNNING``: one is in
     flight for this workstream, so this ask collapses into it.
     ``UNAVAILABLE``: the trigger could not start work at this moment.
 
     ``ASKED``: a deterministic gate applies, so one decision was parked and
-    nothing was grafted; only a human answering it can graft the next slice
-    for this workstream, and refusing it ends the workstream with its scope
-    unmet. ``DISABLED`` and ``BUDGET_EXHAUSTED`` mean no automatic route
-    remains for this workstream, on the same two guards ``ReplanDisposition``
-    carries.
+    nothing was grafted; only a human answering it can graft the next
+    extension for this workstream, and refusing it ends the workstream with
+    its scope unmet. ``DISABLED`` and ``BUDGET_EXHAUSTED`` mean no automatic
+    route remains for this workstream, on the same two guards
+    ``ReplanDisposition`` carries.
     """
 
     GRAFTED = "grafted"
@@ -54,25 +56,37 @@ class SliceDisposition(StrEnum):
 
 #: Dispositions where something is happening or will happen without anyone
 #: being asked, mirroring ``REPLAN_IN_PROGRESS_DISPOSITIONS``.
-SLICE_IN_PROGRESS_DISPOSITIONS: Final[frozenset[SliceDisposition]] = frozenset(
+EXTENSION_IN_PROGRESS_DISPOSITIONS: Final[frozenset[ExtensionDisposition]] = frozenset(
     {
-        SliceDisposition.GRAFTED,
-        SliceDisposition.ALREADY_RUNNING,
-        SliceDisposition.UNAVAILABLE,
+        ExtensionDisposition.GRAFTED,
+        ExtensionDisposition.ALREADY_RUNNING,
+        ExtensionDisposition.UNAVAILABLE,
     }
 )
 
+#: Dispositions where no automatic route remains for this leaf: the switch is
+#: off, or the generation cap is spent. Kept apart from
+#: ``EXTENSION_IN_PROGRESS_DISPOSITIONS`` so the two constants, plus
+#: ``ASKED``, partition every member ``consider_extension`` can answer; a
+#: caller checking membership in both before treating a disposition as
+#: refused catches a future member landing in neither, rather than silently
+#: falling through as refused.
+EXTENSION_REFUSED_DISPOSITIONS: Final[frozenset[ExtensionDisposition]] = frozenset(
+    {ExtensionDisposition.DISABLED, ExtensionDisposition.BUDGET_EXHAUSTED}
+)
 
-def leaf_needs_slice(item: PlanItem, progress: ItemProgress) -> bool:
+
+def leaf_needs_extension(item: PlanItem, progress: ItemProgress) -> bool:
     """Whether *item* is a completed leaf whose claimed scope may be incomplete.
 
     ``unsplit_reason`` is written by the decomposition projection only when
-    ``SubtaskAtomicityPolicy.assess`` found the unit still oversized (claiming
-    more than one of the plan's objective criteria) and a backstop (depth,
-    session, or turn budget) stopped it being split further. Such a unit was
-    still dispatched as one leaf, so its completion does not mean one agent's
-    turn actually covered everything it claimed; the field exists to record
-    that gap for exactly this question.
+    ``SubtaskAtomicityPolicy.assess`` found the unit still oversized, whether
+    by declaring too many expected artifacts or acceptance criteria, or by
+    claiming more of the plan's objective criteria than one unit should, and
+    a backstop (depth, session, or turn budget) stopped it being split
+    further. Such a unit was still dispatched as one leaf, so its completion
+    does not mean one agent's turn actually covered everything it claimed;
+    the field exists to record that gap for exactly this question.
 
     Returns:
         ``True`` when the item completed but was never atomic.
@@ -80,13 +94,13 @@ def leaf_needs_slice(item: PlanItem, progress: ItemProgress) -> bool:
     return item.unsplit_reason is not None and item_is_done(progress)
 
 
-def workstream_needs_slice(
+def workstream_needs_extension(
     plan_items: tuple[PlanItem, ...],
     tree: PlanTree,
     workstream: PlanItem,
     progress_by_id: Mapping[str, ItemProgress],
 ) -> tuple[PlanItem, ...]:
-    """Which of *workstream*'s completed leaves still need another slice.
+    """Which of *workstream*'s completed leaves still need another extension.
 
     Only asked once the whole subtree is done: a workstream carrying a live
     item is still moving, and one carrying a dead item is a stall, and
@@ -117,24 +131,26 @@ def workstream_needs_slice(
         item
         for item in subtree_items
         if not tree.is_container(item.id)
-        and leaf_needs_slice(item, progress_by_id[item.id])
+        and leaf_needs_extension(item, progress_by_id[item.id])
     )
 
 
-def workstream_slice_generation(
+def workstream_extension_generation(
     plan_items: tuple[PlanItem, ...], tree: PlanTree, workstream: PlanItem
 ) -> int:
-    """How many slices *workstream* has already received.
+    """How many extensions *workstream* has already received.
 
-    Derived rather than stored: grafting a slice under a leaf gives it
-    children, so a formerly-oversized leaf that is now a container is exactly
-    one slice having landed. Counting the workstream's descendants that are
-    both a container AND still carry ``unsplit_reason`` (the field is never
-    cleared once written) is therefore the generation, with nothing new to
-    persist.
+    Derived rather than stored: grafting an extension under a leaf gives it
+    children, so a formerly-oversized leaf that is now a container is
+    exactly one extension having landed. Counting the workstream's
+    descendants that are both a container AND still carry ``unsplit_reason``
+    (the field is never cleared once written) is therefore the generation,
+    with nothing new to persist. The graft's own trailing assembly child
+    (see :mod:`synthorg.engine.initiative.extension_graft`) never carries
+    ``unsplit_reason``, so it cannot inflate this count.
 
     Returns:
-        How many of the workstream's descendants have been sliced.
+        How many of the workstream's descendants have been extended.
     """
     subtree = tree.subtree_ids(workstream.id)
     return sum(
@@ -147,9 +163,10 @@ def workstream_slice_generation(
 
 
 __all__ = [
-    "SLICE_IN_PROGRESS_DISPOSITIONS",
-    "SliceDisposition",
-    "leaf_needs_slice",
-    "workstream_needs_slice",
-    "workstream_slice_generation",
+    "EXTENSION_IN_PROGRESS_DISPOSITIONS",
+    "EXTENSION_REFUSED_DISPOSITIONS",
+    "ExtensionDisposition",
+    "leaf_needs_extension",
+    "workstream_extension_generation",
+    "workstream_needs_extension",
 ]

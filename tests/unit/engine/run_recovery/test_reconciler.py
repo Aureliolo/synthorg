@@ -682,14 +682,14 @@ class TestReconcile:
         assert report.resumed == 1
 
 
-class TestSliceGraftRestartRecovery:
-    """A crash between grafting a slice and dispatching it needs no new code.
+class TestExtensionGraftRestartRecovery:
+    """A crash between grafting an extension and dispatching it needs no new code.
 
     The graft writes the new ``PlanItem``s and files their ``Task`` rows
-    before ever calling the driver (see ``slice_graft.graft_slice``), so a
-    process killed in that window leaves ordinary CREATED task rows under a
-    plan still reading EXECUTING: exactly the shape every other dispatched
-    plan already resumes through.
+    before ever calling the driver (see ``extension_graft.graft_extension``),
+    so a process killed in that window leaves ordinary CREATED task rows
+    under a plan still reading EXECUTING: exactly the shape every other
+    dispatched plan already resumes through.
     """
 
     async def test_a_grafted_but_undispatched_leaf_is_resumed(self) -> None:

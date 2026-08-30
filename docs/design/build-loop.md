@@ -14,9 +14,19 @@ also describes, this page wins.
     Partly built. The charter gate, worktree isolation, the review gate, the
     reviewer-independence constraints and the skeleton stage exist today (see
     "As implemented" below for what the stage does and does not cover).
-    Reconnaissance, slice planning, the rest of the gate system, the finding
-    channel and the machinery budget do not. Driven live against real
-    providers, the loop before the skeleton stage never reached assembly.
+    Reconnaissance, the slice planning stage described below, the rest of the
+    gate system, the finding channel and the machinery budget do not. Driven
+    live against real providers, the loop before the skeleton stage never
+    reached assembly.
+
+    A narrower, unrelated mechanism ships separately: a workstream whose
+    already-approved tree finishes with a leaf still short of its declared
+    scope (`PlanItem.unsplit_reason`) can have more scope grafted onto that
+    leaf post hoc, gated by the deterministic autonomy ladder. It reuses no
+    part of this stage's design (no trunk merge, no gate profile, no finding
+    channel) and answers a different question ("did the tree we already built
+    actually deliver its objective", not "what should the next slice cover
+    before it is built"). See [Workstream Extension](workstream-extension.md).
 
 ## The problem
 
