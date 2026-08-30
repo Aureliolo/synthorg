@@ -9,6 +9,7 @@ timed-out exec's own process group instead of stopping the container.
 
 from collections.abc import Callable
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -87,6 +88,18 @@ def _pinned_responder(
         return ExecResponse(stdout=b"")
 
     return _respond
+
+
+def _issued_scripts(container_obj: MagicMock) -> list[str]:
+    """The joined ``cmd`` argv text of every exec this container recorded.
+
+    Returns:
+        One joined string per ``container.exec()`` call, in call order.
+    """
+    return [
+        " ".join(str(part) for part in call.kwargs.get("cmd", ()))
+        for call in container_obj.exec.call_args_list
+    ]
 
 
 class TestUnpinnedPath:
@@ -175,11 +188,9 @@ class TestPinnedPath:
         container_obj.stop.assert_not_awaited()
         container_obj.delete.assert_not_awaited()
 
-        issued_scripts = [
-            " ".join(str(part) for part in call.kwargs.get("cmd", ()))
-            for call in container_obj.exec.call_args_list
-        ]
-        assert any("kill -TERM -555" in script for script in issued_scripts)
+        assert any(
+            "kill -TERM -555" in script for script in _issued_scripts(container_obj)
+        )
 
         sibling = await registry.get("sibling-job")
         assert sibling is not None
@@ -208,12 +219,9 @@ class TestPinnedPath:
             )
 
         assert result.timed_out
-        issued_scripts = [
-            " ".join(str(part) for part in call.kwargs.get("cmd", ()))
-            for call in container_obj.exec.call_args_list
-        ]
         assert any(
-            script.startswith("bash") and "cat " in script for script in issued_scripts
+            script.startswith("bash") and "cat " in script
+            for script in _issued_scripts(container_obj)
         ), "pid-read control exec was never issued"
         container_obj.stop.assert_awaited_once()
 

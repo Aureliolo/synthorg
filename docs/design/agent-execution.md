@@ -171,8 +171,8 @@ through `_make_default_loop()`, which passes every in-flight control the engine
 holds (approval gate, stagnation detector, compaction callback, steering inbox,
 step classifier, background job watcher) by name, so a control the engine was
 given that the loop never received is a type error rather than a silently
-ungoverned run. An
-`execution_loop=` may still be injected, which tests use to drive a double.
+ungoverned run. An `execution_loop=` may still be injected, which tests use to
+drive a double.
 
 The engine also exposes an optional ``coordinate()`` method that delegates to a
 ``MultiAgentCoordinator`` when one is configured (see [Coordination](coordination.md)).
