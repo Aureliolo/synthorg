@@ -75,6 +75,9 @@ from synthorg.tools.sandbox.docker_sandbox_exec import DockerSandboxExecMixin
 from synthorg.tools.sandbox.docker_sandbox_lifecycle import (
     DockerSandboxLifecycleMixin,
 )
+from synthorg.tools.sandbox.docker_sandbox_pinned_exec import (
+    DockerSandboxPinnedExecMixin,
+)
 from synthorg.tools.sandbox.docker_sandbox_sidecar import DockerSandboxSidecarMixin
 from synthorg.tools.sandbox.errors import (
     SandboxError,
@@ -151,6 +154,7 @@ def _to_posix_bind_path(path: Path) -> str:
 class DockerSandbox(
     DockerSandboxBackgroundMixin,
     DockerSandboxExecMixin,
+    DockerSandboxPinnedExecMixin,
     DockerSandboxSidecarMixin,
     DockerSandboxLifecycleMixin,
 ):
