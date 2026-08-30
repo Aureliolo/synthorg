@@ -246,6 +246,16 @@ class DockerSandbox(
             resolved_ceilings.background_max_concurrent_jobs
         )
         self._background_output_byte_cap = resolved_ceilings.background_output_byte_cap
+        # One lock per resolved owner key, created on first use and kept for
+        # the process lifetime (mirrors `_tracked_containers`'s own
+        # unbounded-but-bounded-by-roster-size growth): holds the per-owner
+        # job-count check and the record it gates atomic with each other, so
+        # two concurrent `start_background` calls for the SAME owner cannot
+        # both pass the cap check before either persists its row. The owner
+        # key is per-process by construction (one agent's tool calls run in
+        # one worker process at a time, like `LiveRunLedger`), so this needs
+        # no cross-process mechanism.
+        self._background_job_locks: dict[str, asyncio.Lock] = {}
         self._lock = asyncio.Lock()
         self._init_execution_leases(command_timeout=self._config.timeout_seconds)
         self._clock = clock or SystemClock()

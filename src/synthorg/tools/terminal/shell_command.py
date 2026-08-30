@@ -380,16 +380,26 @@ class ShellCommandTool(BaseTerminalTool):
                 self._config_resolver, fallback=_DEFAULT_BACKGROUND_MAX_DURATION_SECONDS
             )
         )
-        program, args = shell_invocation(command)
         try:
+            # Unlike `_execute_sandboxed`, the raw command text is passed
+            # straight through rather than run through `shell_invocation`:
+            # `start_background` hands `command` to `build_start_command`
+            # as a single shell line it wraps in its own `bash -c` layer
+            # (the wrapper script itself needs to embed a line, not an
+            # argv). Pre-wrapping it here would double-wrap: the wrapper
+            # would then embed `bash -o pipefail -c <command>` as ITS
+            # script text, and bash's `-c` semantics only ever run the
+            # first token after `-c`, silently discarding every argument
+            # after it -- corrupting any command with a space in it.
+            #
             # owner_id deliberately omitted: `None` derives the SAME
             # owner an unscoped foreground `execute()` call under this
             # category would use (see `start_background`'s own
             # docstring), so the job lands in the container this
             # agent's other terminal calls already use.
             job_id = await self._sandbox.start_background(
-                command=program,
-                args=args,
+                command=command,
+                args=(),
                 cwd=cwd,
                 category=self.category.value,
                 project_id=require_project_id(),

@@ -717,11 +717,13 @@ _r.register(
         type=SettingType.INTEGER,
         default="1000000",
         description=(
-            "Maximum bytes of a background job's output captured at write"
-            " time. Sized against the Docker sandbox's tmpfs (64MB by"
-            " default, shared by every exec in a container): the default"
-            " here keeps max_concurrent_jobs simultaneous jobs comfortably"
-            " under that ceiling."
+            "Maximum bytes of a background job's output returned when read"
+            " back (a job's own write volume is bounded instead by"
+            " max_concurrent_jobs and its own duration ceiling). Sized"
+            " against the Docker sandbox's tmpfs (64MB by default, shared"
+            " by every exec in a container): the default here keeps"
+            " max_concurrent_jobs simultaneous jobs comfortably under that"
+            " ceiling."
         ),
         group="Terminal",
         level=SettingLevel.ADVANCED,

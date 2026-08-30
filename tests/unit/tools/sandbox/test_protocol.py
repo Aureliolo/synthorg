@@ -67,15 +67,35 @@ class _FakeSandbox:
     ) -> NotBlankStr:
         return NotBlankStr("fake-job")
 
-    async def poll_background(self, job_id: NotBlankStr) -> BackgroundJobRecord:
+    async def poll_background(
+        self,
+        job_id: NotBlankStr,
+        *,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
+    ) -> BackgroundJobRecord:
         raise NotImplementedError
 
     async def read_background_output(
-        self, job_id: NotBlankStr, *, byte_cap: int
+        self,
+        job_id: NotBlankStr,
+        *,
+        byte_cap: int,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
     ) -> str:
         return ""
 
-    async def cancel_background(self, job_id: NotBlankStr) -> BackgroundJobRecord:
+    async def cancel_background(
+        self,
+        job_id: NotBlankStr,
+        *,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
+    ) -> BackgroundJobRecord:
         raise NotImplementedError
 
     async def list_background_jobs(

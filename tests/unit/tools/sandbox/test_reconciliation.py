@@ -422,6 +422,18 @@ class _StubBackgroundJobRepo:
     async def save(self, entity: BackgroundJobRecord) -> None:
         self._rows[entity.job_id] = entity
 
+    async def save_if_live(
+        self, entity: BackgroundJobRecord
+    ) -> bool:  # pragma: no cover
+        current = self._rows.get(entity.job_id)
+        if current is None or current.status not in {
+            BackgroundJobStatus.PENDING,
+            BackgroundJobStatus.RUNNING,
+        }:
+            return False
+        self._rows[entity.job_id] = entity
+        return True
+
     async def get(self, entity_id: str) -> BackgroundJobRecord | None:
         return self._rows.get(entity_id)  # pragma: no cover
 
@@ -435,9 +447,19 @@ class _StubBackgroundJobRepo:
         return tuple(items[offset : offset + limit])
 
     async def list_by_container(
-        self, container_id: str, *, limit: int = 100, offset: int = 0
+        self,
+        container_id: str,
+        *,
+        statuses: frozenset[BackgroundJobStatus] | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> tuple[BackgroundJobRecord, ...]:
-        matches = [r for r in self._rows.values() if r.container_id == container_id]
+        matches = [
+            r
+            for r in self._rows.values()
+            if r.container_id == container_id
+            and (statuses is None or r.status in statuses)
+        ]
         return tuple(matches[offset : offset + limit])
 
     async def count_live_by_owner(self, owner_id: str) -> int:  # pragma: no cover

@@ -6,8 +6,13 @@
 -- ``container_id`` and ``owner_id`` are both indexed because they answer
 -- two different questions the sandbox layer asks constantly: "does this
 -- container still have live jobs pinning it open" (grace/idle timer
--- recheck, keyed on container_id) and "how many live jobs does this
--- owner already have" (the per-owner job cap, keyed on owner_id+status).
+-- recheck, keyed on container_id+status) and "how many live jobs does
+-- this owner already have" (the per-owner job cap, keyed on
+-- owner_id+status). Both composite on ``status`` rather than plain on
+-- the id column: a container reused across a long-lived per-agent
+-- lifetime can accumulate rows well past one page, and a plain-id index
+-- still leaves the live-status filter to a row-by-row scan of every
+-- historical row instead of an index range seek.
 --
 -- ``status`` carries all seven values ``BackgroundJobStatus`` can write;
 -- the CHECK is the DB-side half of the vocabulary parity the SQLite twin
@@ -35,5 +40,5 @@ CREATE TABLE background_jobs (
     max_duration_seconds DOUBLE PRECISION NOT NULL CHECK (max_duration_seconds > 0)
 );
 
-CREATE INDEX idx_background_jobs_container ON background_jobs (container_id);
+CREATE INDEX idx_background_jobs_container_status ON background_jobs (container_id, status);
 CREATE INDEX idx_background_jobs_owner_status ON background_jobs (owner_id, status);

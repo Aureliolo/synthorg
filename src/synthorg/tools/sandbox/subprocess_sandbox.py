@@ -454,6 +454,10 @@ class SubprocessSandbox(_EnvFilterMixin):
     async def poll_background(
         self,
         job_id: NotBlankStr,  # noqa: ARG002
+        *,
+        category: str = "",  # noqa: ARG002
+        owner_id: NotBlankStr | None = None,  # noqa: ARG002
+        project_id: NotBlankStr | None = None,  # noqa: ARG002
     ) -> BackgroundJobRecord:
         """Refuse: no background job could ever have started here.
 
@@ -468,6 +472,9 @@ class SubprocessSandbox(_EnvFilterMixin):
         job_id: NotBlankStr,  # noqa: ARG002
         *,
         byte_cap: int,  # noqa: ARG002
+        category: str = "",  # noqa: ARG002
+        owner_id: NotBlankStr | None = None,  # noqa: ARG002
+        project_id: NotBlankStr | None = None,  # noqa: ARG002
     ) -> str:
         """Refuse: no background job could ever have started here.
 
@@ -483,6 +490,10 @@ class SubprocessSandbox(_EnvFilterMixin):
     async def cancel_background(
         self,
         job_id: NotBlankStr,  # noqa: ARG002
+        *,
+        category: str = "",  # noqa: ARG002
+        owner_id: NotBlankStr | None = None,  # noqa: ARG002
+        project_id: NotBlankStr | None = None,  # noqa: ARG002
     ) -> BackgroundJobRecord:
         """Refuse: no background job could ever have started here.
 

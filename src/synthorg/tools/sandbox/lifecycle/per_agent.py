@@ -19,6 +19,7 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_DESTROY_FAILED,
     SANDBOX_LIFECYCLE_GRACE_EXPIRED,
     SANDBOX_LIFECYCLE_IDLE_EXPIRED,
+    SANDBOX_LIFECYCLE_PIN_CHECK_FAILED,
     SANDBOX_LIFECYCLE_RELEASE,
     SANDBOX_LIFECYCLE_TEARDOWN_PINNED,
 )
@@ -126,9 +127,29 @@ class PerAgentStrategy:
                 handle = self._containers.get(owner_id)
             if handle is None:
                 return None
-            if self._pin_check is None or not await self._pin_check(
-                handle.container_id
-            ):
+            if self._pin_check is None:
+                return handle
+            try:
+                pinned = await self._pin_check(handle.container_id)
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                # A failed pin check treats the container as still pinned
+                # rather than raising out of this task (which would strand
+                # it in `self._containers` with no watchdog left) or
+                # destroying it on uncertain state (which could kill a
+                # container with a genuinely live job). Convergence still
+                # relies on `pin_check`'s own self-cleaning expiry, which
+                # is why `expire_overdue`'s own kill step is fail-soft too.
+                logger.warning(
+                    SANDBOX_LIFECYCLE_PIN_CHECK_FAILED,
+                    strategy="per-agent",
+                    owner_id=owner_id,
+                    container_id=handle.container_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                pinned = True
+            if not pinned:
                 return handle
             logger.debug(
                 SANDBOX_LIFECYCLE_TEARDOWN_PINNED,
@@ -332,10 +353,17 @@ class PerAgentStrategy:
                 normally while the wait is in progress.
                 """
                 await self._clock.sleep(self._grace_seconds)
-                handle = await self._await_unpinned(owner_id)
-                if handle is None:
+                pinned_handle = await self._await_unpinned(owner_id)
+                if pinned_handle is None:
                     return
                 async with self._lock:
+                    # Identity-checked against the handle `_await_unpinned`
+                    # actually waited out: a concurrent acquire/evict may
+                    # have replaced the cache entry while this task slept
+                    # or rechecked the pin, and popping unconditionally
+                    # would destroy a container somebody else is now using.
+                    if self._containers.get(owner_id) is not pinned_handle:
+                        return
                     handle = self._containers.pop(owner_id, None)
                     self._last_used.pop(owner_id, None)
                     self._timers.pop(owner_id, None)
@@ -386,18 +414,24 @@ class PerAgentStrategy:
             self._idle_timers.clear()
             self._destroy_fns.clear()
 
-            for task in all_tasks:
-                task.cancel()
-            if all_tasks:
-                await asyncio.gather(
-                    *all_tasks,
-                    return_exceptions=True,
-                )
-
             handles = list(self._containers.values())
             count = len(handles)
             self._containers.clear()
             self._last_used.clear()
+
+        # Cancel and await outside the lock: a cancelled grace/idle task can
+        # itself try to acquire `self._lock` (its own teardown branch does)
+        # before observing the cancellation, and holding the lock across
+        # `gather()` here would deadlock it against this same await, and
+        # would otherwise serialise every unrelated owner's acquire/release
+        # behind shutdown teardown for no reason.
+        for task in all_tasks:
+            task.cancel()
+        if all_tasks:
+            await asyncio.gather(
+                *all_tasks,
+                return_exceptions=True,
+            )
 
         for handle in handles:
             try:
@@ -459,11 +493,16 @@ class PerAgentStrategy:
                 await self._clock.sleep(remaining)
             # Idle timeout reached. A live background job holds this off
             # exactly as it holds off grace expiry, via the same wait.
-            handle = await self._await_unpinned(owner_id)
-            if handle is None:
+            pinned_handle = await self._await_unpinned(owner_id)
+            if pinned_handle is None:
                 return
-            # Destroy.
+            # Destroy. Identity-checked against the handle `_await_unpinned`
+            # actually waited out, for the same reason `_grace_expire` checks
+            # it: the cache entry may have been replaced while this task
+            # slept or rechecked the pin.
             async with self._lock:
+                if self._containers.get(owner_id) is not pinned_handle:
+                    return
                 handle = self._containers.pop(owner_id, None)
                 self._last_used.pop(owner_id, None)
                 self._idle_timers.pop(owner_id, None)

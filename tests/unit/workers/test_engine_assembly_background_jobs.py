@@ -1,6 +1,6 @@
 """Boot-wiring coverage for background-job registry threading.
 
-Guards the D6 dormancy class of defect (a collaborator built but never
+Guards the dormancy class of defect (a collaborator built but never
 actually reachable from a booted tool registry) plus the construction-order
 cycle ``_engine_assembly.py`` resolves between the lifecycle strategy and
 the Docker sandbox whose bound method becomes its ``pin_check``. Neither
@@ -89,7 +89,7 @@ def _boot_app_state(
 
 
 class TestBackgroundJobBootWiring:
-    """The registry/pin_check wiring D6 and the pin_check cycle require."""
+    """The registry/pin_check wiring the tools and the pin_check cycle require."""
 
     async def test_tools_present_and_reach_a_wired_sandbox(
         self, tmp_path: Path
@@ -106,7 +106,7 @@ class TestBackgroundJobBootWiring:
 
         docker_backend = sandbox_backends["docker"]
         assert isinstance(docker_backend, DockerSandbox)
-        # The half of D6 that matters: the tools resolve to THIS backend
+        # The half that matters: the tools resolve to THIS backend
         # (verified above) and this backend actually carries a registry --
         # not `None`, which is what every `*_background` method reads as
         # "feature off" and refuses against.
@@ -117,8 +117,7 @@ class TestBackgroundJobBootWiring:
         # The construction-order cycle: `create_lifecycle_strategy` builds
         # the strategy before `docker_backend` exists, so `pin_check` can
         # only be bound in a second step, after both exist. Unbound means
-        # every live job is invisible to grace/idle expiry -- the exact
-        # defect D1 exists to prevent.
+        # every live job is invisible to grace/idle expiry.
         assert strategy._pin_check is not None
 
     async def test_started_job_is_visible_through_list_background_jobs(

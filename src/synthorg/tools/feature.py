@@ -39,6 +39,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "reconcile_tracked_containers",
         "AiodockerReconcileClient",
         "ToolInvocationTracker",
+        "BackgroundJobRegistry",
     ),
     depends_on=(),
 )

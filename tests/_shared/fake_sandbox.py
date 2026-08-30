@@ -227,7 +227,14 @@ class FakeSandbox:
             raise self._background_error
         return self._background_job_id
 
-    async def poll_background(self, job_id: NotBlankStr) -> BackgroundJobRecord:
+    async def poll_background(
+        self,
+        job_id: NotBlankStr,
+        *,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
+    ) -> BackgroundJobRecord:
         """Return the canned tracking row.
 
         Returns:
@@ -236,23 +243,37 @@ class FakeSandbox:
         Raises:
             SandboxBackgroundJobNotFoundError: No record was configured.
         """
+        del category, owner_id, project_id
         if self._background_record is None:
             msg = f"No background job matches {job_id!r}"
             raise SandboxBackgroundJobNotFoundError(msg)
         return self._background_record
 
     async def read_background_output(
-        self, job_id: NotBlankStr, *, byte_cap: int
+        self,
+        job_id: NotBlankStr,
+        *,
+        byte_cap: int,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
     ) -> str:
         """Return the canned output, truncated to *byte_cap* bytes.
 
         Returns:
             The captured output this double was built with.
         """
-        del job_id
+        del job_id, category, owner_id, project_id
         return self._background_output[:byte_cap]
 
-    async def cancel_background(self, job_id: NotBlankStr) -> BackgroundJobRecord:
+    async def cancel_background(
+        self,
+        job_id: NotBlankStr,
+        *,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
+    ) -> BackgroundJobRecord:
         """Record the call and return the canned tracking row.
 
         Returns:
@@ -261,6 +282,7 @@ class FakeSandbox:
         Raises:
             SandboxBackgroundJobNotFoundError: No record was configured.
         """
+        del category, owner_id, project_id
         self.cancelled_job_ids.append(job_id)
         if self._background_record is None:
             msg = f"No background job matches {job_id!r}"

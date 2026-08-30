@@ -143,8 +143,22 @@ class SandboxBackend(Protocol):
         a terminal status.
 
         Args:
-            command: Executable name or path.
-            args: Command arguments.
+            command: The agent's own shell line, unmodified -- reaches
+                ``bash -c`` exactly as it would for a foreground
+                ``execute`` call. Unlike ``execute``, this is NOT a
+                program name to be combined with *args* as an argv
+                pair: the backend flattens ``(command, *args)`` into a
+                single shell line before wrapping it once in its own
+                ``bash -c``, so a caller that has already run *command*
+                through its own shell-wrapping (e.g.
+                ``shell_invocation``) would double-wrap it, and bash's
+                ``-c`` semantics silently discard everything past the
+                first token of a double-wrapped line. Pass the whole
+                line here with *args* empty unless every token is
+                genuinely free of shell metacharacters.
+            args: Additional tokens appended to *command* with a single
+                space before flattening; leave empty for anything but a
+                trivial single-token *command*.
             cwd: Working directory (defaults to sandbox workspace root).
             env_overrides: Extra environment variables for the sandbox.
             category: The calling tool's :class:`ToolCategory` value.
@@ -187,7 +201,14 @@ class SandboxBackend(Protocol):
         """
         ...
 
-    async def poll_background(self, job_id: NotBlankStr) -> BackgroundJobRecord:
+    async def poll_background(
+        self,
+        job_id: NotBlankStr,
+        *,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
+    ) -> BackgroundJobRecord:
         """Return the current tracking row for *job_id*.
 
         A still-running job is polled directly (via the container) so
@@ -195,49 +216,91 @@ class SandboxBackend(Protocol):
         check since the job finished; a terminal job returns the
         persisted row unchanged.
 
+        Scoped to the caller's own resolved owner key, the same way
+        ``list_background_jobs`` is: *job_id* alone is not sufficient
+        to identify a caller as its owner, since ids are not secrets
+        (they appear in tool results, logs, and shared tasks).
+
         Args:
             job_id: The job to check.
+            category: The calling tool's :class:`ToolCategory` value;
+                must match what ``start_background`` was called with.
+            owner_id: Lifecycle owner to check as, or ``None`` to
+                resolve the caller's own owner the same way
+                ``start_background`` did when it persisted the job.
+            project_id: Owning project; see ``execute``.
 
         Returns:
             The job's current tracking row.
 
         Raises:
-            SandboxBackgroundJobNotFoundError: No job matches *job_id*.
+            SandboxBackgroundJobNotFoundError: No job matches *job_id*
+                under the resolved owner key (covers both "no such
+                job" and "belongs to a different owner" identically,
+                so a caller cannot distinguish the two by probing).
         """
         ...
 
     async def read_background_output(
-        self, job_id: NotBlankStr, *, byte_cap: int
+        self,
+        job_id: NotBlankStr,
+        *,
+        byte_cap: int,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
     ) -> str:
         """Return *job_id*'s captured output, truncated to *byte_cap* bytes.
 
+        Scoped to the caller's own resolved owner key; see
+        ``poll_background``.
+
         Args:
             job_id: The job whose output to read.
-            byte_cap: Maximum bytes to return.
+            byte_cap: Maximum bytes to return, clamped to the backend's
+                own configured output ceiling regardless of what the
+                caller requests.
+            category: The calling tool's :class:`ToolCategory` value.
+            owner_id: Lifecycle owner to read as; see ``poll_background``.
+            project_id: Owning project; see ``execute``.
 
         Returns:
             The captured stdout+stderr, interleaved as written, kept
             from the start (never the tail) when larger than the cap.
 
         Raises:
-            SandboxBackgroundJobNotFoundError: No job matches *job_id*.
+            SandboxBackgroundJobNotFoundError: No job matches *job_id*
+                under the resolved owner key.
         """
         ...
 
-    async def cancel_background(self, job_id: NotBlankStr) -> BackgroundJobRecord:
+    async def cancel_background(
+        self,
+        job_id: NotBlankStr,
+        *,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
+    ) -> BackgroundJobRecord:
         """Terminate *job_id*'s process group and mark it cancelled.
 
         A job that already reached a terminal status is left alone and
         returned as-is: cancelling a finished job is not an error.
+        Scoped to the caller's own resolved owner key; see
+        ``poll_background``.
 
         Args:
             job_id: The job to cancel.
+            category: The calling tool's :class:`ToolCategory` value.
+            owner_id: Lifecycle owner to cancel as; see ``poll_background``.
+            project_id: Owning project; see ``execute``.
 
         Returns:
             The job's tracking row after cancellation.
 
         Raises:
-            SandboxBackgroundJobNotFoundError: No job matches *job_id*.
+            SandboxBackgroundJobNotFoundError: No job matches *job_id*
+                under the resolved owner key.
         """
         ...
 

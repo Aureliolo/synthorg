@@ -121,6 +121,32 @@ class BackgroundJobRepository(
         """
         ...
 
+    async def save_if_live(self, entity: BackgroundJobRecord, /) -> bool:
+        """Persist *entity* only if the EXISTING row is still live.
+
+        A conditional ``UPDATE ... WHERE job_id = ? AND status IN
+        (<live>)``, not an upsert: it never creates a row (every caller
+        already holds one fetched from :meth:`get`). Guards every
+        terminal-status transition (``mark_terminal``'s four
+        independent callers -- poll, cancel, timeout expiry, and
+        container-teardown reap) against clobbering a row another
+        writer already moved to a DIFFERENT terminal status, which a
+        blind :meth:`save` cannot detect.
+
+        Args:
+            entity: The job record to persist, with its new status
+                already set.
+
+        Returns:
+            ``True`` if the write applied (the existing row was still
+            live), ``False`` if it did not (another writer already
+            transitioned the row to a terminal status first).
+
+        Raises:
+            QueryError: If the underlying write fails.
+        """
+        ...
+
     @override
     async def get(self, entity_id: NotBlankStr, /) -> BackgroundJobRecord | None:
         """Read the tracking row for one job, or ``None`` if absent.
@@ -190,6 +216,7 @@ class BackgroundJobRepository(
         self,
         container_id: NotBlankStr,
         *,
+        statuses: frozenset[BackgroundJobStatus] | None = None,
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[BackgroundJobRecord, ...]:
@@ -201,12 +228,18 @@ class BackgroundJobRepository(
         status to mark none of them left dangling. A container reused
         across many tasks under the per-agent strategy can accumulate
         rows over a long lifetime, so this is paginated like every
-        other multi-row query; both call sites care about recency
-        (still-live jobs, or jobs to reap) rather than the full
-        lifetime history in one call.
+        other multi-row query -- which is exactly why the pin predicate
+        passes *statuses*: a Python-side filter over one page can miss a
+        genuinely live row sitting past the page boundary behind older
+        terminal rows for the same container, silently unpinning a
+        container a job is still running in. ``None`` (the
+        reap-on-teardown hook's own use) returns every status.
 
         Args:
             container_id: Docker container id to look up.
+            statuses: When given, only rows whose status is a member are
+                returned (filtered server-side, not fetched-then-Python-
+                filtered). ``None`` returns every status.
             limit: Maximum rows to return.
             offset: Rows to skip from the head of the ordering.
 

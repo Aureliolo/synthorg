@@ -18,16 +18,29 @@ against a mock.
 
 import asyncio
 import time
+from pathlib import Path
 from typing import Final
 
 import pytest
 
+from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
+from synthorg.persistence.background_job_protocol import (
+    LIVE_BACKGROUND_JOB_STATUSES,
+    BackgroundJobRecord,
+    BackgroundJobStatus,
+)
 from synthorg.tools.sandbox._background_wrapper import (
     build_kill_command,
     build_liveness_command,
     build_read_output_command,
     build_start_command,
 )
+from synthorg.tools.sandbox.background_jobs import BackgroundJobRegistry
+from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
+from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
+from synthorg.tools.sandbox.errors import SandboxBackgroundJobNotFoundError
+from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
+from synthorg.tools.sandbox.lifecycle.per_agent import PerAgentStrategy
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(60)]
 
@@ -245,3 +258,180 @@ class TestBackgroundWrapperRealContainer:
             assert output == expected
         finally:
             await self._cleanup(docker, container)
+
+
+class _InMemoryBackgroundJobRepository:
+    """Minimal in-memory double satisfying ``BackgroundJobRepository``."""
+
+    def __init__(self) -> None:
+        self._rows: dict[str, BackgroundJobRecord] = {}
+
+    async def save(self, entity: BackgroundJobRecord, /) -> None:
+        self._rows[entity.job_id] = entity
+
+    async def save_if_live(self, entity: BackgroundJobRecord, /) -> bool:
+        current = self._rows.get(entity.job_id)
+        if current is None or current.status not in {
+            BackgroundJobStatus.PENDING,
+            BackgroundJobStatus.RUNNING,
+        }:
+            return False
+        self._rows[entity.job_id] = entity
+        return True
+
+    async def get(self, entity_id: str, /) -> BackgroundJobRecord | None:
+        return self._rows.get(entity_id)
+
+    async def delete(self, entity_id: str, /) -> bool:
+        return self._rows.pop(entity_id, None) is not None
+
+    async def list_items(
+        self, *, limit: int = DEFAULT_PAGE_SIZE, offset: int = 0
+    ) -> tuple[BackgroundJobRecord, ...]:
+        ordered = sorted(self._rows.values(), key=lambda r: r.job_id)
+        return tuple(ordered[offset : offset + limit])
+
+    async def load_all(self) -> tuple[BackgroundJobRecord, ...]:
+        return tuple(self._rows.values())
+
+    async def list_by_container(
+        self,
+        container_id: str,
+        *,
+        statuses: frozenset[BackgroundJobStatus] | None = None,
+        limit: int = DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+    ) -> tuple[BackgroundJobRecord, ...]:
+        matches = [
+            r
+            for r in self._rows.values()
+            if r.container_id == container_id
+            and (statuses is None or r.status in statuses)
+        ]
+        return tuple(matches[offset : offset + limit])
+
+    async def count_live_by_owner(self, owner_id: str) -> int:
+        return sum(
+            1
+            for r in self._rows.values()
+            if r.owner_id == owner_id and r.status in LIVE_BACKGROUND_JOB_STATUSES
+        )
+
+    async def list_by_owner(
+        self, owner_id: str, *, limit: int = DEFAULT_PAGE_SIZE, offset: int = 0
+    ) -> tuple[BackgroundJobRecord, ...]:
+        matches = [r for r in self._rows.values() if r.owner_id == owner_id]
+        return tuple(matches[offset : offset + limit])
+
+
+async def _await_terminal(
+    sandbox: DockerSandbox,
+    job_id: str,
+    *,
+    category: str,
+    timeout: float = 20.0,  # noqa: ASYNC109
+) -> BackgroundJobRecord:
+    """Poll a background job until it leaves a live status.
+
+    Returns:
+        The job's tracking row once terminal.
+    """
+    deadline = time.monotonic() + timeout
+    record = await sandbox.poll_background(job_id, category=category)
+    while record.status in LIVE_BACKGROUND_JOB_STATUSES:
+        if time.monotonic() > deadline:
+            pytest.fail(f"job {job_id} still {record.status} after {timeout}s")
+        await asyncio.sleep(0.2)
+        record = await sandbox.poll_background(job_id, category=category)
+    return record
+
+
+@skip_no_docker
+class TestBackgroundShellCommandEndToEnd:
+    """Real-container coverage over ``start_background`` itself, not just
+    ``build_start_command`` in isolation (the rest of this file's own
+    coverage). The double-shell-wrap bug this class regression-tests lived
+    entirely in the seam between ``ShellCommandTool._execute_background``
+    and ``DockerSandboxBackgroundMixin.start_background`` -- a command
+    already run through ``shell_invocation`` (producing a ``bash -c
+    <command>`` argv) was flattened back into a single string and handed
+    to ``start_background``, which wraps it in a SECOND ``bash -c`` layer;
+    bash's ``-c`` only ever runs the first token after it, silently
+    discarding everything else. No test built directly on
+    ``build_start_command`` (as every test above does) can see that: the
+    bug lived one layer up, in what gets PASSED to it.
+    """
+
+    async def _make_sandbox(self, tmp_path: Path) -> DockerSandbox:
+        config = DockerSandboxConfig(image=_TEST_IMAGE, timeout_seconds=30)
+        registry = BackgroundJobRegistry(_InMemoryBackgroundJobRepository())
+        return DockerSandbox(
+            config=config,
+            workspace=tmp_path,
+            lifecycle_strategy=PerAgentStrategy(SandboxLifecycleConfig()),
+            background_jobs=registry,
+        )
+
+    async def test_multiword_command_output_matches_foreground(
+        self, tmp_path: Path
+    ) -> None:
+        sandbox = await self._make_sandbox(tmp_path)
+        command = "echo one two three"
+        try:
+            foreground = await sandbox.execute(
+                command=command, args=(), category="terminal"
+            )
+
+            job_id = await sandbox.start_background(
+                command=command,
+                args=(),
+                category="terminal",
+                max_duration_seconds=30,
+            )
+            record = await _await_terminal(sandbox, job_id, category="terminal")
+            assert record.status == BackgroundJobStatus.COMPLETED
+            output = await sandbox.read_background_output(
+                job_id, byte_cap=1000, category="terminal"
+            )
+        finally:
+            await sandbox.cleanup()
+
+        assert output.strip() == foreground.stdout.strip()
+        assert output.strip() == "one two three"
+
+    async def test_cross_owner_access_is_refused(self, tmp_path: Path) -> None:
+        """A job started under one owner cannot be read/polled/cancelled
+        under a different one, closing the access-control gap where
+        knowing another owner's job id (from a log line, a shared task,
+        or ``list_background_jobs``) was previously enough to reach it.
+        """
+        sandbox = await self._make_sandbox(tmp_path)
+        try:
+            job_id = await sandbox.start_background(
+                command="sleep 10",
+                args=(),
+                category="terminal",
+                owner_id="owner-a",
+                max_duration_seconds=30,
+            )
+
+            with pytest.raises(SandboxBackgroundJobNotFoundError):
+                await sandbox.poll_background(
+                    job_id, category="terminal", owner_id="owner-b"
+                )
+            with pytest.raises(SandboxBackgroundJobNotFoundError):
+                await sandbox.read_background_output(
+                    job_id, byte_cap=1000, category="terminal", owner_id="owner-b"
+                )
+            with pytest.raises(SandboxBackgroundJobNotFoundError):
+                await sandbox.cancel_background(
+                    job_id, category="terminal", owner_id="owner-b"
+                )
+
+            # The rightful owner can still reach it.
+            record = await sandbox.poll_background(
+                job_id, category="terminal", owner_id="owner-a"
+            )
+            assert record.job_id == job_id
+        finally:
+            await sandbox.cleanup()

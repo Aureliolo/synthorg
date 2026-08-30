@@ -16,7 +16,7 @@ Agents act on the world through tools. SynthOrg defines a pluggable tool system 
 | **Version Control** | Git operations, PR management | Developers, DevOps |
 | **Web** | `http_request` (raw HTTP under an SSRF policy), `html_parser`, `web_search` (vendor-agnostic, with declared recency / domain filters) and `web_fetch` (one page as markdown over an explicit `local` / `proxy` / `render` ladder). See [web-research.md](web-research.md) | Researchers, analysts, any agent working against a third-party API |
 | **Database** | Query, migrate, admin | Backend devs, DBAs |
-| **Terminal** | Shell commands (sandboxed) | DevOps, senior devs |
+| **Terminal** | Shell commands (sandboxed); `shell_command` can run one in the background (`background=True`, when `tools.shell_command_background_enabled`), returning a job id that `check_background_job` / `read_background_job_output` / `cancel_background_job` / `list_background_jobs` address on a later turn. See [Background Shell Commands](#background-shell-commands) | DevOps, senior devs |
 | **Design** | Image generation, mockup tools | Designers |
 | **Communication** | Email / notification dispatcher tools (the Slack notification sink lives here; agent-invocable Slack access is the `chat_*` tools under External Data) plus `delegate_and_await`, the blocking sub-agent delegation tool that runs a child Task inline and returns its transcript (gated on a wired `SubAgentRunner`) | PMs, executives |
 | **Analytics** | Metrics, dashboards, reporting | Data analysts, CFO |
@@ -291,6 +291,12 @@ after every agent drain, so an in-flight command has finished and its own
 per-task release has run. Without that step the warm container waits for a next
 boot, and an operator scaling down is not an operator restarting.
 
+The task-boundary point is no longer unconditional once background shell
+commands are wired: grace/idle destroy is now gated on the container's own
+`pin_check` (see [Container pinning](#background-shell-commands) below), so a
+container a live background job is still running in survives its own
+grace/idle window rather than being destroyed on schedule.
+
 Its population is derived rather than listed. Four sites build backends
 independently (the agent runtime, the tool factory when handed none, the
 toolsmith wiring, the self-improvement code applier) and nothing memoises, so
@@ -341,9 +347,13 @@ must build the strategy before `build_sandbox_backends` can construct the
 strategy needs that same callable to exist. Boot wiring (`_engine_assembly.py`)
 breaks the cycle in two steps -- the strategy is constructed first with no
 pin check, then, once the `DockerSandbox` exists, `strategy.bind_pin_check(docker_backend.pin_check)`
-sets it as a second step. A strategy built without this second step (e.g. a
-test double, or a deployment with the feature setting off) keeps today's
-unpinned behaviour exactly: `pin_check is None` degrades to unconditional
+sets it as a second step. `bind_pin_check_if_wired` (`workers/_background_job_wiring.py`)
+declines that second step -- leaving `pin_check` unbound -- on any of three
+gates: no background-job repository resolved yet (persistence not connected),
+the configured lifecycle strategy is not `PerAgentStrategy` / `PerTaskStrategy`
+(`per-call` has no persistent container to pin), or no `docker` entry exists in
+the constructed sandbox backends. A test double built without this second step
+observes the same thing: `pin_check is None` degrades to unconditional
 destroy-on-expiry, unchanged from before this feature existed.
 
 **Mechanism.** A background job is a wrapper script, not `aiodocker`'s

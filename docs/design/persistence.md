@@ -81,6 +81,7 @@ one level up in `src/synthorg/persistence/`:
 | `_generics.py`                         | Seven generic categories (`SingletonRepository`, `IdKeyedRepository`, `FilteredQueryRepository`, `BatchWriteRepository`, `AppendOnlyRepository`, `StatefulRepository`, `MVCCRepository`) that concrete protocols compose via Protocol inheritance. `BatchWriteRepository` adds an atomic all-or-nothing `save_many` for bulk enrolment. See [ADR-0001](../decisions/0001-repository-protocol-consolidation.md) for the consolidation rationale and the per-entity migration inventory. |
 | `approval_protocol.py`                 | `ApprovalRepository`: human-in-the-loop approval queue |
 | `auth_protocol.py`                     | `SessionRepository`, `RefreshTokenRepository`, `LockoutRepository` |
+| `background_job_protocol.py`           | `BackgroundJobRepository`: tracking rows for a `shell_command` backgrounded with `background=True`, keyed by the sandbox lifecycle owner; backs the per-owner job cap (`count_live_by_owner`), the `pin_check` predicate (`list_by_container`, status-filterable), and boot reconciliation (`load_all`) |
 | `codebase_structure_map_protocol.py`   | `CodebaseStructureMapRepository`: brownfield-intake structure map (modules, entry points, tests, build files, deps) for an imported codebase (1:1 per project) |
 | `fine_tune_protocol.py`                | `FineTuneRunRepository`, `FineTuneCheckpointRepository` |
 | `mcp_protocol.py`                      | MCP catalog installation repository |

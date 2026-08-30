@@ -89,6 +89,55 @@ class PostgresBackgroundJobRepository:
             )
             raise QueryError(msg) from exc
 
+    async def save_if_live(self, entity: BackgroundJobRecord, /) -> bool:
+        """Persist *entity* only if the existing row is still live.
+
+        Returns:
+            ``True`` if the write applied, ``False`` if the existing
+            row had already moved to a terminal status.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        params: tuple[object, ...] = (
+            entity.container_id,
+            entity.owner_id,
+            entity.project_id,
+            entity.command_repr,
+            entity.pid,
+            entity.status.value,
+            entity.exit_code,
+            entity.output_path,
+            normalize_utc(entity.started_at),
+            normalize_utc(entity.updated_at),
+            entity.max_duration_seconds,
+            entity.job_id,
+            *(s.value for s in LIVE_BACKGROUND_JOB_STATUSES),
+        )
+        sql = (
+            "UPDATE background_jobs SET "  # noqa: S608
+            "container_id = %s, owner_id = %s, project_id = %s, "
+            "command_repr = %s, pid = %s, status = %s, exit_code = %s, "
+            "output_path = %s, started_at = %s, updated_at = %s, "
+            "max_duration_seconds = %s "
+            f"WHERE job_id = %s AND status IN ({_LIVE_PLACEHOLDERS})"
+        )
+        try:
+            async with self._pool.connection() as conn, conn.cursor() as cur:
+                await cur.execute(sql, params)
+                applied = cur.rowcount > 0
+                await conn.commit()
+        except psycopg.Error as exc:
+            msg = f"Failed to conditionally save background job {entity.job_id!r}"
+            logger.warning(
+                PERSISTENCE_BACKGROUND_JOB_SAVE_FAILED,
+                job_id=entity.job_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            raise QueryError(msg) from exc
+        return applied
+
     async def get(self, entity_id: NotBlankStr, /) -> BackgroundJobRecord | None:
         """Read the tracking row for one job, or ``None`` if absent.
 
@@ -222,6 +271,7 @@ class PostgresBackgroundJobRepository:
         self,
         container_id: NotBlankStr,
         *,
+        statuses: frozenset[BackgroundJobStatus] | None = None,
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[BackgroundJobRecord, ...]:
@@ -236,6 +286,12 @@ class PostgresBackgroundJobRepository:
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_BACKGROUND_JOB_LOAD_FAILED
         )
+        status_clause = ""
+        params: tuple[object, ...] = (container_id,)
+        if statuses is not None:
+            placeholders = ", ".join("%s" for _ in statuses)
+            status_clause = f" AND status IN ({placeholders})"
+            params = (container_id, *(s.value for s in statuses))
         try:
             async with (
                 self._pool.connection() as conn,
@@ -243,9 +299,9 @@ class PostgresBackgroundJobRepository:
             ):
                 await cur.execute(
                     f"SELECT {_COLUMNS} FROM background_jobs "  # noqa: S608
-                    "WHERE container_id = %s "
+                    f"WHERE container_id = %s{status_clause} "
                     "ORDER BY started_at DESC LIMIT %s OFFSET %s",
-                    (container_id, limit, offset),
+                    (*params, limit, offset),
                 )
                 rows = await cur.fetchall()
         except psycopg.Error as exc:

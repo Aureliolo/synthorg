@@ -12,6 +12,8 @@ otherwise has to inline.
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
+from synthorg.observability import get_logger
+from synthorg.observability.events.sandbox import SANDBOX_LIFECYCLE_PIN_CHECK_UNBOUND
 from synthorg.persistence.background_job_protocol import BackgroundJobRepository
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
@@ -24,6 +26,8 @@ from synthorg.tools.sandbox.protocol import SandboxBackend
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
+
+logger = get_logger(__name__)
 
 _TOOLS_NS: str = "tools"
 _MAX_CONCURRENT_JOBS_KEY: str = "shell_command_background_max_concurrent_jobs"
@@ -78,13 +82,23 @@ def bind_pin_check_if_wired(
     sandbox. Safe because grace/idle expiry only ever reads ``pin_check``
     for a container already acquired, and none has been yet.
     """
-    if background_jobs is None or not isinstance(
-        lifecycle_strategy, PerAgentStrategy | PerTaskStrategy
-    ):
+    if background_jobs is None:
+        logger.debug(
+            SANDBOX_LIFECYCLE_PIN_CHECK_UNBOUND, reason="background_jobs_unwired"
+        )
+        return
+    if not isinstance(lifecycle_strategy, PerAgentStrategy | PerTaskStrategy):
+        logger.debug(
+            SANDBOX_LIFECYCLE_PIN_CHECK_UNBOUND,
+            reason="strategy_not_reusable",
+            strategy=type(lifecycle_strategy).__name__,
+        )
         return
     docker_backend = sandbox_backends.get("docker")
     if isinstance(docker_backend, DockerSandbox):
         lifecycle_strategy.bind_pin_check(docker_backend.pin_check)
+    else:
+        logger.debug(SANDBOX_LIFECYCLE_PIN_CHECK_UNBOUND, reason="no_docker_backend")
 
 
 __all__ = [

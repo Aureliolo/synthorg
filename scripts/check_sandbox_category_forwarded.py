@@ -15,10 +15,11 @@ writable, because ``terminal`` never reached the mount decision.
 
 An empty default cannot be removed (callers outside the tool layer have no
 category to give), and a wrong category is worse than none, so the check is
-that a *tool* passes its own. Flagged: a call to ``.execute(`` whose receiver
-is named like a sandbox and which carries no ``category=`` keyword. The
-receiver is the whole of the scoping, which is what keeps a database
-cursor's ``.execute(`` out of it; nothing here inspects the enclosing class.
+that a *tool* passes its own. Flagged: a call to ``.execute(``,
+``.start_background(`` or ``.list_background_jobs(`` whose receiver is named
+like a sandbox and which carries no ``category=`` keyword. The receiver is
+the whole of the scoping, which is what keeps a database cursor's
+``.execute(`` out of it; nothing here inspects the enclosing class.
 
 Opt out per-call with ``# lint-allow: sandbox-category -- <reason>``.
 """
@@ -32,11 +33,26 @@ _ALLOW_MARKER: Final[str] = "lint-allow: sandbox-category"
 _SANDBOX_ATTRS: Final[frozenset[str]] = frozenset({"_sandbox", "sandbox"})
 _TOOLS_ROOT: Final[str] = "src/synthorg/tools"
 
+#: Every ``SandboxBackend`` method whose ``category`` argument decides the
+#: container runtime or the workspace mount mode, not merely a method that
+#: happens to accept the keyword. ``execute`` decides both at call time;
+#: ``start_background`` resolves the SAME owner key (mount-mode segment
+#: included) at job-creation time, and ``list_background_jobs`` must
+#: resolve that identical key to read the right owner's rows back --
+#: both carry the identical empty-default footgun ``execute`` does.
+#: ``poll_background`` / ``read_background_output`` / ``cancel_background``
+#: are deliberately excluded: they act against an ALREADY-created job by
+#: id, resolving ``category`` only to re-derive an owner key for a
+#: not-found check, never to pick a runtime or a mount mode.
+_SANDBOX_METHODS: Final[frozenset[str]] = frozenset(
+    {"execute", "start_background", "list_background_jobs"}
+)
+
 
 def _is_sandbox_execute(node: ast.Call) -> bool:
-    """Return whether *node* is a ``<sandbox>.execute(...)`` call."""
+    """Return whether *node* is a ``<sandbox>.<method>(...)`` call needing category."""
     func = node.func
-    if not isinstance(func, ast.Attribute) or func.attr != "execute":
+    if not isinstance(func, ast.Attribute) or func.attr not in _SANDBOX_METHODS:
         return False
     target = func.value
     if isinstance(target, ast.Attribute):
@@ -87,12 +103,15 @@ def _violations(path: Path) -> list[tuple[int, str]]:
             continue
         if _covered_by_marker(lines, node):
             continue
+        # `_is_sandbox_execute` already guarantees this shape; re-checked
+        # here only so mypy can narrow it too.
+        assert isinstance(node.func, ast.Attribute)  # noqa: S101 -- _is_sandbox_execute guarantees this
         message = (
-            "sandbox.execute() without category=self.category.value: the "
-            "container runtime and the workspace mount mode are both resolved "
-            "from it, so omitting it silently takes the global default and "
-            "passing another tool's value is worse than omitting it. Pass "
-            "category=self.category.value."
+            f"sandbox.{node.func.attr}() without category=self.category.value: "
+            "the container runtime and the workspace mount mode are both "
+            "resolved from it, so omitting it silently takes the global "
+            "default and passing another tool's value is worse than omitting "
+            "it. Pass category=self.category.value."
         )
         found.append((node.lineno, message))
     return found

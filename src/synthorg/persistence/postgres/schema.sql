@@ -2793,5 +2793,5 @@ CREATE TABLE background_jobs (
     updated_at TIMESTAMPTZ NOT NULL,
     max_duration_seconds DOUBLE PRECISION NOT NULL CHECK (max_duration_seconds > 0)
 );
-CREATE INDEX idx_background_jobs_container ON background_jobs (container_id);
+CREATE INDEX idx_background_jobs_container_status ON background_jobs (container_id, status);
 CREATE INDEX idx_background_jobs_owner_status ON background_jobs (owner_id, status);

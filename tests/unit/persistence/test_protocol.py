@@ -1798,6 +1798,10 @@ class _FakeBackend:
         return object()
 
     @property
+    def background_jobs(self) -> object:
+        return object()
+
+    @property
     def connections(self) -> object:
         return object()
 

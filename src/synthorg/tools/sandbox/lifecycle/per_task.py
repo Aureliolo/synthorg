@@ -72,6 +72,7 @@ class PerTaskStrategy:
         self._pin_recheck_seconds = pin_recheck_seconds
         self._pending_teardowns: dict[str, asyncio.Task[None]] = {}
         self._lock = asyncio.Lock()
+        self._shutting_down = False
 
     def bind_pin_check(self, pin_check: Callable[[str], Awaitable[bool]]) -> None:
         """Wire *pin_check* in after construction.
@@ -106,6 +107,14 @@ class PerTaskStrategy:
             caller should create a fresh one).
         """
         async with self._lock:
+            # A reacquire of the same owner must win over its own previous
+            # release's deferred pinned-teardown: that task watches this
+            # SAME cached handle, so leaving it running risks it observing
+            # the pin clear later and destroying the container out from
+            # under whoever just reacquired it, since identity alone
+            # cannot distinguish "still the old, now-unpinned job" from
+            # "reacquired and back in active use".
+            self._cancel_pending_teardown(owner_id)
             handle = self._containers.get(owner_id)
         if handle is None:
             return None
@@ -251,7 +260,7 @@ class PerTaskStrategy:
             handle.container_id
         )
         if pinned:
-            self._start_deferred_teardown(owner_id, destroy_fn=destroy_fn)
+            await self._start_deferred_teardown(owner_id, destroy_fn=destroy_fn)
             return
 
         async with self._lock:
@@ -289,7 +298,13 @@ class PerTaskStrategy:
                 error=safe_error_description(exc),
             )
 
-    def _start_deferred_teardown(
+    def _cancel_pending_teardown(self, owner_id: str) -> None:
+        """Cancel a deferred pinned-release teardown (must hold ``_lock``)."""
+        task = self._pending_teardowns.pop(owner_id, None)
+        if task is not None and not task.done():
+            task.cancel()
+
+    async def _start_deferred_teardown(
         self,
         owner_id: str,
         *,
@@ -302,12 +317,6 @@ class PerTaskStrategy:
         (or not) after the strategy itself has torn everything else
         down.
         """
-        logger.info(
-            SANDBOX_LIFECYCLE_RELEASE,
-            strategy="per-task",
-            owner_id=owner_id,
-            action="deferred-pinned",
-        )
 
         async def _wait_then_destroy() -> None:
             # Upper-bounded by pin_check's own self-cleaning expiry;
@@ -357,13 +366,33 @@ class PerTaskStrategy:
                     error=safe_error_description(exc),
                 )
 
-        old = self._pending_teardowns.pop(owner_id, None)
-        if old is not None and not old.done():
-            old.cancel()
-        self._pending_teardowns[owner_id] = asyncio.create_task(
-            _wait_then_destroy(),
-            name=f"sandbox-pinned-release-{owner_id}",
-        )
+        async with self._lock:
+            if self._shutting_down:
+                # cleanup_all() has already swept (or is concurrently
+                # sweeping) every container still in `_containers`,
+                # including this one if it's still there. A task
+                # registered past that point would never be tracked in
+                # `_pending_teardowns` for cleanup_all() to cancel, and
+                # would keep polling `pin_check` against a container
+                # shutdown may already have destroyed.
+                logger.debug(
+                    SANDBOX_LIFECYCLE_RELEASE,
+                    strategy="per-task",
+                    owner_id=owner_id,
+                    action="deferred-pinned-skipped-shutdown",
+                )
+                return
+            logger.info(
+                SANDBOX_LIFECYCLE_RELEASE,
+                strategy="per-task",
+                owner_id=owner_id,
+                action="deferred-pinned",
+            )
+            self._cancel_pending_teardown(owner_id)
+            self._pending_teardowns[owner_id] = asyncio.create_task(
+                _wait_then_destroy(),
+                name=f"sandbox-pinned-release-{owner_id}",
+            )
 
     async def cleanup_all(
         self,
@@ -372,17 +401,24 @@ class PerTaskStrategy:
     ) -> None:
         """Destroy all tracked containers."""
         async with self._lock:
+            # Setting the flag in the SAME lock acquisition that snapshots
+            # both dicts closes the window `_start_deferred_teardown` would
+            # otherwise race through: it also checks `_shutting_down` under
+            # this lock before registering, so a release racing this call
+            # either lands its task in `pending` below (cancelled with the
+            # rest) or sees the flag and never registers one at all -- no
+            # third outcome where a task exists untracked.
+            self._shutting_down = True
             pending = list(self._pending_teardowns.values())
             self._pending_teardowns.clear()
+            handles = list(self._containers.values())
+            count = len(handles)
+            self._containers.clear()
+
         for task in pending:
             task.cancel()
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
-
-        async with self._lock:
-            handles = list(self._containers.values())
-            count = len(handles)
-            self._containers.clear()
 
         for handle in handles:
             try:

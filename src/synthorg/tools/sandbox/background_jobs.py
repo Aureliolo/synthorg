@@ -11,11 +11,13 @@ need it and records the outcome.
 from collections.abc import Awaitable, Callable
 
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.sandbox import (
     SANDBOX_BACKGROUND_JOB_REAPED,
     SANDBOX_BACKGROUND_JOB_TIMED_OUT,
+    SANDBOX_KILL_FAILED,
 )
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.background_job_protocol import (
@@ -99,15 +101,22 @@ class BackgroundJobRegistry:
         """List jobs in a live status for one container.
 
         Unlike :meth:`list_by_container` (every row, any status, used
-        by :meth:`reap_for_container`), this is scoped to
+        by :meth:`reap_for_container`), this is scoped server-side to
         :data:`LIVE_BACKGROUND_JOB_STATUSES` -- the question a pin
-        check and a job-limit check both actually ask.
+        check and a job-limit check both actually ask. Filtering in the
+        query rather than in Python matters here: a container reused
+        across a long per-agent lifetime can accumulate rows past one
+        page, and a Python-side filter over a page fetched by recency
+        alone can miss a genuinely live row sitting behind older
+        terminal ones, silently unpinning a container a job still runs
+        in.
 
         Returns:
             Live job rows recorded against *container_id*.
         """
-        rows = await self._repo.list_by_container(container_id)
-        return tuple(r for r in rows if r.status in LIVE_BACKGROUND_JOB_STATUSES)
+        return await self._repo.list_by_container(
+            container_id, statuses=LIVE_BACKGROUND_JOB_STATUSES
+        )
 
     async def mark_terminal(
         self,
@@ -118,13 +127,24 @@ class BackgroundJobRegistry:
     ) -> BackgroundJobRecord:
         """Transition *record* to a new status and persist it.
 
+        The write is conditional on the row *record* was read from
+        still being live: poll, cancel, timeout expiry, and
+        container-teardown reap can all race to terminalize the SAME
+        job, and a blind write would let whichever one runs last
+        silently overwrite an earlier, equally valid terminal status
+        (e.g. a late CANCELLED clobbering an already-recorded COMPLETED
+        and its real exit code). The loser's own attempted status is
+        simply discarded in favour of whatever actually landed first.
+
         Args:
             record: The job row to update.
             status: New status.
             exit_code: Process exit code, when known.
 
         Returns:
-            The updated, persisted record.
+            The updated, persisted record -- or, if another writer had
+            already terminalized this job first, that writer's own
+            persisted record.
         """
         updated = record.model_copy(
             update={
@@ -133,8 +153,11 @@ class BackgroundJobRegistry:
                 "updated_at": self._clock.now(),
             }
         )
-        await self._repo.save(updated)
-        return updated
+        applied = await self._repo.save_if_live(updated)
+        if applied:
+            return updated
+        current = await self._repo.get(record.job_id)
+        return current if current is not None else updated
 
     async def expire_overdue(
         self,
@@ -144,7 +167,7 @@ class BackgroundJobRegistry:
     ) -> tuple[BackgroundJobRecord, ...]:
         """Force-cancel any live job past its own duration ceiling.
 
-        D2's self-cleaning step: rather than a separate sweep task for
+        Self-cleaning: rather than a separate sweep task for
         ``max_duration_seconds``, whatever already asks "is this
         container pinned" (the lifecycle strategy's own grace/idle
         recheck) also answers this, reusing that cadence instead of a
@@ -169,7 +192,25 @@ class BackgroundJobRegistry:
                 still_live.append(record)
                 continue
             if record.pid is not None:
-                await kill_fn(container_id, record.pid)
+                try:
+                    await kill_fn(container_id, record.pid)
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                    reraise_critical(exc)
+                    # The row is still marked TIMED_OUT below regardless:
+                    # a failed kill must not also leave the job row live
+                    # forever, which would pin this container's grace/idle
+                    # teardown off indefinitely (`_await_unpinned`'s own
+                    # kill-switch relies on this call converging). The
+                    # container's own eventual teardown is the fallback
+                    # kill for whatever the exec-level kill missed.
+                    logger.warning(
+                        SANDBOX_KILL_FAILED,
+                        job_id=record.job_id,
+                        container_id=container_id[:12],
+                        pid=record.pid,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
             await self.mark_terminal(record, BackgroundJobStatus.TIMED_OUT)
             logger.warning(
                 SANDBOX_BACKGROUND_JOB_TIMED_OUT,

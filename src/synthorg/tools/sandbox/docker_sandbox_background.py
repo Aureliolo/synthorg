@@ -16,6 +16,7 @@ lifecycle strategy's ``pin_check`` (see ``lifecycle/per_agent.py`` and
 ``lifecycle/per_task.py``).
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
@@ -76,6 +77,13 @@ _START_EXEC_TIMEOUT_SECONDS: Final[float] = 20.0
 #: Grace between TERM and KILL when cancelling a background job.
 _CANCEL_GRACE_SECONDS: Final[float] = 5.0
 
+#: Truncation length for the observability-only ``command_repr`` field
+#: (surfaced by ``list_background_jobs``, never the full untruncated
+#: command). Mirrors ``shell_command.py``'s own ``_COMMAND_REPR_LIMIT``
+#: in shape, sized independently since this one is read back by an
+#: agent rather than only logged.
+_COMMAND_REPR_LIMIT: Final[int] = 200
+
 #: Short attached-exec timeout for poll/read/cancel/liveness calls,
 #: none of which do real work themselves (they read a file or signal a
 #: process); a large timeout here would only delay surfacing a wedged
@@ -110,6 +118,7 @@ class DockerSandboxBackgroundMixin:
         _background_jobs: BackgroundJobRegistry | None
         _background_max_concurrent_jobs: int
         _background_output_byte_cap: int
+        _background_job_locks: dict[str, asyncio.Lock]
 
         async def _ensure_docker(self) -> aiodocker.Docker: ...
 
@@ -198,6 +207,24 @@ class DockerSandboxBackgroundMixin:
             raise SandboxBackgroundUnsupportedError(msg)
         return self._background_jobs
 
+    def _owner_lock(self, owner_key: str) -> asyncio.Lock:
+        """Return the per-owner lock guarding the job-cap check + persist.
+
+        Created on first use and kept for the process lifetime, mirroring
+        ``_tracked_containers``'s own unbounded-but-roster-bounded growth.
+        No ``await`` runs between the ``get`` and the ``setdefault``
+        below, so this is race-free without its own lock: an interleaved
+        coroutine cannot observe the dict mid-update.
+
+        Returns:
+            The owner's lock, creating one if this is its first use.
+        """
+        lock = self._background_job_locks.get(owner_key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._background_job_locks[owner_key] = lock
+        return lock
+
     async def _run_control_exec(
         self,
         handle: ContainerHandle,
@@ -254,7 +281,7 @@ class DockerSandboxBackgroundMixin:
     async def pin_check(self, container_id: NotBlankStr) -> bool:
         """Answer whether *container_id* has live background jobs.
 
-        D2's self-cleaning predicate. Not a private implementation
+        Self-cleaning predicate. Not a private implementation
         detail: this bound method is itself the ``pin_check`` callable
         that boot wiring hands to ``create_lifecycle_strategy`` once
         this sandbox exists, so the reusable lifecycle strategies
@@ -443,82 +470,87 @@ class DockerSandboxBackgroundMixin:
             )
             raise SandboxBackgroundNoReusableContainerError(msg)
 
-        live_count = await registry.count_live_by_owner(owner_key)
-        if live_count >= self._background_max_concurrent_jobs:
-            msg = (
-                f"{owner_key} already holds {live_count} live background "
-                f"job(s), at the {self._background_max_concurrent_jobs}-job "
-                "ceiling."
+        # Held from the cap check through the persisted save: without it,
+        # two concurrent start_background calls for the same owner can
+        # each read a count under the ceiling and both persist, since
+        # nothing else serialises the check against the write.
+        async with self._owner_lock(owner_key):
+            live_count = await registry.count_live_by_owner(owner_key)
+            if live_count >= self._background_max_concurrent_jobs:
+                msg = (
+                    f"{owner_key} already holds {live_count} live "
+                    f"background job(s), at the "
+                    f"{self._background_max_concurrent_jobs}-job ceiling."
+                )
+                raise SandboxBackgroundJobLimitError(msg)
+
+            (
+                docker,
+                handle,
+                container_cwd,
+                exec_env,
+                owner_key,
+            ) = await self._resolve_background_target(
+                cwd=cwd,
+                env_overrides=env_overrides,
+                category=category,
+                owner_id=owner_id,
+                project_id=project_id,
             )
-            raise SandboxBackgroundJobLimitError(msg)
 
-        (
-            docker,
-            handle,
-            container_cwd,
-            exec_env,
-            owner_key,
-        ) = await self._resolve_background_target(
-            cwd=cwd,
-            env_overrides=env_overrides,
-            category=category,
-            owner_id=owner_id,
-            project_id=project_id,
-        )
+            job_id = NotBlankStr(str(uuid4()))
+            full_command = " ".join((command, *args)) if args else command
+            program, wrapper_args = build_start_command(
+                job_id, full_command, container_cwd=container_cwd
+            )
+            exec_obj = await self._open_exec(
+                docker,
+                handle,
+                command=program,
+                args=wrapper_args,
+                container_cwd=container_cwd,
+                exec_env=exec_env,
+            )
+            stdout, stderr, timed_out = await self._drain_exec(
+                docker, exec_obj, handle.container_id, _START_EXEC_TIMEOUT_SECONDS
+            )
+            pid_text = stdout.strip()
+            if timed_out or not pid_text.isdigit():
+                logger.warning(
+                    SANDBOX_BACKGROUND_JOB_START_FAILED,
+                    job_id=job_id,
+                    container_id=handle.container_id[:12],
+                    owner_id=owner_key,
+                    timed_out=timed_out,
+                    stderr=safe_error_description(SandboxStartError(stderr))
+                    if stderr
+                    else "",
+                )
+                msg = (
+                    f"Background job failed to start: the wrapper never "
+                    f"confirmed a pid (stdout={pid_text!r})"
+                )
+                raise SandboxStartError(msg)
 
-        job_id = NotBlankStr(str(uuid4()))
-        full_command = " ".join((command, *args)) if args else command
-        program, wrapper_args = build_start_command(
-            job_id, full_command, container_cwd=container_cwd
-        )
-        exec_obj = await self._open_exec(
-            docker,
-            handle,
-            command=program,
-            args=wrapper_args,
-            container_cwd=container_cwd,
-            exec_env=exec_env,
-        )
-        stdout, stderr, timed_out = await self._drain_exec(
-            docker, exec_obj, handle.container_id, _START_EXEC_TIMEOUT_SECONDS
-        )
-        pid_text = stdout.strip()
-        if timed_out or not pid_text.isdigit():
-            logger.warning(
-                SANDBOX_BACKGROUND_JOB_START_FAILED,
+            now = self._clock.now()
+            record = BackgroundJobRecord(
                 job_id=job_id,
-                container_id=handle.container_id[:12],
+                container_id=NotBlankStr(handle.container_id),
                 owner_id=owner_key,
-                timed_out=timed_out,
-                stderr=safe_error_description(SandboxStartError(stderr))
-                if stderr
-                else "",
+                project_id=project_id,
+                command_repr=full_command[:_COMMAND_REPR_LIMIT],
+                pid=int(pid_text),
+                status=BackgroundJobStatus.RUNNING,
+                output_path=output_path(job_id),
+                started_at=now,
+                updated_at=now,
+                max_duration_seconds=(
+                    max_duration_seconds
+                    if max_duration_seconds is not None and max_duration_seconds > 0
+                    else _DEFAULT_MAX_DURATION_SECONDS
+                ),
             )
-            msg = (
-                f"Background job failed to start: the wrapper never "
-                f"confirmed a pid (stdout={pid_text!r})"
-            )
-            raise SandboxStartError(msg)
-
-        now = self._clock.now()
-        record = BackgroundJobRecord(
-            job_id=job_id,
-            container_id=NotBlankStr(handle.container_id),
-            owner_id=owner_key,
-            project_id=project_id,
-            command_repr=full_command[:200],
-            pid=int(pid_text),
-            status=BackgroundJobStatus.RUNNING,
-            output_path=output_path(job_id),
-            started_at=now,
-            updated_at=now,
-            max_duration_seconds=(
-                max_duration_seconds
-                if max_duration_seconds is not None and max_duration_seconds > 0
-                else _DEFAULT_MAX_DURATION_SECONDS
-            ),
-        )
-        await registry.save(record)
+            await registry.save(record)
         logger.info(
             SANDBOX_BACKGROUND_JOB_STARTED,
             job_id=job_id,
@@ -561,24 +593,72 @@ class DockerSandboxBackgroundMixin:
         )
         return await registry.mark_terminal(record, new_status, exit_code=exit_code)
 
-    async def poll_background(self, job_id: NotBlankStr) -> BackgroundJobRecord:
+    async def _get_owned_job(
+        self,
+        job_id: NotBlankStr,
+        *,
+        category: str,
+        owner_id: str | None,
+        project_id: NotBlankStr | None,
+    ) -> BackgroundJobRecord:
+        """Return *job_id*'s record, refusing one owned by a different caller.
+
+        Every job-targeted method (poll/read/cancel) routes through
+        here rather than a bare ``registry.get(job_id)``: without this,
+        knowing another owner's ``job_id`` (from ``list_background_jobs``,
+        a shared task, or a log line) was enough to read or cancel their
+        job, crossing both agent and project boundaries. The not-found
+        error deliberately covers both "no such job" and "not yours" --
+        distinguishing them would let a caller enumerate another
+        owner's job ids by probing.
+
+        Returns:
+            The job's persisted record.
+
+        Raises:
+            SandboxBackgroundJobNotFoundError: No job matches *job_id*,
+                or it belongs to a different resolved owner.
+        """
+        registry = self._require_background_jobs()
+        record = await registry.get(job_id)
+        caller_key, strategy_owns = self._resolve_background_owner_key(
+            owner_id, project_id=project_id, category=category
+        )
+        if record is None or not strategy_owns or record.owner_id != caller_key:
+            msg = f"No background job matches {job_id!r}"
+            raise SandboxBackgroundJobNotFoundError(msg)
+        return record
+
+    async def poll_background(
+        self,
+        job_id: NotBlankStr,
+        *,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
+    ) -> BackgroundJobRecord:
         """See ``SandboxBackend.poll_background``.
 
         Returns:
             The job's current tracking row.
 
         Raises:
-            SandboxBackgroundJobNotFoundError: No job matches *job_id*.
+            SandboxBackgroundJobNotFoundError: No job matches *job_id*
+                under the caller's resolved owner key.
         """
-        registry = self._require_background_jobs()
-        record = await registry.get(job_id)
-        if record is None:
-            msg = f"No background job matches {job_id!r}"
-            raise SandboxBackgroundJobNotFoundError(msg)
+        record = await self._get_owned_job(
+            job_id, category=category, owner_id=owner_id, project_id=project_id
+        )
         return await self._refresh_if_live(record)
 
     async def read_background_output(
-        self, job_id: NotBlankStr, *, byte_cap: int
+        self,
+        job_id: NotBlankStr,
+        *,
+        byte_cap: int,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
     ) -> str:
         """See ``SandboxBackend.read_background_output``.
 
@@ -586,35 +666,49 @@ class DockerSandboxBackgroundMixin:
             The captured output, truncated to *byte_cap* bytes.
 
         Raises:
-            SandboxBackgroundJobNotFoundError: No job matches *job_id*.
+            SandboxBackgroundJobNotFoundError: No job matches *job_id*
+                under the caller's resolved owner key.
         """
-        registry = self._require_background_jobs()
-        record = await registry.get(job_id)
-        if record is None:
-            msg = f"No background job matches {job_id!r}"
-            raise SandboxBackgroundJobNotFoundError(msg)
-        handle = ContainerHandle(container_id=record.container_id)
-        program, args = build_read_output_command(
-            job_id, byte_cap=byte_cap or self._background_output_byte_cap
+        record = await self._get_owned_job(
+            job_id, category=category, owner_id=owner_id, project_id=project_id
         )
+        handle = ContainerHandle(container_id=record.container_id)
+        # Clamped, never merely defaulted: a caller-supplied byte_cap
+        # above the operator's configured ceiling would otherwise make
+        # `shell_command_background_output_byte_cap` dead on this path
+        # (a positive caller value is never falsy, so an `or` fallback
+        # only ever applied to the caller's own 0, which the tool layer
+        # already rejects before reaching here).
+        effective_cap = (
+            min(byte_cap, self._background_output_byte_cap)
+            if byte_cap > 0
+            else self._background_output_byte_cap
+        )
+        program, args = build_read_output_command(job_id, byte_cap=effective_cap)
         return await self._run_control_exec(
             handle, program, args, timeout=_CONTROL_EXEC_TIMEOUT_SECONDS
         )
 
-    async def cancel_background(self, job_id: NotBlankStr) -> BackgroundJobRecord:
+    async def cancel_background(
+        self,
+        job_id: NotBlankStr,
+        *,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
+    ) -> BackgroundJobRecord:
         """See ``SandboxBackend.cancel_background``.
 
         Returns:
             The job's tracking row after cancellation.
 
         Raises:
-            SandboxBackgroundJobNotFoundError: No job matches *job_id*.
+            SandboxBackgroundJobNotFoundError: No job matches *job_id*
+                under the caller's resolved owner key.
         """
-        registry = self._require_background_jobs()
-        record = await registry.get(job_id)
-        if record is None:
-            msg = f"No background job matches {job_id!r}"
-            raise SandboxBackgroundJobNotFoundError(msg)
+        record = await self._get_owned_job(
+            job_id, category=category, owner_id=owner_id, project_id=project_id
+        )
         record = await self._refresh_if_live(record)
         if record.status not in (
             BackgroundJobStatus.PENDING,
@@ -623,6 +717,7 @@ class DockerSandboxBackgroundMixin:
             return record
         if record.pid is not None:
             await self._kill_background_process_group(record.container_id, record.pid)
+        registry = self._require_background_jobs()
         updated = await registry.mark_terminal(record, BackgroundJobStatus.CANCELLED)
         logger.info(
             SANDBOX_BACKGROUND_JOB_CANCELLED,

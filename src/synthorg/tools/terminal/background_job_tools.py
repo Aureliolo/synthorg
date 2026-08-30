@@ -16,6 +16,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.terminal import TERMINAL_COMMAND_FAILED
 from synthorg.security.autonomy.enums import ActionType
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
+from synthorg.tools._workspace_scope import require_project_id
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.sandbox.errors import SandboxError, agent_facing_message
 from synthorg.tools.sandbox.protocol import SandboxBackend
@@ -31,6 +32,12 @@ logger = get_logger(__name__)
 #: ``shell_command_background_output_byte_cap`` setting, so this is a
 #: second, independent cap on the READ, not a resize of the capture.
 _DEFAULT_READ_BYTE_CAP: Final[int] = 1_000_000
+
+#: Hard per-call ceiling on ``byte_cap``, matching the operator-configurable
+#: ``shell_command_background_output_byte_cap`` setting's own max_value. The
+#: backend clamps to the LIVE setting regardless; this only bounds how large
+#: a single request may ask for before that clamp is even consulted.
+_MAX_READ_BYTE_CAP: Final[int] = 50_000_000
 
 
 def _invalid_arguments_result(exc: ValidationError) -> ToolExecutionResult:
@@ -122,7 +129,11 @@ class CheckBackgroundJobTool(BaseTerminalTool):
                 is_error=True,
             )
         try:
-            record = await self._sandbox.poll_background(args.job_id)
+            record = await self._sandbox.poll_background(
+                args.job_id,
+                category=self.category.value,
+                project_id=require_project_id(),
+            )
         except SandboxError as exc:
             return _sandbox_error_result(exc)
         return ToolExecutionResult(
@@ -145,6 +156,7 @@ class ReadBackgroundJobOutputArgs(BaseModel):
     byte_cap: int = Field(
         default=_DEFAULT_READ_BYTE_CAP,
         gt=0,
+        le=_MAX_READ_BYTE_CAP,
         description="Maximum bytes of output to return",
     )
 
@@ -198,7 +210,10 @@ class ReadBackgroundJobOutputTool(BaseTerminalTool):
             )
         try:
             output = await self._sandbox.read_background_output(
-                args.job_id, byte_cap=args.byte_cap
+                args.job_id,
+                byte_cap=args.byte_cap,
+                category=self.category.value,
+                project_id=require_project_id(),
             )
         except SandboxError as exc:
             return _sandbox_error_result(exc)
@@ -264,7 +279,11 @@ class CancelBackgroundJobTool(BaseTerminalTool):
                 is_error=True,
             )
         try:
-            record = await self._sandbox.cancel_background(args.job_id)
+            record = await self._sandbox.cancel_background(
+                args.job_id,
+                category=self.category.value,
+                project_id=require_project_id(),
+            )
         except SandboxError as exc:
             return _sandbox_error_result(exc)
         return ToolExecutionResult(
@@ -275,17 +294,16 @@ class CancelBackgroundJobTool(BaseTerminalTool):
 
 
 class ListBackgroundJobsArgs(BaseModel):
-    """Args for ``list_background_jobs``."""
+    """Args for ``list_background_jobs``.
+
+    Deliberately carries no ``owner_id`` override: this tool always lists
+    the CALLING agent's own jobs. A job's rows (ids, status, and up to
+    200 characters of command text) are not this agent's own information
+    to hand out on request, so nothing about the tool's own contract
+    calls for naming a different owner.
+    """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    owner_id: NotBlankStr | None = Field(
-        default=None,
-        description=(
-            "Lifecycle owner to list jobs for. Omit to list this agent's "
-            "own jobs (the default and the common case)."
-        ),
-    )
 
 
 class ListBackgroundJobsTool(BaseTerminalTool):
@@ -316,22 +334,22 @@ class ListBackgroundJobsTool(BaseTerminalTool):
 
     @override
     async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
-        """List the owner's background jobs.
+        """List the caller's own background jobs.
 
         Returns:
             A ``ToolExecutionResult`` with the job list.
         """
         try:
-            args = parse_typed(
-                "tool.list_background_jobs", arguments, ListBackgroundJobsArgs
-            )
+            parse_typed("tool.list_background_jobs", arguments, ListBackgroundJobsArgs)
         except ValidationError as exc:
             return _invalid_arguments_result(exc)
         if self._sandbox is None:
             return ToolExecutionResult(content=json.dumps({"jobs": []}))
         try:
             jobs = await self._sandbox.list_background_jobs(
-                args.owner_id, category=self.category.value
+                None,
+                category=self.category.value,
+                project_id=require_project_id(),
             )
         except SandboxError as exc:
             return _sandbox_error_result(exc)

@@ -172,22 +172,42 @@ class _LocalPythonSandbox:
         msg = "_LocalPythonSandbox holds no per-owner container; no backgrounding."
         raise SandboxBackgroundUnsupportedError(msg)
 
-    async def poll_background(self, job_id: NotBlankStr) -> BackgroundJobRecord:
-        del job_id
+    async def poll_background(
+        self,
+        job_id: NotBlankStr,
+        *,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
+    ) -> BackgroundJobRecord:
+        del job_id, category, owner_id, project_id
         msg = (
             "_LocalPythonSandbox cannot start a background job, so it has none to poll."
         )
         raise SandboxBackgroundUnsupportedError(msg)
 
     async def read_background_output(
-        self, job_id: NotBlankStr, *, byte_cap: int
+        self,
+        job_id: NotBlankStr,
+        *,
+        byte_cap: int,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
     ) -> str:
-        del job_id, byte_cap
+        del job_id, byte_cap, category, owner_id, project_id
         msg = "_LocalPythonSandbox cannot start a background job, so it has no output."
         raise SandboxBackgroundUnsupportedError(msg)
 
-    async def cancel_background(self, job_id: NotBlankStr) -> BackgroundJobRecord:
-        del job_id
+    async def cancel_background(
+        self,
+        job_id: NotBlankStr,
+        *,
+        category: str = "",
+        owner_id: NotBlankStr | None = None,
+        project_id: NotBlankStr | None = None,
+    ) -> BackgroundJobRecord:
+        del job_id, category, owner_id, project_id
         msg = (
             "_LocalPythonSandbox cannot start a background job, so it has "
             "none to cancel."

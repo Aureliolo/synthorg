@@ -99,6 +99,55 @@ class SQLiteBackgroundJobRepository:
                 )
                 raise QueryError(msg) from exc
 
+    async def save_if_live(self, entity: BackgroundJobRecord, /) -> bool:
+        """Persist *entity* only if the existing row is still live.
+
+        Returns:
+            ``True`` if the write applied, ``False`` if the existing
+            row had already moved to a terminal status.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        params = (
+            entity.container_id,
+            entity.owner_id,
+            entity.project_id,
+            entity.command_repr,
+            entity.pid,
+            entity.status.value,
+            entity.exit_code,
+            entity.output_path,
+            format_iso_utc(entity.started_at),
+            format_iso_utc(entity.updated_at),
+            entity.max_duration_seconds,
+            entity.job_id,
+            *(s.value for s in LIVE_BACKGROUND_JOB_STATUSES),
+        )
+        async with self._write_context():
+            try:
+                async with self._db.execute(
+                    "UPDATE background_jobs SET container_id = ?, "  # noqa: S608
+                    "owner_id = ?, project_id = ?, command_repr = ?, pid = ?, "
+                    "status = ?, exit_code = ?, output_path = ?, "
+                    "started_at = ?, updated_at = ?, max_duration_seconds = ? "
+                    f"WHERE job_id = ? AND status IN ({_LIVE_PLACEHOLDERS})",
+                    params,
+                ) as cursor:
+                    applied = cursor.rowcount > 0
+                await self._db.commit()
+            except (sqlite3.Error, aiosqlite.Error) as exc:
+                await self._rollback_quietly(PERSISTENCE_BACKGROUND_JOB_SAVE_FAILED)
+                msg = f"Failed to conditionally save background job {entity.job_id!r}"
+                logger.warning(
+                    PERSISTENCE_BACKGROUND_JOB_SAVE_FAILED,
+                    job_id=entity.job_id,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
+                raise QueryError(msg) from exc
+        return applied
+
     async def get(self, entity_id: NotBlankStr, /) -> BackgroundJobRecord | None:
         """Read the tracking row for one job, or ``None`` if absent.
 
@@ -220,6 +269,7 @@ class SQLiteBackgroundJobRepository:
         self,
         container_id: NotBlankStr,
         *,
+        statuses: frozenset[BackgroundJobStatus] | None = None,
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[BackgroundJobRecord, ...]:
@@ -234,11 +284,18 @@ class SQLiteBackgroundJobRepository:
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_BACKGROUND_JOB_LOAD_FAILED
         )
+        status_clause = ""
+        params: tuple[object, ...] = (container_id,)
+        if statuses is not None:
+            placeholders = ", ".join("?" for _ in statuses)
+            status_clause = f" AND status IN ({placeholders})"
+            params = (container_id, *(s.value for s in statuses))
         try:
             async with self._db.execute(
                 f"SELECT {_COLUMNS} FROM background_jobs "  # noqa: S608
-                "WHERE container_id = ? ORDER BY started_at DESC LIMIT ? OFFSET ?",
-                (container_id, limit, offset),
+                f"WHERE container_id = ?{status_clause} "
+                "ORDER BY started_at DESC LIMIT ? OFFSET ?",
+                (*params, limit, offset),
             ) as cursor:
                 rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
