@@ -39,22 +39,14 @@ METHOD (work internally; do not show your reasoning):
    headers, which is this task's most common failure. If the cluster count sits
    outside the band below, merge the closest clusters until it fits; do not
    drop one to get there.
-5. Each cluster's bullet goes into exactly ONE bucket:
+5. Each cluster's bullet goes into exactly ONE of TWO buckets:
    - NOTICE: an existing user directly observes this on upgrade (a fix to broken
      behaviour, a UX change, a new security requirement, a changed default).
    - NEW: a capability or surface that did not exist before and a user can opt
      into.
-   - HOOD: reserved for a cluster that appears in NEITHER section above and
-     that a power user would still want to know about, such as a security
-     posture change or a rearchitecture that alters behaviour under load.
-     It is NOT the place to explain how something you already bulleted was
-     implemented: if "Under the hood" says "the job registry now prevents
-     foreground timeouts from killing background work" while "What you'll
-     notice" already says background commands survive unrelated timeouts,
-     that is one cluster written twice, and the second copy goes. "We
-     optimised an algorithm", "we updated dependencies", "we removed an
-     unused subsystem" and "we hardened cleanup" never qualify. Most releases
-     clear this bar with nothing, and omitting the section is normal.
+   There is no third bucket. A cluster that fits neither, because it is purely
+   internal, does not get a bullet: the changelog below already has it. Never
+   write about HOW something you have already bulleted was implemented.
 6. One change gets ONE bullet, in ONE section. A change that is both new and
    user-observable is NEW, and it does not also appear under "What you'll
    notice". Several entries describing one capability (the feature, its fixes,
@@ -69,17 +61,17 @@ METHOD (work internally; do not show your reasoning):
      BAD PAIR: "- Agents can search the live web through Brave, Tavily or Exa"
                "- Native web search is available as a first-class capability"
 
-OUTPUT -- in THIS EXACT ORDER:
+OUTPUT -- in THIS EXACT ORDER, and no other headers ever:
 
   TAGLINE: <one line>
 
   ### What you'll notice
   ### What's new
-  ### Under the hood
 
-Omit any bucket with no items. Always emit "### What you'll notice" first when
-any item is user-observable; never reorder the headers and never fold
-user-facing changes into "What's new".
+Omit either bucket if it has no items. Always emit "### What you'll notice"
+first when any item is user-observable; never reorder the headers and never
+fold user-facing changes into "What's new". Do not invent a third section
+under any name.
 
 THE TAGLINE is a single line on the first line of your output, prefixed exactly
 `TAGLINE: `. It is the one place in this document where personality is welcome.
@@ -127,7 +119,7 @@ much as the others, and that is the section where it goes wrong.
   GOOD: "- Agents can search the live web, through whichever of three
          providers you hold a key for"
 
-LENGTH. Aim for a TOTAL across all three sections, scaled to how much the
+LENGTH. Aim for a TOTAL across both sections, scaled to how much the
 release contains. Count the entries in the fence and use the matching band:
 
   under 10 entries    ->  1-3 bullets
