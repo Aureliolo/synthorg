@@ -26,7 +26,7 @@ import aiodocker
 
 from synthorg.core.clock import Clock
 from synthorg.core.types import NotBlankStr
-from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability import get_logger, scrub_secret_tokens
 from synthorg.observability.events.sandbox import (
     SANDBOX_BACKGROUND_JOB_CANCELLED,
     SANDBOX_BACKGROUND_JOB_START_FAILED,
@@ -85,6 +85,12 @@ _CANCEL_GRACE_SECONDS: Final[float] = 5.0
 #: in shape, sized independently since this one is read back by an
 #: agent rather than only logged.
 _COMMAND_REPR_LIMIT: Final[int] = 200
+
+#: Truncation length for a start-confirmation failure's logged raw
+#: container stderr, mirroring ``safe_error_description``'s own
+#: ``MAX_SCRUBBED_LENGTH`` -- this text is never wrapped in an
+#: exception, so that helper does not apply here.
+_STDERR_LOG_LIMIT_CHARS: Final[int] = 512
 
 #: Short attached-exec timeout for poll/read/cancel/liveness calls,
 #: none of which do real work themselves (they read a file or signal a
@@ -186,12 +192,14 @@ class DockerSandboxBackgroundMixin:
             exec_env: dict[str, str],
         ) -> Exec: ...
 
-        async def _drain_exec(
+        async def _drain_exec_pinned(
             self,
             docker: aiodocker.Docker,
             exec_obj: Exec,
             container_id: str,
             timeout: float,  # noqa: ASYNC109
+            *,
+            pinned_job_id: str,
         ) -> tuple[str, str, bool]: ...
 
         @staticmethod
@@ -667,17 +675,25 @@ class DockerSandboxBackgroundMixin:
             container_cwd=container_cwd,
             exec_env=exec_env,
         )
-        stdout, stderr, timed_out = await self._drain_exec(
-            docker, exec_obj, handle.container_id, _START_EXEC_TIMEOUT_SECONDS
+        stdout, stderr, timed_out = await self._drain_exec_pinned(
+            docker,
+            exec_obj,
+            handle.container_id,
+            _START_EXEC_TIMEOUT_SECONDS,
+            pinned_job_id=str(job_id),
         )
         pid_text = stdout.strip()
-        if timed_out or not pid_text.isdigit():
+        # ``isascii() and isdigit()`` rejects the values ``int()`` would
+        # reject too (Unicode-digit exotics such as superscript "²" pass
+        # a bare ``isdigit()`` but raise on ``int()``), so a garbled pid
+        # is caught here instead of crashing past this guard.
+        if timed_out or not (pid_text.isascii() and pid_text.isdigit()):
             logger.warning(
                 SANDBOX_BACKGROUND_JOB_START_FAILED,
                 job_id=job_id,
                 container_id=handle.container_id[:12],
                 timed_out=timed_out,
-                stderr=safe_error_description(SandboxStartError(stderr))
+                stderr=scrub_secret_tokens(stderr)[:_STDERR_LOG_LIMIT_CHARS]
                 if stderr
                 else "",
             )

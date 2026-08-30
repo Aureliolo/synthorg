@@ -814,8 +814,11 @@ class DockerSandboxExecMixin:
             # Only reached on the unpinned path (the pinned branch returns
             # above), where a reservation was made whenever background
             # jobs are wired at all; release is a safe no-op otherwise
-            # (nothing was ever incremented for this owner_key).
-            self._release_unpinned_exec(owner_key)
+            # (nothing was ever incremented for this owner_key). Reacquire
+            # the same lock the reservation was made under so a concurrent
+            # start_background call never observes the counter mid-update.
+            async with self._owner_lock(owner_key):
+                self._release_unpinned_exec(owner_key)
 
     @staticmethod
     async def _collect_exec_output(stream: Stream) -> tuple[str, str]:
