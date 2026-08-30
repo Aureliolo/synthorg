@@ -302,7 +302,7 @@ class TestGraftExtension:
             _LEAF,
             parent_id=_WORKSTREAM,
             unsplit_reason="depth backstop",
-            satisfies=("the game is playable",),
+            satisfies=("the level loader streams chunks",),
         )
         plan = _plan(_item(_WORKSTREAM), leaf)
         tree = PlanTree.of(plan.items)
@@ -456,7 +456,8 @@ class TestGraftExtension:
         tree = PlanTree.of(plan.items)
         backend = FakePersistenceBackend()
         await backend.plans.save(plan)
-        await backend.tasks.save(_leaf_task())
+        stored_leaf = _leaf_task().model_copy(update={"title": "Leaf as stored"})
+        await backend.tasks.save(stored_leaf)
         decompose = AsyncMock(return_value=_decomposition("sub-1"))
 
         updated = await graft_extension(
@@ -475,6 +476,7 @@ class TestGraftExtension:
         # The pre-existing leaf task is untouched, never re-saved.
         leaf_row = await backend.tasks.get(str(_LEAF))
         assert leaf_row is not None
+        assert leaf_row.title == "Leaf as stored"
         # The assembly item's own task was filed too, under its own fresh id.
         assembly_item = next(
             item

@@ -1458,9 +1458,10 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
     ),
     # The four below are the initiative tail, declared one per collaborator and
     # apart from the rollup they attach to. Apart from the rollup because the
-    # two converge at different times: the rollup needs only persistence and
-    # the task engine, which are up before setup configures a provider, while
-    # every tail stage needs a registry, the work pipeline or the coordinator.
+    # two converge at different times: the rollup needs only persistence, the
+    # task engine and the settings resolver, which are up before setup
+    # configures a provider, while every tail stage needs a registry, the
+    # work pipeline or the coordinator.
     # Folded into the rollup's spec, its early success stood for the tail's,
     # and since the reconciler never revisits a subsystem it reads as
     # converged, the tail could never come up on any boot. One each rather than
