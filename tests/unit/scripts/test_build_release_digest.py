@@ -50,6 +50,7 @@ class TestCleanBody:
     """Structural markup carries no information a summary can use."""
 
     def test_drops_issue_reference_lines(self) -> None:
+        # lint-allow: review-origin -- fixture text for the stripper under test
         assert clean_body("Closes #2862\n\nreal substance here") == (
             "real substance here"
         )
@@ -75,8 +76,9 @@ class TestCleanBody:
         assert clean_body("body text\n\nCo-authored-by: someone") == "body text"
 
     def test_collapses_release_please_link_wrappers(self) -> None:
+        # lint-allow: review-origin -- fixture text for the link collapser
         cleaned = clean_body("shipped ([#2883](https://example.invalid/pr/2883))")
-        assert cleaned == "shipped (#2883)"
+        assert cleaned == "shipped (#2883)"  # lint-allow: review-origin -- fixture
 
     def test_keeps_markdown_link_text_and_drops_the_url(self) -> None:
         cleaned = clean_body("see [the design](https://example.invalid/d) for more")
@@ -172,6 +174,7 @@ class TestIsNoiseCommit:
     @pytest.mark.parametrize(
         "subject",
         [
+            # lint-allow: review-origin -- fixture subjects for the noise filter
             "chore: Lock file maintenance (#2882)",
             "chore(deps): update renovate/renovate to v41",
             "build(deps): bump dependabot fetch-metadata",
@@ -191,6 +194,7 @@ class TestBuildDigest:
     """The digest pairs each subject with the prose worth reading."""
 
     def test_reduces_a_noise_commit_to_its_subject(self) -> None:
+        # lint-allow: review-origin -- fixture subject for the noise filter
         subject = "chore: Lock file maintenance (#2882)"
         digest = build_digest([f"{subject}\n\n| Update | Change |\n|---|---|"])
         assert digest == subject

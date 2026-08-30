@@ -131,10 +131,10 @@ LENGTH. Aim for a TOTAL across all three sections, scaled to how much the
 release contains. Count the entries in the fence and use the matching band:
 
   under 10 entries    ->  1-3 bullets
-  10-30 entries       ->  3-6 bullets
-  30-60 entries       ->  5-8 bullets
-  60-120 entries      ->  8-12 bullets
-  over 120 entries    ->  12-18 bullets
+  10-30 entries       ->  3-5 bullets
+  30-60 entries       ->  4-7 bullets
+  60-120 entries      ->  6-9 bullets
+  over 120 entries    ->  8-12 bullets
 
 These are the shape of a good answer, not a quota to fill. Landing one or two
 outside the band is fine when the release genuinely warrants it. Being far
