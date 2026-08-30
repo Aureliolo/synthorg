@@ -8,8 +8,10 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.plan_tree import PlanTree
 from synthorg.core.project import Project
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskStructure, TaskType
@@ -21,14 +23,18 @@ from synthorg.engine.decomposition.models import (
 )
 from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.initiative.completion import ReplanDisposition, StallReason
+from synthorg.engine.initiative.confirmed_stall import ConfirmedStall
+from synthorg.engine.initiative.extension_state import ExtensionDisposition
 from synthorg.engine.initiative.replan_trigger import (
     _DEFAULT_MAX_GENERATIONS,
     ACTOR,
-    ConfirmedStall,
     ReplanTriggerService,
 )
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry_protocol import AgentRegistryProtocol
+from synthorg.security.action_types import ActionTypeRegistry
+from synthorg.security.autonomy.models import AutonomyConfig
+from synthorg.security.autonomy.resolver import AutonomyResolver
 from synthorg.settings.resolver import ConfigResolver
 from tests._shared import FakeClock, as_uuid, mock_of, role_holder, sid
 from tests.unit.api.fakes_backend import FakePersistenceBackend
@@ -224,6 +230,7 @@ async def _seed(
     failing_settings: bool = False,
     project: Project | None = None,
     registry: AgentRegistryProtocol | None = None,
+    autonomy_resolver: AutonomyResolver | None = None,
 ) -> tuple[ReplanTriggerService, _RecordingReplan, AsyncMock]:
     """Build the trigger over a seeded backend.
 
@@ -258,6 +265,7 @@ async def _seed(
         replan=replan,
         config_resolver=resolver,
         agent_registry=registry,
+        autonomy_resolver=autonomy_resolver,
         clock=FakeClock(),
     )
     _BACKENDS[service] = backend
@@ -769,3 +777,107 @@ class TestWhoAuthorisedTheReplan:
 
         with pytest.raises(ValidationError):
             stall("")
+
+
+def _extensible() -> tuple[Plan, PlanItem, PlanItem]:
+    """A workstream with one oversized-and-completed leaf, ready to be asked.
+
+    Returns:
+        The plan, its workstream, and the leaf ``consider_extension`` is
+        asked about, all pre-built for the trigger's own delegation to
+        :mod:`extension_graft`.
+    """
+    workstream = _item(sid("ws-1"))
+    leaf = PlanItem(
+        id=NotBlankStr(sid("leaf-1")),
+        parent_id=workstream.id,
+        title=NotBlankStr("Leaf"),
+        description=NotBlankStr("Do the thing"),
+        acceptance_criteria=(NotBlankStr("it is done"),),
+        expected_artifacts=(NotBlankStr("src/thing.py"),),
+        satisfies=(NotBlankStr("the game is playable"),),
+        unsplit_reason=NotBlankStr("depth backstop"),
+    )
+    return _plan(workstream, leaf), workstream, leaf
+
+
+class TestExtensionAutonomyDelegation:
+    """The trigger resolves the deterministic gate through its own project."""
+
+    async def test_full_autonomy_grafts_without_asking(self) -> None:
+        plan, workstream, leaf = _extensible()
+        autonomy_resolver = AutonomyResolver(
+            registry=ActionTypeRegistry(),
+            config=AutonomyConfig(level=AutonomyLevel.FULL),
+        )
+        service, _, decompose = await _seed(
+            plan,
+            project=_project(lead=None),
+            autonomy_resolver=autonomy_resolver,
+        )
+
+        disposition = await service.consider_extension(
+            plan=plan,
+            tree=PlanTree.of(plan.items),
+            workstream=workstream,
+            leaf=leaf,
+            drive=None,
+        )
+        await service.drain(timeout_sec=5.0)
+
+        assert disposition is ExtensionDisposition.GRAFTED
+        decompose.assert_awaited()
+
+    async def test_default_autonomy_asks_before_any_decomposition(self) -> None:
+        """SUPERVISED, the shipped default, never auto-approves this action."""
+        plan, workstream, leaf = _extensible()
+        autonomy_resolver = AutonomyResolver(
+            registry=ActionTypeRegistry(), config=AutonomyConfig()
+        )
+        service, _, decompose = await _seed(
+            plan,
+            project=_project(lead=None),
+            autonomy_resolver=autonomy_resolver,
+        )
+
+        disposition = await service.consider_extension(
+            plan=plan,
+            tree=PlanTree.of(plan.items),
+            workstream=workstream,
+            leaf=leaf,
+            drive=None,
+        )
+
+        assert disposition is ExtensionDisposition.ASKED
+        decompose.assert_not_awaited()
+
+    async def test_no_autonomy_resolver_fails_closed_to_asked(self) -> None:
+        plan, workstream, leaf = _extensible()
+        service, _, decompose = await _seed(plan, project=_project(lead=None))
+
+        disposition = await service.consider_extension(
+            plan=plan,
+            tree=PlanTree.of(plan.items),
+            workstream=workstream,
+            leaf=leaf,
+            drive=None,
+        )
+
+        assert disposition is ExtensionDisposition.ASKED
+        decompose.assert_not_awaited()
+
+    async def test_grant_extension_bypasses_the_gate(self) -> None:
+        plan, workstream, leaf = _extensible()
+        service, _, decompose = await _seed(plan, project=_project(lead=None))
+
+        started = await service.grant_extension(
+            plan=plan,
+            workstream=workstream,
+            leaf=leaf,
+            drive=None,
+            requested_by="an-operator",
+        )
+        await service.drain(timeout_sec=5.0)
+
+        assert started is True
+        decompose.assert_awaited()

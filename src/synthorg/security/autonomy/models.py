@@ -128,6 +128,11 @@ BUILTIN_PRESETS: Final[MappingProxyType[str, AutonomyPreset]] = MappingProxyType
                 "tool",
                 "vcs:push",
                 "design",
+                # A mid-course scope decision, not a routine build step:
+                # named here for operator legibility even though the
+                # auto-approve semantic already parks anything absent
+                # from ``auto_approve`` (nothing above grants "plan").
+                "plan:extend_workstream",
             ),
             security_agent=True,
         ),
@@ -163,6 +168,7 @@ BUILTIN_PRESETS: Final[MappingProxyType[str, AutonomyPreset]] = MappingProxyType
                 "db:mutate",
                 "db:admin",
                 "arch:decide",
+                "plan:extend_workstream",
                 "tool",
                 # Named rather than merely absent from auto_approve: a design
                 # tool calls a billed provider and manages a store that

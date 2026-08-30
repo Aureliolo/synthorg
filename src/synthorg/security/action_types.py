@@ -34,6 +34,7 @@ class ActionTypeCategory(StrEnum):
     ORG = "org"
     DB = "db"
     ARCH = "arch"
+    PLAN = "plan"
     TOOL = "tool"
     MEMORY = "memory"
     KNOWLEDGE = "knowledge"
@@ -89,6 +90,11 @@ if _missing_in_map:
 #: member would otherwise join the auto-approved set with no decision;
 #: ``check_autonomy_auto_approve_confined.py`` refuses that by requiring the
 #: claim to be made here first.
+#:
+#: ``plan:extend_workstream`` is deliberately absent: grafting a slice
+#: mutates the persisted ``Plan`` that drives the rest of the initiative,
+#: which outlives every worktree, rather than something a discarded
+#: worktree and a review gate can undo.
 WORKTREE_CONFINED_ACTION_TYPES: Final[frozenset[str]] = frozenset(
     {
         ActionType.CODE_READ,

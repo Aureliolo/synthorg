@@ -87,6 +87,8 @@ def build_replan_trigger(
     )
     from synthorg.engine.state import EngineStateSlice  # noqa: PLC0415
     from synthorg.hr.state import HrStateSlice  # noqa: PLC0415
+    from synthorg.security.action_types import ActionTypeRegistry  # noqa: PLC0415
+    from synthorg.security.autonomy.resolver import AutonomyResolver  # noqa: PLC0415
     from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
     from synthorg.workers.state import RuntimeStateSlice  # noqa: PLC0415
 
@@ -110,6 +112,10 @@ def build_replan_trigger(
             # is drafted long after boot and must be owned by whoever the org
             # staffs then.
             agent_registry=app_state.slice(HrStateSlice).agent_registry,
+            autonomy_resolver=AutonomyResolver(
+                registry=ActionTypeRegistry(),
+                config=app_state.config.config.autonomy,
+            ),
             clock=app_state.clock,
         )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised

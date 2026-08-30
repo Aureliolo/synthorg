@@ -682,6 +682,37 @@ class TestReconcile:
         assert report.resumed == 1
 
 
+class TestExtensionGraftRestartRecovery:
+    """A crash between grafting an extension and dispatching it needs no new code.
+
+    The graft writes the new ``PlanItem``s and files their ``Task`` rows
+    before ever calling the driver (see ``extension_graft.graft_extension``),
+    so a process killed in that window leaves ordinary CREATED task rows
+    under a plan still reading EXECUTING: exactly the shape every other
+    dispatched plan already resumes through.
+    """
+
+    async def test_a_grafted_but_undispatched_leaf_is_resumed(self) -> None:
+        plan = _plan(status=PlanStatus.EXECUTING)
+        # The original leaf already delivered and is done; only the freshly
+        # grafted child, filed but never dispatched, is what the sweep must
+        # pick back up.
+        grafted_child = _task(
+            "grafted-child",
+            status=TaskStatus.CREATED,
+            plan_id=plan.id,
+            plan_item_id=as_uuid("item-1"),
+        )
+        driven: list[str] = []
+        report = await _reconciler(
+            persistence=_persistence(plans=[plan], tasks=[grafted_child]),
+            driven=driven,
+        ).reconcile(trigger="boot")
+
+        assert driven == [str(plan.id)]
+        assert report.resumed == 1
+
+
 class TestLiveRunLedger:
     def test_a_second_claim_is_refused(self) -> None:
         ledger = LiveRunLedger()

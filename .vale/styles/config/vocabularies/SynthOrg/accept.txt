@@ -547,6 +547,7 @@ hardcoding
 head_sha
 health_prober
 healthcheck
+hoc
 hookify
 hostname
 hostnames
@@ -681,6 +682,7 @@ param
 params
 parens
 parent_task_id
+parentless
 passthrough
 pausable
 passthroughs

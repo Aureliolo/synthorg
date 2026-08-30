@@ -134,7 +134,11 @@ def test_the_rollup_does_not_wait_for_the_tail_it_carries() -> None:
     """
     requires = set(_spec("project_rollup_service").requires)
 
-    assert requires == {CapabilityId.PERSISTENCE, CapabilityId.TASK_ENGINE}
+    assert requires == {
+        CapabilityId.PERSISTENCE,
+        CapabilityId.TASK_ENGINE,
+        CapabilityId.SETTINGS_RESOLVER,
+    }
 
 
 def test_the_subscriber_watches_every_declared_setting() -> None:

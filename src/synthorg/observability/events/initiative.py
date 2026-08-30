@@ -30,6 +30,38 @@ INITIATIVE_REPLAN_GRANTED: Final[str] = "initiative.replan.granted"
 #: store is degraded and every replan now runs on defaults" the same signal.
 INITIATIVE_REPLAN_SETTINGS_DEGRADED: Final[str] = "initiative.replan.settings_degraded"
 
+#: A workstream finished its planned tree with at least one leaf still
+#: oversized, and the extension trigger started a graft for it.
+INITIATIVE_EXTENSION_CONSIDERED: Final[str] = "initiative.extension.considered"
+#: The trigger refused an extension it was asked to consider, on the same two
+#: guards a stalled replan can be refused on.
+INITIATIVE_EXTENSION_REFUSED: Final[str] = "initiative.extension.refused"
+#: The graft's own append lost a race to another writer and is retrying once
+#: against the freshly read plan.
+INITIATIVE_EXTENSION_VERSION_CONFLICT: Final[str] = (
+    "initiative.extension.version_conflict"
+)
+#: An extension's items landed on the plan and its tasks were filed.
+INITIATIVE_EXTENSION_GRAFTED: Final[str] = "initiative.extension.grafted"
+#: An extension grafted but the driver refused to dispatch it; the plan is
+#: left for the recovery sweep to pick up on its own cadence, the same as any
+#: other refused drive.
+INITIATIVE_EXTENSION_DRIVE_FAILED: Final[str] = "initiative.extension.drive_failed"
+#: The graft itself failed (a bad decomposition, a persistence failure, or
+#: both append attempts losing to a concurrent writer or a deleted plan).
+INITIATIVE_EXTENSION_FAILED: Final[str] = "initiative.extension.failed"
+#: An extension attempt was collapsed (already in flight) or refused before
+#: starting, on the ``StageRunner`` shape ``INITIATIVE_REPLAN_SKIPPED``
+#: carries for replan. Its own name, and its own ``StageRunner`` instance, so
+#: an extension's own timeout or uncaught failure is never misattributed to
+#: the unrelated replan mechanism the two used to share one runner with.
+INITIATIVE_EXTENSION_SKIPPED: Final[str] = "initiative.extension.skipped"
+#: A settings read fell back to its hardcoded default, on the same reasoning
+#: ``INITIATIVE_REPLAN_SETTINGS_DEGRADED`` carries for replan.
+INITIATIVE_EXTENSION_SETTINGS_DEGRADED: Final[str] = (
+    "initiative.extension.settings_degraded"
+)
+
 #: An initiative with no automatic route left was put in front of a person.
 #: WARNING, because it is the one signal that the organisation has stopped and
 #: needs attention; everything else about that state is silent by design.
@@ -69,6 +101,35 @@ INITIATIVE_STALL_FOREIGN: Final[str] = "initiative.stall.foreign"
 #: passed over, because the two can only differ if something replayed a
 #: decision or wrote the row underneath it.
 INITIATIVE_STALL_STALE_DECISION: Final[str] = "initiative.stall.stale_decision"
+
+#: A person granted one more extension for a leaf the deterministic gate had
+#: parked, cap and switch aside, mirroring ``INITIATIVE_REPLAN_GRANTED``.
+INITIATIVE_EXTENSION_GRANTED: Final[str] = "initiative.extension.granted"
+#: A workstream's extension ask crossed the deterministic autonomy gate and
+#: one decision was parked for a person, mirroring
+#: ``INITIATIVE_STALL_ESCALATED``.
+INITIATIVE_EXTENSION_ESCALATED: Final[str] = "initiative.extension.escalated"
+#: A leaf's extension ask is already settled or already open, so nothing new
+#: is raised. Two call sites: ``escalate``'s own internal re-check catching
+#: two concurrent recomputes racing to escalate the same leaf, and the
+#: rollup's own per-leaf read finding a decision already ``PENDING`` or
+#: ``REJECTED`` before it ever re-asks the trigger.
+INITIATIVE_EXTENSION_ALREADY_DECIDED: Final[str] = (
+    "initiative.extension.already_decided"
+)
+#: The decision landed but the alert announcing it did not.
+INITIATIVE_EXTENSION_NOTICE_FAILED: Final[str] = "initiative.extension.notice_failed"
+#: The operator answered, and this is what their answer did.
+INITIATIVE_EXTENSION_DECIDED: Final[str] = "initiative.extension.decided"
+#: An item wearing the extend-workstream action type that this organisation
+#: did not raise. Not acted on, mirroring ``INITIATIVE_STALL_FOREIGN``.
+INITIATIVE_EXTENSION_FOREIGN: Final[str] = "initiative.extension.foreign"
+#: The answer being acted on and the answer on the row disagree.
+INITIATIVE_EXTENSION_STALE_DECISION: Final[str] = "initiative.extension.stale_decision"
+#: The decision said extend it but nothing could act on it: the workstream
+#: named in its metadata no longer resolves against the plan, or no replan
+#: trigger is wired to graft it.
+INITIATIVE_EXTENSION_NOT_GRANTED: Final[str] = "initiative.extension.not_granted"
 
 #: A stage's derived task id is occupied by a row the stage never minted. Read
 #: as a failed attempt, so the initiative routes to a replan; named separately

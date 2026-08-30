@@ -102,6 +102,7 @@ class TestShippedPresets:
             ActionType.VCS_PUSH,
             ActionType.COMMS_EXTERNAL,
             ActionType.DEPLOY_STAGING,
+            ActionType.PLAN_EXTEND_WORKSTREAM,
         ],
     )
     def test_what_leaves_the_box_is_not_declared_confined(

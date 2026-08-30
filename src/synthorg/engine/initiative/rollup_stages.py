@@ -19,27 +19,54 @@ Advancing past either would report progress nobody made.
 """
 
 from collections.abc import Awaitable, Callable
+from typing import Final
 
-from synthorg.core.plan import Plan
+from synthorg.approval.enums import ApprovalStatus
+from synthorg.approval.initiative_extension import EXTENSION_ESCALATION_ACTOR
+from synthorg.core.approval import ApprovalItem
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.plan_tree import PlanTree
+from synthorg.engine.initiative.completion import ItemProgress
+from synthorg.engine.initiative.extension_escalation import (
+    ExtensionEscalationService,
+    decision_for,
+)
+from synthorg.engine.initiative.extension_state import (
+    EXTENSION_IN_PROGRESS_DISPOSITIONS,
+    EXTENSION_REFUSED_DISPOSITIONS,
+    ExtensionDisposition,
+    workstream_needs_extension,
+)
 from synthorg.engine.initiative.head_stages import read_skeleton_state
 from synthorg.engine.initiative.ports import (
     DriveOutcome,
     EvaluationPort,
     IntegrationPort,
     PlanDriver,
+    ReplanTriggerPort,
     SkeletonPort,
 )
 from synthorg.engine.initiative.stage_state import StageOutcome
 from synthorg.engine.initiative.tail_stages import read_integration_state
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.initiative import (
+    INITIATIVE_EXTENSION_ALREADY_DECIDED,
+    INITIATIVE_EXTENSION_SETTINGS_DEGRADED,
+)
 from synthorg.observability.events.project import (
     PROJECT_ROLLUP_SKIPPED,
     PROJECT_ROLLUP_STARTED,
 )
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
+
+#: Fallback when no resolver is wired or the read fails: off, since this
+#: mechanism is unvalidated by any live round, unlike recursion itself.
+_DEFAULT_JIT_EXTENSION_PLANNING_ENABLED: Final[bool] = False
 
 #: Advances a plan to a status, answering ``None`` when the write was refused.
 PlanAdvance = Callable[[Plan, PlanStatus], Awaitable[Plan | None]]
@@ -209,6 +236,228 @@ async def drive_integration(
     if state.outcome is StageOutcome.RUNNING:
         _log_running(plan, note="integration job still running")
     return plan
+
+
+async def resolve_jit_extension_planning_enabled(
+    resolver: ConfigResolver | None,
+) -> bool:
+    """Return whether the just-in-time extension mechanism runs at all.
+
+    The master switch, read live per recompute so an operator's change
+    applies without a restart, on the same shape ``resolve_recursion_budget``
+    reads ``coordination.recursive_decomposition_enabled``.
+
+    Returns:
+        The live ``coordination.jit_extension_planning_enabled`` value, or
+        the default when no resolver is wired or the read fails.
+    """
+    if resolver is None:
+        return _DEFAULT_JIT_EXTENSION_PLANNING_ENABLED
+    try:
+        return await resolver.get_bool("coordination", "jit_extension_planning_enabled")
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort settings read
+        reraise_critical(exc)
+        logger.warning(
+            INITIATIVE_EXTENSION_SETTINGS_DEGRADED,
+            key="jit_extension_planning_enabled",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return _DEFAULT_JIT_EXTENSION_PLANNING_ENABLED
+
+
+async def extensions_hold(
+    plan: Plan,
+    items: tuple[ItemProgress, ...],
+    *,
+    config_resolver: ConfigResolver | None,
+    replan_trigger: ReplanTriggerPort | None,
+    drive: PlanDriver | None,
+    extension_escalation: ExtensionEscalationService | None,
+) -> bool:
+    """Whether a workstream mid-extension should hold *plan* at EXECUTING.
+
+    Off by default and read live, on the same shape as recursion's own master
+    switch: an operator turns the mechanism on, and this decides whether it
+    is even worth asking every workstream on this pass.
+
+    Returns:
+        ``False`` when the switch is off, the trigger is unwired, or no
+        workstream needs an extension right now; otherwise whatever
+        :func:`drive_extensions` answers.
+    """
+    if not await resolve_jit_extension_planning_enabled(config_resolver):
+        return False
+    return await drive_extensions(
+        plan,
+        items,
+        replan_trigger=replan_trigger,
+        drive=drive,
+        extension_escalation=extension_escalation,
+    )
+
+
+async def drive_extensions(
+    plan: Plan,
+    items: tuple[ItemProgress, ...],
+    *,
+    replan_trigger: ReplanTriggerPort | None,
+    drive: PlanDriver | None,
+    extension_escalation: ExtensionEscalationService | None,
+) -> bool:
+    """Ask every workstream whether it needs another extension, and act on it.
+
+    Meaningful only while ``plan.status is EXECUTING``; the caller gates on
+    that and on the master switch. Called BEFORE ``derive_plan_status`` on
+    the same recompute pass, because that derivation promotes a plan to
+    INTEGRATING the moment every currently-known item reads done, with no
+    workstream-level distinction: a workstream whose extension is in flight
+    (or was just started) is not finished even though its known tree is.
+
+    ``ASKED`` is handled here rather than folded into
+    ``EXTENSION_IN_PROGRESS_DISPOSITIONS``, because whether it holds the plan
+    depends on whether anything can actually ask: with an escalation
+    attached, a fresh ask is parked and holds, same as the stall route; an
+    already-parked or already-rejected leaf is read straight from the store
+    (checked BEFORE re-asking the trigger, so a settled rejection never mints
+    a second decision). Without one, on the same reasoning
+    ``escalate_stall``'s escalation-absent branch drives a plan out rather
+    than park it, the plan is not held: the work already delivered is real,
+    and an unmet objective still surfaces at the judged EVALUATING gate.
+
+    An ``APPROVED`` decision is settled, not merely in progress: unlike a
+    stall's grant, which supersedes the plan and so ends this loop for it, an
+    extension's plan stays EXECUTING and this same leaf recurs on every later
+    pass until it either gains children (dropping it from
+    ``workstream_needs_extension``'s own answer) or is refused outright. So
+    an approval is re-applied here on every pass it is still seen, through
+    the same granted door a fresh human decision uses: ``ALREADY_RUNNING``
+    covers the ordinary case where the first grant's graft has not finished
+    yet, and a settled approval that keeps failing to graft still holds the
+    plan rather than silently promoting past an objective nothing delivered.
+
+    Returns:
+        Whether at least one workstream is mid-extension, was just handed
+        one, has a decision open, or has a settled approval still being
+        applied, which the caller reads as "hold this plan at EXECUTING this
+        pass". ``False`` for a workstream an extension was asked for and
+        refused outright (the switch is off, its generation cap is spent, or
+        a settled rejection already answered it): no automatic route remains
+        for it, so holding the plan for ever would replace one silent state
+        with another.
+
+    Raises:
+        AssertionError: If a leaf's disposition is none of ``ASKED``,
+            ``EXTENSION_IN_PROGRESS_DISPOSITIONS`` or
+            ``EXTENSION_REFUSED_DISPOSITIONS``, meaning a new
+            ``ExtensionDisposition`` member was added without updating this
+            loop to handle it.
+    """
+    if replan_trigger is None:
+        return False
+    tree = PlanTree.of(plan.items)
+    progress_by_id = dict(zip((item.id for item in plan.items), items, strict=True))
+    decisions = (
+        await extension_escalation.open_decisions(plan)
+        if extension_escalation is not None
+        else ()
+    )
+    holding = False
+    for workstream in tree.workstreams:
+        for leaf in workstream_needs_extension(
+            plan.items, tree, workstream, progress_by_id
+        ):
+            if await _drive_leaf_extension(
+                plan,
+                tree,
+                workstream,
+                leaf,
+                decisions=decisions,
+                replan_trigger=replan_trigger,
+                drive=drive,
+                extension_escalation=extension_escalation,
+            ):
+                holding = True
+    return holding
+
+
+async def _drive_leaf_extension(
+    plan: Plan,
+    tree: PlanTree,
+    workstream: PlanItem,
+    leaf: PlanItem,
+    *,
+    decisions: tuple[ApprovalItem, ...],
+    replan_trigger: ReplanTriggerPort,
+    drive: PlanDriver | None,
+    extension_escalation: ExtensionEscalationService | None,
+) -> bool:
+    """Resolve one oversized leaf's extension state for this pass.
+
+    Split out of :func:`drive_extensions` so the per-workstream loop there
+    stays a dispatch table; this is the one leaf's worth of decision logic
+    it dispatches to.
+
+    Returns:
+        Whether this leaf is currently holding the plan at EXECUTING.
+
+    Raises:
+        AssertionError: If the disposition is none of ``ASKED``,
+            ``EXTENSION_IN_PROGRESS_DISPOSITIONS`` or
+            ``EXTENSION_REFUSED_DISPOSITIONS``, meaning a new
+            ``ExtensionDisposition`` member was added without updating this
+            to handle it.
+    """
+    decision = decision_for(decisions, leaf)
+    status = decision.status if decision is not None else None
+    if status is ApprovalStatus.REJECTED:
+        logger.debug(
+            INITIATIVE_EXTENSION_ALREADY_DECIDED,
+            plan_id=str(plan.id),
+            leaf_id=leaf.id,
+            status=ApprovalStatus.REJECTED.value,
+        )
+        return False
+    if status is ApprovalStatus.PENDING:
+        logger.debug(
+            INITIATIVE_EXTENSION_ALREADY_DECIDED,
+            plan_id=str(plan.id),
+            leaf_id=leaf.id,
+            status=ApprovalStatus.PENDING.value,
+        )
+        return True
+    if status is ApprovalStatus.APPROVED:
+        await replan_trigger.grant_extension(
+            plan=plan,
+            workstream=workstream,
+            leaf=leaf,
+            drive=drive,
+            requested_by=EXTENSION_ESCALATION_ACTOR,
+        )
+        return True
+    disposition = await replan_trigger.consider_extension(
+        plan=plan,
+        tree=tree,
+        workstream=workstream,
+        leaf=leaf,
+        drive=drive,
+    )
+    if disposition is ExtensionDisposition.ASKED:
+        if extension_escalation is None:
+            return False
+        await extension_escalation.escalate(plan, workstream, leaf)
+        return True
+    if disposition in EXTENSION_IN_PROGRESS_DISPOSITIONS:
+        return True
+    if disposition not in EXTENSION_REFUSED_DISPOSITIONS:
+        # ASKED, EXTENSION_IN_PROGRESS_DISPOSITIONS and
+        # EXTENSION_REFUSED_DISPOSITIONS partition every disposition
+        # consider_extension can answer; a member reaching here is a new one
+        # this was never updated to handle.
+        msg = f"unhandled ExtensionDisposition: {disposition!r}"
+        raise AssertionError(msg)
+    return False
 
 
 def drive_evaluation(plan: Plan, *, evaluation: EvaluationPort | None) -> None:

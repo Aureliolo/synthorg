@@ -34,15 +34,16 @@ should continue, so neither does, and the successor carries generation zero on
 the same rule a hand-authored re-plan already follows.
 """
 
-from typing import Final, Self
-
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+import asyncio
+from typing import Final
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.plan import Plan
+from synthorg.core.effective_autonomy import EffectiveAutonomy
+from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import REPLANNABLE_STATUSES
+from synthorg.core.plan_tree import PlanTree
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.context import (
@@ -54,19 +55,32 @@ from synthorg.engine.decomposition.service import DecompositionService
 from synthorg.engine.initiative.completion import (
     ITEM_DERIVED_STALLS,
     STAGE_OF_STALL_REASON,
-    ItemProgress,
     ReplanDisposition,
     StallReason,
     stall_reason,
 )
+from synthorg.engine.initiative.confirmed_stall import ConfirmedStall
+from synthorg.engine.initiative.extension_autonomy import (
+    resolve_effective_autonomy_for_plan,
+)
+from synthorg.engine.initiative.extension_graft import ExtensionCollaborators
+from synthorg.engine.initiative.extension_graft import (
+    consider_extension as consider_extension_graft,
+)
+from synthorg.engine.initiative.extension_graft import (
+    grant_extension as grant_extension_graft,
+)
+from synthorg.engine.initiative.extension_state import ExtensionDisposition
 from synthorg.engine.initiative.item_progress import collect_item_progress
-from synthorg.engine.initiative.ports import InitiativeReplanPort
+from synthorg.engine.initiative.ports import InitiativeReplanPort, PlanDriver
 from synthorg.engine.initiative.replan_brief import build_replan_brief
 from synthorg.engine.initiative.stage_runner import StageRunner
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry_protocol import AgentRegistryProtocol
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.initiative import (
+    INITIATIVE_EXTENSION_FAILED,
+    INITIATIVE_EXTENSION_SKIPPED,
     INITIATIVE_REPLAN_COMPLETED,
     INITIATIVE_REPLAN_FAILED,
     INITIATIVE_REPLAN_GRANTED,
@@ -77,6 +91,7 @@ from synthorg.observability.events.initiative import (
     INITIATIVE_REPLAN_STARTED,
 )
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.security.autonomy.resolver import AutonomyResolver
 from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -93,61 +108,6 @@ _DEFAULT_MAX_GENERATIONS: Final[int] = 2
 _DEFAULT_TIMEOUT_SECONDS: Final[float] = 600.0
 
 
-class ConfirmedStall(BaseModel):
-    """A stall the trigger has re-confirmed against persistence.
-
-    Attributes:
-        plan: The freshly read plan, still replannable and still stalled.
-        reason: The stall shape derived from the live item statuses.
-        items: Those item statuses, carried forward so the brief is built from
-            the same read the verdict came from.
-        detail: What the scheduling stage observed, when it knows something the
-            item statuses do not.
-        granted_by: Who authorised this replan, when a person did. Present
-            means the successor is a human decision rather than the org acting
-            unasked, which is what decides its generation.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    plan: Plan = Field(description="The freshly read, still-stalled plan")
-    reason: StallReason = Field(description="Live stall shape")
-    items: tuple[ItemProgress, ...] = Field(description="Live item progress")
-    detail: str | None = Field(
-        default=None,
-        description="What the scheduling stage observed",
-    )
-    granted_by: NotBlankStr | None = Field(
-        default=None,
-        description="Who authorised this replan, when a person did",
-    )
-
-    @model_validator(mode="after")
-    def _validate_reason_matches_evidence(self) -> Self:
-        """Reject a stall whose reason does not match what it carries.
-
-        The type's whole claim is that it has been confirmed, and every
-        consumer builds the successor's brief on that basis. Checking it here
-        keeps the guarantee attached to the type rather than resting on the one
-        private method that happens to construct it correctly today.
-
-        Returns:
-            The validated model.
-
-        Raises:
-            ValueError: When the reason contradicts the items or the plan's
-                own status.
-        """
-        if self.reason in ITEM_DERIVED_STALLS:
-            if stall_reason(self.items) is not self.reason:
-                msg = "reason does not match the live item stall shape"
-                raise ValueError(msg)
-        elif self.plan.status is not STAGE_OF_STALL_REASON[self.reason]:
-            msg = "reason does not match the plan's tail stage"
-            raise ValueError(msg)
-        return self
-
-
 class ReplanTriggerService:
     """Replans an initiative whose plan can no longer make progress.
 
@@ -159,13 +119,18 @@ class ReplanTriggerService:
             engine does not import the api controller layer).
         config_resolver: Live settings source, re-read per fire so an operator
             can disable auto-replan or retune the cap without a restart.
+        autonomy_resolver: Resolves a plan's autonomy for the extension ask's
+            gate. ``None`` fails it closed rather than open.
         clock: Clock seam seeding the background-task drain deadline.
     """
 
     __slots__ = (
         "_agent_registry",
+        "_autonomy_resolver",
+        "_clock",
         "_config_resolver",
         "_decomposition",
+        "_extension_runner",
         "_persistence",
         "_replan",
         "_runner",
@@ -181,6 +146,7 @@ class ReplanTriggerService:
         replan: InitiativeReplanPort,
         config_resolver: ConfigResolver | None = None,
         agent_registry: AgentRegistryProtocol | None = None,
+        autonomy_resolver: AutonomyResolver | None = None,
         clock: Clock,
     ) -> None:
         self._persistence = persistence
@@ -188,6 +154,8 @@ class ReplanTriggerService:
         self._decomposition = decomposition_service
         self._replan = replan
         self._config_resolver = config_resolver
+        self._autonomy_resolver = autonomy_resolver
+        self._clock = clock
         # Held rather than snapshotted: the org can be staffed between boot
         # and a stall, and the successor plan must be owned by whoever is
         # there when it is drafted.
@@ -197,6 +165,18 @@ class ReplanTriggerService:
             clock=clock,
             skipped_event=INITIATIVE_REPLAN_SKIPPED,
             failed_event=INITIATIVE_REPLAN_FAILED,
+        )
+        # Its own instance, not shared with replan: the two mechanisms raise
+        # unrelated decisions on unrelated schedules, and a shared runner
+        # would attribute an extension's own timeout or uncaught failure to
+        # ``INITIATIVE_REPLAN_FAILED``/``_SKIPPED``, reading as the unrelated
+        # replan mechanism failing while the extension mechanism itself
+        # appeared healthy.
+        self._extension_runner = StageRunner(
+            owner="initiative.extension",
+            clock=clock,
+            skipped_event=INITIATIVE_EXTENSION_SKIPPED,
+            failed_event=INITIATIVE_EXTENSION_FAILED,
         )
 
     async def consider(
@@ -294,8 +274,95 @@ class ReplanTriggerService:
         return started
 
     async def drain(self, *, timeout_sec: float) -> None:
-        """Wait for outstanding replans at shutdown, then bound them."""
-        await self._runner.drain(timeout_sec=timeout_sec)
+        """Wait for outstanding replans and extensions at shutdown, then bound them.
+
+        Concurrently, not sequentially: each runner's own drain is already
+        bounded by *timeout_sec*, and awaiting them one after the other would
+        let the two runners' worst cases add up to twice the caller's actual
+        shutdown budget.
+        """
+        async with asyncio.TaskGroup() as tg:
+            _ = tg.create_task(self._runner.drain(timeout_sec=timeout_sec))
+            _ = tg.create_task(self._extension_runner.drain(timeout_sec=timeout_sec))
+
+    async def consider_extension(
+        self,
+        *,
+        plan: Plan,
+        tree: PlanTree,
+        workstream: PlanItem,
+        leaf: PlanItem,
+        drive: PlanDriver | None,
+    ) -> ExtensionDisposition:
+        """Graft another extension onto *leaf* if the org may still do so unasked.
+
+        A thin assembly of this service's own collaborators; the mechanism
+        and its guards live in :mod:`extension_graft`.
+
+        Returns:
+            What became of the ask.
+        """
+        return await consider_extension_graft(
+            plan=plan,
+            tree=tree,
+            workstream=workstream,
+            leaf=leaf,
+            drive=drive,
+            collaborators=self._extension_collaborators(),
+        )
+
+    async def grant_extension(
+        self,
+        *,
+        plan: Plan,
+        workstream: PlanItem,
+        leaf: PlanItem,
+        drive: PlanDriver | None,
+        requested_by: str,
+    ) -> bool:
+        """Graft *leaf*'s extension once on a person's authority, gates aside.
+
+        Returns:
+            Whether the detached graft started.
+        """
+        return await grant_extension_graft(
+            plan=plan,
+            workstream=workstream,
+            leaf=leaf,
+            drive=drive,
+            requested_by=requested_by,
+            collaborators=self._extension_collaborators(),
+        )
+
+    def _extension_collaborators(self) -> ExtensionCollaborators:
+        """Assemble the bundle :mod:`extension_graft` needs, shared by both doors.
+
+        Returns:
+            The collaborators.
+        """
+        return ExtensionCollaborators(
+            persistence=self._persistence,
+            task_engine=self._task_engine,
+            decomposition_service=self._decomposition,
+            config_resolver=self._config_resolver,
+            runner=self._extension_runner,
+            owner_resolver=self._owner,
+            roster_resolver=self._roster,
+            effective_autonomy=self._effective_autonomy,
+            clock=self._clock,
+        )
+
+    async def _effective_autonomy(self, plan: Plan) -> EffectiveAutonomy | None:
+        """Resolve *plan*'s autonomy, delegating to :mod:`extension_graft`.
+
+        Returns:
+            The resolved autonomy, or ``None`` when it could not be.
+        """
+        return await resolve_effective_autonomy_for_plan(
+            plan,
+            persistence=self._persistence,
+            autonomy_resolver=self._autonomy_resolver,
+        )
 
     def _refuse(
         self,

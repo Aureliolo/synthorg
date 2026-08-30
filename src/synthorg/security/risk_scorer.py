@@ -225,6 +225,9 @@ _DEFAULT_SCORE_MAP: Final[MappingProxyType[str, RiskScore]] = MappingProxyType(
         ActionType.CODE_REFACTOR: _MEDIUM_SCORE,
         ActionType.VCS_COMMIT: _MEDIUM_SCORE,
         ActionType.ARCH_DECIDE: _MEDIUM_SCORE,
+        # A mid-course scope decision on a live plan; same tier as any other
+        # architecture-shaping choice.
+        ActionType.PLAN_EXTEND_WORKSTREAM: _MEDIUM_SCORE,
         # Ingestion pulls external (possibly untrusted) content into the
         # knowledge corpus; admin-gated, moderate blast radius.
         ActionType.KNOWLEDGE_INGEST: _MEDIUM_SCORE,

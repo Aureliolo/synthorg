@@ -17,9 +17,11 @@ from uuid import UUID
 
 from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.plan_tree import PlanTree
 from synthorg.core.project import Project
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.initiative.completion import ReplanDisposition, StallReason
+from synthorg.engine.initiative.extension_state import ExtensionDisposition
 
 
 @runtime_checkable
@@ -142,6 +144,51 @@ class ReplanTriggerPort(Protocol):
 
     async def drain(self, *, timeout_sec: float) -> None:
         """Await outstanding replans at shutdown, bounded by *timeout_sec*."""
+        ...
+
+    async def consider_extension(
+        self,
+        *,
+        plan: Plan,
+        tree: PlanTree,
+        workstream: PlanItem,
+        leaf: PlanItem,
+        drive: PlanDriver | None,
+    ) -> ExtensionDisposition:
+        """Graft another extension onto *leaf* if the org may still do so unasked.
+
+        The wave-completion counterpart to ``consider``: asked when a
+        workstream's known tree is entirely done but *leaf* is still
+        incomplete by its own ``unsplit_reason``, never when anything is
+        stalled. Applies the master switch and *workstream*'s own generation
+        cap, because this is the automatic authority.
+
+        Returns:
+            What became of the ask.
+        """
+        ...
+
+    async def grant_extension(
+        self,
+        *,
+        plan: Plan,
+        workstream: PlanItem,
+        leaf: PlanItem,
+        drive: PlanDriver | None,
+        requested_by: str,
+    ) -> bool:
+        """Graft *leaf*'s extension once on a person's authority, gates aside.
+
+        The other door on the same owner ``consider_extension`` is: neither
+        the master switch, the generation cap, nor the deterministic autonomy
+        gate applies, on the same reasoning ``grant`` overrides ``consider``'s
+        guards for a stall. *workstream* is needed as well as *leaf* because
+        the in-flight guard is keyed per workstream (see
+        ``extension_graft._in_flight_key``), not per leaf.
+
+        Returns:
+            Whether the detached graft started.
+        """
         ...
 
 

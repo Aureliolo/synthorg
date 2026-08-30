@@ -345,6 +345,16 @@ the reader's: as a flag in the plan's attention panel and on the item's own
 card, and in the stakeholder panel's brief beside the item, where a reviewer
 raising `OVERSIZED_SCOPE` has the machine's own evidence in front of it.
 
+A third remedy needs no reviewer to detect, once a leaf carrying this field
+has already been dispatched and completed: [Workstream
+Extension](workstream-extension.md) reads exactly this field, post hoc, to
+decide whether the workstream that dispatched it is actually finished or only
+finished the tree it was given, and grafts a further decomposition onto the
+leaf rather than raising a bound or narrowing an objective nobody has looked
+at yet. Whether that graft needs a reviewer to approve is a separate
+question the deterministic autonomy ladder answers per case, which can still
+park the decision for a human.
+
 Those units still dispatch. Refusing the plan would throw away every level
 already paid for and block work whose leaves may well execute; the honest
 answer is to run it and say so.

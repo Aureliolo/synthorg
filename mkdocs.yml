@@ -183,6 +183,7 @@ nav:
       - Plan Review: design/plan-review.md
       - Project Lifecycle: design/project-lifecycle.md
       - Initiative Tail: design/initiative-tail.md
+      - Workstream Extension: design/workstream-extension.md
       - Subsystem Reconciliation: design/subsystem-reconciliation.md
       - Distributed Runtime: design/distributed-runtime.md
       - Memory: design/memory.md

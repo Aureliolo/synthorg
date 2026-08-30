@@ -668,6 +668,15 @@ async def _activate_initiative_stall_escalation(app_state: AppState) -> None:
     await attach_stall_escalation(app_state)
 
 
+async def _activate_initiative_extension_escalation(app_state: AppState) -> None:
+    """Attach the extend-workstream escalation onto the wired rollup."""
+    from synthorg.api.lifecycle_helpers.project_rollup_wiring import (  # noqa: PLC0415
+        attach_extension_escalation,
+    )
+
+    await attach_extension_escalation(app_state)
+
+
 async def _activate_initiative_retro_capture(app_state: AppState) -> None:
     """Attach the SHIP-time retrospective capture onto the wired rollup."""
     from synthorg.api.lifecycle_helpers.project_rollup_wiring import (  # noqa: PLC0415
@@ -1440,14 +1449,19 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
     SubsystemSpec(
         name="project_rollup_service",
         provides=CapabilityId.PROJECT_ROLLUP_SERVICE,
-        requires=(CapabilityId.PERSISTENCE, CapabilityId.TASK_ENGINE),
+        requires=(
+            CapabilityId.PERSISTENCE,
+            CapabilityId.TASK_ENGINE,
+            CapabilityId.SETTINGS_RESOLVER,
+        ),
         activate=_activate_project_rollup,
     ),
     # The four below are the initiative tail, declared one per collaborator and
     # apart from the rollup they attach to. Apart from the rollup because the
-    # two converge at different times: the rollup needs only persistence and
-    # the task engine, which are up before setup configures a provider, while
-    # every tail stage needs a registry, the work pipeline or the coordinator.
+    # two converge at different times: the rollup needs only persistence, the
+    # task engine and the settings resolver, which are up before setup
+    # configures a provider, while every tail stage needs a registry, the
+    # work pipeline or the coordinator.
     # Folded into the rollup's spec, its early success stood for the tail's,
     # and since the reconciler never revisits a subsystem it reads as
     # converged, the tail could never come up on any boot. One each rather than
@@ -1515,6 +1529,20 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
             CapabilityId.APPROVAL_STORE,
         ),
         activate=_activate_initiative_stall_escalation,
+    ),
+    SubsystemSpec(
+        # Separate from initiative_replan for the same reason
+        # initiative_stall_escalation is: it is what happens when the
+        # deterministic autonomy gate applies, which converges independently
+        # of whether a trigger is even attached.
+        name="initiative_extension_escalation",
+        provides=CapabilityId.INITIATIVE_EXTENSION_ESCALATION,
+        requires=(
+            CapabilityId.PROJECT_ROLLUP_SERVICE,
+            CapabilityId.PERSISTENCE,
+            CapabilityId.APPROVAL_STORE,
+        ),
+        activate=_activate_initiative_extension_escalation,
     ),
     SubsystemSpec(
         # Both memory backends are tearable, and the capture holds them for the

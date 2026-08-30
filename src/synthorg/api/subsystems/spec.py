@@ -90,6 +90,7 @@ class CapabilityId(StrEnum):
     INITIATIVE_EVALUATE = "initiative_evaluate"
     INITIATIVE_REPLAN = "initiative_replan"
     INITIATIVE_STALL_ESCALATION = "initiative_stall_escalation"
+    INITIATIVE_EXTENSION_ESCALATION = "initiative_extension_escalation"
     INITIATIVE_RETRO_CAPTURE = "initiative_retro_capture"
     KANBAN_BOARD = "kanban_board"
     STEERING_SERVICE = "steering_service"
