@@ -12,6 +12,7 @@ The daemon side is substituted, so nothing here touches Docker.
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import aiodocker
 import pytest
@@ -26,7 +27,10 @@ from synthorg.api.subsystems.errors import SubsystemDeclinedError
 from synthorg.engine.workspace.state import WorkspaceStateSlice
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.tools.sandbox.deployment_identity import deployment_id_for
-from synthorg.tools.sandbox.reconciliation import ReconciliationOutcome
+from synthorg.tools.sandbox.reconciliation import (
+    ReconciliationOutcome,
+    reap_orphaned_background_jobs,
+)
 from synthorg.tools.state import ToolsStateSlice
 from tests._shared import make_app_state
 
@@ -69,7 +73,9 @@ def _connected_state(workspace_root: Path) -> AppState:
     Returns:
         The composed ``AppState``.
     """
-    backend = SimpleNamespace(is_connected=True, tracked_containers=object())
+    backend = SimpleNamespace(
+        is_connected=True, tracked_containers=object(), background_jobs=object()
+    )
     return make_app_state(
         slices={
             PersistenceStateSlice: {"backend": backend},
@@ -141,6 +147,11 @@ async def test_a_completed_pass_stamps_the_slice(
     monkeypatch.setattr(
         sandbox_reconcile_wiring, "reconcile_tracked_containers", _fake_reconcile
     )
+    monkeypatch.setattr(
+        sandbox_reconcile_wiring,
+        "reap_orphaned_background_jobs",
+        AsyncMock(spec=reap_orphaned_background_jobs, return_value=()),
+    )
 
     app_state = _connected_state(tmp_path)
 
@@ -174,17 +185,35 @@ async def test_the_pass_is_bound_to_this_deployments_workspace(
         passed["deployment_id"] = deployment_id
         passed["workspace_root"] = workspace_root
         return ReconciliationOutcome(
-            kept=(), db_only_dropped=(), docker_only_killed=(), foreign_skipped=()
+            kept=("c1", "c2"),
+            db_only_dropped=(),
+            docker_only_killed=(),
+            foreign_skipped=(),
         )
+
+    async def _fake_reap(
+        *, repo: object, kept_container_ids: frozenset[str], clock: object
+    ) -> tuple[str, ...]:
+        del repo, clock
+        passed["kept_container_ids"] = kept_container_ids
+        return ()
 
     monkeypatch.setattr(
         sandbox_reconcile_wiring, "reconcile_tracked_containers", _fake_reconcile
+    )
+    monkeypatch.setattr(
+        sandbox_reconcile_wiring, "reap_orphaned_background_jobs", _fake_reap
     )
 
     await wire_sandbox_reconciliation(_connected_state(tmp_path))
 
     assert passed["workspace_root"] == tmp_path
     assert passed["deployment_id"] == deployment_id_for(tmp_path)
+    # The reap sweep must be handed the SAME `kept` set reconciliation just
+    # computed, not re-derived: a second derivation is a second answer to
+    # "which containers survived" that could silently disagree with the
+    # first.
+    assert passed["kept_container_ids"] == frozenset({"c1", "c2"})
 
 
 async def test_an_unreachable_daemon_declines_rather_than_stamping(

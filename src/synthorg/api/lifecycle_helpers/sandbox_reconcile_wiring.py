@@ -28,7 +28,10 @@ from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.tools.sandbox.deployment_identity import deployment_id_for
 from synthorg.tools.sandbox.docker_reconcile_client import AiodockerReconcileClient
-from synthorg.tools.sandbox.reconciliation import reconcile_tracked_containers
+from synthorg.tools.sandbox.reconciliation import (
+    reap_orphaned_background_jobs,
+    reconcile_tracked_containers,
+)
 from synthorg.tools.state import ToolsStateSlice
 
 logger = get_logger(__name__)
@@ -102,6 +105,18 @@ async def wire_sandbox_reconciliation(app_state: AppState) -> None:
         )
         raise SubsystemDeclinedError(msg) from exc
 
+    # DB-only, deliberately outside the try/except above: the Docker-side
+    # sweep already ran and its outcome is trustworthy even if this second
+    # pass over the background-job table were to fail (which it cannot on
+    # a normal DB read), so a failure here should not re-run container
+    # reconciliation or decline the whole subsystem over a table
+    # `reconcile_tracked_containers` never touches.
+    reaped_containers = await reap_orphaned_background_jobs(
+        repo=persistence.background_jobs,
+        kept_container_ids=frozenset(outcome.kept),
+        clock=app_state.clock,
+    )
+
     app_state.wire(ToolsStateSlice, sandbox_reconciled_at=reconciled_at)
     logger.info(
         API_APP_STARTUP,
@@ -110,6 +125,7 @@ async def wire_sandbox_reconciliation(app_state: AppState) -> None:
         stale_rows_dropped=len(outcome.db_only_dropped),
         orphans_removed=len(outcome.docker_only_killed),
         foreign_skipped=len(outcome.foreign_skipped),
+        background_job_containers_reaped=len(reaped_containers),
     )
 
 
