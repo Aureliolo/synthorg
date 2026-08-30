@@ -9,6 +9,7 @@ from synthorg.persistence.background_job_protocol import (
     BackgroundJobRecord,
     BackgroundJobStatus,
 )
+from synthorg.tools.sandbox import docker_sandbox_background
 from synthorg.tools.sandbox.background_jobs import BackgroundJobRegistry
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
 from synthorg.tools.sandbox.errors import (
@@ -21,6 +22,7 @@ from synthorg.tools.sandbox.errors import (
 from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
 from synthorg.tools.sandbox.lifecycle.per_agent import PerAgentStrategy
 from synthorg.tools.sandbox.lifecycle.per_call import PerCallStrategy
+from tests._shared.fake_background_job_exec import ExecResponse
 from tests._shared.fake_background_job_exec import (
     make_mock_docker as _make_mock_docker,
 )
@@ -163,6 +165,86 @@ class TestStartBackground:
         assert record.pid == 777
         assert record.owner_id == _TEST_OWNER_KEY
         assert record.command_repr.startswith("sleep 30")
+
+    async def test_start_timeout_kills_the_new_job_not_the_container(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A timed-out start confirmation must not stop the shared container.
+
+        Regression guard: the wrapper exec that confirms a new job's pid
+        now drains via the pinned kill path (``_drain_exec_pinned``), so
+        its own timeout kills only the unconfirmed job's own process
+        group and a sibling job already sharing the container survives.
+        """
+        monkeypatch.setattr(
+            docker_sandbox_background, "_START_EXEC_TIMEOUT_SECONDS", 0.05
+        )
+        clock = FakeClock()
+        registry = BackgroundJobRegistry(
+            _InMemoryBackgroundJobRepository(), clock=clock
+        )
+        await registry.save(
+            BackgroundJobRecord(
+                job_id="sibling-job",
+                container_id="abc123def456",
+                owner_id=_TEST_OWNER_KEY,
+                command_repr="sleep 300",
+                pid=999,
+                status=BackgroundJobStatus.RUNNING,
+                output_path="/tmp/.synthorg-jobs/sibling-job/output",  # noqa: S108
+                started_at=clock.now(),
+                updated_at=clock.now(),
+                max_duration_seconds=3600.0,
+            )
+        )
+
+        def _respond(script: str) -> ExecResponse:
+            if "child_pid=$!" in script:
+                return ExecResponse(hang=True)
+            if "|| true" in script:
+                return ExecResponse(stdout=b"4242\n")
+            return ExecResponse(stdout=b"")
+
+        docker = _make_mock_docker(_respond)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
+        container_obj = docker.containers.container()
+
+        with _patch_aiodocker(docker), pytest.raises(SandboxStartError):
+            await sandbox.start_background(
+                command="sleep",
+                args=("30",),
+                category=_TERMINAL_CATEGORY,
+                owner_id=_TEST_OWNER,
+            )
+
+        container_obj.stop.assert_not_awaited()
+        container_obj.delete.assert_not_awaited()
+        assert any(
+            "kill -TERM -4242" in " ".join(str(p) for p in call.kwargs.get("cmd", ()))
+            for call in container_obj.exec.call_args_list
+        )
+        sibling = await registry.get("sibling-job")
+        assert sibling is not None
+        assert sibling.status == BackgroundJobStatus.RUNNING
+
+    async def test_start_rejects_a_unicode_digit_pid(self, tmp_path: Path) -> None:
+        """A pid ``isdigit()`` accepts but ``int()`` rejects is caught here.
+
+        Regression guard: it must not escape the start-confirmation
+        guard as an unhandled ``ValueError``, same as an empty pid.
+        """
+        registry = BackgroundJobRegistry(_InMemoryBackgroundJobRepository())
+        docker = _make_mock_docker(_responder_for(pid="²"))  # superscript two
+        sandbox = _make_sandbox(tmp_path, registry=registry)
+
+        with _patch_aiodocker(docker), pytest.raises(SandboxStartError):
+            await sandbox.start_background(
+                command="sleep",
+                args=("30",),
+                category=_TERMINAL_CATEGORY,
+                owner_id=_TEST_OWNER,
+            )
+        assert await registry.list_by_owner(_TEST_OWNER_KEY) == ()
 
 
 class TestPollBackground:
@@ -372,6 +454,39 @@ class TestCancelBackground:
                 NotBlankStr("job-1"), category=_TERMINAL_CATEGORY, owner_id=_TEST_OWNER
             )
         assert result.status == BackgroundJobStatus.COMPLETED
+
+
+class TestRunControlExec:
+    """A wedged control exec is not evidence its container is compromised.
+
+    Every caller (poll, read, cancel, pin-check, the pinned-exec kill and
+    cleanup paths) shares this method precisely so none of them fall back
+    to ``DockerSandboxExecMixin._drain_exec``'s own timeout branch, which
+    stops the container.
+    """
+
+    async def test_timeout_raises_without_stopping_the_container(
+        self, tmp_path: Path
+    ) -> None:
+        from synthorg.tools.sandbox.errors import SandboxStartError
+        from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
+        from tests._shared.fake_background_job_exec import ExecResponse
+
+        registry = BackgroundJobRegistry(_InMemoryBackgroundJobRepository())
+        docker = _make_mock_docker(lambda _script: ExecResponse(hang=True))
+        sandbox = _make_sandbox(tmp_path, registry=registry)
+        container_obj = docker.containers.container()
+
+        with _patch_aiodocker(docker), pytest.raises(SandboxStartError):
+            await sandbox._run_control_exec(  # pyright: ignore[reportAttributeAccessIssue]
+                ContainerHandle(container_id="abc123def456"),
+                "cat",
+                ("/tmp/pidfile",),  # noqa: S108
+                timeout=0.05,
+            )
+
+        container_obj.stop.assert_not_awaited()
+        container_obj.delete.assert_not_awaited()
 
 
 class TestCrossOwnerAccessRefused:

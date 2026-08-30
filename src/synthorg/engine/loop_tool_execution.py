@@ -4,148 +4,63 @@ Extracted from :mod:`synthorg.engine.loop_helpers` to keep the main
 helpers module under the project size limit.
 """
 
-import re
+import json
 from collections.abc import Sequence
 from typing import Final
 
+from pydantic import TypeAdapter, ValidationError
+
 from synthorg.approval.models import EscalationInfo
+from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
-from synthorg.engine.prompt_safety import (
-    ALL_FENCE_TAGS,
-    INJECTION_HEURISTICS,
-    TAG_BRAIN_STATE,
-    TAG_CODE_DIFF,
-    TAG_CONFIG_VALUE,
-    TAG_CRITERIA_JSON,
-    TAG_DECIDER_NAME,
-    TAG_DECISION_OPTION,
-    TAG_KNOWLEDGE,
-    TAG_LIVING_DOC,
-    TAG_MEMORY_ENTRY,
-    TAG_PEER_CONTRIBUTION,
-    TAG_RESEARCH_SOURCE,
-    TAG_TASK_DATA,
-    TAG_TASK_FACT,
-    TAG_TOOL_ARGUMENTS,
-    TAG_TOOL_RESULT,
-    TAG_UNTRUSTED_ARTIFACT,
-    wrap_untrusted,
-)
+from synthorg.engine.loop_tool_result_fencing import wrap_tool_result
 from synthorg.execution.turn import TurnRecord
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
     safe_error_description,
-    scrub_secret_tokens,
 )
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_PARK_TASKLESS,
 )
 from synthorg.observability.events.execution import (
+    EXECUTION_BACKGROUND_JOB_WATCH_STARTED,
     EXECUTION_LOOP_ERROR,
     EXECUTION_LOOP_TOOL_CALLS,
 )
 from synthorg.observability.events.tool import (
-    TOOL_INJECTION_PATTERN_DETECTED,
     TOOL_L2_LOADED,
     TOOL_L3_FETCHED,
 )
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage, CompletionResponse, ToolResult
+from synthorg.providers.models import (
+    ChatMessage,
+    CompletionResponse,
+    ToolCall,
+    ToolResult,
+)
 from synthorg.tools.protocol import ToolInvokerProtocol
 
 logger = get_logger(__name__)
 
+#: The only tool whose result the loop reads for a background job id;
+#: named once so the capture branch and any future reference agree.
+_SHELL_COMMAND_TOOL_NAME: Final[str] = "shell_command"
 
-# Common prompt-injection patterns that a tool might return in an
-# attempt to take over the next LLM turn. Matches are flagged via
-# ``TOOL_INJECTION_PATTERN_DETECTED`` for telemetry; the tool result
-# is still wrapped in the fence, not rejected (rejection would
-# break legitimate tools that echo user text in responses).
-# Closing-tag look-alikes for every untrusted-content fence declared
-# in ``synthorg.engine.prompt_safety``.  Listed explicitly rather than
-# iterated from ``ALL_FENCE_TAGS`` so the pattern set is fixed at
-# authoring time; the import-time guard below is what keeps the list
-# complete.  Optional whitespace before ``>`` mirrors
-# ``_escape_closing_tag`` so lenient variants (``</task-data >`` /
-# ``</task-data\t>``) still trip.
-_FENCE_TAGS: Final[tuple[str, ...]] = (
-    TAG_TASK_DATA,
-    TAG_TASK_FACT,
-    TAG_TOOL_RESULT,
-    TAG_TOOL_ARGUMENTS,
-    TAG_UNTRUSTED_ARTIFACT,
-    TAG_CODE_DIFF,
-    TAG_CONFIG_VALUE,
-    TAG_CRITERIA_JSON,
-    TAG_PEER_CONTRIBUTION,
-    TAG_MEMORY_ENTRY,
-    TAG_RESEARCH_SOURCE,
-    TAG_LIVING_DOC,
-    TAG_BRAIN_STATE,
-    TAG_KNOWLEDGE,
-    TAG_DECIDER_NAME,
-    TAG_DECISION_OPTION,
-)
-
-# Import-time guard: every fence tag in the prompt-safety registry must
-# appear in ``_FENCE_TAGS`` so its closing-tag breakout attempts are
-# detected.  A new ``TAG_*`` constant added to ``prompt_safety`` without
-# being listed here fails fast at import rather than silently dropping
-# out of injection-detection coverage.
-_MISSING_FENCE_TAGS = ALL_FENCE_TAGS - set(_FENCE_TAGS)
-if _MISSING_FENCE_TAGS:
-    _missing = ", ".join(sorted(_MISSING_FENCE_TAGS))
-    _msg = (
-        f"_FENCE_TAGS is missing prompt-safety registry tags: {_missing}. "
-        f"Add them so closing-tag breakout detection stays complete."
-    )
-    raise ValueError(_msg)
-
-_INJECTION_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
-    # Shared "override the system prompt" heuristics (single source in
-    # prompt_safety) plus per-tag closing-fence breakout patterns local to
-    # tool-result wrapping.
-    *INJECTION_HEURISTICS,
-    *tuple(
-        re.compile(rf"</{re.escape(tag)}\s*>", re.IGNORECASE) for tag in _FENCE_TAGS
-    ),
-)
-
-
-def _wrap_tool_result(result: ToolResult) -> ToolResult:
-    """Return *result* with its ``content`` wrapped in ``<tool-result>``.
-
-    Also emits ``TOOL_INJECTION_PATTERN_DETECTED`` when the raw
-    content matches a known injection pattern (see
-    :data:`_INJECTION_PATTERNS`). Detection is advisory; the wrap
-    happens unconditionally so a malicious tool cannot escape the
-    fence even if no pattern matches.
-    """
-    raw = result.content
-    for pattern in _INJECTION_PATTERNS:
-        match = pattern.search(raw)
-        if match is not None:
-            # Scrub the telemetry sample before emitting -- if the
-            # attacker embedded a credential inside the injection
-            # payload, the raw ``sample=`` field would otherwise
-            # leak it into logs.
-            logger.warning(
-                TOOL_INJECTION_PATTERN_DETECTED,
-                tool_call_id=result.tool_call_id,
-                pattern=pattern.pattern,
-                sample=scrub_secret_tokens(raw[: min(200, len(raw))]),
-            )
-            break
-    return result.model_copy(
-        update={"content": wrap_untrusted(TAG_TOOL_RESULT, raw)},
-    )
+#: Lax-mode ``bool`` coercion, matching how ``ShellCommandArgs.background``
+#: itself validates the same raw tool-call argument (no ``strict=True``
+#: there): a model may legally emit ``1`` or ``"true"`` and the tool still
+#: backgrounds the job, so the capture gate below must read the argument
+#: the same way or it silently never watches a job the tool genuinely ran
+#: in the background.
+_BOOL_ADAPTER: Final[TypeAdapter[bool]] = TypeAdapter(bool)
 
 
 def _build_error_result(
@@ -276,6 +191,169 @@ async def _park_for_approval(
     )
 
 
+def _is_background_call(raw: object) -> bool:
+    """Whether *raw* (a tool call's raw ``background`` argument) means true.
+
+    Coerces the same way Pydantic's default lax ``bool`` validation does,
+    rather than checking identity against the Python literal ``True``.
+
+    Returns:
+        Whether the tool call requested background execution.
+    """
+    try:
+        return _BOOL_ADAPTER.validate_python(raw)
+    except ValidationError:
+        return False
+
+
+def _parsed_background_job_id(raw_content: str) -> NotBlankStr | None:
+    """Extract a ``job_id`` from a successful backgrounded ``shell_command`` result.
+
+    Reads the RAW (unwrapped) result content: ``_append_tool_results``
+    builds a separate ``wrapped`` object per result without reassigning
+    ``results`` itself, so the tuple this function's caller iterates
+    still holds each result's original, unfenced ``content``.
+
+    Best-effort by design: a parse failure or a missing/blank ``job_id``
+    means this is not a shape ``shell_command(background=True)`` would
+    ever actually return, not a contract the tool must satisfy, so
+    nothing is watched rather than raising.
+
+    Returns:
+        The job id, or ``None`` when *raw_content* is not a
+        ``{"job_id": "..."}`` JSON object.
+    """
+    try:
+        payload = json.loads(raw_content)
+    except ValueError, TypeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    job_id = payload.get("job_id")
+    if isinstance(job_id, str) and job_id.strip():
+        return NotBlankStr(job_id)
+    return None
+
+
+def _apply_tool_call_side_effect(
+    ctx: AgentContext,
+    tc: ToolCall,
+    result: ToolResult,
+    turn_number: int,
+    *,
+    clock: Clock,
+    watch_background_jobs: bool,
+) -> AgentContext:
+    """Apply one successful tool call's context side effect, if any.
+
+    One arm per tool this loop observes results for: ``load_tool``,
+    backgrounded ``shell_command`` (only while *watch_background_jobs* is
+    set -- the stall nudge is off by default, and there is no point
+    growing ``AgentContext.background_job_watch`` for a run nothing ever
+    reads it back for), and ``load_tool_resource``. Called only for a
+    result that already passed ``result.is_error``.
+
+    Returns:
+        The context, updated for whichever arm (if any) matched.
+    """
+    if tc.name == "load_tool":
+        t_name = tc.arguments.get("tool_name")
+        if isinstance(t_name, str) and t_name not in ctx.loaded_tools:
+            ctx = ctx.with_tool_loaded(t_name)
+            logger.info(
+                TOOL_L2_LOADED,
+                execution_id=ctx.execution_id,
+                tool_name=t_name,
+                turn=turn_number,
+            )
+    elif (
+        watch_background_jobs
+        and tc.name == _SHELL_COMMAND_TOOL_NAME
+        and _is_background_call(tc.arguments.get("background"))
+    ):
+        job_id = _parsed_background_job_id(result.content)
+        if job_id is not None:
+            ctx = ctx.with_background_job_watched(job_id, watching_since=clock.now())
+            logger.info(
+                EXECUTION_BACKGROUND_JOB_WATCH_STARTED,
+                execution_id=ctx.execution_id,
+                job_id=job_id,
+                turn=turn_number,
+            )
+    elif tc.name == "load_tool_resource":
+        t_name = tc.arguments.get("tool_name")
+        r_id = tc.arguments.get("resource_id")
+        if (
+            isinstance(t_name, str)
+            and isinstance(r_id, str)
+            and (t_name, r_id) not in ctx.loaded_resources
+        ):
+            ctx = ctx.with_resource_loaded(t_name, r_id)
+            logger.info(
+                TOOL_L3_FETCHED,
+                execution_id=ctx.execution_id,
+                tool_name=t_name,
+                resource_id=r_id,
+                turn=turn_number,
+            )
+    return ctx
+
+
+async def _invoke_tool_calls(
+    tool_invoker: ToolInvokerProtocol,
+    response: CompletionResponse,
+    ctx: AgentContext,
+    turn_number: int,
+    turns: list[TurnRecord],
+    *,
+    tool_names: list[str],
+) -> tuple[ToolResult, ...] | ExecutionResult:
+    """Invoke every tool call in *response*, turning a raise into an ERROR result.
+
+    Returns:
+        The tool results, or an ERROR :class:`ExecutionResult` when
+        invocation itself raised.
+    """
+    try:
+        return await tool_invoker.invoke_all(
+            response.tool_calls,
+            execution_id=ctx.execution_id,
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- returns ERROR result
+        reraise_critical(exc)
+        error_msg = (
+            f"Tool execution failed on turn {turn_number}: "
+            f"{type(exc).__name__}: {safe_error_description(exc)}"
+        )
+        log_exception_redacted(
+            logger,
+            EXECUTION_LOOP_ERROR,
+            exc,
+            execution_id=ctx.execution_id,
+            turn=turn_number,
+            tools=tool_names,
+        )
+        return _build_error_result(ctx, turns, error_msg)
+
+
+def _append_tool_results(
+    ctx: AgentContext, results: Sequence[ToolResult]
+) -> AgentContext:
+    """Fence and append every tool result to the conversation.
+
+    Returns:
+        The context with one ``TOOL`` message appended per result.
+    """
+    for result in results:
+        # Fence the tool output before it enters context so the next
+        # LLM turn cannot mistake tool content for instructions.
+        wrapped = wrap_tool_result(result)
+        tool_msg = ChatMessage(role=MessageRole.TOOL, tool_result=wrapped)
+        ctx = ctx.with_message(tool_msg)
+    return ctx
+
+
 async def execute_tool_calls(
     ctx: AgentContext,
     tool_invoker: ToolInvokerProtocol | None,
@@ -284,6 +362,8 @@ async def execute_tool_calls(
     turns: list[TurnRecord],
     *,
     approval_gate: ApprovalGate | None = None,
+    clock: Clock | None = None,
+    watch_background_jobs: bool = False,
 ) -> AgentContext | ExecutionResult:
     """Execute tool calls and append results to context.
 
@@ -315,66 +395,28 @@ async def execute_tool_calls(
         tools=tool_names,
     )
 
-    try:
-        results = await tool_invoker.invoke_all(
-            response.tool_calls,
-            execution_id=ctx.execution_id,
-        )
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # lint-allow: swallow-ok -- returns ERROR result
-        reraise_critical(exc)
-        error_msg = f"Tool execution failed on turn {turn_number}: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
-        log_exception_redacted(
-            logger,
-            EXECUTION_LOOP_ERROR,
-            exc,
-            execution_id=ctx.execution_id,
-            turn=turn_number,
-            tools=tool_names,
-        )
-        return _build_error_result(ctx, turns, error_msg)
+    results_or_error = await _invoke_tool_calls(
+        tool_invoker, response, ctx, turn_number, turns, tool_names=tool_names
+    )
+    if isinstance(results_or_error, ExecutionResult):
+        return results_or_error
+    results = results_or_error
 
     record_resolved_tool_calls(turns, results)
+    ctx = _append_tool_results(ctx, results)
 
-    for result in results:
-        # Fence the tool output before it enters context so the next
-        # LLM turn cannot mistake tool content for instructions.
-        wrapped = _wrap_tool_result(result)
-        tool_msg = ChatMessage(
-            role=MessageRole.TOOL,
-            tool_result=wrapped,
-        )
-        ctx = ctx.with_message(tool_msg)
-
+    effective_clock = clock if clock is not None else SystemClock()
     for tc, result in zip(response.tool_calls, results, strict=True):
         if result.is_error:
             continue
-        if tc.name == "load_tool":
-            t_name = tc.arguments.get("tool_name")
-            if isinstance(t_name, str) and t_name not in ctx.loaded_tools:
-                ctx = ctx.with_tool_loaded(t_name)
-                logger.info(
-                    TOOL_L2_LOADED,
-                    execution_id=ctx.execution_id,
-                    tool_name=t_name,
-                    turn=turn_number,
-                )
-        elif tc.name == "load_tool_resource":
-            t_name = tc.arguments.get("tool_name")
-            r_id = tc.arguments.get("resource_id")
-            if (
-                isinstance(t_name, str)
-                and isinstance(r_id, str)
-                and (t_name, r_id) not in ctx.loaded_resources
-            ):
-                ctx = ctx.with_resource_loaded(t_name, r_id)
-                logger.info(
-                    TOOL_L3_FETCHED,
-                    execution_id=ctx.execution_id,
-                    tool_name=t_name,
-                    resource_id=r_id,
-                    turn=turn_number,
-                )
+        ctx = _apply_tool_call_side_effect(
+            ctx,
+            tc,
+            result,
+            turn_number,
+            clock=effective_clock,
+            watch_background_jobs=watch_background_jobs,
+        )
 
     if approval_gate is not None:
         escalation = approval_gate.should_park(

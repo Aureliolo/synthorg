@@ -44,6 +44,8 @@ from synthorg.observability.events.docker import (
 from synthorg.observability.events.sandbox import (
     SANDBOX_BACKGROUND_JOB_REAP_FAILED,
     SANDBOX_CONTAINER_LOGS_COLLECT_FAILED,
+    SANDBOX_EXEC_PIN_DECIDED,
+    SANDBOX_HAS_LIVE_JOBS_CHECK_FAILED,
     SANDBOX_LIFECYCLE_OWNER_DEGRADED,
     SANDBOX_LIFECYCLE_RELEASE,
     SANDBOX_SIDECAR_REMOVE_FAILED,
@@ -100,6 +102,22 @@ class DockerSandboxExecMixin:
         _docker: aiodocker.Docker | None
         _log_shipping_config: ContainerLogShippingConfig
         _background_jobs: BackgroundJobRegistry | None
+
+        def _reserve_unpinned_exec(self, owner_key: str) -> None:
+            """Record one more unpinned foreground exec in flight for *owner_key*."""
+            ...
+
+        def _release_unpinned_exec(self, owner_key: str) -> None:
+            """Release one unpinned foreground exec reservation for *owner_key*."""
+            ...
+
+        def _owner_lock(self, owner_key: str) -> asyncio.Lock:
+            """Return the per-owner lock guarding the job-cap check + persist.
+
+            Returns:
+                The owner's lock, creating one if this is its first use.
+            """
+            ...
 
         def _validate_env(
             self,
@@ -215,6 +233,63 @@ class DockerSandboxExecMixin:
             stderr: str,
         ) -> None:
             """Log execution outcome."""
+            ...
+
+        async def _kill_background_process_group(
+            self, container_id: NotBlankStr, pid: int
+        ) -> None:
+            """Kill *pid*'s process group inside *container_id*."""
+            ...
+
+        async def _run_control_exec(
+            self,
+            handle: ContainerHandle,
+            program: str,
+            args: tuple[str, ...],
+            *,
+            timeout: float,  # noqa: ASYNC109
+        ) -> str:
+            """Run a short control exec and return its stdout.
+
+            Returns:
+                The exec's captured stdout.
+            """
+            ...
+
+        async def _exec_command_pinned(
+            self,
+            *,
+            docker: aiodocker.Docker,
+            handle: ContainerHandle,
+            command: str,
+            args: tuple[str, ...],
+            container_cwd: str,
+            exec_env: dict[str, str],
+            timeout: float,  # noqa: ASYNC109
+        ) -> SandboxResult:
+            """Run *command* pinned: killable by process group, container spared.
+
+            Returns:
+                A ``SandboxResult`` with captured output and exit status.
+            """
+            ...
+
+        async def _finish_exec_result(
+            self,
+            *,
+            exec_obj: Exec,
+            command: str,
+            args: tuple[str, ...],
+            container_id: str,
+            drained: tuple[str, str, bool],
+            timeout: float,  # noqa: ASYNC109
+            elapsed_ms: int,
+        ) -> SandboxResult:
+            """Resolve the exit code, log the outcome, and build the result.
+
+            Returns:
+                A ``SandboxResult`` with captured output and exit status.
+            """
             ...
 
     # ------------------------------------------------------------------
@@ -620,8 +695,29 @@ class DockerSandboxExecMixin:
         container_cwd: str,
         exec_env: dict[str, str],
         timeout: float,  # noqa: ASYNC109
+        owner_key: str,
     ) -> SandboxResult:
         """Run *command* inside an already-running container via exec.
+
+        Before opening the exec, checks (cheap, DB-backed) whether the
+        target container currently has live background jobs pinning it.
+        When it does, the command runs pinned (see
+        ``_exec_command_pinned``): a foreground timeout then kills only
+        this exec's own process group instead of stopping the whole
+        container, which would otherwise collaterally kill every
+        background job sharing it. Otherwise the command runs via the
+        plain, unpinned exec/drain path, whose own timeout stops the
+        container directly.
+
+        The check and pin/no-pin decision run under the same per-owner
+        lock ``start_background`` holds across its own cap-check through
+        registry-save: without it, a background job whose confirmation
+        drain is still in flight when this check runs is invisible here,
+        so a concurrent foreground call could commit to the unpinned
+        path and still collaterally kill that just-started sibling on
+        its own timeout. The lock is released before the exec itself
+        opens, so a long-running command never blocks a concurrent
+        ``start_background`` call for the rest of its own duration.
 
         Args:
             docker: Docker client.
@@ -631,6 +727,9 @@ class DockerSandboxExecMixin:
             container_cwd: Working directory inside the container.
             exec_env: Resolved, validated environment for the command.
             timeout: Seconds before the command is killed.
+            owner_key: The resolved lifecycle owner key, the same one
+                ``start_background`` resolves and locks on for this
+                container.
 
         Returns:
             A ``SandboxResult`` with captured output and exit status.
@@ -639,52 +738,87 @@ class DockerSandboxExecMixin:
             SandboxStartError: If the exec instance cannot be created.
         """
         container_id = handle.container_id
-        exec_obj = await self._open_exec(
-            docker,
-            handle,
-            command=command,
-            args=args,
-            container_cwd=container_cwd,
-            exec_env=exec_env,
+        pinned = False
+        if self._background_jobs is not None:
+            async with self._owner_lock(owner_key):
+                try:
+                    pinned = await self._background_jobs.has_live_jobs(
+                        NotBlankStr(container_id)
+                    )
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                    reraise_critical(exc)
+                    logger.warning(
+                        SANDBOX_HAS_LIVE_JOBS_CHECK_FAILED,
+                        container_id=container_id[:12],
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+                    # Pinning is a strict behavioural superset of the
+                    # unpinned path (identical streaming, a narrower
+                    # timeout-kill target), so failing toward it is the
+                    # safer default when live-job status is unknown.
+                    pinned = True
+                if not pinned:
+                    # Reserved under the same lock the pin decision was
+                    # made under, so a concurrent start_background call
+                    # either observes this reservation (and refuses to
+                    # pin a job to a container this exec's own timeout
+                    # may still stop) or ran its cap check first and
+                    # this exec will see its live job on its own next
+                    # call -- there is no gap either way sees neither.
+                    self._reserve_unpinned_exec(owner_key)
+        logger.debug(
+            SANDBOX_EXEC_PIN_DECIDED,
+            container_id=container_id[:12],
+            pinned=pinned,
         )
-        start_mono = self._clock.monotonic()
-        stdout, stderr, timed_out = await self._drain_exec(
-            docker,
-            exec_obj,
-            container_id,
-            timeout,
-        )
-        elapsed_ms = int((self._clock.monotonic() - start_mono) * 1000)
-
-        if timed_out:
-            returncode = -1
-        else:
-            returncode = await self._exec_returncode(exec_obj, container_id)
-
-        self._log_execution_outcome(
-            command,
-            args,
-            container_id,
-            returncode,
-            stderr,
-        )
-
-        if timed_out:
-            return SandboxResult(
-                stdout=stdout,
-                stderr=stderr or f"Command timed out after {timeout}s",
-                returncode=returncode,
-                timed_out=True,
-                container_id=container_id,
-                execution_time_ms=elapsed_ms,
+        if pinned:
+            return await self._exec_command_pinned(
+                docker=docker,
+                handle=handle,
+                command=command,
+                args=args,
+                container_cwd=container_cwd,
+                exec_env=exec_env,
+                timeout=timeout,
             )
-        return SandboxResult(
-            stdout=stdout,
-            stderr=stderr,
-            returncode=returncode,
-            container_id=container_id,
-            execution_time_ms=elapsed_ms,
-        )
+
+        try:
+            exec_obj = await self._open_exec(
+                docker,
+                handle,
+                command=command,
+                args=args,
+                container_cwd=container_cwd,
+                exec_env=exec_env,
+            )
+            start_mono = self._clock.monotonic()
+            stdout, stderr, timed_out = await self._drain_exec(
+                docker,
+                exec_obj,
+                container_id,
+                timeout,
+            )
+            elapsed_ms = int((self._clock.monotonic() - start_mono) * 1000)
+
+            return await self._finish_exec_result(
+                exec_obj=exec_obj,
+                command=command,
+                args=args,
+                container_id=container_id,
+                drained=(stdout, stderr, timed_out),
+                timeout=timeout,
+                elapsed_ms=elapsed_ms,
+            )
+        finally:
+            # Only reached on the unpinned path (the pinned branch returns
+            # above), where a reservation was made whenever background
+            # jobs are wired at all; release is a safe no-op otherwise
+            # (nothing was ever incremented for this owner_key). Reacquire
+            # the same lock the reservation was made under so a concurrent
+            # start_background call never observes the counter mid-update.
+            async with self._owner_lock(owner_key):
+                self._release_unpinned_exec(owner_key)
 
     @staticmethod
     async def _collect_exec_output(stream: Stream) -> tuple[str, str]:

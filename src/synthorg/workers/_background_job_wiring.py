@@ -54,6 +54,26 @@ def background_job_repo_or_none(
     return persistence.background_jobs
 
 
+def background_job_registry_or_none(
+    app_state: AppState,
+) -> BackgroundJobRegistry | None:
+    """Wrap :func:`background_job_repo_or_none` in a registry, if wired.
+
+    Every caller needing read/write access to background-job rows
+    builds its own :class:`BackgroundJobRegistry` from this same
+    repository and clock rather than sharing one instance: the class
+    holds no state of its own, so a second instance over the same
+    repository is a distinction without a difference.
+
+    Returns:
+        A registry over the resolved repository, or ``None``.
+    """
+    repo = background_job_repo_or_none(app_state)
+    if repo is None:
+        return None
+    return BackgroundJobRegistry(repo, clock=app_state.clock)
+
+
 async def resolve_background_job_ceilings(
     resolver: ConfigResolverProtocol,
 ) -> tuple[int, int]:
@@ -102,6 +122,7 @@ def bind_pin_check_if_wired(
 
 
 __all__ = [
+    "background_job_registry_or_none",
     "background_job_repo_or_none",
     "bind_pin_check_if_wired",
     "resolve_background_job_ceilings",

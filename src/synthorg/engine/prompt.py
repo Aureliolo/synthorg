@@ -190,8 +190,8 @@ def build_system_prompt(  # noqa: PLR0913
     # subset whose cost never exceeds the reservation.
     has_async_tasks = async_task_state is not None and bool(async_task_state.records)
     # A tool-capable agent receives ``<tool-result>`` content in later
-    # turns' message history (loop_tool_execution._wrap_tool_result), so
-    # its standing untrusted-content directive must declare that fence up
+    # turns' message history (loop_tool_result_fencing.wrap_tool_result),
+    # so its standing untrusted-content directive must declare that fence up
     # front even though the fenced payload is not a system-prompt section.
     # The live runtime path injects tools as ``l1_summaries`` (not
     # ``available_tools``), so either signal means the agent is tool-capable

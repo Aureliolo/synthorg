@@ -167,6 +167,19 @@ class SandboxBackgroundNoReusableContainerError(SandboxError):
     RETRYABLE: ClassVar[bool] = False
 
 
+class SandboxBackgroundUnpinnedExecutionActiveError(SandboxError):
+    """An unpinned foreground command is already running on this container.
+
+    That command's own timeout can stop the container outright, which
+    would collaterally kill a background job started while it is still
+    in flight. Retryable: the agent may wait for the foreground command
+    to finish (or time out) and try again.
+    """
+
+    AGENT_MESSAGE: ClassVar[str | None] = None
+    RETRYABLE: ClassVar[bool] = True
+
+
 class SandboxBackgroundJobLimitError(SandboxError):
     """The per-owner background-job cap is already reached.
 
@@ -206,6 +219,7 @@ __all__ = [
     "SandboxBackgroundJobLimitError",
     "SandboxBackgroundJobNotFoundError",
     "SandboxBackgroundNoReusableContainerError",
+    "SandboxBackgroundUnpinnedExecutionActiveError",
     "SandboxBackgroundUnsupportedError",
     "SandboxError",
     "SandboxProjectScopeUnresolvedError",

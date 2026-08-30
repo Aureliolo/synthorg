@@ -114,6 +114,7 @@ if TYPE_CHECKING:
     from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.core.task import Task
     from synthorg.engine.approval_gate import ApprovalGate
+    from synthorg.engine.background_job_watch import BackgroundJobWatcher
     from synthorg.engine.classification.protocol import ClassificationSink
     from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.coordination.attribution import (
@@ -228,6 +229,7 @@ class AgentEngine(
         stagnation_detector: StagnationDetector | None = None,
         step_classifier: StepQualityClassifier | None = None,
         steering_inbox: SteeringInbox | None = None,
+        background_job_watcher: BackgroundJobWatcher | None = None,
         compaction_callback: CompactionCallback | None = None,
         provider_registry: ProviderRegistry | None = None,
         provider_configs: Mapping[str, ProviderConfig] | None = None,
@@ -309,21 +311,24 @@ class AgentEngine(
         self._stagnation_detector = stagnation_detector
         self._step_classifier = step_classifier
         self._steering_inbox = steering_inbox
+        self._background_job_watcher = background_job_watcher
         self._compaction_callback = compaction_callback
         self._approval_gate = self._make_approval_gate()
         if execution_loop is not None and (
             self._approval_gate is not None
             or self._stagnation_detector is not None
             or self._compaction_callback is not None
+            or self._background_job_watcher is not None
         ):
             logger.warning(
                 APPROVAL_GATE_LOOP_WIRING_WARNING,
                 note=(
                     "execution_loop provided externally -- approval_gate, "
-                    "stagnation_detector, and compaction_callback will NOT "
-                    "be wired automatically. Configure the loop with "
-                    "approval_gate=, stagnation_detector=, and "
-                    "compaction_callback= explicitly."
+                    "stagnation_detector, compaction_callback, and "
+                    "background_job_watcher will NOT be wired automatically. "
+                    "Configure the loop with approval_gate=, "
+                    "stagnation_detector=, compaction_callback=, and "
+                    "background_job_watcher= explicitly."
                 ),
             )
         self._loop: ExecutionLoop = execution_loop or self._make_default_loop()

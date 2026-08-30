@@ -75,6 +75,9 @@ from synthorg.tools.sandbox.docker_sandbox_exec import DockerSandboxExecMixin
 from synthorg.tools.sandbox.docker_sandbox_lifecycle import (
     DockerSandboxLifecycleMixin,
 )
+from synthorg.tools.sandbox.docker_sandbox_pinned_exec import (
+    DockerSandboxPinnedExecMixin,
+)
 from synthorg.tools.sandbox.docker_sandbox_sidecar import DockerSandboxSidecarMixin
 from synthorg.tools.sandbox.errors import (
     SandboxError,
@@ -151,6 +154,7 @@ def _to_posix_bind_path(path: Path) -> str:
 class DockerSandbox(
     DockerSandboxBackgroundMixin,
     DockerSandboxExecMixin,
+    DockerSandboxPinnedExecMixin,
     DockerSandboxSidecarMixin,
     DockerSandboxLifecycleMixin,
 ):
@@ -256,6 +260,13 @@ class DockerSandbox(
         # one worker process at a time, like `LiveRunLedger`), so this needs
         # no cross-process mechanism.
         self._background_job_locks: dict[str, asyncio.Lock] = {}
+        # Count of unpinned foreground execs currently running per owner
+        # key, held under the same `_owner_lock` as the pin decision and
+        # the `start_background` cap check. A non-zero count keeps
+        # `start_background` from pinning a background job to a
+        # container an in-flight foreground command's own timeout could
+        # still stop outright.
+        self._unpinned_execs_in_flight: dict[str, int] = {}
         self._lock = asyncio.Lock()
         self._init_execution_leases(command_timeout=self._config.timeout_seconds)
         self._clock = clock or SystemClock()
@@ -1232,6 +1243,7 @@ class DockerSandbox(
                 container_cwd=container_cwd,
                 exec_env=exec_env,
                 timeout=effective_timeout,
+                owner_key=owner_key,
             )
         finally:
             sidecar_logs = await self._collect_and_ship_logs(

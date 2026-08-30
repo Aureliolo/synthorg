@@ -376,15 +376,35 @@ container's own network setting already is: there is no per-exec network
 override in the Docker API, so this is inherited, not independently
 enforced.
 
-**Known gap.** The existing foreground-exec timeout path
-(`_drain_exec` in `docker_sandbox_exec.py`) still stops the *whole*
-container on a foreground command's own timeout, which collaterally
-kills any background job sharing that container. This is not yet scoped
-to spare a pinned container's sibling jobs (tracked as a follow-up).
-Boot reconciliation and every existing container-teardown path mark a
-job's row `ORPHANED`/`CANCELLED` when its container disappears out from
-under it, so an agent polling a collaterally-killed job gets an honest
-terminal status rather than a hang.
+**Pinned foreground timeouts.** A foreground `execute()` call's own
+timeout must not collaterally kill a sibling background job sharing the
+same container. Before opening the exec, `_exec_command`
+(`docker_sandbox_exec.py`) checks `BackgroundJobRegistry.has_live_jobs`
+(a cheap read-only query, deliberately not self-cleaning the way
+`pin_check`'s own `expire_overdue` is) against the target container. When
+`False` -- no registry wired, or no live jobs -- the exec runs exactly as
+it always has: same `_open_exec` / `_drain_exec`, same unconditional
+`_stop_container` on timeout, byte-for-byte unchanged. When `True`,
+`_exec_command` dispatches to `_exec_command_pinned`
+(`docker_sandbox_pinned_exec.py`'s `DockerSandboxPinnedExecMixin`), which
+wraps the command via `build_pinned_exec_command` (`_background_wrapper.py`):
+`setsid` plus a `pidfile` write ahead of a bare final `exec`, so the shell
+becomes a process-group leader that can be signalled as a group, without
+changing anything else about how the command runs -- output still
+streams through the same attached exec (`_drain_exec_pinned`, a near-copy
+of `_drain_exec`), not through a file, so this deliberately does *not*
+reuse the background-job wrapper's detach-and-poll mechanism (that would
+merge stdout/stderr, cap output where the sandbox layer applies none
+today, and change what `shell_command.py`'s `record_if_test_run` persists
+as build/test evidence). On timeout, a short control exec reads the
+`pidfile` back. A parsed positive `pid` is killed via the same
+`_kill_background_process_group` helper `cancel_background` already
+uses, which spares both the container and every job pinning it. An
+unreadable or non-numeric `pidfile` falls back to `_stop_container`, the
+same honest floor as the unpinned path. The `pidfile`'s scratch directory
+is cleaned up afterwards on a swallowed-failure basis; its id is a fresh,
+purely local `uuid4()`, never
+persisted to `BackgroundJobRepository`.
 
 **Settings** (all `group="Terminal"`, `SettingLevel.ADVANCED`):
 `shell_command_background_enabled` (bool, default `true`, read live per

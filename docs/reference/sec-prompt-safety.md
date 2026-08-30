@@ -47,7 +47,7 @@ This list is non-exhaustive; treat it as a navigational starting point for new S
 - `format_task_instruction`
 - `TaskLedgerMiddleware`
 - `LLMRubricGrader._prepare_payload_text`
-- `_wrap_tool_result`
+- `wrap_tool_result`
 - `build_review_message` (semantic_llm_prompt)
 - `build_strategic_prompt_sections`
 - `_encode_decomposer_payload`
@@ -72,7 +72,7 @@ LLM sites that previously invoked `provider.complete()` without an explicit `Com
 
 ### Injection detector (tool results)
 
-Tool-result interpolation additionally runs an advisory injection-pattern detector (`TOOL_INJECTION_PATTERN_DETECTED`) covering a closing-tag look-alike for every tag in Standard tags above, plus common override phrases. Coverage is enforced rather than asserted: `_FENCE_TAGS` in `engine/loop_tool_execution.py` lists the tags explicitly, and an import-time guard raises when `ALL_FENCE_TAGS` holds one the list omits, so a new `TAG_*` constant cannot reach production outside the detector. Each pattern also admits the lenient whitespace variants `wrap_untrusted` escapes (`</task-data >`, `</task-data\t>`). The telemetry sample is scrubbed via `scrub_secret_tokens` before logging.
+Tool-result interpolation additionally runs an advisory injection-pattern detector (`TOOL_INJECTION_PATTERN_DETECTED`) covering a closing-tag look-alike for every tag in Standard tags above, plus common override phrases. Coverage is enforced rather than asserted: `_FENCE_TAGS` in `engine/loop_tool_result_fencing.py` lists the tags explicitly, and an import-time guard raises when `ALL_FENCE_TAGS` holds one the list omits, so a new `TAG_*` constant cannot reach production outside the detector. Each pattern also admits the lenient whitespace variants `wrap_untrusted` escapes (`</task-data >`, `</task-data\t>`). The telemetry sample is scrubbed via `scrub_secret_tokens` before logging.
 
 ## HTML parsing: XXE protection
 
