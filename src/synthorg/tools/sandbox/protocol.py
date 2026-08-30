@@ -130,15 +130,16 @@ class SandboxBackend(Protocol):
         cwd: Path | None = None,
         env_overrides: Mapping[str, str] | None = None,
         category: str = "",
-        owner_id: NotBlankStr,
+        owner_id: NotBlankStr | None = None,
         project_id: NotBlankStr | None = None,
     ) -> NotBlankStr:
         """Start *command* detached; the caller polls/reads/cancels it later.
 
         The job's lifetime is tied to the sandbox container that owns
-        *owner_id*'s workspace: starting one pins that container open
-        past what its lifecycle strategy's own grace/idle timers would
-        otherwise allow, until the job reaches a terminal status.
+        the resolved owner's workspace: starting one pins that
+        container open past what its lifecycle strategy's own
+        grace/idle timers would otherwise allow, until the job reaches
+        a terminal status.
 
         Args:
             command: Executable name or path.
@@ -146,9 +147,18 @@ class SandboxBackend(Protocol):
             cwd: Working directory (defaults to sandbox workspace root).
             env_overrides: Extra environment variables for the sandbox.
             category: The calling tool's :class:`ToolCategory` value.
-            owner_id: Lifecycle owner identifier. Background jobs have
-                no per-call semantics, so this is required (unlike
-                ``execute``'s optional ``owner_id``).
+            owner_id: Lifecycle owner identifier, or ``None`` to derive
+                one the same way ``execute`` does (from the correlation
+                context). ``None`` is the ONLY value guaranteed to land
+                the job in the SAME container an unscoped ``execute``
+                call under the same *category* would use -- a
+                caller-supplied id the strategy's own context-derived
+                key would not have chosen pins the wrong container.
+                Unlike ``execute``, an owner that cannot be resolved to
+                a real (non-ephemeral) key is refused rather than
+                silently falling back to a fresh per-call container: a
+                background job has no per-call semantics to fall back
+                to.
             project_id: Owning project; see ``execute``.
 
         Returns:
@@ -160,9 +170,10 @@ class SandboxBackend(Protocol):
                 persistent container a background job could run in.
             SandboxBackgroundNoReusableContainerError: The resolved
                 lifecycle strategy destroys its container after every
-                call, so there is nothing to pin.
-            SandboxBackgroundJobLimitError: *owner_id* already holds
-                the maximum number of live background jobs.
+                call, so there is nothing to pin; or no non-ephemeral
+                owner could be resolved.
+            SandboxBackgroundJobLimitError: The resolved owner already
+                holds the maximum number of live background jobs.
             SandboxStartError: The job could not be confirmed started.
         """
         ...
@@ -222,14 +233,27 @@ class SandboxBackend(Protocol):
         ...
 
     async def list_background_jobs(
-        self, owner_id: NotBlankStr
+        self,
+        owner_id: NotBlankStr | None = None,
+        *,
+        category: str = "",
+        project_id: NotBlankStr | None = None,
     ) -> tuple[BackgroundJobRecord, ...]:
-        """List background jobs recorded against *owner_id*, newest-first.
+        """List background jobs recorded against an owner, newest-first.
 
         Args:
-            owner_id: Lifecycle owner to list jobs for.
+            owner_id: Lifecycle owner to list jobs for, or ``None`` to
+                resolve the caller's own owner the same way
+                ``start_background`` did when it persisted them (see
+                its own ``owner_id`` docstring for why ``None`` is the
+                identity-preserving default rather than a convenience).
+            category: The calling tool's :class:`ToolCategory` value;
+                must match what ``start_background`` was called with,
+                since the resolved key includes a mount-mode segment
+                derived from it.
+            project_id: Owning project; see ``execute``.
 
         Returns:
-            This owner's job rows, newest-first.
+            The resolved owner's job rows, newest-first.
         """
         ...

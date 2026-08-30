@@ -435,7 +435,7 @@ class SubprocessSandbox(_EnvFilterMixin):
         cwd: Path | None = None,  # noqa: ARG002
         env_overrides: Mapping[str, str] | None = None,  # noqa: ARG002
         category: str = "",  # noqa: ARG002
-        owner_id: NotBlankStr,  # noqa: ARG002
+        owner_id: NotBlankStr | None = None,  # noqa: ARG002
         project_id: NotBlankStr | None = None,  # noqa: ARG002
     ) -> NotBlankStr:
         """Refuse: no persistent container a background job could run in.
@@ -495,7 +495,10 @@ class SubprocessSandbox(_EnvFilterMixin):
 
     async def list_background_jobs(
         self,
-        owner_id: NotBlankStr,  # noqa: ARG002
+        owner_id: NotBlankStr | None = None,  # noqa: ARG002
+        *,
+        category: str = "",  # noqa: ARG002
+        project_id: NotBlankStr | None = None,  # noqa: ARG002
     ) -> tuple[BackgroundJobRecord, ...]:
         """Return no jobs: this backend can never have started one.
 

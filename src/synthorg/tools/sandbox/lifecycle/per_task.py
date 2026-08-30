@@ -73,6 +73,19 @@ class PerTaskStrategy:
         self._pending_teardowns: dict[str, asyncio.Task[None]] = {}
         self._lock = asyncio.Lock()
 
+    def bind_pin_check(self, pin_check: Callable[[str], Awaitable[bool]]) -> None:
+        """Wire *pin_check* in after construction.
+
+        See ``PerAgentStrategy.bind_pin_check`` for why this exists
+        (the construction-order cycle between this strategy and the
+        Docker sandbox whose bound method ``pin_check`` becomes). Bind
+        before the first ``acquire()`` of a container that should be
+        pinnable; ``release()`` only ever reads ``self._pin_check`` for
+        a container already in ``self._containers``, so a bind before
+        any container exists is race-free by construction.
+        """
+        self._pin_check = pin_check
+
     @property
     def reuses_container(self) -> bool:
         """``True`` -- one container per task, destroyed on release."""

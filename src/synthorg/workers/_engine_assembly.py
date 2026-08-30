@@ -40,6 +40,7 @@ from synthorg.observability import (
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.observability.events.evolution import EVOLUTION_PROPOSER_MODEL_UNSET
 from synthorg.persistence.agent_state_protocol import AgentStateRepository
+from synthorg.persistence.background_job_protocol import BackgroundJobRepository
 from synthorg.persistence.memory_protocol import OrgFactRepository
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
 from synthorg.persistence.state import (
@@ -60,11 +61,15 @@ from synthorg.tools.ceilings import ToolCeilings
 from synthorg.tools.factory import build_default_tools_from_config
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.registry import ToolRegistry
+from synthorg.tools.sandbox.background_jobs import BackgroundJobRegistry
+from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
 from synthorg.tools.sandbox.factory import (
     build_sandbox_backends,
     merge_secure_backend_defaults,
 )
 from synthorg.tools.sandbox.lifecycle.factory import create_lifecycle_strategy
+from synthorg.tools.sandbox.lifecycle.per_agent import PerAgentStrategy
+from synthorg.tools.sandbox.lifecycle.per_task import PerTaskStrategy
 from synthorg.tools.web.fetch_types import WebFetchRungs, WebToolsWiring
 from synthorg.tools.web.providers.http_search_provider import HttpWebSearchProvider
 from synthorg.workers._agent_engine_collaborators import (
@@ -157,6 +162,12 @@ async def _build_tool_registry(
 
     browser_settings = await resolve_browser_settings(config_resolver_of(app_state))
     desktop_settings = await resolve_desktop_settings(config_resolver_of(app_state))
+    background_job_repo = _background_job_repo_or_none(app_state)
+    background_jobs = (
+        BackgroundJobRegistry(background_job_repo, clock=app_state.clock)
+        if background_job_repo is not None
+        else None
+    )
     lifecycle_strategy = create_lifecycle_strategy(
         app_state.config.sandboxing.docker.lifecycle,
         clock=app_state.clock,
@@ -169,7 +180,22 @@ async def _build_tool_registry(
         workspace=workspace_root,
         tracked_container_repo=_tracked_container_repo_or_none(app_state),
         lifecycle_strategy=lifecycle_strategy,
+        background_jobs=background_jobs,
     )
+    if background_jobs is not None and isinstance(
+        lifecycle_strategy, PerAgentStrategy | PerTaskStrategy
+    ):
+        # Binds after both the strategy and the Docker backend that owns
+        # ``pin_check`` exist, breaking the construction-order cycle
+        # documented on ``PerAgentStrategy.bind_pin_check`` /
+        # ``PerTaskStrategy.bind_pin_check``: the strategy has to exist
+        # before ``build_sandbox_backends`` can construct the sandbox,
+        # and ``pin_check`` is a bound method of that sandbox. Safe
+        # because grace/idle expiry only ever reads ``pin_check`` for a
+        # container already acquired, and none has been yet.
+        docker_backend = sandbox_backends.get("docker")
+        if isinstance(docker_backend, DockerSandbox):
+            lifecycle_strategy.bind_pin_check(docker_backend.pin_check)
     image_provider = await build_image_provider_or_none(app_state)
     default_tools = build_default_tools_from_config(
         workspace=workspace_root,
@@ -470,6 +496,26 @@ def _tracked_container_repo_or_none(
     if persistence is None or not persistence.is_connected:
         return None
     return persistence.tracked_containers
+
+
+def _background_job_repo_or_none(
+    app_state: AppState,
+) -> BackgroundJobRepository | None:
+    """Resolve the background-job store, or ``None`` before persistence connects.
+
+    A Docker backend built without this repository cannot start, poll,
+    read or cancel a background job at all (``start_background`` refuses
+    with ``SandboxBackgroundUnsupportedError``): the feature is entirely
+    persistence-backed, unlike the container tracker which merely
+    degrades to an in-memory dict.
+
+    Returns:
+        The repository, or ``None``.
+    """
+    persistence = app_state.slice(PersistenceStateSlice).backend
+    if persistence is None or not persistence.is_connected:
+        return None
+    return persistence.background_jobs
 
 
 def _build_compaction_callback(

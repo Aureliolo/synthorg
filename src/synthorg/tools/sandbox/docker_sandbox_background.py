@@ -42,6 +42,7 @@ from synthorg.tools.sandbox._background_wrapper import (
     build_start_command,
     output_path,
 )
+from synthorg.tools.sandbox._mount_mode import resolve_mount_mode
 from synthorg.tools.sandbox._mount_paths import CONTAINER_TMP
 from synthorg.tools.sandbox._owner_key import context_project
 from synthorg.tools.sandbox.active_environment import get_active_sandbox_environment
@@ -242,7 +243,7 @@ class DockerSandboxBackgroundMixin:
 
         The shared kill primitive: used by :meth:`cancel_background`,
         the lifecycle strategy's own pin-check self-cleaning
-        (:meth:`_pin_check`), and (a later phase) the foreground-exec
+        (:meth:`pin_check`), and (a later phase) the foreground-exec
         timeout fix.
         """
         program, args = build_kill_command(pid, grace_seconds=_CANCEL_GRACE_SECONDS)
@@ -251,15 +252,19 @@ class DockerSandboxBackgroundMixin:
             handle, program, args, timeout=_CONTROL_EXEC_TIMEOUT_SECONDS
         )
 
-    async def _pin_check(self, container_id: NotBlankStr) -> bool:
+    async def pin_check(self, container_id: NotBlankStr) -> bool:
         """Answer whether *container_id* has live background jobs.
 
-        D2's self-cleaning predicate, passed as ``pin_check`` to the
-        reusable lifecycle strategies: force-cancels (kill, then mark
-        ``TIMED_OUT``) any job past its own ``max_duration_seconds``,
-        then reports whether anything genuinely live remains. Reuses
-        the strategy's own grace/idle recheck cadence rather than a
-        second polling loop.
+        D2's self-cleaning predicate. Not a private implementation
+        detail: this bound method is itself the ``pin_check`` callable
+        that boot wiring hands to ``create_lifecycle_strategy`` once
+        this sandbox exists, so the reusable lifecycle strategies
+        (``per-agent`` / ``per-task``) hold container teardown off
+        while a job it names is still running. Force-cancels (kill,
+        then mark ``TIMED_OUT``) any job past its own
+        ``max_duration_seconds`` first, then reports whether anything
+        genuinely live remains. Reuses the strategy's own grace/idle
+        recheck cadence rather than a second polling loop.
 
         Returns:
             ``True`` while at least one live job remains after expiry.
@@ -272,13 +277,50 @@ class DockerSandboxBackgroundMixin:
         )
         return len(still_live) > 0
 
+    def _resolve_background_owner_key(
+        self,
+        owner_id: str | None,
+        *,
+        project_id: str | None,
+        category: str,
+    ) -> tuple[str, bool]:
+        """Resolve the lifecycle owner key a background job is filed under.
+
+        Container-free (no acquisition, no I/O): the same resolution
+        ``_resolve_background_target`` performs before acquiring a
+        container, split out so ``list_background_jobs`` can ask "which
+        rows are mine" without paying for a container acquisition, and
+        so both call sites are guaranteed to agree on the key --
+        including its ``mount_mode`` segment, which ``execute()`` /
+        ``_execute_leased`` also fold in via ``resolve_mount_mode``.
+        Omitting that segment here would key a background job's rows
+        under the unqualified owner while ``execute()`` keys the SAME
+        owner's foreground container under the mount-mode-suffixed
+        form, so a job would silently pin a container the agent's own
+        foreground calls never use.
+
+        Returns:
+            ``(owner_key, strategy_owns)`` -- ``strategy_owns`` is
+            ``False`` when nothing derivable meant the key degraded to
+            an ephemeral one-off (see ``resolve_lifecycle``).
+        """
+        pid = str(project_id) if project_id is not None else context_project()
+        active_env = get_active_sandbox_environment()
+        image_override = active_env.image_override if active_env is not None else None
+        return self._resolve_lifecycle(
+            owner_id,
+            project_id=pid,
+            image_override=str(image_override) if image_override else None,
+            mount_mode=resolve_mount_mode(category, self._config.mount_mode),
+        )
+
     async def _resolve_background_target(
         self,
         *,
         cwd: Path | None,
         env_overrides: Mapping[str, str] | None,
         category: str,
-        owner_id: NotBlankStr,
+        owner_id: str | None,
         project_id: NotBlankStr | None,
     ) -> tuple[aiodocker.Docker, ContainerHandle, str, dict[str, str], str]:
         """Resolve + acquire the container a background job runs in.
@@ -287,6 +329,11 @@ class DockerSandboxBackgroundMixin:
         sequence up to (not including) running a command: project root,
         rooted/validated cwd, container-side cwd, resolved env, and the
         acquired keep-alive container handle for the resolved owner.
+        The caller (``start_background``) has already resolved and
+        checked ``owner_key`` / ``strategy_owns`` once via
+        ``_resolve_background_owner_key`` before reaching here; this
+        resolves them again (cheap -- pure string computation, no I/O)
+        rather than threading them through as extra parameters.
 
         Returns:
             ``(docker, handle, container_cwd, exec_env, owner_key)``.
@@ -297,6 +344,9 @@ class DockerSandboxBackgroundMixin:
             SandboxStartError: The Docker daemon or image is
                 unavailable.
         """
+        owner_key, strategy_owns = self._resolve_background_owner_key(
+            owner_id, project_id=project_id, category=category
+        )
         pid = str(project_id) if project_id is not None else context_project()
         effective_root = await self._project_root(pid)
         rooted_cwd = None if cwd is None else self._rooted(cwd, effective_root)
@@ -312,11 +362,6 @@ class DockerSandboxBackgroundMixin:
             effective_overrides = {**screened, **(env_overrides or {})}
         exec_env = self._resolve_exec_env(effective_overrides)
 
-        owner_key, strategy_owns = self._resolve_lifecycle(
-            owner_id,
-            project_id=pid,
-            image_override=str(image_override) if image_override else None,
-        )
         docker = await self._ensure_docker()
 
         async def _create() -> ContainerHandle:
@@ -345,7 +390,7 @@ class DockerSandboxBackgroundMixin:
         cwd: Path | None = None,
         env_overrides: Mapping[str, str] | None = None,
         category: str = "",
-        owner_id: NotBlankStr,
+        owner_id: NotBlankStr | None = None,
         project_id: NotBlankStr | None = None,
     ) -> NotBlankStr:
         """See ``SandboxBackend.start_background``.
@@ -356,9 +401,14 @@ class DockerSandboxBackgroundMixin:
         Raises:
             SandboxBackgroundUnsupportedError: No registry was wired.
             SandboxBackgroundNoReusableContainerError: The resolved
-                lifecycle strategy has no persistent container.
-            SandboxBackgroundJobLimitError: *owner_id* is already at
-                its concurrent-job ceiling.
+                lifecycle strategy has no persistent container, or no
+                owner could be derived for one that does (an explicit
+                *owner_id* failed format validation, or ``None`` and
+                nothing was in the correlation context) -- in both
+                cases resolution degraded to an ephemeral one-off key,
+                which a background job cannot pin.
+            SandboxBackgroundJobLimitError: The resolved owner already
+                holds the maximum number of live background jobs.
             SandboxStartError: The job could not be confirmed started
                 (covers a shell-level failure -- a read-only ``/tmp``,
                 an exhausted tmpfs -- surfacing as empty or non-numeric
@@ -374,10 +424,29 @@ class DockerSandboxBackgroundMixin:
             )
             raise SandboxBackgroundNoReusableContainerError(msg)
 
-        live_count = await registry.count_live_by_owner(owner_id)
+        # Resolved once, up front: this is the SAME key the container
+        # acquisition below will resolve again (cheap, no I/O) and the
+        # SAME key ``execute()`` resolves for this owner's foreground
+        # calls under the same category -- the cap check and the
+        # persisted record must both key on it, never on the raw
+        # *owner_id* argument, or the two never agree (a raw owner_id
+        # has no project/image/mount-mode suffix; a resolved key does).
+        owner_key, strategy_owns = self._resolve_background_owner_key(
+            owner_id, project_id=project_id, category=category
+        )
+        if not strategy_owns:
+            msg = (
+                "No background-job owner could be resolved: an explicit "
+                "owner_id failed format validation, or none was given and "
+                "nothing usable was in the correlation context, so there "
+                "is no reusable container for a background job to pin."
+            )
+            raise SandboxBackgroundNoReusableContainerError(msg)
+
+        live_count = await registry.count_live_by_owner(owner_key)
         if live_count >= _DEFAULT_MAX_CONCURRENT_JOBS:
             msg = (
-                f"{owner_id} already holds {live_count} live background "
+                f"{owner_key} already holds {live_count} live background "
                 f"job(s), at the {_DEFAULT_MAX_CONCURRENT_JOBS}-job ceiling."
             )
             raise SandboxBackgroundJobLimitError(msg)
@@ -558,16 +627,35 @@ class DockerSandboxBackgroundMixin:
         return updated
 
     async def list_background_jobs(
-        self, owner_id: NotBlankStr
+        self,
+        owner_id: NotBlankStr | None = None,
+        *,
+        category: str = "",
+        project_id: NotBlankStr | None = None,
     ) -> tuple[BackgroundJobRecord, ...]:
         """See ``SandboxBackend.list_background_jobs``.
 
+        Resolves *owner_id* through the same
+        ``_resolve_background_owner_key`` path ``start_background``
+        persisted rows under, rather than querying the raw argument
+        directly: a raw agent/task id has no project/image/mount-mode
+        suffix, so it never matches a persisted (resolved) key.
+
         Returns:
-            *owner_id*'s job rows, newest-first.
+            The resolved owner's job rows, newest-first. Empty when no
+            registry is wired, or when resolution degraded to an
+            ephemeral key (nothing to list -- an ephemeral owner never
+            holds a background job, since ``start_background`` refuses
+            that case outright).
         """
         if self._background_jobs is None:
             return ()
-        return await self._background_jobs.list_by_owner(owner_id)
+        owner_key, strategy_owns = self._resolve_background_owner_key(
+            owner_id, project_id=project_id, category=category
+        )
+        if not strategy_owns:
+            return ()
+        return await self._background_jobs.list_by_owner(owner_key)
 
 
 __all__: list[str] = []

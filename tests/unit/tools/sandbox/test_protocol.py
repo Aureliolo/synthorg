@@ -61,7 +61,7 @@ class _FakeSandbox:
         cwd: Path | None = None,
         env_overrides: Mapping[str, str] | None = None,
         category: str = "",
-        owner_id: NotBlankStr,
+        owner_id: NotBlankStr | None = None,
         project_id: NotBlankStr | None = None,
     ) -> NotBlankStr:
         return NotBlankStr("fake-job")
@@ -78,7 +78,11 @@ class _FakeSandbox:
         raise NotImplementedError
 
     async def list_background_jobs(
-        self, owner_id: NotBlankStr
+        self,
+        owner_id: NotBlankStr | None = None,
+        *,
+        category: str = "",
+        project_id: NotBlankStr | None = None,
     ) -> tuple[BackgroundJobRecord, ...]:
         return ()
 

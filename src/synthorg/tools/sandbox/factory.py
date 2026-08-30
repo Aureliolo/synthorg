@@ -31,6 +31,7 @@ from synthorg.tools.sandbox._image_resolution import (
     get_resolved_sandbox_image,
     get_resolved_sidecar_image,
 )
+from synthorg.tools.sandbox.background_jobs import BackgroundJobRegistry
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
 from synthorg.tools.sandbox.lifecycle.protocol import (
@@ -70,10 +71,11 @@ def _build_subprocess_backend(
     workspace: Path,
     tracked_container_repo: TrackedContainerRepository | None = None,
     lifecycle_strategy: SandboxLifecycleStrategy | None = None,
+    background_jobs: BackgroundJobRegistry | None = None,
 ) -> SandboxBackend:
     # Subprocess backend has no Docker containers to track or reuse;
-    # the repo / lifecycle parameters are accepted to keep a uniform
-    # registry signature.
+    # the repo / lifecycle / background-job parameters are accepted to
+    # keep a uniform registry signature.
     """Build subprocess backend.
 
     Returns:
@@ -82,7 +84,7 @@ def _build_subprocess_backend(
     Raises:
         Exception: Raised when the relevant invariant fails.
     """
-    del tracked_container_repo, lifecycle_strategy
+    del tracked_container_repo, lifecycle_strategy, background_jobs
     try:
         return SubprocessSandbox(
             config=config.subprocess,
@@ -136,6 +138,7 @@ def _build_docker_backend(
     workspace: Path,
     tracked_container_repo: TrackedContainerRepository | None = None,
     lifecycle_strategy: SandboxLifecycleStrategy | None = None,
+    background_jobs: BackgroundJobRegistry | None = None,
 ) -> SandboxBackend:
     """Build docker backend.
 
@@ -151,6 +154,7 @@ def _build_docker_backend(
             workspace=workspace,
             tracked_container_repo=tracked_container_repo,
             lifecycle_strategy=lifecycle_strategy,
+            background_jobs=background_jobs,
         )
     except Exception as exc:
         log_exception_redacted(
@@ -199,6 +203,7 @@ def build_sandbox_backends(
     workspace: Path,
     tracked_container_repo: TrackedContainerRepository | None = None,
     lifecycle_strategy: SandboxLifecycleStrategy | None = None,
+    background_jobs: BackgroundJobRegistry | None = None,
 ) -> MappingProxyType[str, SandboxBackend]:
     """Build only the backend instances actually referenced by *config*.
 
@@ -216,6 +221,11 @@ def build_sandbox_backends(
             injected into the Docker backend (per-agent / per-task /
             per-call).  When ``None`` the Docker backend defaults to
             per-call.  Subprocess backend ignores it.
+        background_jobs: Optional background-job registry injected into
+            the Docker backend.  ``None`` disables ``start_background``
+            / ``poll_background`` / ``read_background_output`` /
+            ``cancel_background`` (each refuses loudly rather than
+            silently no-opping).  Subprocess backend ignores it.
 
     Returns:
         A read-only mapping of backend name to backend instance.
@@ -244,6 +254,7 @@ def build_sandbox_backends(
             workspace=workspace,
             tracked_container_repo=tracked_container_repo,
             lifecycle_strategy=lifecycle_strategy,
+            background_jobs=background_jobs,
         )
         for name in sorted(needed)
     }

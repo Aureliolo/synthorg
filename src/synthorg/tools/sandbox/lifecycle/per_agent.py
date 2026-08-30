@@ -84,6 +84,22 @@ class PerAgentStrategy:
         self._destroy_fns: dict[str, Callable[[ContainerHandle], Awaitable[None]]] = {}
         self._lock = asyncio.Lock()
 
+    def bind_pin_check(self, pin_check: Callable[[str], Awaitable[bool]]) -> None:
+        """Wire *pin_check* in after construction.
+
+        Exists because ``pin_check`` is naturally a bound method of the
+        Docker sandbox itself (it needs that sandbox's own background-job
+        registry and kill primitive), while this strategy must already
+        exist for ``build_sandbox_backends`` to construct that sandbox --
+        a genuine construction-order cycle, broken here rather than by
+        reaching into ``self._pin_check`` from outside the class. Callers
+        must bind before the first ``acquire()`` of a container that
+        should be pinnable; grace/idle expiry only ever reads
+        ``self._pin_check`` for a container it is already timing, so a
+        bind before any container exists is race-free by construction.
+        """
+        self._pin_check = pin_check
+
     async def _await_unpinned(self, owner_id: str) -> ContainerHandle | None:
         """Block until *owner_id*'s cached container is gone or unpinned.
 

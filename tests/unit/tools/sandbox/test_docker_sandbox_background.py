@@ -35,6 +35,13 @@ pytestmark = pytest.mark.unit
 _DOCKER_MODULE = "synthorg.tools.sandbox.docker_sandbox.aiodocker"
 
 _TEST_OWNER = NotBlankStr("agent-1")
+#: What ``_TEST_OWNER`` resolves to once passed through
+#: ``_resolve_background_owner_key`` under ``category="terminal"`` (a
+#: writable category, so the mount-mode segment is always ``rw``) with
+#: no project/image context bound -- the key every persisted row and
+#: every read-path lookup must agree on.
+_TEST_OWNER_KEY = NotBlankStr("agent-1:rw")
+_TERMINAL_CATEGORY = "terminal"
 
 
 class _InMemoryBackgroundJobRepository:
@@ -198,7 +205,10 @@ class TestStartBackground:
             pytest.raises(SandboxBackgroundUnsupportedError),
         ):
             await sandbox.start_background(
-                command="sleep", args=("30",), owner_id=_TEST_OWNER
+                command="sleep",
+                args=("30",),
+                category=_TERMINAL_CATEGORY,
+                owner_id=_TEST_OWNER,
             )
 
     async def test_refuses_under_per_call_strategy(self, tmp_path: Path) -> None:
@@ -214,7 +224,10 @@ class TestStartBackground:
             pytest.raises(SandboxBackgroundNoReusableContainerError),
         ):
             await sandbox.start_background(
-                command="sleep", args=("30",), owner_id=_TEST_OWNER
+                command="sleep",
+                args=("30",),
+                category=_TERMINAL_CATEGORY,
+                owner_id=_TEST_OWNER,
             )
 
     async def test_refuses_at_job_limit(self, tmp_path: Path) -> None:
@@ -226,7 +239,7 @@ class TestStartBackground:
                 BackgroundJobRecord(
                     job_id=f"existing-{i}",
                     container_id="c1",
-                    owner_id=_TEST_OWNER,
+                    owner_id=_TEST_OWNER_KEY,
                     command_repr="sleep 5",
                     status=BackgroundJobStatus.RUNNING,
                     output_path="/tmp/.synthorg-jobs/x/output",  # noqa: S108
@@ -242,7 +255,10 @@ class TestStartBackground:
             pytest.raises(SandboxBackgroundJobLimitError),
         ):
             await sandbox.start_background(
-                command="sleep", args=("30",), owner_id=_TEST_OWNER
+                command="sleep",
+                args=("30",),
+                category=_TERMINAL_CATEGORY,
+                owner_id=_TEST_OWNER,
             )
 
     async def test_raises_when_pid_never_confirmed(self, tmp_path: Path) -> None:
@@ -251,10 +267,13 @@ class TestStartBackground:
         sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
         with _patch_aiodocker(docker), pytest.raises(SandboxStartError):
             await sandbox.start_background(
-                command="sleep", args=("30",), owner_id=_TEST_OWNER
+                command="sleep",
+                args=("30",),
+                category=_TERMINAL_CATEGORY,
+                owner_id=_TEST_OWNER,
             )
         # No record persisted for a job that never actually started.
-        assert await registry.list_by_owner(_TEST_OWNER) == ()
+        assert await registry.list_by_owner(_TEST_OWNER_KEY) == ()
 
     async def test_persists_a_running_record_on_success(self, tmp_path: Path) -> None:
         registry = BackgroundJobRegistry(
@@ -264,13 +283,16 @@ class TestStartBackground:
         sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
         with _patch_aiodocker(docker):
             job_id = await sandbox.start_background(
-                command="sleep", args=("30",), owner_id=_TEST_OWNER
+                command="sleep",
+                args=("30",),
+                category=_TERMINAL_CATEGORY,
+                owner_id=_TEST_OWNER,
             )
         record = await registry.get(job_id)
         assert record is not None
         assert record.status == BackgroundJobStatus.RUNNING
         assert record.pid == 777
-        assert record.owner_id == _TEST_OWNER
+        assert record.owner_id == _TEST_OWNER_KEY
         assert record.command_repr.startswith("sleep 30")
 
 
@@ -474,19 +496,25 @@ class TestListBackgroundJobs:
     async def test_returns_empty_without_registry(self, tmp_path: Path) -> None:
         docker = _make_mock_docker(_responder_for())
         sandbox = _make_sandbox(tmp_path, docker=docker, registry=None)
-        assert await sandbox.list_background_jobs(_TEST_OWNER) == ()
+        assert (
+            await sandbox.list_background_jobs(_TEST_OWNER, category=_TERMINAL_CATEGORY)
+            == ()
+        )
 
     async def test_scopes_to_owner(self, tmp_path: Path) -> None:
         clock = FakeClock()
         registry = BackgroundJobRegistry(
             _InMemoryBackgroundJobRepository(), clock=clock
         )
-        for owner, job_id in [(_TEST_OWNER, "job-a"), ("agent-2", "job-b")]:
+        for owner_key, job_id in [
+            (_TEST_OWNER_KEY, "job-a"),
+            (NotBlankStr("agent-2:rw"), "job-b"),
+        ]:
             await registry.save(
                 BackgroundJobRecord(
                     job_id=job_id,
                     container_id="c1",
-                    owner_id=NotBlankStr(owner),
+                    owner_id=owner_key,
                     command_repr="sleep 5",
                     status=BackgroundJobStatus.RUNNING,
                     output_path=f"/tmp/.synthorg-jobs/{job_id}/output",  # noqa: S108
@@ -497,7 +525,9 @@ class TestListBackgroundJobs:
             )
         docker = _make_mock_docker(_responder_for())
         sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
-        jobs = await sandbox.list_background_jobs(_TEST_OWNER)
+        jobs = await sandbox.list_background_jobs(
+            _TEST_OWNER, category=_TERMINAL_CATEGORY
+        )
         assert [j.job_id for j in jobs] == ["job-a"]
 
 
@@ -507,7 +537,7 @@ class TestPinCheck:
         docker = _make_mock_docker(_responder_for())
         sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
         with _patch_aiodocker(docker):
-            assert await sandbox._pin_check("c1") is False
+            assert await sandbox.pin_check("c1") is False
 
     async def test_returns_true_while_job_is_live(self, tmp_path: Path) -> None:
         clock = FakeClock()
@@ -531,7 +561,7 @@ class TestPinCheck:
         docker = _make_mock_docker(_responder_for())
         sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
         with _patch_aiodocker(docker):
-            assert await sandbox._pin_check("c1") is True
+            assert await sandbox.pin_check("c1") is True
 
     async def test_expires_and_returns_false_past_ceiling(self, tmp_path: Path) -> None:
         clock = FakeClock()
@@ -556,7 +586,7 @@ class TestPinCheck:
         docker = _make_mock_docker(_responder_for())
         sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
         with _patch_aiodocker(docker):
-            assert await sandbox._pin_check("c1") is False
+            assert await sandbox.pin_check("c1") is False
         record = await registry.get("job-1")
         assert record is not None
         assert record.status == BackgroundJobStatus.TIMED_OUT
