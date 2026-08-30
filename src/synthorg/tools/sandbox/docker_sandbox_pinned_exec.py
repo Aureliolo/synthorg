@@ -1,5 +1,5 @@
 # module-kind: complex_service
-"""Pinned-foreground-exec mixin for ``DockerSandbox`` (#2880).
+"""Pinned-foreground-exec mixin for ``DockerSandbox``.
 
 Split out of :mod:`docker_sandbox_exec` to keep that module under its
 size cap: the pinned path is one cohesive addition (wrap, drain, kill,
