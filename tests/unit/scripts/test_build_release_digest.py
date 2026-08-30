@@ -11,6 +11,7 @@ import io
 import json
 import sys
 import time
+from collections.abc import Callable
 
 import pytest
 from scripts.build_release_digest import (
@@ -84,7 +85,9 @@ class TestStripHtmlComments:
             pytest.param(lambda n: "**high**" + " " * n + "x", id="severity_spaces"),
         ],
     )
-    def test_cleaning_stays_linear_on_adversarial_input(self, build) -> None:
+    def test_cleaning_stays_linear_on_adversarial_input(
+        self, build: Callable[[int], str]
+    ) -> None:
         """Doubling the input must not quadruple the work.
 
         Every stripper here once ran superlinearly on a shape an author
