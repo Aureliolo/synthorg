@@ -234,6 +234,25 @@ class DockerSandboxBackgroundMixin:
             self._background_job_locks[owner_key] = lock
         return lock
 
+    def _reserve_unpinned_exec(self, owner_key: str) -> None:
+        """Record one more unpinned foreground exec in flight for *owner_key*.
+
+        Called only while ``_owner_lock(owner_key)`` is held, so this is a
+        plain dict mutation. See ``_unpinned_execs_in_flight``'s own
+        docstring in ``docker_sandbox.py`` for why it exists.
+        """
+        self._unpinned_execs_in_flight[owner_key] = (
+            self._unpinned_execs_in_flight.get(owner_key, 0) + 1
+        )
+
+    def _release_unpinned_exec(self, owner_key: str) -> None:
+        """Release one unpinned foreground exec reservation for *owner_key*."""
+        remaining = self._unpinned_execs_in_flight.get(owner_key, 0) - 1
+        if remaining <= 0:
+            self._unpinned_execs_in_flight.pop(owner_key, None)
+        else:
+            self._unpinned_execs_in_flight[owner_key] = remaining
+
     async def _run_control_exec(
         self,
         handle: ContainerHandle,

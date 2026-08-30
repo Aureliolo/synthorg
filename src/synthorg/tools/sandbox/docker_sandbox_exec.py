@@ -102,7 +102,14 @@ class DockerSandboxExecMixin:
         _docker: aiodocker.Docker | None
         _log_shipping_config: ContainerLogShippingConfig
         _background_jobs: BackgroundJobRegistry | None
-        _unpinned_execs_in_flight: dict[str, int]
+
+        def _reserve_unpinned_exec(self, owner_key: str) -> None:
+            """Record one more unpinned foreground exec in flight for *owner_key*."""
+            ...
+
+        def _release_unpinned_exec(self, owner_key: str) -> None:
+            """Release one unpinned foreground exec reservation for *owner_key*."""
+            ...
 
         def _owner_lock(self, owner_key: str) -> asyncio.Lock:
             """Return the per-owner lock guarding the job-cap check + persist.
@@ -732,7 +739,6 @@ class DockerSandboxExecMixin:
         """
         container_id = handle.container_id
         pinned = False
-        reserved_unpinned = False
         if self._background_jobs is not None:
             async with self._owner_lock(owner_key):
                 try:
@@ -760,10 +766,7 @@ class DockerSandboxExecMixin:
                     # may still stop) or ran its cap check first and
                     # this exec will see its live job on its own next
                     # call -- there is no gap either way sees neither.
-                    self._unpinned_execs_in_flight[owner_key] = (
-                        self._unpinned_execs_in_flight.get(owner_key, 0) + 1
-                    )
-                    reserved_unpinned = True
+                    self._reserve_unpinned_exec(owner_key)
         logger.debug(
             SANDBOX_EXEC_PIN_DECIDED,
             container_id=container_id[:12],
@@ -808,12 +811,11 @@ class DockerSandboxExecMixin:
                 elapsed_ms=elapsed_ms,
             )
         finally:
-            if reserved_unpinned:
-                remaining = self._unpinned_execs_in_flight.get(owner_key, 0) - 1
-                if remaining <= 0:
-                    self._unpinned_execs_in_flight.pop(owner_key, None)
-                else:
-                    self._unpinned_execs_in_flight[owner_key] = remaining
+            # Only reached on the unpinned path (the pinned branch returns
+            # above), where a reservation was made whenever background
+            # jobs are wired at all; release is a safe no-op otherwise
+            # (nothing was ever incremented for this owner_key).
+            self._release_unpinned_exec(owner_key)
 
     @staticmethod
     async def _collect_exec_output(stream: Stream) -> tuple[str, str]:

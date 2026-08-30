@@ -212,6 +212,8 @@ class DockerSandboxPinnedExecMixin:
         """
         program, args = build_read_pid_command(job_id)
         deadline = self._clock.monotonic() + _PID_READ_DEADLINE_SECONDS
+        # lint-allow: long-running-loop-kill-switch -- bounded by the
+        # deadline above (2s); a single foreground kill's own retry.
         while True:
             pid_text = (
                 await self._run_control_exec(
