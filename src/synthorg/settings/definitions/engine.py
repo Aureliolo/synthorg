@@ -1312,6 +1312,46 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
+        key="auto_slice_enabled",
+        type=SettingType.BOOLEAN,
+        default="true",
+        description=(
+            "Let a workstream that finished its planned tree without covering"
+            " its objective be handed another slice unasked, once"
+            " ``coordination.jit_slice_planning_enabled`` has switched the"
+            " mechanism on at all. This is the automatic-authority switch on"
+            " the same shape as ``auto_replan_enabled``: off leaves such a"
+            " workstream's gap unaddressed rather than grafting past a"
+            " generation an operator has not sanctioned. Read live per fire."
+        ),
+        group="Initiative Tail",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="auto_slice_max_generations",
+        type=SettingType.INTEGER,
+        default="2",
+        description=(
+            "How many slices one workstream may be handed automatically"
+            " before it is left as-is with its scope unmet. Counted per"
+            " workstream, not per plan, since workstreams progress"
+            " independently; a workstream past its cap is not retried, on"
+            " the same reasoning ``auto_replan_max_generations`` caps an"
+            " unattended replan chain. 0 disables the automatic graft"
+            " entirely."
+        ),
+        group="Initiative Tail",
+        min_value=0,
+        max_value=10,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
         key="auto_replan_timeout_seconds",
         type=SettingType.FLOAT,
         default="600.0",

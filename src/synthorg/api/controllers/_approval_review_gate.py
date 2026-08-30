@@ -11,6 +11,9 @@ Exposes:
 - :func:`signal_resume_intent` -- orchestrates both flows.
 """
 
+from synthorg.api.controllers._approval_initiative_slice import (
+    try_initiative_slice_resume,
+)
 from synthorg.api.controllers._approval_initiative_stall import (
     try_initiative_stall_resume,
 )
@@ -372,6 +375,8 @@ async def signal_resume_intent(
        dispatch the parked plan on approval, or cancel the parent task.
     0.75. **Stalled initiative** (:func:`try_initiative_stall_resume`):
        replan it on the operator's authority, or fail it with the stall reason.
+    0.76. **Slice ask** (:func:`try_initiative_slice_resume`):
+       extend the workstream, or leave it as delivered.
     0.8. **Project decision** (:func:`record_project_decision`):
        record a project-shaping decision, then fall through.
     0.9. **Org hire** (:func:`try_org_hire_resume`):
@@ -439,6 +444,16 @@ async def signal_resume_intent(
     # a task_id reaches the review gate below, which reads it as a completion
     # review and refuses it.
     if await try_initiative_stall_resume(
+        app_state,
+        approval_id,
+        approved=approved,
+        decided_by=decided_by,
+    ):
+        return
+
+    # Flow 0.76: a slice ask parked on the autonomy gate. Same claim reason
+    # as flow 0.75.
+    if await try_initiative_slice_resume(
         app_state,
         approval_id,
         approved=approved,

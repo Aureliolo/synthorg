@@ -668,6 +668,15 @@ async def _activate_initiative_stall_escalation(app_state: AppState) -> None:
     await attach_stall_escalation(app_state)
 
 
+async def _activate_initiative_slice_escalation(app_state: AppState) -> None:
+    """Attach the extend-workstream escalation onto the wired rollup."""
+    from synthorg.api.lifecycle_helpers.project_rollup_wiring import (  # noqa: PLC0415
+        attach_slice_escalation,
+    )
+
+    await attach_slice_escalation(app_state)
+
+
 async def _activate_initiative_retro_capture(app_state: AppState) -> None:
     """Attach the SHIP-time retrospective capture onto the wired rollup."""
     from synthorg.api.lifecycle_helpers.project_rollup_wiring import (  # noqa: PLC0415
@@ -1515,6 +1524,20 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
             CapabilityId.APPROVAL_STORE,
         ),
         activate=_activate_initiative_stall_escalation,
+    ),
+    SubsystemSpec(
+        # Separate from initiative_replan for the same reason
+        # initiative_stall_escalation is: it is what happens when the
+        # deterministic autonomy gate applies, which converges independently
+        # of whether a trigger is even attached.
+        name="initiative_slice_escalation",
+        provides=CapabilityId.INITIATIVE_SLICE_ESCALATION,
+        requires=(
+            CapabilityId.PROJECT_ROLLUP_SERVICE,
+            CapabilityId.PERSISTENCE,
+            CapabilityId.APPROVAL_STORE,
+        ),
+        activate=_activate_initiative_slice_escalation,
     ),
     SubsystemSpec(
         # Both memory backends are tearable, and the capture holds them for the

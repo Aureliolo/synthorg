@@ -641,6 +641,27 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
+        key="jit_slice_planning_enabled",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Once a workstream's currently-known tree is entirely done, check"
+            " whether any of its leaves was dispatched despite the atomicity"
+            " policy finding it still oversized (a depth or session backstop"
+            " stopped its split), and if so plan and graft another slice for"
+            " it rather than letting the plan advance as if that leaf's whole"
+            " claimed scope was delivered. Off by default: unvalidated by any"
+            " live round, unlike recursion itself. Read live per rollup"
+            " recompute, so an operator's change applies without a restart."
+        ),
+        group="General",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COORDINATION,
         key="company_departments_cas_retry_attempts",
         type=SettingType.INTEGER,
         default="3",

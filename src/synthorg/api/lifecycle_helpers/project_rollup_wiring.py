@@ -72,16 +72,21 @@ async def wire_project_rollup_service(app_state: AppState) -> None:
         from synthorg.api.services.plan_service_factory import (  # noqa: PLC0415
             build_plan_service,
         )
+        from synthorg.settings.state import config_resolver_of  # noqa: PLC0415
 
         # Deliberately tailless. Every tail collaborator needs the provider
         # registry, the work pipeline or the coordinator, none of which exist
         # this early, so building them here would only ever produce the empty
-        # result the tail subsystem then has to replace.
+        # result the tail subsystem then has to replace. The settings resolver
+        # is not a tail collaborator in that sense: it needs nothing this
+        # phase lacks, and the just-in-time slice master switch it feeds is
+        # read fresh on every recompute regardless of what the tail wires.
         service = ProjectRollupService(
             persistence=persistence,
             plan_status_writer=build_plan_service(persistence, clock=app_state.clock),
             clock=app_state.clock,
             task_engine=task_engine,
+            config_resolver=config_resolver_of(app_state),
         )
         # Register the observer BEFORE committing the service to state, so a
         # failure here leaves the service unwired and a re-run retries cleanly
@@ -180,6 +185,43 @@ async def attach_stall_escalation(app_state: AppState) -> None:
         )
     )
     _log_attached("initiative_stall_escalation")
+
+
+async def attach_slice_escalation(app_state: AppState) -> None:
+    """Attach the extend-workstream escalation onto the wired rollup.
+
+    The activation the ``initiative_slice_escalation`` subsystem declares.
+    Its own dependency is the approval store, on the same reasoning
+    :func:`attach_stall_escalation` needs it: without one, an ``ASKED``
+    deterministic gate has nothing to park against, so the rollup does not
+    hold the plan for it (see :func:`~synthorg.engine.initiative.
+    rollup_stages.drive_slices`'s escalation-absent branch).
+
+    Raises:
+        SubsystemDeclinedError: No approval store, so nothing can ask.
+    """
+    from synthorg.approval.state import ApprovalStateSlice  # noqa: PLC0415
+    from synthorg.engine.initiative.slice_escalation import (  # noqa: PLC0415
+        SliceEscalationService,
+    )
+    from synthorg.notifications.state import NotificationsStateSlice  # noqa: PLC0415
+
+    resolved = _tail_target(app_state, ProjectRollupService.has_slice_escalation)
+    if resolved is None:
+        return
+    _, rollup = resolved
+    store = app_state.slice(ApprovalStateSlice).store
+    if store is None:
+        msg = "no approval store; the escalation exists to ask a human"
+        raise SubsystemDeclinedError(msg)
+    rollup.attach_tail(
+        slice_escalation=SliceEscalationService(
+            approvals=store,
+            notifications=lambda: app_state.slice(NotificationsStateSlice).dispatcher,
+            clock=app_state.clock,
+        )
+    )
+    _log_attached("initiative_slice_escalation")
 
 
 async def attach_skeleton_stage(app_state: AppState) -> None:

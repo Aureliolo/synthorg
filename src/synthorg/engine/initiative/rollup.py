@@ -66,7 +66,9 @@ from synthorg.engine.initiative.rollup_stages import (
     drive_evaluation,
     drive_integration,
     drive_skeleton,
+    slicing_holds,
 )
+from synthorg.engine.initiative.slice_escalation import SliceEscalationService
 from synthorg.engine.initiative.stall_escalation import StallEscalationService
 from synthorg.engine.initiative.stall_route import escalate_stall, route_stall
 from synthorg.engine.task_engine import TaskEngine
@@ -80,6 +82,7 @@ from synthorg.observability.events.project import (
 )
 from synthorg.persistence.lifecycle_ledger import ledger_for
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -106,6 +109,9 @@ class ProjectRollupService:
             one whose pieces were never assembled has not delivered. Each
             arrives in a later boot phase, so a rollup built before them has
             none and fills them through :meth:`attach_tail`.
+        config_resolver: Live settings source for the just-in-time slice
+            master switch, re-read per recompute. ``None`` leaves it off,
+            which is also its shipped default.
 
     The stall escalation, the owner of "this initiative has no automatic route
     left", is attached later through :meth:`attach_tail` because it needs the
@@ -116,6 +122,7 @@ class ProjectRollupService:
 
     __slots__ = (
         "_clock",
+        "_config_resolver",
         "_evaluation",
         "_integration",
         "_locks",
@@ -125,6 +132,7 @@ class ProjectRollupService:
         "_replan_trigger",
         "_ship_retro_capture",
         "_skeleton",
+        "_slice_escalation",
         "_stall_escalation",
         "_task_engine",
     )
@@ -139,6 +147,7 @@ class ProjectRollupService:
         ship_retro_capture: RetroCapturePort | None = None,
         replan_trigger: ReplanTriggerPort | None = None,
         stages: StagePorts | None = None,
+        config_resolver: ConfigResolver | None = None,
     ) -> None:
         self._persistence = persistence
         self._plan_writer = plan_status_writer
@@ -146,6 +155,7 @@ class ProjectRollupService:
         self._task_engine = task_engine
         self._ship_retro_capture = ship_retro_capture
         self._replan_trigger = replan_trigger
+        self._config_resolver = config_resolver
         resolved = stages if stages is not None else StagePorts()
         self._skeleton = resolved.skeleton
         self._integration = resolved.integration
@@ -153,6 +163,7 @@ class ProjectRollupService:
         # Attached only through ``attach_tail``: it needs the approval store,
         # which the boot phase that builds this service has not reached.
         self._stall_escalation: StallEscalationService | None = None
+        self._slice_escalation: SliceEscalationService | None = None
         # Likewise: driving a plan needs the coordinator and the agent roster.
         self._plan_driver: PlanDriver | None = None
         # The observer dispatch is sequential, so events alone cannot overlap
@@ -170,6 +181,7 @@ class ProjectRollupService:
         evaluation: EvaluationPort | None = None,
         ship_retro_capture: RetroCapturePort | None = None,
         stall_escalation: StallEscalationService | None = None,
+        slice_escalation: SliceEscalationService | None = None,
         plan_driver: PlanDriver | None = None,
     ) -> None:
         """Fill in stage collaborators that a later boot phase resolved.
@@ -204,6 +216,8 @@ class ProjectRollupService:
             self._ship_retro_capture = ship_retro_capture
         if self._stall_escalation is None:
             self._stall_escalation = stall_escalation
+        if self._slice_escalation is None:
+            self._slice_escalation = slice_escalation
 
     async def detach_retro_capture(self, *, timeout_sec: float) -> None:
         """Drain and drop the retrospective capture, so a pass can rebuild it.
@@ -289,6 +303,14 @@ class ProjectRollupService:
             ``True`` once the escalation collaborator is present.
         """
         return self._stall_escalation is not None
+
+    def has_slice_escalation(self) -> bool:
+        """Whether the extend-workstream escalation is attached.
+
+        Returns:
+            ``True`` once the escalation collaborator is present.
+        """
+        return self._slice_escalation is not None
 
     def has_retro_capture(self) -> bool:
         """Whether the SHIP-time retrospective capture is attached.
@@ -444,12 +466,24 @@ class ProjectRollupService:
             items = await collect_item_progress(self._persistence, plan)
             item_count = len(items)
             if plan.status not in TERMINAL_STATUSES:
-                derived = derive_plan_status(items, current=plan.status)
-                if derived is not plan.status:
-                    # A refused or contended plan write leaves *plan* at its
-                    # last known status; the project still reconciles against
-                    # that below rather than being skipped for this event.
-                    plan = await self._advance_plan(plan, derived) or plan
+                # A workstream mid-slice holds the plan here rather than let
+                # derive_plan_status open INTEGRATING under it.
+                held = plan.status is PlanStatus.EXECUTING and await slicing_holds(
+                    plan,
+                    items,
+                    config_resolver=self._config_resolver,
+                    replan_trigger=self._replan_trigger,
+                    drive=self._plan_driver,
+                    slice_escalation=self._slice_escalation,
+                )
+                if not held:
+                    derived = derive_plan_status(items, current=plan.status)
+                    if derived is not plan.status:
+                        # A refused or contended plan write leaves *plan* at
+                        # its last known status; the project still reconciles
+                        # against that below rather than being skipped for
+                        # this event.
+                        plan = await self._advance_plan(plan, derived) or plan
                 plan = await self._run_stage(
                     plan, reopened=plan.status is not started_as
                 )

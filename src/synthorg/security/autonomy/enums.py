@@ -72,6 +72,10 @@ class ActionType(StrEnum):
     DB_MUTATE = "db:mutate"
     DB_ADMIN = "db:admin"
     ARCH_DECIDE = "arch:decide"
+    # Grafting another slice onto a live, still-executing workstream: the
+    # deliberate mid-course scope decision D3 gates, distinct from the
+    # eager whole-tree decomposition approval already covers.
+    PLAN_EXTEND_WORKSTREAM = "plan:extend_workstream"
     TOOL_CREATE = "tool:create"
     MEMORY_READ = "memory:read"
     KNOWLEDGE_INGEST = "knowledge:ingest"

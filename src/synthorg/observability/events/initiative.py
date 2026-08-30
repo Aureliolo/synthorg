@@ -30,6 +30,28 @@ INITIATIVE_REPLAN_GRANTED: Final[str] = "initiative.replan.granted"
 #: store is degraded and every replan now runs on defaults" the same signal.
 INITIATIVE_REPLAN_SETTINGS_DEGRADED: Final[str] = "initiative.replan.settings_degraded"
 
+#: A workstream finished its planned tree with at least one leaf still
+#: oversized, and the slice trigger started a graft for it.
+INITIATIVE_SLICE_CONSIDERED: Final[str] = "initiative.slice.considered"
+#: The trigger refused a slice it was asked to consider, on the same two
+#: guards a stalled replan can be refused on.
+INITIATIVE_SLICE_REFUSED: Final[str] = "initiative.slice.refused"
+#: The graft's own append lost a race to another writer and is retrying once
+#: against the freshly read plan.
+INITIATIVE_SLICE_VERSION_CONFLICT: Final[str] = "initiative.slice.version_conflict"
+#: A slice's items landed on the plan and its tasks were filed.
+INITIATIVE_SLICE_GRAFTED: Final[str] = "initiative.slice.grafted"
+#: A slice grafted but the driver refused to dispatch it; the plan is left for
+#: the recovery sweep to pick up on its own cadence, the same as any other
+#: refused drive.
+INITIATIVE_SLICE_DRIVE_FAILED: Final[str] = "initiative.slice.drive_failed"
+#: The graft itself failed (a bad decomposition, a persistence failure, or
+#: both append attempts losing to a concurrent writer).
+INITIATIVE_SLICE_FAILED: Final[str] = "initiative.slice.failed"
+#: A settings read fell back to its hardcoded default, on the same reasoning
+#: ``INITIATIVE_REPLAN_SETTINGS_DEGRADED`` carries for replan.
+INITIATIVE_SLICE_SETTINGS_DEGRADED: Final[str] = "initiative.slice.settings_degraded"
+
 #: An initiative with no automatic route left was put in front of a person.
 #: WARNING, because it is the one signal that the organisation has stopped and
 #: needs attention; everything else about that state is silent by design.
@@ -69,6 +91,28 @@ INITIATIVE_STALL_FOREIGN: Final[str] = "initiative.stall.foreign"
 #: passed over, because the two can only differ if something replayed a
 #: decision or wrote the row underneath it.
 INITIATIVE_STALL_STALE_DECISION: Final[str] = "initiative.stall.stale_decision"
+
+#: A person granted one more slice for a leaf the deterministic gate had
+#: parked, cap and switch aside, mirroring ``INITIATIVE_REPLAN_GRANTED``.
+INITIATIVE_SLICE_GRANTED: Final[str] = "initiative.slice.granted"
+#: A workstream's slice ask crossed the deterministic autonomy gate and one
+#: decision was parked for a person, mirroring ``INITIATIVE_STALL_ESCALATED``.
+INITIATIVE_SLICE_ESCALATED: Final[str] = "initiative.slice.escalated"
+#: A later pass found the decision already waiting, or already settled as a
+#: rejection, so nothing was raised or asked again.
+INITIATIVE_SLICE_ALREADY_DECIDED: Final[str] = "initiative.slice.already_decided"
+#: The decision landed but the alert announcing it did not.
+INITIATIVE_SLICE_NOTICE_FAILED: Final[str] = "initiative.slice.notice_failed"
+#: The operator answered, and this is what their answer did.
+INITIATIVE_SLICE_DECIDED: Final[str] = "initiative.slice.decided"
+#: An item wearing the extend-workstream action type that this organisation
+#: did not raise. Not acted on, mirroring ``INITIATIVE_STALL_FOREIGN``.
+INITIATIVE_SLICE_FOREIGN: Final[str] = "initiative.slice.foreign"
+#: The answer being acted on and the answer on the row disagree.
+INITIATIVE_SLICE_STALE_DECISION: Final[str] = "initiative.slice.stale_decision"
+#: The decision said extend it but the decider was not a person, so the
+#: workstream's own automatic authority was asked instead of granted outright.
+INITIATIVE_SLICE_NOT_GRANTED: Final[str] = "initiative.slice.not_granted"
 
 #: A stage's derived task id is occupied by a row the stage never minted. Read
 #: as a failed attempt, so the initiative routes to a replan; named separately

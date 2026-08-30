@@ -697,6 +697,47 @@ class TestPlanRepository:
         with pytest.raises(RecordNotFoundError):
             await backend.plans.update(_plan(plan_id="p-absent"), expected_version=1)
 
+    async def test_appending_items_under_a_version_guard_round_trips(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """A slice graft's own write shape: append, bump the version, re-read.
+
+        ``Plan.items`` is a JSON column, so appending never touches DDL; this
+        confirms both backends agree on what a version-guarded append actually
+        persists, matching the shape ``slice_graft._append_slice`` writes.
+        """
+        original = _plan(plan_id="p-graft")  # version 1
+        await backend.plans.create(original)
+        grafted = PlanItem(
+            id=NotBlankStr(sid("item-grafted")),
+            parent_id=original.items[0].id,
+            title=NotBlankStr("Cover the missed edge"),
+            description=NotBlankStr("The remaining slice of the leaf's claim"),
+            acceptance_criteria=(NotBlankStr("the edge case is covered"),),
+            expected_artifacts=(NotBlankStr("src/edge.py"),),
+        )
+
+        await backend.plans.update(
+            original.model_copy(
+                update={
+                    "items": (*original.items, grafted),
+                    "version": original.version + 1,
+                }
+            ),
+            expected_version=original.version,
+        )
+
+        fetched = await backend.plans.get(NotBlankStr(sid("p-graft")))
+        assert fetched is not None
+        assert fetched.version == original.version + 1
+        assert [item.id for item in fetched.items] == [
+            *[item.id for item in original.items],
+            grafted.id,
+        ]
+        appended = next(item for item in fetched.items if item.id == grafted.id)
+        assert appended.parent_id == original.items[0].id
+        assert appended.title == grafted.title
+
     async def test_list_items_empty(self, backend: PersistenceBackend) -> None:
         assert await backend.plans.list_items() == ()
 

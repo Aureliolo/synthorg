@@ -78,6 +78,9 @@ DEFAULT_RISK_MAP: Final[MappingProxyType[str, ApprovalRiskLevel]] = MappingProxy
         ActionType.CODE_REFACTOR: ApprovalRiskLevel.MEDIUM,
         ActionType.VCS_COMMIT: ApprovalRiskLevel.MEDIUM,
         ActionType.ARCH_DECIDE: ApprovalRiskLevel.MEDIUM,
+        # A mid-course scope decision on a live plan, the same tier as any
+        # other architecture-shaping choice.
+        ActionType.PLAN_EXTEND_WORKSTREAM: ApprovalRiskLevel.MEDIUM,
         ActionType.KNOWLEDGE_INGEST: ApprovalRiskLevel.MEDIUM,
         ActionType.RESEARCH_RUN: ApprovalRiskLevel.MEDIUM,
         ActionType.ORG_PROMOTE: ApprovalRiskLevel.MEDIUM,

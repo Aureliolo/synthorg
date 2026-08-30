@@ -19,27 +19,44 @@ Advancing past either would report progress nobody made.
 """
 
 from collections.abc import Awaitable, Callable
+from typing import Final
 
-from synthorg.core.plan import Plan
+from synthorg.approval.enums import ApprovalStatus
+from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
+from synthorg.core.plan_tree import PlanTree
+from synthorg.engine.initiative.completion import ItemProgress
 from synthorg.engine.initiative.head_stages import read_skeleton_state
 from synthorg.engine.initiative.ports import (
     DriveOutcome,
     EvaluationPort,
     IntegrationPort,
     PlanDriver,
+    ReplanTriggerPort,
     SkeletonPort,
+)
+from synthorg.engine.initiative.slice_escalation import SliceEscalationService
+from synthorg.engine.initiative.slice_state import (
+    SLICE_IN_PROGRESS_DISPOSITIONS,
+    SliceDisposition,
+    workstream_needs_slice,
 )
 from synthorg.engine.initiative.stage_state import StageOutcome
 from synthorg.engine.initiative.tail_stages import read_integration_state
-from synthorg.observability import get_logger
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.project import (
     PROJECT_ROLLUP_SKIPPED,
     PROJECT_ROLLUP_STARTED,
 )
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
+
+#: Fallback when no resolver is wired or the read fails: off, since this
+#: mechanism is unvalidated by any live round, unlike recursion itself.
+_DEFAULT_JIT_SLICE_PLANNING_ENABLED: Final[bool] = False
 
 #: Advances a plan to a status, answering ``None`` when the write was refused.
 PlanAdvance = Callable[[Plan, PlanStatus], Awaitable[Plan | None]]
@@ -209,6 +226,151 @@ async def drive_integration(
     if state.outcome is StageOutcome.RUNNING:
         _log_running(plan, note="integration job still running")
     return plan
+
+
+async def resolve_jit_slice_planning_enabled(resolver: ConfigResolver | None) -> bool:
+    """Return whether the just-in-time slice mechanism runs at all.
+
+    The master switch, read live per recompute so an operator's change
+    applies without a restart, on the same shape ``resolve_recursion_budget``
+    reads ``coordination.recursive_decomposition_enabled``.
+
+    Returns:
+        The live ``coordination.jit_slice_planning_enabled`` value, or the
+        default when no resolver is wired or the read fails.
+    """
+    if resolver is None:
+        return _DEFAULT_JIT_SLICE_PLANNING_ENABLED
+    try:
+        return await resolver.get_bool("coordination", "jit_slice_planning_enabled")
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort settings read
+        reraise_critical(exc)
+        logger.warning(
+            PROJECT_ROLLUP_SKIPPED,
+            reason="jit_slice_planning_settings_degraded",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return _DEFAULT_JIT_SLICE_PLANNING_ENABLED
+
+
+async def slicing_holds(
+    plan: Plan,
+    items: tuple[ItemProgress, ...],
+    *,
+    config_resolver: ConfigResolver | None,
+    replan_trigger: ReplanTriggerPort | None,
+    drive: PlanDriver | None,
+    slice_escalation: SliceEscalationService | None,
+) -> bool:
+    """Whether a workstream mid-slice should hold *plan* at EXECUTING.
+
+    Off by default and read live, on the same shape as recursion's own master
+    switch: an operator turns the mechanism on, and this decides whether it
+    is even worth asking every workstream on this pass.
+
+    Returns:
+        ``False`` when the switch is off, the trigger is unwired, or no
+        workstream needs a slice right now; otherwise whatever
+        :func:`drive_slices` answers.
+    """
+    if not await resolve_jit_slice_planning_enabled(config_resolver):
+        return False
+    return await drive_slices(
+        plan,
+        items,
+        replan_trigger=replan_trigger,
+        drive=drive,
+        slice_escalation=slice_escalation,
+    )
+
+
+async def drive_slices(
+    plan: Plan,
+    items: tuple[ItemProgress, ...],
+    *,
+    replan_trigger: ReplanTriggerPort | None,
+    drive: PlanDriver | None,
+    slice_escalation: SliceEscalationService | None,
+) -> bool:
+    """Ask every workstream whether it needs another slice, and act on it.
+
+    Meaningful only while ``plan.status is EXECUTING``; the caller gates on
+    that and on the master switch. Called BEFORE ``derive_plan_status`` on
+    the same recompute pass, because that derivation promotes a plan to
+    INTEGRATING the moment every currently-known item reads done, with no
+    workstream-level distinction: a workstream whose slice is in flight (or
+    was just started) is not finished even though its known tree is.
+
+    ``ASKED`` is handled here rather than folded into
+    ``SLICE_IN_PROGRESS_DISPOSITIONS``, because whether it holds the plan
+    depends on whether anything can actually ask: with an escalation
+    attached, a fresh ask is parked and holds, same as the stall route; an
+    already-parked or already-rejected leaf is read straight from the store
+    (checked BEFORE re-asking the trigger, so a settled rejection never mints
+    a second decision). Without one, on the same reasoning
+    ``escalate_stall``'s escalation-absent branch drives a plan out rather
+    than park it, the plan is not held: the work already delivered is real,
+    and an unmet objective still surfaces at the judged EVALUATING gate.
+
+    Returns:
+        Whether at least one workstream is mid-slice, was just handed one, or
+        has a decision open, which the caller reads as "hold this plan at
+        EXECUTING this pass". ``False`` for a workstream a slice was asked
+        for and refused outright (the switch is off, its generation cap is
+        spent, or a settled rejection already answered it): no automatic
+        route remains for it, so holding the plan for ever would replace one
+        silent state with another.
+    """
+    if replan_trigger is None:
+        return False
+    tree = PlanTree.of(plan.items)
+    progress_by_id = dict(zip((item.id for item in plan.items), items, strict=True))
+    holding = False
+    for workstream in tree.workstreams:
+        for leaf in workstream_needs_slice(
+            plan.items, tree, workstream, progress_by_id
+        ):
+            status = await _existing_status(slice_escalation, plan, leaf)
+            if status is ApprovalStatus.REJECTED:
+                continue
+            if status is ApprovalStatus.PENDING:
+                holding = True
+                continue
+            disposition = await replan_trigger.consider_slice(
+                plan=plan,
+                tree=tree,
+                workstream=workstream,
+                leaf=leaf,
+                drive=drive,
+            )
+            if disposition is SliceDisposition.ASKED:
+                if slice_escalation is not None:
+                    await slice_escalation.escalate(plan, workstream, leaf)
+                    holding = True
+            elif disposition in SLICE_IN_PROGRESS_DISPOSITIONS:
+                holding = True
+    return holding
+
+
+async def _existing_status(
+    slice_escalation: SliceEscalationService | None, plan: Plan, leaf: PlanItem
+) -> ApprovalStatus | None:
+    """The live status of *leaf*'s slice-ask decision, or ``None``.
+
+    One store read per leaf, ahead of asking the trigger at all: a settled
+    rejection must never mint a second decision, and an open one must never
+    be asked about twice while a person is deciding.
+
+    Returns:
+        The decision's status, or ``None`` when no escalation is attached or
+        nothing has been asked for this leaf yet (including a lapsed,
+        unanswered ask, for which asking again is right).
+    """
+    if slice_escalation is None:
+        return None
+    return await slice_escalation.status_for(plan, leaf)
 
 
 def drive_evaluation(plan: Plan, *, evaluation: EvaluationPort | None) -> None:
