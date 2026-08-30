@@ -35,6 +35,15 @@ logger = get_logger(__name__)
 #: one should not silently wait minutes to notice a job just finished.
 DEFAULT_PIN_RECHECK_SECONDS: Final[float] = 15.0
 
+#: Consecutive ``pin_check`` exceptions (not "still pinned" answers)
+#: tolerated before ``_await_unpinned`` gives up waiting and permits
+#: teardown. ``pin_check``'s own self-cleaning expiry needs the same
+#: persistence layer this counts failures of, so a sustained outage
+#: leaves that safety net as unreachable as the check itself -- without
+#: this bound, a container would wait out an infrastructure failure
+#: forever rather than a job.
+_PIN_CHECK_FAILURE_LIMIT: Final[int] = 5
+
 
 class PerAgentStrategy:
     """Reuse a container per *owner_id*, destroy after grace period.
@@ -112,8 +121,10 @@ class PerAgentStrategy:
         every acquire in the process behind one pin check.
 
         Returns:
-            The still-cached handle once nothing pins it, or ``None``
-            once the container is already gone (the other timer, or a
+            The still-cached handle once nothing pins it (including
+            after :data:`_PIN_CHECK_FAILURE_LIMIT` consecutive
+            ``pin_check`` failures give up waiting), or ``None`` once
+            the container is already gone (the other timer, or a
             liveness eviction, got there first).
         """
         # Upper-bounded by pin_check's own self-cleaning expiry (a job
@@ -122,6 +133,7 @@ class PerAgentStrategy:
         # cancels this task on shutdown like every other per-owner pump.
         # lint-allow: long-running-loop-kill-switch -- bounded by
         # pin_check expiry; cleanup cancels.
+        consecutive_failures = 0
         while True:
             async with self._lock:
                 handle = self._containers.get(owner_id)
@@ -137,18 +149,28 @@ class PerAgentStrategy:
                 # rather than raising out of this task (which would strand
                 # it in `self._containers` with no watchdog left) or
                 # destroying it on uncertain state (which could kill a
-                # container with a genuinely live job). Convergence still
-                # relies on `pin_check`'s own self-cleaning expiry, which
-                # is why `expire_overdue`'s own kill step is fail-soft too.
+                # container with a genuinely live job). Convergence
+                # normally relies on `pin_check`'s own self-cleaning
+                # expiry (`expire_overdue`'s own kill step is fail-soft
+                # for the same reason), but that expiry reads the same
+                # persistence layer this call just failed against, so a
+                # sustained outage leaves it unreachable too -- hence the
+                # bounded give-up below rather than retrying forever.
+                consecutive_failures += 1
                 logger.warning(
                     SANDBOX_LIFECYCLE_PIN_CHECK_FAILED,
                     strategy="per-agent",
                     owner_id=owner_id,
                     container_id=handle.container_id,
+                    consecutive_failures=consecutive_failures,
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
+                if consecutive_failures >= _PIN_CHECK_FAILURE_LIMIT:
+                    return handle
                 pinned = True
+            else:
+                consecutive_failures = 0
             if not pinned:
                 return handle
             logger.debug(

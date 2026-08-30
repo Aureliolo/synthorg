@@ -23,7 +23,6 @@ from typing import Final
 
 import pytest
 
-from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.background_job_protocol import (
     LIVE_BACKGROUND_JOB_STATUSES,
     BackgroundJobRecord,
@@ -41,6 +40,9 @@ from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
 from synthorg.tools.sandbox.errors import SandboxBackgroundJobNotFoundError
 from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
 from synthorg.tools.sandbox.lifecycle.per_agent import PerAgentStrategy
+from tests._shared.fake_background_job_repo import (
+    InMemoryBackgroundJobRepository as _InMemoryBackgroundJobRepository,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(60)]
 
@@ -119,23 +121,28 @@ async def _run(container: object, command: str, args: tuple[str, ...]) -> str:
     return "".join(stdout_parts)
 
 
-async def _run_until_nonempty(
+async def _run_until_terminal(
     container: object,
     command: str,
     args: tuple[str, ...],
     *,
     timeout: float = 5.0,  # noqa: ASYNC109
 ) -> str:
-    """Poll an exec until it returns non-empty stdout.
+    """Poll a liveness-command exec until it reports a terminal exit code.
+
+    ``build_liveness_command``'s own ``RUNNING`` sentinel is non-empty,
+    so stopping at the first non-empty read would report the job as
+    already finished on the very first poll. Ignore it and keep polling.
 
     Returns:
-        The first non-empty stdout observed, or ``""`` at *timeout*.
+        The first terminal (non-``RUNNING``) stdout observed, or the
+        last-seen output (typically still ``RUNNING``) at *timeout*.
     """
     deadline = time.monotonic() + timeout
     output = ""
     while time.monotonic() < deadline:
         output = await _run(container, command, args)
-        if output:
+        if output and output.strip() != "RUNNING":
             return output
         await asyncio.sleep(0.1)
     return output
@@ -176,7 +183,7 @@ class TestBackgroundWrapperRealContainer:
             assert pid_line.strip().isdigit()
 
             program, args = build_liveness_command("job1")
-            status = await _run_until_nonempty(container, program, args)
+            status = await _run_until_terminal(container, program, args)
             assert status.strip() == "0"
 
             program, args = build_read_output_command("job1", byte_cap=1000)
@@ -200,7 +207,7 @@ class TestBackgroundWrapperRealContainer:
             await _run(container, program, args)
 
             program, args = build_liveness_command("job2")
-            status = await _run_until_nonempty(container, program, args)
+            status = await _run_until_terminal(container, program, args)
             # SIGTERM: 128 + 15.
             assert status.strip() == "143"
 
@@ -250,7 +257,7 @@ class TestBackgroundWrapperRealContainer:
             assert pid_line.strip().isdigit()
 
             program, args = build_liveness_command("adv")
-            status = await _run_until_nonempty(container, program, args)
+            status = await _run_until_terminal(container, program, args)
             assert status.strip() == "0"
 
             program, args = build_read_output_command("adv", byte_cap=1000)
@@ -258,70 +265,6 @@ class TestBackgroundWrapperRealContainer:
             assert output == expected
         finally:
             await self._cleanup(docker, container)
-
-
-class _InMemoryBackgroundJobRepository:
-    """Minimal in-memory double satisfying ``BackgroundJobRepository``."""
-
-    def __init__(self) -> None:
-        self._rows: dict[str, BackgroundJobRecord] = {}
-
-    async def save(self, entity: BackgroundJobRecord, /) -> None:
-        self._rows[entity.job_id] = entity
-
-    async def save_if_live(self, entity: BackgroundJobRecord, /) -> bool:
-        current = self._rows.get(entity.job_id)
-        if current is None or current.status not in {
-            BackgroundJobStatus.PENDING,
-            BackgroundJobStatus.RUNNING,
-        }:
-            return False
-        self._rows[entity.job_id] = entity
-        return True
-
-    async def get(self, entity_id: str, /) -> BackgroundJobRecord | None:
-        return self._rows.get(entity_id)
-
-    async def delete(self, entity_id: str, /) -> bool:
-        return self._rows.pop(entity_id, None) is not None
-
-    async def list_items(
-        self, *, limit: int = DEFAULT_PAGE_SIZE, offset: int = 0
-    ) -> tuple[BackgroundJobRecord, ...]:
-        ordered = sorted(self._rows.values(), key=lambda r: r.job_id)
-        return tuple(ordered[offset : offset + limit])
-
-    async def load_all(self) -> tuple[BackgroundJobRecord, ...]:
-        return tuple(self._rows.values())
-
-    async def list_by_container(
-        self,
-        container_id: str,
-        *,
-        statuses: frozenset[BackgroundJobStatus] | None = None,
-        limit: int = DEFAULT_PAGE_SIZE,
-        offset: int = 0,
-    ) -> tuple[BackgroundJobRecord, ...]:
-        matches = [
-            r
-            for r in self._rows.values()
-            if r.container_id == container_id
-            and (statuses is None or r.status in statuses)
-        ]
-        return tuple(matches[offset : offset + limit])
-
-    async def count_live_by_owner(self, owner_id: str) -> int:
-        return sum(
-            1
-            for r in self._rows.values()
-            if r.owner_id == owner_id and r.status in LIVE_BACKGROUND_JOB_STATUSES
-        )
-
-    async def list_by_owner(
-        self, owner_id: str, *, limit: int = DEFAULT_PAGE_SIZE, offset: int = 0
-    ) -> tuple[BackgroundJobRecord, ...]:
-        matches = [r for r in self._rows.values() if r.owner_id == owner_id]
-        return tuple(matches[offset : offset + limit])
 
 
 async def _await_terminal(

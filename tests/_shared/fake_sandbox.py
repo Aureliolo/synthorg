@@ -64,6 +64,7 @@ class BackgroundJobCall(NamedTuple):
             (this double records exactly what it was given -- it does
             not perform real resolution).
         project_id: The project whose workspace is mounted.
+        max_duration_seconds: The resolved ceiling this call was given.
     """
 
     command: str
@@ -73,6 +74,7 @@ class BackgroundJobCall(NamedTuple):
     category: str
     owner_id: str | None
     project_id: str | None
+    max_duration_seconds: float | None
 
 
 _DEFAULT_BACKGROUND_JOB_ID = NotBlankStr("job-1")
@@ -221,6 +223,7 @@ class FakeSandbox:
                 category=category,
                 owner_id=owner_id,
                 project_id=project_id,
+                max_duration_seconds=max_duration_seconds,
             )
         )
         if self._background_error is not None:
@@ -264,7 +267,7 @@ class FakeSandbox:
             The captured output this double was built with.
         """
         del job_id, category, owner_id, project_id
-        return self._background_output[:byte_cap]
+        return self._background_output.encode()[:byte_cap].decode("utf-8", "ignore")
 
     async def cancel_background(
         self,

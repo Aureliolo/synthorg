@@ -7,34 +7,10 @@ import pytest
 from synthorg.tools.sandbox.lifecycle.per_task import PerTaskStrategy
 from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
 from tests._shared.fake_clock import FakeClock
+from tests._shared.lifecycle_pin_check import CountingPin as _CountingPin
+from tests._shared.lifecycle_pin_check import settle as _settle
 
 pytestmark = pytest.mark.unit
-
-#: A pinned release defers teardown to a background task; enough yields
-#: for it to acquire the lock, call the (instant, under FakeClock) pin
-#: check, and either reloop or destroy.
-_SETTLE_TICKS: int = 5
-
-
-async def _settle(ticks: int = _SETTLE_TICKS) -> None:
-    """Yield control ``ticks`` times so a deferred teardown can run."""
-    for _ in range(ticks):
-        await asyncio.sleep(0)
-
-
-class _CountingPin:
-    """A pin_check stub reporting live for the first *live_for* calls."""
-
-    def __init__(self, live_for: int) -> None:
-        self._remaining = live_for
-        self.calls: list[str] = []
-
-    async def __call__(self, container_id: str) -> bool:
-        self.calls.append(container_id)
-        if self._remaining <= 0:
-            return False
-        self._remaining -= 1
-        return True
 
 
 def _make_handle(cid: str = "c1") -> ContainerHandle:

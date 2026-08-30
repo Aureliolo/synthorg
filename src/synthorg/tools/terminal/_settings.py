@@ -66,19 +66,22 @@ async def resolve_shell_command_background_enabled(
 
     Args:
         resolver: Live settings resolver, or ``None`` when none is wired.
-        fallback: The configured default to use when nothing resolves.
+        fallback: The configured default to use when no resolver is wired.
 
     Returns:
-        Whether backgrounding is enabled; *fallback* when the read is
-        unavailable.
+        Whether backgrounding is enabled; *fallback* only when no
+        resolver is wired at all. A resolver that is wired but fails to
+        answer degrades to disabled, never to *fallback*: an operator
+        who explicitly disabled backgrounding must not have it silently
+        re-enabled by a settings-backend hiccup.
     """
     if resolver is None:
         return fallback
     try:
         return await resolver.get_bool("tools", "shell_command_background_enabled")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # lint-allow: swallow-ok -- best-effort settings read; the
-        # configured default stands
+        # lint-allow: swallow-ok -- best-effort settings read; fails
+        # closed rather than falling back to the configured default
         reraise_critical(exc)
         logger.warning(
             TERMINAL_COMMAND_FAILED,
@@ -87,7 +90,7 @@ async def resolve_shell_command_background_enabled(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return fallback
+        return False
 
 
 async def resolve_shell_command_background_max_duration_seconds(

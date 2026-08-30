@@ -368,11 +368,21 @@ class TestBuildKillCommand:
         assert probe_rc != 0
 
     def test_killing_an_already_finished_job_does_not_error(self) -> None:
-        # A PID unlikely to be a live process group in the test runner;
-        # the point is the command itself never raises/exits nonzero
-        # over a signal that could not be delivered -- cancelling a job
-        # that already finished must not surface as a tool error.
-        program, args = build_kill_command(999999, grace_seconds=0.01)
+        # A PID this process itself started and already reaped: the
+        # kernel cannot have handed it to another process group while
+        # this test still holds its exit status. The point is the
+        # command itself never raises/exits nonzero over a signal that
+        # could not be delivered -- cancelling a job that already
+        # finished must not surface as a tool error.
+        finished = subprocess.Popen(
+            ["bash", "-c", "exit 0"],  # noqa: S607
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        dead_pid = finished.pid
+        finished.wait(timeout=5)
+
+        program, args = build_kill_command(dead_pid, grace_seconds=0.01)
         result = subprocess.run(  # noqa: S603 -- program/args built by the module under test
             [program, *args],
             check=False,

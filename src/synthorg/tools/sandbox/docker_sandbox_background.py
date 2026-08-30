@@ -550,7 +550,15 @@ class DockerSandboxBackgroundMixin:
                     else _DEFAULT_MAX_DURATION_SECONDS
                 ),
             )
-            await registry.save(record)
+            try:
+                await registry.save(record)
+            except Exception:
+                # An unpersisted job is invisible to poll, cancel, expiry
+                # and reap, so it must not be left running.
+                await self._kill_background_process_group(
+                    NotBlankStr(handle.container_id), int(pid_text)
+                )
+                raise
         logger.info(
             SANDBOX_BACKGROUND_JOB_STARTED,
             job_id=job_id,

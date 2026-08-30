@@ -30,6 +30,7 @@ _COLUMNS = (
     "status, exit_code, output_path, started_at, updated_at, "
     "max_duration_seconds"
 )
+_COLUMN_COUNT = _COLUMNS.count(",") + 1
 _LIVE_PLACEHOLDERS = ", ".join("%s" for _ in LIVE_BACKGROUND_JOB_STATUSES)
 
 
@@ -61,7 +62,7 @@ class PostgresBackgroundJobRepository:
         )
         sql = (
             f"INSERT INTO background_jobs ({_COLUMNS}) "  # noqa: S608
-            f"VALUES ({', '.join('%s' for _ in range(12))}) "
+            f"VALUES ({', '.join('%s' for _ in range(_COLUMN_COUNT))}) "
             "ON CONFLICT (job_id) DO UPDATE SET "
             "container_id = EXCLUDED.container_id, "
             "owner_id = EXCLUDED.owner_id, "

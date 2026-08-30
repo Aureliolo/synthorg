@@ -7,6 +7,7 @@ import pytest
 from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.background_job_protocol import (
+    LIVE_BACKGROUND_JOB_STATUSES,
     BackgroundJobRecord,
     BackgroundJobStatus,
 )
@@ -68,6 +69,41 @@ class TestBackgroundJobRepository:
         assert loaded is not None
         assert loaded.status is BackgroundJobStatus.COMPLETED
         assert loaded.exit_code == 0
+
+    async def test_save_if_live_applies_while_live(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.background_jobs.save(_record(status=BackgroundJobStatus.RUNNING))
+
+        applied = await backend.background_jobs.save_if_live(
+            _record(status=BackgroundJobStatus.COMPLETED, exit_code=0)
+        )
+        assert applied is True
+        loaded = await backend.background_jobs.get(NotBlankStr("job-1"))
+        assert loaded is not None
+        assert loaded.status is BackgroundJobStatus.COMPLETED
+
+    async def test_save_if_live_refuses_after_terminal(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.background_jobs.save(
+            _record(status=BackgroundJobStatus.CANCELLED, exit_code=143)
+        )
+
+        applied = await backend.background_jobs.save_if_live(
+            _record(status=BackgroundJobStatus.COMPLETED, exit_code=0)
+        )
+        assert applied is False
+        loaded = await backend.background_jobs.get(NotBlankStr("job-1"))
+        assert loaded is not None
+        assert loaded.status is BackgroundJobStatus.CANCELLED
+
+    async def test_save_if_live_never_creates_a_row(
+        self, backend: PersistenceBackend
+    ) -> None:
+        applied = await backend.background_jobs.save_if_live(_record(job_id="ghost"))
+        assert applied is False
+        assert await backend.background_jobs.get(NotBlankStr("ghost")) is None
 
     async def test_save_nullable_project_and_pid(
         self, backend: PersistenceBackend
@@ -146,6 +182,30 @@ class TestBackgroundJobRepository:
     async def test_list_by_container_empty(self, backend: PersistenceBackend) -> None:
         rows = await backend.background_jobs.list_by_container(NotBlankStr("ghost"))
         assert rows == ()
+
+    async def test_list_by_container_filters_statuses_server_side(
+        self, backend: PersistenceBackend
+    ) -> None:
+        await backend.background_jobs.save(
+            _record(
+                job_id="job-1",
+                container_id="ctr-a",
+                status=BackgroundJobStatus.RUNNING,
+            )
+        )
+        await backend.background_jobs.save(
+            _record(
+                job_id="job-2",
+                container_id="ctr-a",
+                status=BackgroundJobStatus.COMPLETED,
+                exit_code=0,
+            )
+        )
+
+        rows = await backend.background_jobs.list_by_container(
+            NotBlankStr("ctr-a"), statuses=LIVE_BACKGROUND_JOB_STATUSES
+        )
+        assert {r.job_id for r in rows} == {"job-1"}
 
     async def test_count_live_by_owner_counts_pending_and_running_only(
         self, backend: PersistenceBackend

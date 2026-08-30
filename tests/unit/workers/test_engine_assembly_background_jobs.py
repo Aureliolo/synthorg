@@ -25,14 +25,35 @@ from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
 from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
 from synthorg.tools.sandbox.lifecycle.per_agent import PerAgentStrategy
 from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
+from synthorg.workers._background_job_wiring import (
+    _MAX_CONCURRENT_JOBS_KEY,
+    _OUTPUT_BYTE_CAP_KEY,
+    _TOOLS_NS,
+)
 from synthorg.workers._engine_assembly import _build_tool_registry
 from tests._shared import FakeClock, make_app_state, mock_of
-from tests.unit.tools.sandbox.test_docker_sandbox_background import (
-    _InMemoryBackgroundJobRepository,
-    _make_mock_docker,
-    _patch_aiodocker,
-    _responder_for,
+from tests._shared.fake_background_job_exec import (
+    make_mock_docker as _make_mock_docker,
 )
+from tests._shared.fake_background_job_exec import (
+    patch_aiodocker as _patch_aiodocker,
+)
+from tests._shared.fake_background_job_exec import (
+    responder_for as _responder_for,
+)
+from tests._shared.fake_background_job_repo import (
+    InMemoryBackgroundJobRepository as _InMemoryBackgroundJobRepository,
+)
+
+#: Real setting defaults (``settings/definitions/tools.py``), so a
+#: concurrency-ceiling read during boot does not artificially constrain
+#: a test starting more than one job -- the blanket-``1`` stub this
+#: replaced set the ceiling to one job for every test built on this
+#: fixture, regardless of the setting key actually being read.
+_BACKGROUND_JOB_INT_DEFAULTS: dict[str, int] = {
+    _MAX_CONCURRENT_JOBS_KEY: 5,
+    _OUTPUT_BYTE_CAP_KEY: 1_000_000,
+}
 
 pytestmark = pytest.mark.unit
 
@@ -70,9 +91,15 @@ def _boot_app_state(
     Returns:
         The composed ``AppState``.
     """
+
+    async def _get_int(namespace: str, key: str) -> int:
+        if namespace == _TOOLS_NS and key in _BACKGROUND_JOB_INT_DEFAULTS:
+            return _BACKGROUND_JOB_INT_DEFAULTS[key]
+        return 1
+
     resolver = mock_of[ConfigResolver](
         get_float=AsyncMock(return_value=30.0),
-        get_int=AsyncMock(return_value=1),
+        get_int=AsyncMock(side_effect=_get_int),
         get_str=AsyncMock(return_value=""),
         get_bool=AsyncMock(return_value=False),
     )

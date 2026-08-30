@@ -18,6 +18,7 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_ACQUIRE,
     SANDBOX_LIFECYCLE_CLEANUP,
     SANDBOX_LIFECYCLE_DESTROY_FAILED,
+    SANDBOX_LIFECYCLE_PIN_CHECK_FAILED,
     SANDBOX_LIFECYCLE_RELEASE,
     SANDBOX_LIFECYCLE_TEARDOWN_PINNED,
 )
@@ -91,6 +92,36 @@ class PerTaskStrategy:
     def reuses_container(self) -> bool:
         """``True`` -- one container per task, destroyed on release."""
         return True
+
+    async def _pinned(self, owner_id: str, handle: ContainerHandle) -> bool:
+        """Answer whether *handle* is held pinned by a live background job.
+
+        Mirrors ``PerAgentStrategy._await_unpinned``'s own failure
+        handling: a raising ``pin_check`` is treated as still-pinned
+        rather than left to propagate, which would otherwise strand the
+        container -- unreleased in ``release()``, or silently killing
+        the watchdog task in ``_wait_then_destroy`` and leaving the
+        container held forever with nothing left to recheck it.
+
+        Returns:
+            ``True`` when a live job pins the container (or the check
+            itself failed); ``False`` when nothing pins it.
+        """
+        if self._pin_check is None:
+            return False
+        try:
+            return await self._pin_check(handle.container_id)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                SANDBOX_LIFECYCLE_PIN_CHECK_FAILED,
+                strategy="per-task",
+                owner_id=owner_id,
+                container_id=handle.container_id,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return True
 
     async def _reusable_handle(
         self,
@@ -256,9 +287,7 @@ class PerTaskStrategy:
         if handle is None:
             return
 
-        pinned = self._pin_check is not None and await self._pin_check(
-            handle.container_id
-        )
+        pinned = await self._pinned(owner_id, handle)
         if pinned:
             await self._start_deferred_teardown(owner_id, destroy_fn=destroy_fn)
             return
@@ -328,9 +357,7 @@ class PerTaskStrategy:
                     handle = self._containers.get(owner_id)
                 if handle is None:
                     return
-                if self._pin_check is None or not await self._pin_check(
-                    handle.container_id
-                ):
+                if not await self._pinned(owner_id, handle):
                     break
                 logger.debug(
                     SANDBOX_LIFECYCLE_TEARDOWN_PINNED,

@@ -1,18 +1,10 @@
 """Tests for DockerSandboxBackgroundMixin with mocked aiodocker."""
 
-from collections.abc import Callable
-from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock, patch
-
-if TYPE_CHECKING:
-    from collections.abc import Iterator
 
 import pytest
 
 from synthorg.core.types import NotBlankStr
-from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence.background_job_protocol import (
     BackgroundJobRecord,
     BackgroundJobStatus,
@@ -29,10 +21,21 @@ from synthorg.tools.sandbox.errors import (
 from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
 from synthorg.tools.sandbox.lifecycle.per_agent import PerAgentStrategy
 from synthorg.tools.sandbox.lifecycle.per_call import PerCallStrategy
+from tests._shared.fake_background_job_exec import (
+    make_mock_docker as _make_mock_docker,
+)
+from tests._shared.fake_background_job_exec import (
+    patch_aiodocker as _patch_aiodocker,
+)
+from tests._shared.fake_background_job_exec import (
+    responder_for as _responder_for,
+)
+from tests._shared.fake_background_job_repo import (
+    InMemoryBackgroundJobRepository as _InMemoryBackgroundJobRepository,
+)
 from tests._shared.fake_clock import FakeClock
 
 pytestmark = pytest.mark.unit
-_DOCKER_MODULE = "synthorg.tools.sandbox.docker_sandbox.aiodocker"
 
 _TEST_OWNER = NotBlankStr("agent-1")
 #: What ``_TEST_OWNER`` resolves to once passed through
@@ -44,162 +47,8 @@ _TEST_OWNER_KEY = NotBlankStr("agent-1:rw")
 _TERMINAL_CATEGORY = "terminal"
 
 
-class _InMemoryBackgroundJobRepository:
-    """Minimal in-memory double satisfying ``BackgroundJobRepository``."""
-
-    def __init__(self) -> None:
-        self._rows: dict[str, BackgroundJobRecord] = {}
-
-    async def save(self, entity: BackgroundJobRecord, /) -> None:
-        self._rows[entity.job_id] = entity
-
-    async def save_if_live(self, entity: BackgroundJobRecord, /) -> bool:
-        current = self._rows.get(entity.job_id)
-        if current is None or current.status not in {
-            BackgroundJobStatus.PENDING,
-            BackgroundJobStatus.RUNNING,
-        }:
-            return False
-        self._rows[entity.job_id] = entity
-        return True
-
-    async def get(self, entity_id: str, /) -> BackgroundJobRecord | None:
-        return self._rows.get(entity_id)
-
-    async def delete(self, entity_id: str, /) -> bool:
-        return self._rows.pop(entity_id, None) is not None
-
-    async def list_items(
-        self, *, limit: int = DEFAULT_PAGE_SIZE, offset: int = 0
-    ) -> tuple[BackgroundJobRecord, ...]:
-        ordered = sorted(self._rows.values(), key=lambda r: r.job_id)
-        return tuple(ordered[offset : offset + limit])
-
-    async def load_all(self) -> tuple[BackgroundJobRecord, ...]:
-        return tuple(self._rows.values())
-
-    async def list_by_container(
-        self,
-        container_id: str,
-        *,
-        statuses: frozenset[BackgroundJobStatus] | None = None,
-        limit: int = DEFAULT_PAGE_SIZE,
-        offset: int = 0,
-    ) -> tuple[BackgroundJobRecord, ...]:
-        matches = [
-            r
-            for r in self._rows.values()
-            if r.container_id == container_id
-            and (statuses is None or r.status in statuses)
-        ]
-        return tuple(matches[offset : offset + limit])
-
-    async def count_live_by_owner(self, owner_id: str) -> int:
-        return sum(
-            1
-            for r in self._rows.values()
-            if r.owner_id == owner_id
-            and r.status in {BackgroundJobStatus.PENDING, BackgroundJobStatus.RUNNING}
-        )
-
-    async def list_by_owner(
-        self, owner_id: str, *, limit: int = DEFAULT_PAGE_SIZE, offset: int = 0
-    ) -> tuple[BackgroundJobRecord, ...]:
-        matches = [r for r in self._rows.values() if r.owner_id == owner_id]
-        return tuple(matches[offset : offset + limit])
-
-
-class _FakeExecMessage:
-    """Mimics ``aiodocker.stream.Message`` (``stream``/``data``)."""
-
-    def __init__(self, stream: int, data: bytes) -> None:
-        self.stream = stream
-        self.data = data
-
-
-def _make_exec_stream(*, stdout: bytes) -> MagicMock:
-    """Build a fake aiodocker exec ``Stream`` yielding one stdout frame then EOF."""
-    stream = MagicMock()
-    frames: list[_FakeExecMessage | None] = []
-    if stdout:
-        frames.append(_FakeExecMessage(1, stdout))
-    frames.append(None)
-    stream.read_out = AsyncMock(side_effect=frames)
-    stream.close = AsyncMock()
-    return stream
-
-
-def _install_scripted_exec(
-    container_obj: MagicMock, responder: Callable[[str], bytes]
-) -> None:
-    """Wire ``container.exec()`` to answer based on the script it was given.
-
-    *responder* receives the joined ``cmd`` argv (the wrapper's own
-    built script text lives in the last element) and returns the
-    stdout bytes to yield.
-    """
-
-    def _new_exec(*_args: object, **kwargs: object) -> MagicMock:
-        cmd = kwargs.get("cmd") or ()
-        cmd_seq = cmd if isinstance(cmd, list | tuple) else ()
-        script = str(cmd_seq[-1]) if cmd_seq else ""
-        exec_obj = MagicMock()
-        exec_obj.start = MagicMock(
-            return_value=_make_exec_stream(stdout=responder(script))
-        )
-        exec_obj.inspect = AsyncMock(return_value={"ExitCode": 0})
-        return exec_obj
-
-    container_obj.exec = AsyncMock(side_effect=_new_exec)
-
-
-def _make_mock_docker(responder: Callable[[str], bytes]) -> MagicMock:
-    """Create a mock aiodocker.Docker client scripted by *responder*."""
-    mock_docker = MagicMock()
-    mock_docker.version = AsyncMock(return_value={"ApiVersion": "1.43"})
-    mock_docker.close = AsyncMock()
-
-    mock_containers = MagicMock()
-    mock_docker.containers = mock_containers
-
-    mock_created_container = MagicMock()
-    mock_created_container.id = "abc123def456"
-    mock_containers.create = AsyncMock(return_value=mock_created_container)
-
-    mock_container_obj = MagicMock()
-    mock_container_obj.start = AsyncMock()
-    mock_container_obj.show = AsyncMock(return_value={"State": {"Running": True}})
-    mock_container_obj.stop = AsyncMock()
-    mock_container_obj.delete = AsyncMock()
-    _install_scripted_exec(mock_container_obj, responder)
-
-    mock_containers.container = MagicMock(return_value=mock_container_obj)
-    return mock_docker
-
-
-@contextmanager
-def _patch_aiodocker(mock_docker: MagicMock) -> Iterator[MagicMock]:
-    mock_module = MagicMock()
-    mock_module.Docker = MagicMock(return_value=mock_docker)
-    with patch(_DOCKER_MODULE, mock_module) as p:
-        yield p
-
-
-def _responder_for(pid: str = "4242") -> Callable[[str], bytes]:
-    """Return a responder answering pid-confirm / RUNNING / anything else empty."""
-
-    def _respond(script: str) -> bytes:
-        if "child_pid=$!" in script:
-            return f"{pid}\n".encode()
-        if 'echo "RUNNING"' in script:
-            return b"RUNNING\n"
-        return b""
-
-    return _respond
-
-
 def _make_sandbox(
-    tmp_path: Path, *, docker: MagicMock, registry: BackgroundJobRegistry | None
+    tmp_path: Path, *, registry: BackgroundJobRegistry | None
 ) -> DockerSandbox:
     """Build a sandbox under a reusable (per-agent) lifecycle strategy.
 
@@ -219,7 +68,7 @@ def _make_sandbox(
 class TestStartBackground:
     async def test_refuses_when_no_registry_wired(self, tmp_path: Path) -> None:
         docker = _make_mock_docker(_responder_for())
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=None)
+        sandbox = _make_sandbox(tmp_path, registry=None)
         with (
             _patch_aiodocker(docker),
             pytest.raises(SandboxBackgroundUnsupportedError),
@@ -269,7 +118,7 @@ class TestStartBackground:
                 )
             )
         docker = _make_mock_docker(_responder_for())
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
         with (
             _patch_aiodocker(docker),
             pytest.raises(SandboxBackgroundJobLimitError),
@@ -284,7 +133,7 @@ class TestStartBackground:
     async def test_raises_when_pid_never_confirmed(self, tmp_path: Path) -> None:
         registry = BackgroundJobRegistry(_InMemoryBackgroundJobRepository())
         docker = _make_mock_docker(lambda _script: b"")
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
         with _patch_aiodocker(docker), pytest.raises(SandboxStartError):
             await sandbox.start_background(
                 command="sleep",
@@ -300,7 +149,7 @@ class TestStartBackground:
             _InMemoryBackgroundJobRepository(), clock=FakeClock()
         )
         docker = _make_mock_docker(_responder_for(pid="777"))
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
         with _patch_aiodocker(docker):
             job_id = await sandbox.start_background(
                 command="sleep",
@@ -320,7 +169,7 @@ class TestPollBackground:
     async def test_not_found_raises(self, tmp_path: Path) -> None:
         registry = BackgroundJobRegistry(_InMemoryBackgroundJobRepository())
         docker = _make_mock_docker(_responder_for())
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
         with (
             _patch_aiodocker(docker),
             pytest.raises(SandboxBackgroundJobNotFoundError),
@@ -346,7 +195,7 @@ class TestPollBackground:
         )
         await registry.save(record)
         docker = _make_mock_docker(_responder_for())
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
         with _patch_aiodocker(docker):
             polled = await sandbox.poll_background(
                 NotBlankStr("job-1"), category=_TERMINAL_CATEGORY, owner_id=_TEST_OWNER
@@ -372,7 +221,7 @@ class TestPollBackground:
         )
         await registry.save(record)
         docker = _make_mock_docker(lambda _script: b"3\n")
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
         with _patch_aiodocker(docker):
             polled = await sandbox.poll_background(
                 NotBlankStr("job-1"), category=_TERMINAL_CATEGORY, owner_id=_TEST_OWNER
@@ -405,7 +254,7 @@ class TestPollBackground:
             raise AssertionError(msg)
 
         docker = _make_mock_docker(_fail)
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
         with _patch_aiodocker(docker):
             polled = await sandbox.poll_background(
                 NotBlankStr("job-1"), category=_TERMINAL_CATEGORY, owner_id=_TEST_OWNER
@@ -417,7 +266,7 @@ class TestReadBackgroundOutput:
     async def test_not_found_raises(self, tmp_path: Path) -> None:
         registry = BackgroundJobRegistry(_InMemoryBackgroundJobRepository())
         docker = _make_mock_docker(_responder_for())
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
         with (
             _patch_aiodocker(docker),
             pytest.raises(SandboxBackgroundJobNotFoundError),
@@ -444,7 +293,7 @@ class TestReadBackgroundOutput:
         )
         await registry.save(record)
         docker = _make_mock_docker(lambda _script: b"hi\n")
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
         with _patch_aiodocker(docker):
             output = await sandbox.read_background_output(
                 NotBlankStr("job-1"),
@@ -459,7 +308,7 @@ class TestCancelBackground:
     async def test_not_found_raises(self, tmp_path: Path) -> None:
         registry = BackgroundJobRegistry(_InMemoryBackgroundJobRepository())
         docker = _make_mock_docker(_responder_for())
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
         with (
             _patch_aiodocker(docker),
             pytest.raises(SandboxBackgroundJobNotFoundError),
@@ -485,7 +334,7 @@ class TestCancelBackground:
         )
         await registry.save(record)
         docker = _make_mock_docker(_responder_for())
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
         with _patch_aiodocker(docker):
             cancelled = await sandbox.cancel_background(
                 NotBlankStr("job-1"), category=_TERMINAL_CATEGORY, owner_id=_TEST_OWNER
@@ -517,7 +366,7 @@ class TestCancelBackground:
             raise AssertionError(msg)
 
         docker = _make_mock_docker(_fail)
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
         with _patch_aiodocker(docker):
             result = await sandbox.cancel_background(
                 NotBlankStr("job-1"), category=_TERMINAL_CATEGORY, owner_id=_TEST_OWNER
@@ -560,7 +409,7 @@ class TestCrossOwnerAccessRefused:
         )
         await self._saved_job(registry, clock)
         docker = _make_mock_docker(_responder_for())
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
         with (
             _patch_aiodocker(docker),
             pytest.raises(SandboxBackgroundJobNotFoundError),
@@ -578,7 +427,7 @@ class TestCrossOwnerAccessRefused:
         )
         await self._saved_job(registry, clock)
         docker = _make_mock_docker(_responder_for())
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
         with (
             _patch_aiodocker(docker),
             pytest.raises(SandboxBackgroundJobNotFoundError),
@@ -597,7 +446,7 @@ class TestCrossOwnerAccessRefused:
         )
         await self._saved_job(registry, clock)
         docker = _make_mock_docker(_responder_for())
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
         with (
             _patch_aiodocker(docker),
             pytest.raises(SandboxBackgroundJobNotFoundError),
@@ -615,7 +464,7 @@ class TestCrossOwnerAccessRefused:
         )
         await self._saved_job(registry, clock)
         docker = _make_mock_docker(_responder_for())
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
         with _patch_aiodocker(docker):
             polled = await sandbox.poll_background(
                 NotBlankStr("job-1"), category=_TERMINAL_CATEGORY, owner_id=_TEST_OWNER
@@ -625,8 +474,7 @@ class TestCrossOwnerAccessRefused:
 
 class TestListBackgroundJobs:
     async def test_returns_empty_without_registry(self, tmp_path: Path) -> None:
-        docker = _make_mock_docker(_responder_for())
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=None)
+        sandbox = _make_sandbox(tmp_path, registry=None)
         assert (
             await sandbox.list_background_jobs(_TEST_OWNER, category=_TERMINAL_CATEGORY)
             == ()
@@ -654,8 +502,7 @@ class TestListBackgroundJobs:
                     max_duration_seconds=3600.0,
                 )
             )
-        docker = _make_mock_docker(_responder_for())
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
         jobs = await sandbox.list_background_jobs(
             _TEST_OWNER, category=_TERMINAL_CATEGORY
         )
@@ -666,7 +513,7 @@ class TestPinCheck:
     async def test_returns_false_when_no_live_jobs(self, tmp_path: Path) -> None:
         registry = BackgroundJobRegistry(_InMemoryBackgroundJobRepository())
         docker = _make_mock_docker(_responder_for())
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
         with _patch_aiodocker(docker):
             assert await sandbox.pin_check("c1") is False
 
@@ -690,7 +537,7 @@ class TestPinCheck:
             )
         )
         docker = _make_mock_docker(_responder_for())
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
         with _patch_aiodocker(docker):
             assert await sandbox.pin_check("c1") is True
 
@@ -715,7 +562,7 @@ class TestPinCheck:
         )
         clock.advance(11)
         docker = _make_mock_docker(_responder_for())
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
         with _patch_aiodocker(docker):
             assert await sandbox.pin_check("c1") is False
         record = await registry.get("job-1")
@@ -746,7 +593,7 @@ class TestDestroyHandleReaping:
             )
         )
         docker = _make_mock_docker(_responder_for())
-        sandbox = _make_sandbox(tmp_path, docker=docker, registry=registry)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
         with _patch_aiodocker(docker):
             await sandbox._ensure_docker()
             await sandbox._destroy_handle(ContainerHandle(container_id="abc123def456"))

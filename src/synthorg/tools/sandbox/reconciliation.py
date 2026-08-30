@@ -40,6 +40,9 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docker import (
     DOCKER_CONTAINER_REMOVED,
 )
+from synthorg.observability.events.sandbox import (
+    SANDBOX_BACKGROUND_JOB_REAP_FAILED,
+)
 from synthorg.persistence.background_job_protocol import (
     LIVE_BACKGROUND_JOB_STATUSES,
     BackgroundJobRepository,
@@ -310,7 +313,22 @@ async def reap_orphaned_background_jobs(
         and r.container_id not in kept_container_ids
     }
     for container_id in sorted(orphaned_containers):
-        await registry.reap_for_container(
-            NotBlankStr(container_id), reason="boot_reconciliation"
-        )
+        try:
+            await registry.reap_for_container(
+                NotBlankStr(container_id), reason="boot_reconciliation"
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            # One row's write failing must not abort the remaining
+            # orphans, and must not prevent the reconciliation stamp
+            # this function's caller sets afterwards -- a stamped pass
+            # is never re-driven, so an unstamped one would re-attempt
+            # container reconciliation as well as the reap.
+            logger.warning(
+                SANDBOX_BACKGROUND_JOB_REAP_FAILED,
+                container_id=container_id[:12],
+                reason="boot_reconciliation",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
     return tuple(sorted(orphaned_containers))

@@ -11,17 +11,17 @@ simply different) once backgrounded.
 Output is capped at READ time (:func:`build_read_output_command`), not write time.
 An earlier design piped the command's own stdout through a byte-capping
 ``dd``/FIFO stage so a runaway job could never grow past the cap on
-disk; it was dropped; both routes hit a real failure mode a foreground
-truncation never has to consider: the writer exceeding the cap receives
-SIGPIPE (or, via a ulimit, SIGXFSZ) and is killed by it, which is a job
-DYING at the cap rather than being read back capped, indistinguishable
-from a real crash. The write-time-cap concern (tmpfs exhaustion) is
-answered by the per-owner job-count cap and each job's own
-``max_duration_seconds`` ceiling instead -- a bound on how much a job
-CAN write, not a bound enforced by killing it while it writes. Read a
-job's own PID is a genuine per-command process, never a pipeline stage,
-because ``$!`` after a pipeline names the LAST stage, not the command a
-caller might need to kill.
+disk; that route hits a real failure mode a foreground truncation never
+has to consider: the writer exceeding the cap receives SIGPIPE (or, via
+a ulimit, SIGXFSZ) and is killed by it, which is a job DYING at the cap
+rather than being read back capped, indistinguishable from a real
+crash. The write-time-cap concern (tmpfs exhaustion) is answered by the
+per-owner job-count cap and each job's own ``max_duration_seconds``
+ceiling instead -- a bound on how much a job CAN write, not a bound
+enforced by killing it while it writes. A job's own PID is a genuine
+per-command process, never a pipeline stage, because ``$!`` after a
+pipeline names the LAST stage, not the command a caller might need to
+kill.
 """
 
 from pathlib import PurePosixPath
@@ -161,12 +161,24 @@ def build_start_command(
     # not observable by the exec's own (already-returned) foreground, so
     # the foreground instead polls for the PID file the job writes and
     # cats it once it appears -- the file, not a pipe, is the hand-off.
+    #
+    # The `{ ... }` group must not inherit this exec's own stdio: with no
+    # redirection, the caller's read of this exec's stdout/stderr blocks
+    # until EOF, and EOF cannot happen until every process holding those
+    # descriptors closes them -- including this backgrounded group, which
+    # otherwise keeps them open for the real command's entire runtime
+    # (confirmed directly: an unredirected group turned an exec meant to
+    # return in milliseconds into one that blocked until the job itself
+    # exited). Nothing in the group writes to stdout/stderr on its own
+    # (the real command's own streams are already redirected to its
+    # output file inside `detached`), so redirecting them to /dev/null
+    # here costs nothing.
     script = (
         f"mkdir -p {_quote(directory)}; "
         f"{{ setsid {detached} & "
         f'child_pid=$!; echo "$child_pid" > {_quote(pid_file)}; '
         f'wait "$child_pid"; echo $? > {_quote(exit_file)}; '
-        f"}} & disown -a; "
+        f"}} < /dev/null > /dev/null 2>&1 & disown -a; "
         f"i=0; "
         f"while [ ! -s {_quote(pid_file)} ] && "
         f'[ "$i" -lt {_PID_POLL_MAX_ITERATIONS} ]; do '
@@ -211,11 +223,12 @@ def build_read_output_command(
 ) -> tuple[str, tuple[str, ...]]:
     """Build the ``(program, args)`` that read a job's captured output.
 
-    Truncated to the first *byte_cap* bytes, mirroring
-    ``ShellCommandTool``'s own existing head-truncation convention for a
-    foreground result (kept from the start, not the tail, plus a marker
-    when the file is larger). The exec reads the file directly, so a
-    file smaller than the cap is returned whole with no marker.
+    Truncated to the first *byte_cap* bytes (kept from the start, not
+    the tail, unlike ``ShellCommandTool``'s own foreground truncation,
+    which also appends a marker). The exec reads the file directly and
+    returns exactly those bytes with no marker either way, so a capped
+    read is not distinguishable from output that happened to end at the
+    cap.
 
     Args:
         job_id: The job whose output to read.

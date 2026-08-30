@@ -1424,6 +1424,12 @@ class FakePersistenceBackend(PersistenceBackend):
             stub = AsyncMock(spec=BackgroundJobRepository)
             stub.load_all.return_value = ()
             stub.list_items.return_value = ()
+            # A truthy child mock here reads as "a job row exists" and
+            # would pass an absent-row assertion the real repo fails.
+            stub.get.return_value = None
+            stub.count_live_by_owner.return_value = 0
+            stub.list_by_container.return_value = ()
+            stub.list_by_owner.return_value = ()
             self._background_job_stub = stub
         return self._background_job_stub
 

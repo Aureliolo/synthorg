@@ -34,6 +34,7 @@ _COLUMNS = (
     "status, exit_code, output_path, started_at, updated_at, "
     "max_duration_seconds"
 )
+_COLUMN_COUNT = _COLUMNS.count(",") + 1
 _LIVE_PLACEHOLDERS = ", ".join("?" for _ in LIVE_BACKGROUND_JOB_STATUSES)
 
 
@@ -84,7 +85,7 @@ class SQLiteBackgroundJobRepository:
             try:
                 await self._db.execute(
                     f"INSERT OR REPLACE INTO background_jobs ({_COLUMNS}) "  # noqa: S608
-                    f"VALUES ({', '.join('?' for _ in range(12))})",
+                    f"VALUES ({', '.join('?' for _ in range(_COLUMN_COUNT))})",
                     params,
                 )
                 await self._db.commit()

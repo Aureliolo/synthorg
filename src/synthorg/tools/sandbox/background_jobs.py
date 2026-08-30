@@ -238,8 +238,7 @@ class BackgroundJobRegistry:
             reason: Why -- logged, not persisted; the row's own
                 ``ORPHANED`` status is the durable signal.
         """
-        rows = await self._repo.list_by_container(container_id)
-        live = [r for r in rows if r.status in LIVE_BACKGROUND_JOB_STATUSES]
+        live = await self.list_live_by_container(container_id)
         for record in live:
             await self.mark_terminal(record, BackgroundJobStatus.ORPHANED)
             logger.info(

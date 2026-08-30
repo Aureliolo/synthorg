@@ -344,7 +344,10 @@ class ListBackgroundJobsTool(BaseTerminalTool):
         except ValidationError as exc:
             return _invalid_arguments_result(exc)
         if self._sandbox is None:
-            return ToolExecutionResult(content=json.dumps({"jobs": []}))
+            return ToolExecutionResult(
+                content="This deployment wired no sandbox backend.",
+                is_error=True,
+            )
         try:
             jobs = await self._sandbox.list_background_jobs(
                 None,

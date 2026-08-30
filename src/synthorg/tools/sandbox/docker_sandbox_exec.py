@@ -42,6 +42,7 @@ from synthorg.observability.events.docker import (
     DOCKER_EXECUTE_TIMEOUT,
 )
 from synthorg.observability.events.sandbox import (
+    SANDBOX_BACKGROUND_JOB_REAP_FAILED,
     SANDBOX_CONTAINER_LOGS_COLLECT_FAILED,
     SANDBOX_LIFECYCLE_OWNER_DEGRADED,
     SANDBOX_LIFECYCLE_RELEASE,
@@ -818,9 +819,20 @@ class DockerSandboxExecMixin:
             handle: The container handle to destroy.
         """
         if self._background_jobs is not None:
-            await self._background_jobs.reap_for_container(
-                handle.container_id, reason="container_destroyed"
-            )
+            try:
+                await self._background_jobs.reap_for_container(
+                    handle.container_id, reason="container_destroyed"
+                )
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                # Teardown must proceed: an unreaped row is recoverable by
+                # boot reconciliation, a leaked container is not.
+                logger.warning(
+                    SANDBOX_BACKGROUND_JOB_REAP_FAILED,
+                    container_id=handle.container_id[:12],
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
         docker = self._docker
         if docker is None:
             return

@@ -422,9 +422,7 @@ class _StubBackgroundJobRepo:
     async def save(self, entity: BackgroundJobRecord) -> None:
         self._rows[entity.job_id] = entity
 
-    async def save_if_live(
-        self, entity: BackgroundJobRecord
-    ) -> bool:  # pragma: no cover
+    async def save_if_live(self, entity: BackgroundJobRecord) -> bool:
         current = self._rows.get(entity.job_id)
         if current is None or current.status not in {
             BackgroundJobStatus.PENDING,
@@ -435,7 +433,7 @@ class _StubBackgroundJobRepo:
         return True
 
     async def get(self, entity_id: str) -> BackgroundJobRecord | None:
-        return self._rows.get(entity_id)  # pragma: no cover
+        return self._rows.get(entity_id)
 
     async def delete(self, entity_id: str) -> bool:  # pragma: no cover
         return self._rows.pop(entity_id, None) is not None

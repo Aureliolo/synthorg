@@ -18,21 +18,10 @@ from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
 from synthorg.tools.sandbox.lifecycle.per_agent import PerAgentStrategy
 from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
 from tests._shared.fake_clock import FakeClock
+from tests._shared.lifecycle_pin_check import CountingPin as _CountingPin
+from tests._shared.lifecycle_pin_check import settle as _settle
 
 pytestmark = pytest.mark.unit
-
-
-# Number of event-loop yields needed for a timer task to finish: it
-# awaits the (no-op) clock sleep, takes the strategy lock, mutates the
-# bookkeeping dicts, then awaits the user-supplied destroy_fn. Five
-# yields covers the worst-case async-step count without padding.
-_SETTLE_TICKS: int = 5
-
-
-async def _settle(ticks: int = _SETTLE_TICKS) -> None:
-    """Yield control ``ticks`` times so scheduled tasks can complete."""
-    for _ in range(ticks):
-        await asyncio.sleep(0)
 
 
 def _make_handle(cid: str = "c1") -> ContainerHandle:
@@ -70,27 +59,6 @@ def _make_strategy(
         pin_check=pin_check,
         pin_recheck_seconds=pin_recheck_seconds,
     )
-
-
-class _CountingPin:
-    """A pin_check stub reporting live for the first *live_for* calls.
-
-    Mirrors the shape ``BackgroundJobRegistry.has_live_jobs`` will use:
-    an async predicate keyed by container_id. Recording every call lets
-    a test assert the recheck loop actually ran rather than merely
-    inferring it from the eventual outcome.
-    """
-
-    def __init__(self, live_for: int) -> None:
-        self._remaining = live_for
-        self.calls: list[str] = []
-
-    async def __call__(self, container_id: str) -> bool:
-        self.calls.append(container_id)
-        if self._remaining <= 0:
-            return False
-        self._remaining -= 1
-        return True
 
 
 class TestPerAgentAcquire:
@@ -789,9 +757,20 @@ class TestPerAgentPinning:
             owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
         )
         await strategy.release(owner_id="a1", destroy_fn=destroy_fn)
-        # Idle threshold (0.05s) elapses well before grace (10.0s), so
-        # any teardown observed here is the idle path, not grace.
+        # `release()` starts a grace timer alongside the idle timer under
+        # test, and FakeClock.sleep completes after a single yield
+        # regardless of the requested duration -- so grace's own 10.0s
+        # wait does not actually outlast idle's 0.05s here, and either
+        # timer finding the container unpinned would destroy it. Cancel
+        # grace explicitly so only the idle timer is left running, and
+        # assert `pin.calls` grew to prove THAT timer's own recheck loop
+        # executed -- `destroyed == []` alone holds for either path and
+        # would not catch a regression confined to idle's own pinning.
+        async with strategy._lock:
+            strategy._cancel_timer("a1")
+        calls_before_idle_recheck = len(pin.calls)
         await _settle(ticks=10)
+        assert len(pin.calls) > calls_before_idle_recheck
         assert destroyed == []
 
         await strategy.cleanup_all(destroy_fn=destroy_fn)
