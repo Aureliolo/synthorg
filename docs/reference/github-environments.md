@@ -266,8 +266,8 @@ What matters operationally is that **which models a key may call is
 published nowhere**, and a plan can withdraw one without notice. The
 model is declared once as `HIGHLIGHTS_MODEL` in `release-cut.yml`; when
 it starts returning `403 tier_not_allowed`, dispatch
-`release-highlights-dryrun.yml`, which lists what the key can currently
-call and rehearses the real prompt and digest against any candidate.
+`release-highlights-dryrun.yml`, which lists what the key can call and
+rehearses the real prompt and digest against any candidate.
 
 ## Testing the `apko-lock` gate
 

@@ -74,13 +74,6 @@ _TRAILER = re.compile(
     r"acked-by|tested-by):",
     re.IGNORECASE,
 )
-# Unrolled rather than the obvious ``<!--.*?-->``: a body carrying many
-# unterminated ``<!--`` makes the lazy form rescan to end-of-string once per
-# opener, which is quadratic in a commit message anyone who lands a commit
-# gets to write. This form fails at the first ``-`` that does not open ``-->``,
-# so a failed match advances instead of restarting.
-_HTML_COMMENT = re.compile(r"<!--[^-]*(?:-(?!->)[^-]*)*-->", re.DOTALL)
-
 # A link's text carries the reference a reader needs (``#2883``, a design page
 # name); its URL is pure token cost and no summary ever quotes one.
 # ``[`` is excluded from the label for the same reason as above: allowing it
@@ -224,11 +217,40 @@ def _strip_structural_lines(body: str) -> str:
     return "\n".join(kept)
 
 
+def strip_html_comments(text: str) -> str:
+    """Replace each ``<!-- ... -->`` span with a single space.
+
+    Deliberately a scan rather than a regex. ``<!--.*?-->`` costs one
+    scan-to-end-of-string for every opener that never closes, and a commit
+    message is written by anyone who can land a commit, so a body of repeated
+    ``<!--`` is quadratic work in CI. Rewriting the pattern does not help:
+    the cost is ``re.sub`` restarting at the next opener, not backtracking
+    inside one. ``str.find`` never restarts, so this is linear.
+
+    An unterminated opener is left in place, matching what the pattern did:
+    there is no span to remove, only a stray marker.
+    """
+    out: list[str] = []
+    pos = 0
+    while True:
+        start = text.find("<!--", pos)
+        if start == -1:
+            out.append(text[pos:])
+            return "".join(out)
+        end = text.find("-->", start + 4)
+        if end == -1:
+            out.append(text[pos:])
+            return "".join(out)
+        out.append(text[pos:start])
+        out.append(" ")
+        pos = end + 3
+
+
 def clean_body(body: str) -> str:
     """Reduce a commit body to the prose a summary can be written from."""
     # Inline spans become a space, never nothing: dropping the characters
     # outright fuses the words that flanked them into one new word.
-    body = _HTML_COMMENT.sub(" ", body)
+    body = strip_html_comments(body)
     body = strip_review_blocks(body)
     body = _strip_structural_lines(body)
     body = _MD_LINK.sub(r"\1", body)

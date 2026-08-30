@@ -10,6 +10,7 @@ that constrain the patterns.
 import io
 import json
 import sys
+import time
 
 import pytest
 from scripts.build_release_digest import (
@@ -21,6 +22,7 @@ from scripts.build_release_digest import (
     is_noise_commit,
     main,
     split_message,
+    strip_html_comments,
     strip_review_blocks,
 )
 
@@ -49,6 +51,62 @@ class TestSplitMessage:
         subject, body = split_message("chore: tidy")
         assert subject == "chore: tidy"
         assert body == ""
+
+
+class TestStripHtmlComments:
+    """A commit body is written by anyone who can land a commit."""
+
+    @pytest.mark.parametrize(
+        ("source", "expected"),
+        [
+            ("a <!-- note --> b", "a   b"),
+            ("no comments here", "no comments here"),
+            ("<!--a--><!--b-->x", "  x"),
+            # An opener with no closer is a stray marker, not a span, so
+            # there is nothing to remove and the text stays put.
+            ("unterminated <!-- tail", "unterminated <!-- tail"),
+            ("<!--\nmultiline\n-->kept", " kept"),
+        ],
+    )
+    def test_removes_only_complete_spans(self, source: str, expected: str) -> None:
+        assert strip_html_comments(source) == expected
+
+    @pytest.mark.parametrize(
+        "build",
+        [
+            pytest.param(lambda n: "<!--" * n, id="unterminated_openers"),
+            pytest.param(
+                lambda n: "<!--" * (n // 2) + "-->" + "<!--" * (n // 2),
+                id="closer_then_openers",
+            ),
+            pytest.param(lambda n: "[\\" * n, id="bracket_run"),
+            pytest.param(lambda n: "refs #0" + " " * n + "x", id="trailing_spaces"),
+            pytest.param(lambda n: "**high**" + " " * n + "x", id="severity_spaces"),
+        ],
+    )
+    def test_cleaning_stays_linear_on_adversarial_input(self, build) -> None:
+        """Doubling the input must not quadruple the work.
+
+        Every stripper here once ran superlinearly on a shape an author
+        controls: two adjacent `\\s*` either side of an optional character, a
+        lazy `.*?` rescanning to end-of-string per unterminated opener, and a
+        label class that let every `[` start a fresh scan. A quadratic
+        implementation lands near 4x; the bound is set at 3x so a regression
+        fails without ordinary timing jitter tripping it.
+        """
+        small, large = build(20_000), build(40_000)
+
+        def elapsed(text: str) -> float:
+            start = time.perf_counter()
+            clean_body(text)
+            return time.perf_counter() - start
+
+        # Take the best of three: a loaded CI runner can stall any single
+        # sample, and the minimum is the one robust against a pause landing
+        # in the smaller measurement and inverting the ratio.
+        small_s = min(elapsed(small) for _ in range(3))
+        large_s = min(elapsed(large) for _ in range(3))
+        assert large_s / max(small_s, 1e-6) < 3.0
 
 
 class TestCleanBody:
