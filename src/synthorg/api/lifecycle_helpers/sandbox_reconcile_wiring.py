@@ -107,12 +107,12 @@ async def wire_sandbox_reconciliation(app_state: AppState) -> None:
 
     # DB-only, deliberately outside the try/except above: the Docker-side
     # sweep already ran and its outcome is trustworthy regardless of this
-    # second pass over the background-job table, which writes rather than
-    # merely reads (each orphaned row is marked ORPHANED). A per-row
-    # write failure inside `reap_orphaned_background_jobs` is guarded
-    # there and does not propagate, so a failure here should not re-run
-    # container reconciliation or decline the whole subsystem over a
-    # table `reconcile_tracked_containers` never touches.
+    # second pass over the background-job table (each orphaned row is
+    # marked ORPHANED). Both a failed initial read and a per-row write
+    # failure inside `reap_orphaned_background_jobs` are guarded there
+    # and never propagate, so a failure here should not re-run container
+    # reconciliation or decline the whole subsystem over a table
+    # `reconcile_tracked_containers` never touches.
     reaped_containers = await reap_orphaned_background_jobs(
         repo=persistence.background_jobs,
         kept_container_ids=frozenset(outcome.kept),

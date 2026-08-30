@@ -22,7 +22,12 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_RELEASE,
     SANDBOX_LIFECYCLE_TEARDOWN_PINNED,
 )
-from synthorg.tools.sandbox.lifecycle._liveness import log_stale, probe_alive, reap
+from synthorg.tools.sandbox.lifecycle._liveness import (
+    PIN_CHECK_FAILURE_LIMIT,
+    log_stale,
+    probe_alive,
+    reap,
+)
 from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
 
 logger = get_logger(__name__)
@@ -93,7 +98,9 @@ class PerTaskStrategy:
         """``True`` -- one container per task, destroyed on release."""
         return True
 
-    async def _pinned(self, owner_id: str, handle: ContainerHandle) -> bool:
+    async def _pinned(
+        self, owner_id: str, handle: ContainerHandle
+    ) -> tuple[bool, bool]:
         """Answer whether *handle* is held pinned by a live background job.
 
         Mirrors ``PerAgentStrategy._await_unpinned``'s own failure
@@ -101,16 +108,21 @@ class PerTaskStrategy:
         rather than left to propagate, which would otherwise strand the
         container -- unreleased in ``release()``, or silently killing
         the watchdog task in ``_wait_then_destroy`` and leaving the
-        container held forever with nothing left to recheck it.
+        container held forever with nothing left to recheck it. The
+        second element lets ``_wait_then_destroy`` count consecutive
+        failures toward :data:`PIN_CHECK_FAILURE_LIMIT`, the same
+        bounded give-up ``PerAgentStrategy`` applies -- a single check
+        here has no loop of its own to bound.
 
         Returns:
-            ``True`` when a live job pins the container (or the check
-            itself failed); ``False`` when nothing pins it.
+            ``(pinned, failed)``: *pinned* is ``True`` when a live job
+            pins the container (or the check itself failed); *failed*
+            is ``True`` only when the check raised.
         """
         if self._pin_check is None:
-            return False
+            return False, False
         try:
-            return await self._pin_check(handle.container_id)
+            return await self._pin_check(handle.container_id), False
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
@@ -121,7 +133,7 @@ class PerTaskStrategy:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return True
+            return True, True
 
     async def _reusable_handle(
         self,
@@ -287,7 +299,7 @@ class PerTaskStrategy:
         if handle is None:
             return
 
-        pinned = await self._pinned(owner_id, handle)
+        pinned, _failed = await self._pinned(owner_id, handle)
         if pinned:
             await self._start_deferred_teardown(owner_id, destroy_fn=destroy_fn)
             return
@@ -348,17 +360,29 @@ class PerTaskStrategy:
         """
 
         async def _wait_then_destroy() -> None:
-            # Upper-bounded by pin_check's own self-cleaning expiry;
-            # tracked in _pending_teardowns so cleanup_all() cancels it.
+            consecutive_failures = 0
+            # Upper-bounded by pin_check's own self-cleaning expiry, or
+            # by PIN_CHECK_FAILURE_LIMIT consecutive pin_check failures
+            # (that expiry reads the same persistence layer, so a
+            # sustained outage leaves it as unreachable as the check
+            # itself); tracked in _pending_teardowns so cleanup_all()
+            # cancels it.
             # lint-allow: long-running-loop-kill-switch -- bounded by
-            # pin_check expiry; cleanup cancels.
+            # pin_check expiry or failure limit; cleanup cancels.
             while True:
                 async with self._lock:
                     handle = self._containers.get(owner_id)
                 if handle is None:
                     return
-                if not await self._pinned(owner_id, handle):
-                    break
+                pinned, failed = await self._pinned(owner_id, handle)
+                if failed:
+                    consecutive_failures += 1
+                    if consecutive_failures >= PIN_CHECK_FAILURE_LIMIT:
+                        break
+                else:
+                    consecutive_failures = 0
+                    if not pinned:
+                        break
                 logger.debug(
                     SANDBOX_LIFECYCLE_TEARDOWN_PINNED,
                     strategy="per-task",

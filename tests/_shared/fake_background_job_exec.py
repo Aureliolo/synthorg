@@ -3,8 +3,8 @@
 Answers ``container.exec()`` by inspecting the wrapper's own built
 script text (rather than by call order or argument position), so a
 test can assert on behaviour without knowing the exact shell it runs.
-Two suites had grown their own copy of this and the underlying
-in-memory job repository; both live here now, next to each other.
+Shared across every suite exercising ``DockerSandboxBackgroundMixin``
+so the scripted responses stay in one place.
 """
 
 from collections.abc import Callable, Iterator

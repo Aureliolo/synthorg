@@ -141,8 +141,8 @@ def build_start_command(
     # fresh session/group to is the exact pid that ends up running the
     # command, all the way down.
     setup = (
-        f"cd {_quote(container_cwd)} && "
-        f"exec > {_quote(out)} 2>&1 < /dev/null; "
+        f"cd {_quote(container_cwd)} || exit 1; "
+        f"exec > {_quote(out)} 2>&1 < /dev/null || exit 1; "
         f"exec {inner}"
     )
     detached = " ".join((SHELL_PROGRAM, *SHELL_ARGS_PREFIX, _quote(setup)))

@@ -24,6 +24,7 @@ import pytest
 
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.background_job_protocol import (
+    LIVE_BACKGROUND_JOB_STATUSES,
     BackgroundJobRecord,
     BackgroundJobStatus,
 )
@@ -424,10 +425,7 @@ class _StubBackgroundJobRepo:
 
     async def save_if_live(self, entity: BackgroundJobRecord) -> bool:
         current = self._rows.get(entity.job_id)
-        if current is None or current.status not in {
-            BackgroundJobStatus.PENDING,
-            BackgroundJobStatus.RUNNING,
-        }:
+        if current is None or current.status not in LIVE_BACKGROUND_JOB_STATUSES:
             return False
         self._rows[entity.job_id] = entity
         return True

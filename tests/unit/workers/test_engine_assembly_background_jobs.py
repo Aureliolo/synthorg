@@ -45,11 +45,9 @@ from tests._shared.fake_background_job_repo import (
     InMemoryBackgroundJobRepository as _InMemoryBackgroundJobRepository,
 )
 
-#: Real setting defaults (``settings/definitions/tools.py``), so a
-#: concurrency-ceiling read during boot does not artificially constrain
-#: a test starting more than one job -- the blanket-``1`` stub this
-#: replaced set the ceiling to one job for every test built on this
-#: fixture, regardless of the setting key actually being read.
+#: Real setting defaults (``settings/definitions/tools.py``), keyed so
+#: the concurrency-ceiling read during boot does not artificially
+#: constrain a test starting more than one job.
 _BACKGROUND_JOB_INT_DEFAULTS: dict[str, int] = {
     _MAX_CONCURRENT_JOBS_KEY: 5,
     _OUTPUT_BYTE_CAP_KEY: 1_000_000,

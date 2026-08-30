@@ -1,10 +1,9 @@
 """One in-memory double satisfying ``BackgroundJobRepository``.
 
-Three suites had grown their own copy, one of them with a status set
-frozen at ``{PENDING, RUNNING}`` instead of the shared
-``LIVE_BACKGROUND_JOB_STATUSES`` constant -- exactly the drift a single
-double exists to prevent (see ``fake_sandbox.py``'s own docstring for
-the same rationale on a different double).
+A single shared double keeps its live-status filtering pinned to
+``LIVE_BACKGROUND_JOB_STATUSES`` rather than a hardcoded set that could
+drift from it (see ``fake_sandbox.py``'s own docstring for the same
+rationale on a different double).
 """
 
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
@@ -56,12 +55,16 @@ class InMemoryBackgroundJobRepository:
         limit: int = DEFAULT_PAGE_SIZE,
         offset: int = 0,
     ) -> tuple[BackgroundJobRecord, ...]:
-        matches = [
-            r
-            for r in self._rows.values()
-            if r.container_id == container_id
-            and (statuses is None or r.status in statuses)
-        ]
+        matches = sorted(
+            (
+                r
+                for r in self._rows.values()
+                if r.container_id == container_id
+                and (statuses is None or r.status in statuses)
+            ),
+            key=lambda r: r.started_at,
+            reverse=True,
+        )
         return tuple(matches[offset : offset + limit])
 
     async def count_live_by_owner(self, owner_id: str) -> int:
@@ -74,5 +77,9 @@ class InMemoryBackgroundJobRepository:
     async def list_by_owner(
         self, owner_id: str, *, limit: int = DEFAULT_PAGE_SIZE, offset: int = 0
     ) -> tuple[BackgroundJobRecord, ...]:
-        matches = [r for r in self._rows.values() if r.owner_id == owner_id]
+        matches = sorted(
+            (r for r in self._rows.values() if r.owner_id == owner_id),
+            key=lambda r: r.started_at,
+            reverse=True,
+        )
         return tuple(matches[offset : offset + limit])

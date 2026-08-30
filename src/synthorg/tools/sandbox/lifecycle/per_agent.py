@@ -23,7 +23,12 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_RELEASE,
     SANDBOX_LIFECYCLE_TEARDOWN_PINNED,
 )
-from synthorg.tools.sandbox.lifecycle._liveness import log_stale, probe_alive, reap
+from synthorg.tools.sandbox.lifecycle._liveness import (
+    PIN_CHECK_FAILURE_LIMIT,
+    log_stale,
+    probe_alive,
+    reap,
+)
 from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
 from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
 
@@ -34,15 +39,6 @@ logger = get_logger(__name__)
 #: a short grace period should not turn into a tight poll loop, and a long
 #: one should not silently wait minutes to notice a job just finished.
 DEFAULT_PIN_RECHECK_SECONDS: Final[float] = 15.0
-
-#: Consecutive ``pin_check`` exceptions (not "still pinned" answers)
-#: tolerated before ``_await_unpinned`` gives up waiting and permits
-#: teardown. ``pin_check``'s own self-cleaning expiry needs the same
-#: persistence layer this counts failures of, so a sustained outage
-#: leaves that safety net as unreachable as the check itself -- without
-#: this bound, a container would wait out an infrastructure failure
-#: forever rather than a job.
-_PIN_CHECK_FAILURE_LIMIT: Final[int] = 5
 
 
 class PerAgentStrategy:
@@ -122,7 +118,7 @@ class PerAgentStrategy:
 
         Returns:
             The still-cached handle once nothing pins it (including
-            after :data:`_PIN_CHECK_FAILURE_LIMIT` consecutive
+            after :data:`PIN_CHECK_FAILURE_LIMIT` consecutive
             ``pin_check`` failures give up waiting), or ``None`` once
             the container is already gone (the other timer, or a
             liveness eviction, got there first).
@@ -166,7 +162,7 @@ class PerAgentStrategy:
                     error_type=type(exc).__name__,
                     error=safe_error_description(exc),
                 )
-                if consecutive_failures >= _PIN_CHECK_FAILURE_LIMIT:
+                if consecutive_failures >= PIN_CHECK_FAILURE_LIMIT:
                     return handle
                 pinned = True
             else:

@@ -377,11 +377,11 @@ class TestCancelBackground:
 class TestCrossOwnerAccessRefused:
     """A job's owner is the only caller who can poll/read/cancel it.
 
-    Regression coverage for the CRITICAL access-control gap: before
-    ``_get_owned_job``, all three methods did a bare ``registry.get(job_id)``
-    with no ownership check at all, so knowing another owner's job id (from a
-    log line, a shared task, or ``list_background_jobs``) was enough to reach
-    it across agent and project boundaries.
+    Every read and mutation resolves through ``_get_owned_job``, which
+    scopes the lookup to the caller's own owner key: knowing another
+    owner's job id (from a log line, a shared task, or
+    ``list_background_jobs``) must not be enough to reach it across
+    agent and project boundaries.
     """
 
     async def _saved_job(

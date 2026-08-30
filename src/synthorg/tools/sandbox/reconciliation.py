@@ -305,7 +305,23 @@ async def reap_orphaned_background_jobs(
         The distinct container ids whose jobs were reaped, sorted.
     """
     registry = BackgroundJobRegistry(repo, clock=clock)
-    rows = await repo.load_all()
+    try:
+        rows = await repo.load_all()
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        reraise_critical(exc)
+        # The container-side sweep already completed and its outcome is
+        # trustworthy regardless: declining only this DB-only pass, not
+        # the caller's reconciliation stamp, lets the next boot (or the
+        # periodic resync) retry it rather than leaving this deployment
+        # permanently unreconciled over one read.
+        logger.warning(
+            SANDBOX_BACKGROUND_JOB_REAP_FAILED,
+            stage="load_all",
+            reason="boot_reconciliation",
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        return ()
     orphaned_containers = {
         r.container_id
         for r in rows

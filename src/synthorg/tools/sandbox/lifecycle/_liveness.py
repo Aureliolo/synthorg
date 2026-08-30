@@ -7,6 +7,7 @@ is a strategy that can answer differently from its sibling.
 """
 
 from collections.abc import Awaitable, Callable
+from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger, safe_error_description
@@ -17,6 +18,18 @@ from synthorg.observability.events.sandbox import (
 from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
 
 logger = get_logger(__name__)
+
+#: Consecutive ``pin_check`` exceptions (not "still pinned" answers)
+#: tolerated before a strategy's own wait-then-destroy loop gives up
+#: waiting and permits teardown. ``pin_check``'s own self-cleaning
+#: expiry needs the same persistence layer this counts failures of, so
+#: a sustained outage leaves that safety net as unreachable as the
+#: check itself -- without this bound, a container would wait out an
+#: infrastructure failure forever rather than a job. Shared by both
+#: reuse strategies for the same reason the rest of this module is
+#: shared: a strategy with its own copy is one that can answer
+#: differently from its sibling.
+PIN_CHECK_FAILURE_LIMIT: Final[int] = 5
 
 
 async def probe_alive(

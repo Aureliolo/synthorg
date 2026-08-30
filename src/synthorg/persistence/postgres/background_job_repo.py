@@ -287,6 +287,10 @@ class PostgresBackgroundJobRepository:
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_BACKGROUND_JOB_LOAD_FAILED
         )
+        if statuses is not None and not statuses:
+            # `status IN ()` is invalid SQL; an empty filter can match
+            # nothing by construction, so answer that directly.
+            return ()
         status_clause = ""
         params: tuple[object, ...] = (container_id,)
         if statuses is not None:

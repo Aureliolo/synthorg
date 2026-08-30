@@ -285,6 +285,11 @@ class SQLiteBackgroundJobRepository:
         limit = validate_pagination_args(
             limit, offset, event=PERSISTENCE_BACKGROUND_JOB_LOAD_FAILED
         )
+        if statuses is not None and not statuses:
+            # `status IN ()` matches nothing by construction; answer that
+            # directly rather than reaching the database (also matches the
+            # Postgres arm, where the same clause is invalid SQL).
+            return ()
         status_clause = ""
         params: tuple[object, ...] = (container_id,)
         if statuses is not None:
