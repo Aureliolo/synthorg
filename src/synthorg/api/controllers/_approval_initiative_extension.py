@@ -157,7 +157,17 @@ async def _grant_target(
         )
         return None
     leaf = _item_by_id(plan, item.metadata.get(LEAF_ID_METADATA_KEY, ""))
-    if leaf is None or leaf.unsplit_reason is None:
+    # ``unsplit_reason`` is never cleared once written (see ``PlanItem``'s own
+    # field docs), so it cannot tell a leaf that was already extended by
+    # another writer apart from one that never was. Whether the leaf already
+    # has children is the actual "already extended" fact:
+    # ``workstream_needs_extension`` excludes a container from the automatic
+    # route on the same check.
+    if (
+        leaf is None
+        or leaf.unsplit_reason is None
+        or PlanTree.of(plan.items).is_container(leaf.id)
+    ):
         logger.info(
             INITIATIVE_EXTENSION_DECIDED,
             approval_id=approval_id,

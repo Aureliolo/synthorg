@@ -254,7 +254,9 @@ class TestApproved:
             update={
                 "items": (
                     _item(_WORKSTREAM),
-                    _item(_LEAF, parent_id=_WORKSTREAM),
+                    _item(
+                        _LEAF, parent_id=_WORKSTREAM, unsplit_reason="depth backstop"
+                    ),
                     _item(sid("child-1"), parent_id=_LEAF),
                 )
             }

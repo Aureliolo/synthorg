@@ -75,40 +75,46 @@ async def _reread_approval_item(
     app_state: AppState,
     approval_id: str,
 ) -> ApprovalItem | None:
-    """Re-read the just-decided approval, degrading to ``None`` on error.
+    """Re-read the just-decided approval; ``None`` means genuinely missing.
 
-    The decision is already persisted by the caller; a failed reread
-    must not 500 the request. A transient store flake is retried, with no
-    sleep budget, before giving up: several ownership-probing flows down the
-    chain (Flow 0: yields to later flows; Flow 1: parked-context gate probe)
-    read a ``None`` here as "not mine", which would otherwise misroute an
-    approval whose ``task_id`` happens to be set for routing reasons
-    unrelated to a plain completion review (an initiative stall or
-    workstream-extension ask both carry the objective task's id) into Flow
-    2's review-gate transition. Past the retry budget, that residual gap
-    remains: a genuine store outage still degrades to ``None`` and can
-    still be misrouted.
+    The decision is already persisted by the caller; a failed reread must
+    not 500 the request, but it also must not read as "not mine" to the
+    ownership-probing flows further down the chain (Flow 0.7: plan review;
+    Flow 0.75: initiative stall; Flow 0.76: workstream extension), which
+    would otherwise misroute an approval whose ``task_id`` happens to be
+    set for routing reasons unrelated to a plain completion review into
+    Flow 2's review-gate transition. A transient store flake is retried,
+    with no sleep budget, before giving up; past the retry budget, the
+    store is genuinely unreadable, which is a different fact from the item
+    genuinely not existing, so it raises :class:`ServiceUnavailableError`
+    instead of returning ``None`` for it. ``signal_resume_intent`` catches
+    that once, around the whole ownership-probing chain, and stops routing
+    rather than falling through to Flow 2.
 
     Returns:
-        The ``ApprovalItem`` value when present, ``None`` otherwise.
+        The ``ApprovalItem`` value, or ``None`` when the store read
+        succeeded but no such approval exists.
+
+    Raises:
+        ServiceUnavailableError: When the approval store could not be
+            read after retries.
     """
+    store = require_service(app_state.slice(ApprovalStateSlice).store, "Approval Store")
     try:
-        store = require_service(
-            app_state.slice(ApprovalStateSlice).store, "Approval Store"
-        )
         return await _reread_retry.execute(
             lambda: store.get(approval_id), approval_id=approval_id
         )
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+    except Exception as exc:
         reraise_critical(exc)
         logger.warning(
             APPROVAL_GATE_RESUME_FAILED,
             approval_id=approval_id,
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
-            note="approval reread failed; falling back to parked-context probe",
+            note="approval reread exhausted retries; store is unreadable",
         )
-        return None
+        msg = f"Approval store unreadable while rereading {approval_id!r}"
+        raise ServiceUnavailableError(msg) from exc
 
 
 async def try_conversational_intake_resume(

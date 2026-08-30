@@ -298,7 +298,12 @@ class TestGraftExtension:
     """Decompose the leaf's remaining scope and graft it under the leaf."""
 
     async def test_the_extension_is_declared_against_the_leafs_own_claim(self) -> None:
-        leaf = _item(_LEAF, parent_id=_WORKSTREAM, unsplit_reason="depth backstop")
+        leaf = _item(
+            _LEAF,
+            parent_id=_WORKSTREAM,
+            unsplit_reason="depth backstop",
+            satisfies=("the game is playable",),
+        )
         plan = _plan(_item(_WORKSTREAM), leaf)
         tree = PlanTree.of(plan.items)
         decompose = AsyncMock(return_value=_decomposition("sub-1"))

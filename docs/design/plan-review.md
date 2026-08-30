@@ -820,7 +820,9 @@ persisted state):
   the split, because raising that bound and narrowing the objective are both
   the reviewer's to do at this, pre-dispatch stage. Once such a leaf has been
   dispatched and completed, the same field also drives a further, post-hoc
-  remedy needing no reviewer at all; see [Workstream
+  remedy that needs no reviewer to detect; whether it needs one to approve
+  depends on the deterministic autonomy ladder, which may still park a
+  decision for a human. See [Workstream
   Extension](workstream-extension.md).
 - **Decision options and discussion** (`PlanItemCard`): each decision item's options
   (pick recorded via `PATCH /plans/{id}`) and a per-item comment thread that updates

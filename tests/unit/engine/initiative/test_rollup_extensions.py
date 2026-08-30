@@ -389,7 +389,14 @@ class TestExtensionAsked:
                 status=ApprovalStatus.PENDING,
                 action_type=NotBlankStr(INITIATIVE_EXTENSION_ACTION_TYPE),
             )
-        )[0].model_copy(update={"status": ApprovalStatus.REJECTED})
+        )[0].model_copy(
+            update={
+                "status": ApprovalStatus.REJECTED,
+                "decided_at": FakeClock().now(),
+                "decided_by": NotBlankStr("operator"),
+                "decision_reason": NotBlankStr("leaving it as delivered"),
+            }
+        )
         await store.save(rejected)
         service, backend = await _seed(
             plan,

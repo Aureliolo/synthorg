@@ -23,8 +23,9 @@ from typing import Final
 
 from synthorg.approval.enums import ApprovalStatus
 from synthorg.approval.initiative_extension import EXTENSION_ESCALATION_ACTOR
+from synthorg.core.approval import ApprovalItem
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.plan import Plan
+from synthorg.core.plan import Plan, PlanItem
 from synthorg.core.plan_enums import PlanStatus
 from synthorg.core.plan_tree import PlanTree
 from synthorg.engine.initiative.completion import ItemProgress
@@ -367,56 +368,96 @@ async def drive_extensions(
         for leaf in workstream_needs_extension(
             plan.items, tree, workstream, progress_by_id
         ):
-            decision = decision_for(decisions, leaf)
-            status = decision.status if decision is not None else None
-            if status is ApprovalStatus.REJECTED:
-                logger.debug(
-                    INITIATIVE_EXTENSION_ALREADY_DECIDED,
-                    plan_id=str(plan.id),
-                    leaf_id=leaf.id,
-                    status=ApprovalStatus.REJECTED.value,
-                )
-                continue
-            if status is ApprovalStatus.PENDING:
-                logger.debug(
-                    INITIATIVE_EXTENSION_ALREADY_DECIDED,
-                    plan_id=str(plan.id),
-                    leaf_id=leaf.id,
-                    status=ApprovalStatus.PENDING.value,
-                )
-                holding = True
-                continue
-            if status is ApprovalStatus.APPROVED:
-                await replan_trigger.grant_extension(
-                    plan=plan,
-                    workstream=workstream,
-                    leaf=leaf,
-                    drive=drive,
-                    requested_by=EXTENSION_ESCALATION_ACTOR,
-                )
-                holding = True
-                continue
-            disposition = await replan_trigger.consider_extension(
-                plan=plan,
-                tree=tree,
-                workstream=workstream,
-                leaf=leaf,
+            if await _drive_leaf_extension(
+                plan,
+                tree,
+                workstream,
+                leaf,
+                decisions=decisions,
+                replan_trigger=replan_trigger,
                 drive=drive,
-            )
-            if disposition is ExtensionDisposition.ASKED:
-                if extension_escalation is not None:
-                    await extension_escalation.escalate(plan, workstream, leaf)
-                    holding = True
-            elif disposition in EXTENSION_IN_PROGRESS_DISPOSITIONS:
+                extension_escalation=extension_escalation,
+            ):
                 holding = True
-            elif disposition not in EXTENSION_REFUSED_DISPOSITIONS:
-                # ASKED, EXTENSION_IN_PROGRESS_DISPOSITIONS and
-                # EXTENSION_REFUSED_DISPOSITIONS partition every disposition
-                # consider_extension can answer; a member reaching here is a
-                # new one this loop was never updated to handle.
-                msg = f"unhandled ExtensionDisposition: {disposition!r}"
-                raise AssertionError(msg)
     return holding
+
+
+async def _drive_leaf_extension(
+    plan: Plan,
+    tree: PlanTree,
+    workstream: PlanItem,
+    leaf: PlanItem,
+    *,
+    decisions: tuple[ApprovalItem, ...],
+    replan_trigger: ReplanTriggerPort,
+    drive: PlanDriver | None,
+    extension_escalation: ExtensionEscalationService | None,
+) -> bool:
+    """Resolve one oversized leaf's extension state for this pass.
+
+    Split out of :func:`drive_extensions` so the per-workstream loop there
+    stays a dispatch table; this is the one leaf's worth of decision logic
+    it dispatches to.
+
+    Returns:
+        Whether this leaf is currently holding the plan at EXECUTING.
+
+    Raises:
+        AssertionError: If the disposition is none of ``ASKED``,
+            ``EXTENSION_IN_PROGRESS_DISPOSITIONS`` or
+            ``EXTENSION_REFUSED_DISPOSITIONS``, meaning a new
+            ``ExtensionDisposition`` member was added without updating this
+            to handle it.
+    """
+    decision = decision_for(decisions, leaf)
+    status = decision.status if decision is not None else None
+    if status is ApprovalStatus.REJECTED:
+        logger.debug(
+            INITIATIVE_EXTENSION_ALREADY_DECIDED,
+            plan_id=str(plan.id),
+            leaf_id=leaf.id,
+            status=ApprovalStatus.REJECTED.value,
+        )
+        return False
+    if status is ApprovalStatus.PENDING:
+        logger.debug(
+            INITIATIVE_EXTENSION_ALREADY_DECIDED,
+            plan_id=str(plan.id),
+            leaf_id=leaf.id,
+            status=ApprovalStatus.PENDING.value,
+        )
+        return True
+    if status is ApprovalStatus.APPROVED:
+        await replan_trigger.grant_extension(
+            plan=plan,
+            workstream=workstream,
+            leaf=leaf,
+            drive=drive,
+            requested_by=EXTENSION_ESCALATION_ACTOR,
+        )
+        return True
+    disposition = await replan_trigger.consider_extension(
+        plan=plan,
+        tree=tree,
+        workstream=workstream,
+        leaf=leaf,
+        drive=drive,
+    )
+    if disposition is ExtensionDisposition.ASKED:
+        if extension_escalation is None:
+            return False
+        await extension_escalation.escalate(plan, workstream, leaf)
+        return True
+    if disposition in EXTENSION_IN_PROGRESS_DISPOSITIONS:
+        return True
+    if disposition not in EXTENSION_REFUSED_DISPOSITIONS:
+        # ASKED, EXTENSION_IN_PROGRESS_DISPOSITIONS and
+        # EXTENSION_REFUSED_DISPOSITIONS partition every disposition
+        # consider_extension can answer; a member reaching here is a new one
+        # this was never updated to handle.
+        msg = f"unhandled ExtensionDisposition: {disposition!r}"
+        raise AssertionError(msg)
+    return False
 
 
 def drive_evaluation(plan: Plan, *, evaluation: EvaluationPort | None) -> None:

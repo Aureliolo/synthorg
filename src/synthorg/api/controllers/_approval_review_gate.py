@@ -35,6 +35,7 @@ from synthorg.core.domain_errors import (
     ConflictError,
     ForbiddenError,
     NotFoundError,
+    ServiceUnavailableError,
 )
 from synthorg.engine.errors import (
     SelfReviewError,
@@ -403,85 +404,105 @@ async def signal_resume_intent(
         has_reason=decision_reason is not None,
     )
 
-    # Flow 0: conversational-intake proposal. Inert (returns False)
-    # for every non-conversational approval, so it cannot disturb the
-    # parked-context / review-gate flows.
-    if await try_conversational_intake_resume(
-        app_state,
-        approval_id,
-        approved=approved,
-    ):
-        return
+    # Flows 0 through 0.9 all resolve ownership off a fresh reread of the
+    # decided approval (``_reread_approval_item``). A store outage past
+    # that reread's own retry budget raises ``ServiceUnavailableError``
+    # rather than returning ``None``, precisely so it is not misread as
+    # "not mine" here and misrouted into Flow 2's review-gate transition
+    # (which treats a stall/extension/plan approval as a plain completion
+    # review). Caught once, for the whole ownership-probing chain: the
+    # decision is already persisted by the caller, so this degrades to
+    # "routing deferred" rather than a 500, and rather than guessing.
+    try:
+        # Flow 0: conversational-intake proposal. Inert (returns False)
+        # for every non-conversational approval, so it cannot disturb the
+        # parked-context / review-gate flows.
+        if await try_conversational_intake_resume(
+            app_state,
+            approval_id,
+            approved=approved,
+        ):
+            return
 
-    # Flow 0.5: agent-initiated invite consent. Inert for every
-    # non-invite approval. Repo-direct + ungated, so consent resolves
-    # even after the invite feature is toggled off.
-    if await try_conversational_invite_resume(
-        app_state,
-        approval_id,
-        approved=approved,
-        decided_by=decided_by,
-    ):
-        return
+        # Flow 0.5: agent-initiated invite consent. Inert for every
+        # non-invite approval. Repo-direct + ungated, so consent resolves
+        # even after the invite feature is toggled off.
+        if await try_conversational_invite_resume(
+            app_state,
+            approval_id,
+            approved=approved,
+            decided_by=decided_by,
+        ):
+            return
 
-    # Flow 0.7: what a plan review parked. Inert for everything else. The plan's
-    # own approval dispatches the parked plan, or cancels the parent task on
-    # rejection; a question parked off that plan settles onto the durable plan
-    # and builds nothing. A question must not reach the flows below, which read
-    # it as a task-completion review and refuse it.
-    if await try_plan_review_resume(
-        app_state,
-        approval_id,
-        approved=approved,
-        decided_by=decided_by,
-        decision_reason=decision_reason,
-    ):
-        return
+        # Flow 0.7: what a plan review parked. Inert for everything else. The
+        # plan's own approval dispatches the parked plan, or cancels the parent
+        # task on rejection; a question parked off that plan settles onto the
+        # durable plan and builds nothing. A question must not reach the flows
+        # below, which read it as a task-completion review and refuse it.
+        if await try_plan_review_resume(
+            app_state,
+            approval_id,
+            approved=approved,
+            decided_by=decided_by,
+            decision_reason=decision_reason,
+        ):
+            return
 
-    # Flow 0.75: a stalled initiative the operator was asked about. Inert for
-    # everything else. It has to claim the item HERE rather than lower down:
-    # the decision carries the objective task's id, and an unclaimed item with
-    # a task_id reaches the review gate below, which reads it as a completion
-    # review and refuses it.
-    if await try_initiative_stall_resume(
-        app_state,
-        approval_id,
-        approved=approved,
-        decided_by=decided_by,
-    ):
-        return
+        # Flow 0.75: a stalled initiative the operator was asked about. Inert
+        # for everything else. It has to claim the item HERE rather than lower
+        # down: the decision carries the objective task's id, and an unclaimed
+        # item with a task_id reaches the review gate below, which reads it as
+        # a completion review and refuses it.
+        if await try_initiative_stall_resume(
+            app_state,
+            approval_id,
+            approved=approved,
+            decided_by=decided_by,
+        ):
+            return
 
-    # Flow 0.76: an extension ask parked on the autonomy gate. Same claim
-    # reason as flow 0.75.
-    if await try_initiative_extension_resume(
-        app_state,
-        approval_id,
-        approved=approved,
-        decided_by=decided_by,
-    ):
-        return
+        # Flow 0.76: an extension ask parked on the autonomy gate. Same claim
+        # reason as flow 0.75.
+        if await try_initiative_extension_resume(
+            app_state,
+            approval_id,
+            approved=approved,
+            decided_by=decided_by,
+        ):
+            return
 
-    # Flow 0.8: project decision. Records an approved decision:project answer
-    # as a brain DECISION entry, then falls through so the parked agent still
-    # resumes with the choice injected (mid-execution flow below). Never
-    # short-circuits and never raises for a routine miss.
-    await record_project_decision(
-        app_state,
-        approval_id,
-        approved=approved,
-        decided_by=decided_by,
-        decision_reason=decision_reason,
-    )
+        # Flow 0.8: project decision. Records an approved decision:project
+        # answer as a brain DECISION entry, then falls through so the parked
+        # agent still resumes with the choice injected (mid-execution flow
+        # below). Never short-circuits and never raises for a routine miss.
+        await record_project_decision(
+            app_state,
+            approval_id,
+            approved=approved,
+            decided_by=decided_by,
+            decision_reason=decision_reason,
+        )
 
-    # Flow 0.9: org hire. Inert for every non-hiring approval. A hiring item
-    # carries no task_id, so without this flow it fell through the whole
-    # chain and the approved hire registered nobody.
-    if await try_org_hire_resume(
-        app_state,
-        approval_id,
-        approved=approved,
-        decided_by=decided_by,
-    ):
+        # Flow 0.9: org hire. Inert for every non-hiring approval. A hiring
+        # item carries no task_id, so without this flow it fell through the
+        # whole chain and the approved hire registered nobody.
+        if await try_org_hire_resume(
+            app_state,
+            approval_id,
+            approved=approved,
+            decided_by=decided_by,
+        ):
+            return
+    except ServiceUnavailableError as exc:
+        logger.warning(
+            APPROVAL_GATE_RESUME_FAILED,
+            approval_id=approval_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+            note="approval store unreadable during ownership routing; "
+            "deferring rather than risking a misroute into the review gate",
+        )
         return
 
     # Flow 1: mid-execution parking.

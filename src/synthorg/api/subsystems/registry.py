@@ -1449,7 +1449,11 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
     SubsystemSpec(
         name="project_rollup_service",
         provides=CapabilityId.PROJECT_ROLLUP_SERVICE,
-        requires=(CapabilityId.PERSISTENCE, CapabilityId.TASK_ENGINE),
+        requires=(
+            CapabilityId.PERSISTENCE,
+            CapabilityId.TASK_ENGINE,
+            CapabilityId.SETTINGS_RESOLVER,
+        ),
         activate=_activate_project_rollup,
     ),
     # The four below are the initiative tail, declared one per collaborator and

@@ -80,18 +80,34 @@ def decision_for(
     :meth:`ExtensionEscalationService.open_decisions`, so only the leaf and
     the actor are checked here.
 
+    More than one decision can exist for the same leaf: an ``EXPIRED`` ask is
+    re-raised on a later pass (see :meth:`ExtensionEscalationService.
+    status_for`), and the store's own return order is not chronological, so a
+    fresh ``PENDING`` decision is not guaranteed to sort after the expired one
+    it replaced. Picking an arbitrary match risks reading the stale
+    ``EXPIRED`` record instead, which both this and :meth:`escalate`'s own
+    idempotency check would then read as "nothing open", minting an unbounded
+    string of duplicate pending decisions across passes. A ``PENDING`` match
+    is therefore always preferred; among settled matches (nothing pending),
+    the most recently created one is the active answer.
+
     Returns:
         The matching decision, or ``None`` when none exists for this leaf.
     """
-    return next(
-        (
-            item
-            for item in decisions
-            if str(item.requested_by) == EXTENSION_ESCALATION_ACTOR
-            and item.metadata.get(LEAF_ID_METADATA_KEY) == leaf.id
-        ),
-        None,
+    matches = tuple(
+        item
+        for item in decisions
+        if str(item.requested_by) == EXTENSION_ESCALATION_ACTOR
+        and item.metadata.get(LEAF_ID_METADATA_KEY) == leaf.id
     )
+    if not matches:
+        return None
+    pending = next(
+        (item for item in matches if item.status is ApprovalStatus.PENDING), None
+    )
+    if pending is not None:
+        return pending
+    return max(matches, key=lambda item: item.created_at)
 
 
 def _describe(workstream: PlanItem, leaf: PlanItem) -> str:

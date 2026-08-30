@@ -9,6 +9,7 @@ import pytest
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalSource, ApprovalStatus
 from synthorg.approval.initiative_extension import (
+    EXTENSION_ESCALATION_ACTOR,
     INITIATIVE_EXTENSION_ACTION_TYPE,
     LEAF_ID_METADATA_KEY,
     PLAN_ID_METADATA_KEY,
@@ -121,6 +122,42 @@ class TestStatusFor:
         service = _service(store)
 
         assert await service.status_for(plan, leaf) is None
+
+    async def test_a_pending_decision_wins_over_a_stale_expired_one(self) -> None:
+        """An older EXPIRED record must not shadow a fresh re-ask.
+
+        The store's own return order is not chronological, so seeding the
+        stale record first (its natural creation order) reproduces the shape
+        a real re-ask leaves behind: an EXPIRED decision the store still
+        holds, followed by the PENDING one that replaced it. Picking
+        whichever sorts first would read this leaf as still expired even
+        though a decision is actually open.
+        """
+        plan = _plan()
+        workstream, leaf = plan.items
+        store = ApprovalStore()
+        await store.add(
+            ApprovalItem(
+                id=uuid4(),
+                action_type=NotBlankStr(INITIATIVE_EXTENSION_ACTION_TYPE),
+                title=NotBlankStr("Extend workstream: stale ask"),
+                description=NotBlankStr("A prior ask that lapsed unanswered"),
+                requested_by=NotBlankStr(EXTENSION_ESCALATION_ACTOR),
+                risk_level=ApprovalRiskLevel.MEDIUM,
+                source=ApprovalSource.REVIEW_GATE,
+                status=ApprovalStatus.EXPIRED,
+                created_at=datetime(2026, 7, 1, tzinfo=UTC),
+                metadata={
+                    PLAN_ID_METADATA_KEY: str(plan.id),
+                    LEAF_ID_METADATA_KEY: leaf.id,
+                },
+            )
+        )
+        service = _service(store)
+
+        await service.escalate(plan, workstream, leaf)
+
+        assert await service.status_for(plan, leaf) is ApprovalStatus.PENDING
 
 
 class TestEscalate:

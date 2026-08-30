@@ -44,6 +44,7 @@ from synthorg.engine.errors import (
     TaskVersionConflictError,
 )
 from synthorg.engine.review_gate import ReviewGateService
+from synthorg.observability.events.approval_gate import APPROVAL_GATE_RESUME_FAILED
 from synthorg.observability.events.security import (
     SECURITY_APPROVAL_APPROVED,
     SECURITY_APPROVAL_REJECTED,
@@ -315,6 +316,40 @@ class TestSignalResumeIntent:
         # (item is None -> probe), not short-circuited before it.
         mock_gate.has_parked_context.assert_awaited_once_with("approval-1")
         mock_review.dispatch_completion.assert_not_awaited()
+
+    async def test_unreadable_store_stops_routing_before_the_review_gate(
+        self,
+    ) -> None:
+        """A store outage during ownership routing must not reach Flow 2.
+
+        Regression: ``_reread_approval_item`` used to swallow every reread
+        failure to ``None``, which the ownership-probing flows (plan review,
+        initiative stall, workstream extension) read as "not mine", letting
+        an approval whose ``task_id`` happens to be set fall through into
+        Flow 2's review-gate transition and be misread as an ordinary
+        completion review.
+        """
+        mock_review = mock_of[ReviewGateService](dispatch_completion=AsyncMock())
+        app_state = _app_state(
+            gate=mock_of[ApprovalGate](),
+            review_gate=mock_review,
+            store=mock_of[ApprovalStore](
+                get=AsyncMock(side_effect=RuntimeError("store down")),
+            ),
+        )
+
+        with capture_logs() as logs:
+            await signal_resume_intent(
+                app_state,
+                "approval-1",
+                approved=True,
+                decided_by="admin",
+                task_id="task-1",
+            )
+
+        mock_review.dispatch_completion.assert_not_awaited()
+        events = [e["event"] for e in logs]
+        assert APPROVAL_GATE_RESUME_FAILED in events
 
     async def test_flow1_dispatch_failure_is_swallowed_not_5xx(self) -> None:
         """A dispatch failure is logged, not raised (decision persisted).
