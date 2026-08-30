@@ -11,19 +11,63 @@ reading `TAGLINE: Release notes unavailable.` followed by a
 `### What you'll notice` header with one bullet reading "Release notes
 unavailable.".
 
+THIS IS A SUMMARY, NOT A LIST AND NOT A TOP-THREE. It should leave a reader
+knowing what this release was about as a whole: every substantial area of work
+represented, nothing meaningful missing. The commit-based changelog printed
+directly below already gives the row-by-row detail, so repeating it adds
+nothing, but neither does naming only the two flashiest features and letting the
+rest of the release go unmentioned.
+
+The mechanism that reconciles those is GROUPING, not omission. Twenty entries
+that all advance one area become ONE bullet describing that area. The release's
+themes all appear; its individual commits do not.
+
 METHOD (work internally; do not show your reasoning):
 1. Read every entry. The subject names the change; the prose under it says what
    it actually does. Base your judgement on the prose, not the subject alone.
-2. Classify each into exactly ONE bucket:
+2. Cluster the entries by what they are actually about. A cluster may be one
+   entry or thirty; either way it earns at most one bullet, written about the
+   cluster rather than about its largest member. Work through the clusters so
+   the whole release is represented, not just its opening few.
+3. Only genuine noise is dropped outright rather than absorbed: dependency and
+   lockfile bumps, CI plumbing, test hygiene, internal renames, and formatting.
+   Everything else belongs to some cluster and is covered by that cluster's
+   bullet.
+4. Before writing anything, finish the cluster list and give each cluster ONE
+   bucket. The number of bullets you emit equals the number of clusters,
+   exactly: that is what keeps one change from being described twice under two
+   headers, which is this task's most common failure. If the cluster count sits
+   outside the band below, merge the closest clusters until it fits; do not
+   drop one to get there.
+5. Each cluster's bullet goes into exactly ONE bucket:
    - NOTICE: an existing user directly observes this on upgrade (a fix to broken
      behaviour, a UX change, a new security requirement, a changed default).
    - NEW: a capability or surface that did not exist before and a user can opt
      into.
-   - HOOD: internal only (refactor, dependency bump, test hygiene, CI). Keep
-     only if a power user would genuinely care (security-relevant bump,
-     rearchitecture).
-3. Group related entries together. Surface only the most impactful. Drop pure
-   noise.
+   - HOOD: reserved for a cluster that appears in NEITHER section above and
+     that a power user would still want to know about, such as a security
+     posture change or a rearchitecture that alters behaviour under load.
+     It is NOT the place to explain how something you already bulleted was
+     implemented: if "Under the hood" says "the job registry now prevents
+     foreground timeouts from killing background work" while "What you'll
+     notice" already says background commands survive unrelated timeouts,
+     that is one cluster written twice, and the second copy goes. "We
+     optimised an algorithm", "we updated dependencies", "we removed an
+     unused subsystem" and "we hardened cleanup" never qualify. Most releases
+     clear this bar with nothing, and omitting the section is normal.
+6. One change gets ONE bullet, in ONE section. A change that is both new and
+   user-observable is NEW, and it does not also appear under "What you'll
+   notice". Several entries describing one capability (the feature, its fixes,
+   its follow-ups) are one bullet, not one each. Writing about the same change
+   twice is the most common way this section turns into the changelog it sits
+   above.
+7. Read back each bullet you have written and ask: if this line were deleted,
+   would any reader be worse off? If not, delete it. In particular, delete any
+   bullet that is a VAGUER RESTATEMENT of one you already wrote: having said
+   what a capability does, do not add a second line announcing that it exists.
+   Two bullets that answer the same question were always one cluster.
+     BAD PAIR: "- Agents can search the live web through Brave, Tavily or Exa"
+               "- Native web search is available as a first-class capability"
 
 OUTPUT -- in THIS EXACT ORDER:
 
@@ -71,17 +115,36 @@ what the user gets, not what the developer did.
   GOOD: "- Dropped WebSocket connections now reconnect automatically and show
          status"
 
-CONDENSE hard. The TOTAL bullet count across ALL THREE sections combined is a
-HARD CEILING, not a target: 1-2 for a micro-patch, 3-4 a small patch, 5-7 a
-typical minor, 8-12 a large minor, 13-15 only a massive major rollup. Prefer the
-smaller end of whichever band applies.
+Every bullet is a SENTENCE WITH A VERB, saying what now happens or what someone
+can now do. A bare noun phrase naming a feature is a subject line in disguise: it
+dodges the banned verb by dropping the verb entirely, and it tells the reader
+nothing the changelog below does not already. This applies to "What's new" as
+much as the others, and that is the section where it goes wrong.
+  BAD:  "- Background shell command execution with job lifecycle management"
+  BAD:  "- Native web search with Brave, Tavily and Exa presets"
+  GOOD: "- Agents can start a long-running command, carry on, and collect its
+         output on a later turn"
+  GOOD: "- Agents can search the live web, through whichever of three
+         providers you hold a key for"
 
-Count the bullets you are about to emit before you answer. If the total is over
-the ceiling, merge related ones and drop the weakest until it fits. A release
-with 180 entries still gets at most 15 bullets: that is the entire point of the
-section, and an unfiltered list of everything that changed is what the changelog
-underneath it already is. "Under the hood" is the first section to cut from, and
-it is fine to omit it entirely.
+LENGTH. Aim for a TOTAL across all three sections, scaled to how much the
+release contains. Count the entries in the fence and use the matching band:
+
+  under 10 entries    ->  1-3 bullets
+  10-30 entries       ->  3-6 bullets
+  30-60 entries       ->  5-8 bullets
+  60-120 entries      ->  8-12 bullets
+  over 120 entries    ->  12-18 bullets
+
+These are the shape of a good answer, not a quota to fill. Landing one or two
+outside the band is fine when the release genuinely warrants it. Being far
+outside it means something went wrong: well under, and you have dropped work a
+user would have wanted to hear about; well over, and you have stopped selecting
+and started classifying, which produces a second copy of the changelog printed
+directly below.
+
+Never pad to reach a number, and never drop something genuinely user-visible to
+hit one.
 
 Each bullet is ONE line, maximum 20 words. No emoji, no marketing language, no
 version numbers, no commit hashes, no code blocks, no HTML comments. Do not

@@ -59,6 +59,11 @@ jobs:
       # tracker never fires on it.
       highlights_status: ${{ steps.highlights.outputs.status }}
       highlights_skipped: ${{ steps.digest.outputs.skip }}
+      # A digest cut short by the compare endpoint's 250-commit ceiling omits
+      # the oldest work in the release without failing anything, which is the
+      # same silent degradation the tracker exists to end.
+      highlights_truncated: ${{ steps.digest.outputs.truncated }}
+      highlights_commits: ${{ steps.digest.outputs.total_commits }}
     steps:
       # Minimal checkout of main required so `./.github/actions/...`
       # paths resolve on the runner disk. `fetch-depth: 1` is enough;
@@ -218,14 +223,64 @@ jobs:
           # build_release_digest.py drops the structural noise (issue refs,
           # headings, tables, fenced code, pre-PR review chatter) and caps each
           # commit, because the uncapped messages for one release run to about
-          # twice any model's context window.
-          DIGEST=$(gh api "repos/$GITHUB_REPOSITORY/compare/${BASE}...${HEAD_SHA}" \
-            | python3 scripts/build_release_digest.py)
+          # twice any model's context window. Its stderr carries the
+          # truncation warning, which the tracker below reads: a digest cut
+          # short by the compare endpoint's own 250-commit ceiling silently
+          # omits the oldest work in the release.
+          COMPARE=$(gh api "repos/$GITHUB_REPOSITORY/compare/${BASE}...${HEAD_SHA}")
+          TOTAL=$(printf '%s' "$COMPARE" | jq -r '.total_commits // 0')
+          DIGEST=$(printf '%s' "$COMPARE" | python3 scripts/build_release_digest.py 2> digest-stderr.txt) || true
+          cat digest-stderr.txt
+          if grep -q 'digest is partial' digest-stderr.txt; then
+            echo "truncated=true" >> "$GITHUB_OUTPUT"
+          fi
           if [ -z "${DIGEST// /}" ]; then
             echo "::warning::digest for ${BASE}...${HEAD_SHA} came out empty; skipping Highlights"
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+
+          # ── Regeneration throttle ──
+          # This workflow runs on every push to main, and the digest it builds
+          # grows by one commit at a time. Regenerating per push would reroll
+          # the tagline several times a day (so the line reviewed on the PR is
+          # never the line that ships) and pay the full input cost each time
+          # for a document that barely moved.
+          #
+          # The threshold scales with the release, because one commit means
+          # something different at 10 commits than at 180. Below 30 it is 1, so
+          # a young release regenerates on every push, which is right: every
+          # commit is then a material fraction of it.
+          if [ "$TOTAL" -lt 30 ]; then
+            THRESHOLD=1
+          else
+            THRESHOLD=$((TOTAL / 30))
+            [ "$THRESHOLD" -lt 2 ] && THRESHOLD=2
+          fi
+
+          # Prior state rides in the sticky comment, the same place the block
+          # itself lives, so there is no second store to fall out of step.
+          STATE=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
+            --jq 'map(select(.body | contains("<!-- HIGHLIGHTS_STICKY -->"))) | last | .body // empty' \
+            | sed -n 's/.*HIGHLIGHTS_STATE base=\([^ ]*\) commits=\([0-9]*\).*/\1 \2/p') || STATE=""
+          PREV_BASE=$(printf '%s' "$STATE" | cut -d' ' -f1)
+          PREV_COUNT=$(printf '%s' "$STATE" | cut -d' ' -f2)
+
+          REGENERATE=true
+          REASON="no previous Highlights for this release"
+          if [ -n "$PREV_COUNT" ] && [ "$PREV_BASE" = "$BASE" ]; then
+            GROWTH=$((TOTAL - PREV_COUNT))
+            if [ "$GROWTH" -lt "$THRESHOLD" ]; then
+              REGENERATE=false
+              REASON="only ${GROWTH} new commit(s) since the last run, threshold ${THRESHOLD}"
+            else
+              REASON="${GROWTH} new commit(s) since the last run, threshold ${THRESHOLD}"
+            fi
+          fi
+          echo "regenerate=${REGENERATE} (${REASON})"
+          echo "regenerate=${REGENERATE}" >> "$GITHUB_OUTPUT"
+          echo "total_commits=${TOTAL}" >> "$GITHUB_OUTPUT"
+          echo "base=${BASE}" >> "$GITHUB_OUTPUT"
 
           # Write to a file because GITHUB_OUTPUT does not handle multi-line
           # content well via simple echo. Commit prose is gated by
@@ -241,11 +296,11 @@ jobs:
             printf '%s' "$ESCAPED_DIGEST"
             printf '\n</untrusted-changelog>\n'
           } > changelog-digest.txt
-          echo "Digest for ${BASE}...${HEAD_SHA}: $(wc -c < changelog-digest.txt) bytes"
+          echo "Digest for ${BASE}...${HEAD_SHA}: $(wc -c < changelog-digest.txt) bytes, ${TOTAL} commits"
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
       - name: Generate Highlights via Mistral
-        if: steps.release.outputs.pr != '' && steps.digest.outputs.skip != 'true'
+        if: steps.release.outputs.pr != '' && steps.digest.outputs.skip != 'true' && steps.digest.outputs.regenerate == 'true'
         id: highlights
         # Highlights are cosmetic release-note polish; Release Please has
         # already created / updated the release PR by the time this step
@@ -379,9 +434,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.release.outputs.pr && fromJSON(steps.release.outputs.pr).number || '' }}
           BLOCK: ${{ steps.render.outputs.block }}
+          BASE: ${{ steps.digest.outputs.base }}
+          TOTAL: ${{ steps.digest.outputs.total_commits }}
         run: |
           set -euo pipefail
-          COMMENT_BODY=$(printf '%s\n\n%s\n' '<!-- HIGHLIGHTS_STICKY -->' "$BLOCK")
+          # The state marker rides on the comment rather than in a second
+          # store, so the record of what was last summarised cannot drift from
+          # the summary itself. It sits outside the HIGHLIGHTS markers so
+          # release-finalize.yml's extraction never carries it to the release.
+          STATE=$(printf '<!-- HIGHLIGHTS_STATE base=%s commits=%s -->' "$BASE" "$TOTAL")
+          COMMENT_BODY=$(printf '%s\n%s\n\n%s\n' '<!-- HIGHLIGHTS_STICKY -->' "$STATE" "$BLOCK")
 
           EXISTING=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
             --jq 'map(select(.body | contains("<!-- HIGHLIGHTS_STICKY -->"))) | first | .id // empty')
@@ -397,21 +459,48 @@ jobs:
           fi
 
       - name: Mirror Highlights into release PR body
-        if: steps.render.outputs.block != ''
-        # Convenience only: the comment above already holds the canonical
-        # copy, so a failure here costs a reviewer some scrolling and nothing
-        # else.
+        if: steps.release.outputs.pr != '' && steps.digest.outputs.skip != 'true'
+        # Reads the block back from the sticky comment rather than taking it
+        # from the render step, so it runs on EVERY push including the ones
+        # that skipped regeneration. That matters: release-please rewrites the
+        # body whenever the changelog changes, and without an unconditional
+        # mirror a throttled push would leave the body stripped until the next
+        # regeneration.
+        #
+        # Convenience only: the comment holds the canonical copy, so a failure
+        # here costs a reviewer some scrolling and nothing else.
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ steps.release.outputs.pr && fromJSON(steps.release.outputs.pr).number || '' }}
-          BLOCK: ${{ steps.render.outputs.block }}
         run: |
           set -euo pipefail
+          COMMENT=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
+            --jq 'map(select(.body | contains("<!-- HIGHLIGHTS_STICKY -->"))) | last | .body // empty')
+          if [ -z "$COMMENT" ]; then
+            echo "No Highlights sticky comment yet; nothing to mirror."
+            exit 0
+          fi
+
+          # Extract by explicit line numbers after confirming the pair is
+          # present and ordered: `sed '/START/,/END/'` runs to EOF when the
+          # end marker is missing, which would paste the whole comment.
+          START_LINE=$(grep -nFx '<!-- HIGHLIGHTS_START -->' <<< "$COMMENT" | head -n1 | cut -d: -f1 || true)
+          END_LINE=$(grep -nFx '<!-- HIGHLIGHTS_END -->' <<< "$COMMENT" | head -n1 | cut -d: -f1 || true)
+          if [ -z "$START_LINE" ] || [ -z "$END_LINE" ] || [ "$START_LINE" -ge "$END_LINE" ]; then
+            echo "::warning::sticky comment has no well-formed Highlights block; body left alone."
+            exit 0
+          fi
+          BLOCK=$(sed -n "${START_LINE},${END_LINE}p" <<< "$COMMENT")
+
           CUR_BODY=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq '.body')
           CLEANED=$(printf '%s' "$CUR_BODY" \
             | sed '/<!-- HIGHLIGHTS_START -->/,/<!-- HIGHLIGHTS_END -->/d')
           NEW_BODY=$(printf '%s\n\n%s' "$BLOCK" "$CLEANED")
+          if [ "$NEW_BODY" = "$CUR_BODY" ]; then
+            echo "PR body already carries this block; no edit needed."
+            exit 0
+          fi
           gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body "$NEW_BODY"
           echo "Highlights mirrored into PR #$PR_NUMBER body"
 
@@ -550,8 +639,8 @@ jobs:
   # policy every other workflow here follows.
   #
   # `skipped` is not a failure. A `No-Highlights:` trailer, a deferred body
-  # read and the first release (no stable base to compare against) are all
-  # deliberate outcomes and must not open a tracker.
+  # read, a throttled regeneration and the first release (no stable base to
+  # compare against) are all deliberate outcomes and must not open a tracker.
   report-highlights-failure:
     name: Open / update tracking issue on Highlights failure
     needs: release-please
@@ -560,8 +649,13 @@ jobs:
       && !github.event.repository.fork
       && needs.release-please.result == 'success'
       && needs.release-please.outputs.highlights_skipped != 'true'
-      && needs.release-please.outputs.highlights_status != ''
-      && needs.release-please.outputs.highlights_status != 'ok'
+      && (
+        needs.release-please.outputs.highlights_truncated == 'true'
+        || (
+          needs.release-please.outputs.highlights_status != ''
+          && needs.release-please.outputs.highlights_status != 'ok'
+        )
+      )
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -577,6 +671,8 @@ jobs:
         id: body
         env:
           STATUS: ${{ needs.release-please.outputs.highlights_status }}
+          TRUNCATED: ${{ needs.release-please.outputs.highlights_truncated }}
+          COMMITS: ${{ needs.release-please.outputs.highlights_commits }}
           MODEL: ${{ env.HIGHLIGHTS_MODEL }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           HEAD_SHA: ${{ github.sha }}
@@ -585,10 +681,11 @@ jobs:
           {
             echo 'body<<TRACKING_ISSUE_BODY_EOF'
             cat <<EOF
-          Release-notes Highlights generation failed at $(date -u +%Y-%m-%dT%H:%M:%SZ) on $HEAD_SHA.
+          Release-notes Highlights degraded at $(date -u +%Y-%m-%dT%H:%M:%SZ) on $HEAD_SHA.
 
           Model: \`${MODEL}\`
-          Outcome: \`${STATUS}\`
+          Generation outcome: \`${STATUS:-not reached}\`
+          Digest truncated: \`${TRUNCATED:-false}\` (${COMMITS:-?} commits in range)
 
           Run: ${RUN_URL}
 
@@ -601,6 +698,11 @@ jobs:
           the account's plan and \`HIGHLIGHTS_MODEL\` in release-cut.yml needs
           repointing. Run \`release-highlights-dryrun.yml\` to list the models
           the key can currently call.
+
+          If truncation is \`true\`, the range has passed the compare
+          endpoint's 250-commit ceiling, so the digest silently omits the
+          OLDEST work in the release and the summary cannot mention it. Cut a
+          release, or teach the digest step to paginate.
           EOF
             echo 'TRACKING_ISSUE_BODY_EOF'
           } >> "$GITHUB_OUTPUT"
@@ -622,6 +724,7 @@ jobs:
       always()
       && !github.event.repository.fork
       && needs.release-please.outputs.highlights_status == 'ok'
+      && needs.release-please.outputs.highlights_truncated != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
