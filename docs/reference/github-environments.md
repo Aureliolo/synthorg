@@ -223,23 +223,6 @@ installation token (valid ≤1 hour) via the
    (both SHA-pinned in-workflow). The latter backs the weekly GHCR prune
    job; an Actions-restricted fork that omits it fails the cleanup at
    action-resolution time.
-8. Add the `MISTRAL_API_KEY` repository secret. The release-notes
-   tagline + Highlights step in `release-cut.yml` and the
-   `release-highlights-dryrun.yml` dry-run read it; a repository-level
-   secret is visible to the `release` environment job. The step is
-   failure-tolerant, so a missing or invalid key only skips the
-   Highlights block, never the release, but a failure now opens the
-   `Release Highlights generation is failing` tracker rather than
-   passing in silence.
-
-   Mistral's free plan carries **$10/month in API credits** (Pro: $30);
-   it is not the token-quota "Experiment tier" older docs describe. The
-   model is declared once as `HIGHLIGHTS_MODEL` in `release-cut.yml`.
-   Which models a plan admits is published nowhere, so when one starts
-   returning `403 tier_not_allowed` the answer is to dispatch
-   `release-highlights-dryrun.yml`, which lists what the key can call
-   and rehearses the prompt against any candidate.
-
 **No rotation schedule**. Installation tokens are ephemeral:
 minted per workflow run and valid for at most one hour, then
 discarded. The only long-lived secret is the App private key,
@@ -256,6 +239,27 @@ declares them in its YAML. Tag-only release jobs
 the separate `release-tags` environment, which carries no
 privileged secrets, so a forged `v*` tag on unmerged code
 cannot reach the App credentials.
+
+## `MISTRAL_API_KEY` (repository secret)
+
+Unrelated to the App above: this is a plain repository secret, not an
+environment one, and it mints nothing. The release-notes tagline +
+Highlights step in `release-cut.yml` and the
+`release-highlights-dryrun.yml` dry-run read it; a repository-level
+secret is visible to the `release` environment job.
+
+The step is failure-tolerant, so a missing or invalid key only skips the
+Highlights block, never the release. Silence is not the outcome, though:
+a failure opens the self-closing `Release Highlights generation is
+failing` tracker, and the block already published survives, because the
+sticky comment is only rewritten on a successful generation.
+
+Mistral's free plan carries **$10/month in API credits** (Pro: $30); it
+is not a token quota. The model is declared once as `HIGHLIGHTS_MODEL`
+in `release-cut.yml`. Which models a plan admits is published nowhere,
+so when one starts returning `403 tier_not_allowed` the answer is to
+dispatch `release-highlights-dryrun.yml`, which lists what the key can
+call and rehearses the real prompt and digest against any candidate.
 
 ## Testing the `apko-lock` gate
 

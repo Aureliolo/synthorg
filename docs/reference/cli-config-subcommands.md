@@ -67,7 +67,7 @@ It covers the CLI binary alone. The compose apply, image pull and container rest
 
 ## `changelog_view`
 
-Enum, either `highlights` (default) or `commits`. Sets the default view for the `synthorg update` changelog between installed and target releases. `highlights` shows the AI-generated three-section summary; `commits` shows the Release Please commit-based changelog. In the interactive walk, `c` toggles between the two views for the current session without modifying the persisted value.
+Enum, either `highlights` (default) or `commits`. Sets the default view for the `synthorg update` changelog between installed and target releases. `highlights` shows the AI-generated tagline plus two-section summary; `commits` shows the Release Please commit-based changelog. In the interactive walk, `c` toggles between the two views for the current session without modifying the persisted value.
 
 The changelog is presented one of three ways, decided per invocation:
 

@@ -5,10 +5,9 @@ name: Release - Highlights (dry-run)
 # integration against a real commit range WITHOUT waiting for a release and
 # WITHOUT editing any real PR. Output lands in the run's step summary only.
 #
-# It also answers "which models can this key actually call", because that is
-# not documented anywhere public and is the question a `tier_not_allowed`
-# failure raises. `mistral-large-latest` left the free plan on 2026-08-29 and
-# the only way to find out was to ask the API.
+# It also answers "which models can this key actually call", because a plan's
+# model entitlement is not published anywhere and the API is the only place to
+# ask. That is the question a `tier_not_allowed` failure raises.
 #
 # The prompt and the digest builder are the SAME files release-cut.yml uses
 # (`.github/release-highlights-prompt.md`, `scripts/build_release_digest.py`),
@@ -123,8 +122,27 @@ jobs:
           HEAD_REF: ${{ inputs.head }}
         run: |
           set -euo pipefail
+          # A ref reaches `gh api` in a URL path. The actor gate above already
+          # limits this to the repository owner, so this is hygiene rather than
+          # a control: it keeps a future loosening of that gate from turning
+          # these inputs into a way to read other repositories.
+          for ref in "$BASE_INPUT" "$HEAD_REF"; do
+            case "$ref" in
+              "" | *[!A-Za-z0-9._/-]*)
+                if [ -n "$ref" ]; then
+                  echo "::error::ref '${ref}' contains characters a git ref cannot hold"
+                  exit 1
+                fi
+                ;;
+            esac
+          done
+
           if [ -n "${SAMPLE// /}" ]; then
-            DIGEST="$SAMPLE"
+            # The sample is fenced by the same code path as a real digest, so
+            # a hand-pasted payload rehearses the escape too.
+            printf '%s' "$SAMPLE" \
+              | python3 -c 'import sys; from scripts.build_release_digest import fence; sys.stdout.write(fence(sys.stdin.read()))' \
+              > changelog-digest.txt
             echo "Using the supplied sample digest."
           else
             BASE="$BASE_INPUT"
@@ -132,21 +150,11 @@ jobs:
               BASE=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name')
             fi
             echo "Building digest for ${BASE}...${HEAD_REF}"
-            DIGEST=$(gh api "repos/$GITHUB_REPOSITORY/compare/${BASE}...${HEAD_REF}" \
-              | python3 scripts/build_release_digest.py)
+            # The script owns the untrusted-content fence and its closing-tag
+            # escape, so this rehearses the real wrapper rather than a copy.
+            gh api "repos/$GITHUB_REPOSITORY/compare/${BASE}...${HEAD_REF}" \
+              | python3 scripts/build_release_digest.py > changelog-digest.txt
           fi
-
-          # Same untrusted-content fence + escape policy as release-cut.yml.
-          # The literal ``</untrusted-changelog>`` sequence is escaped so a
-          # prompt-injection payload cannot close the fence and smuggle
-          # instructions into the model turn.
-          ESCAPED=$(printf '%s' "$DIGEST" \
-            | sed -E 's#</(untrusted-changelog)>#</\1_escaped>#gI')
-          {
-            printf '<untrusted-changelog>\n'
-            printf '%s' "$ESCAPED"
-            printf '\n</untrusted-changelog>\n'
-          } > changelog-digest.txt
 
           echo "Digest length: $(wc -c < changelog-digest.txt) bytes"
 
@@ -167,6 +175,7 @@ jobs:
 
           RESP=$(printf '%s' "$PAYLOAD" | curl -sS \
             --retry 3 --retry-delay 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 180 \
             -w '\n%{http_code}' \
             -X POST https://api.mistral.ai/v1/chat/completions \
             -H "Authorization: Bearer $MISTRAL_API_KEY" \
@@ -175,7 +184,12 @@ jobs:
           CODE=$(printf '%s' "$RESP" | tail -n1)
           BODY=$(printf '%s' "$RESP" | sed '$d')
           if [ "$CODE" != "200" ]; then
-            echo "::error::Mistral returned HTTP ${CODE}: $(printf '%s' "$BODY" | head -c 300)"
+            # Named error fields only: this log is public and the raw body is
+            # a third party's text, not ours to republish wholesale.
+            DETAIL=$(printf '%s' "$BODY" \
+              | jq -r '[.type // .object, .code, .message] | map(select(. != null)) | join(" ")' 2>/dev/null \
+              | head -c 200) || DETAIL=""
+            echo "::error::Mistral returned HTTP ${CODE}: ${DETAIL:-no parsable error fields}"
             exit 1
           fi
           CONTENT=$(printf '%s' "$BODY" | jq -r '.choices[0].message.content // empty')
@@ -213,12 +227,20 @@ jobs:
             echo ""
             echo "## Highlights"
             echo ""
-            TAGLINE=$(printf '%s' "$RESPONSE" | sed -n '1s/^TAGLINE:[[:space:]]*//p')
+            # First NON-BLANK line, matching release-cut.yml: reading line 1
+            # alone lets one leading blank line publish the raw `TAGLINE:`
+            # string as if it were prose.
+            TAGLINE_LINE=$(printf '%s\n' "$RESPONSE" | grep -n -m1 '[^[:space:]]' | cut -d: -f1)
+            TAGLINE=""
+            if [ -n "$TAGLINE_LINE" ]; then
+              TAGLINE=$(printf '%s\n' "$RESPONSE" \
+                | sed -n "${TAGLINE_LINE}s/^[[:space:]]*TAGLINE:[[:space:]]*//p")
+            fi
             if [ -n "${TAGLINE// /}" ]; then
               printf '_%s_\n\n' "$TAGLINE"
               echo "> _AI-generated summary (model: \`${MISTRAL_MODEL}\` via Mistral). Commit-based changelog below._"
               echo ""
-              printf '%s\n' "$RESPONSE" | sed '1d'
+              printf '%s\n' "$RESPONSE" | sed "${TAGLINE_LINE}d"
             else
               echo "> _AI-generated summary (model: \`${MISTRAL_MODEL}\` via Mistral). Commit-based changelog below._"
               echo ""

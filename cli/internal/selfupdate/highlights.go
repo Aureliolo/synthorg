@@ -2,11 +2,12 @@ package selfupdate
 
 import "strings"
 
-// Marker and separator constants. These are stable contract surface from
-// .github/workflows/release-cut.yml and .github/workflows/release-finalize.yml --
-// the workflow always emits the markers on their own line at column 0, so
-// substring matching is sufficient (no Markdown parser required).
+// Marker, separator, and content-match constants. These are stable contract
+// surface from .github/workflows/release-cut.yml and
+// .github/workflows/release-finalize.yml.
 const (
+	// The workflow emits both markers on their own line at column 0, so
+	// substring matching is sufficient (no Markdown parser required).
 	highlightsStartMarker = "<!-- HIGHLIGHTS_START -->"
 	highlightsEndMarker   = "<!-- HIGHLIGHTS_END -->"
 
@@ -16,16 +17,17 @@ const (
 	installSeparator = "\n---\n"
 
 	// attributionPrefix opens the blockquote release-cut.yml writes under the
-	// "## Highlights" header. The renderer supplies its own, so the block's
-	// copy is dropped here.
+	// "## Highlights" header. Unlike the markers above this is matched per
+	// line wherever it sits, not anchored to a position in the block.
 	attributionPrefix = "> _AI-generated summary"
 )
 
 // ExtractHighlights returns the styled-block content between the
 // HIGHLIGHTS_START and HIGHLIGHTS_END markers in a release body, with the
 // markers, the "## Highlights" header, and the AI-attribution blockquote
-// stripped (the renderer adds its own styled header + dimmed attribution
-// to avoid double-rendering).
+// stripped. ui.RenderHighlights draws its own styled header, so keeping the
+// Markdown one would double it; the attribution names a model and a
+// generation method the walk has no room to explain, so it goes entirely.
 //
 // Returns (content, true) on success; ("", false) when either marker is
 // missing or the body is malformed.
@@ -94,13 +96,18 @@ func stripHighlightsHeader(content string) string {
 	return ""
 }
 
-// stripAttribution removes the AI-attribution blockquote line from the
-// highlights content. The renderer adds its own dimmed attribution.
+// stripAttribution removes every AI-attribution blockquote line from the
+// highlights content, which the walk view does not show.
 //
-// The line is matched wherever it sits rather than only at the top: the block
-// leads with a tagline, so the attribution is no longer the first line, and a
-// position-bound match would silently start double-rendering the disclaimer
-// the next time the block's layout moves.
+// The line is matched wherever it sits rather than at a fixed position: a
+// tagline precedes it whenever the model supplies one, so it is not reliably
+// the first line, and a position-bound match silently stops stripping the
+// moment the block's layout moves.
+//
+// Removing the line also closes the paragraph gap it occupied. Dropping the
+// line alone leaves the blank lines that surrounded it back to back, and the
+// renderer emits one output row per source line, so the reader loses a row of
+// a viewport that only holds fourteen.
 func stripAttribution(content string) string {
 	if !strings.Contains(content, attributionPrefix) {
 		return content
@@ -109,6 +116,11 @@ func stripAttribution(content string) string {
 	kept := make([]string, 0, len(lines))
 	for _, line := range lines {
 		if strings.HasPrefix(strings.TrimSpace(line), attributionPrefix) {
+			// Drop a blank line already emitted for the paragraph break that
+			// preceded this one, so the gap does not double.
+			if n := len(kept); n > 0 && strings.TrimSpace(kept[n-1]) == "" {
+				kept = kept[:n-1]
+			}
 			continue
 		}
 		kept = append(kept, line)

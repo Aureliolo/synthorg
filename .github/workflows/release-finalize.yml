@@ -76,9 +76,8 @@ jobs:
           # This is a COSMETIC status annotation. It must never abort the
           # real release work that follows, so a transient API/auth blip is
           # retried and then tolerated (the status row simply stays unset)
-          # rather than failing the step. The earlier behaviour -- a bare
-          # POST under `set -e` -- let a momentary 401 here skip the entire
-          # draft-publish pipeline.
+          # rather than failing the step: a momentary 401 on a cosmetic status
+          # must never skip the entire draft-publish pipeline.
           attempt=0
           until gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
             -f state=pending \
@@ -286,14 +285,11 @@ jobs:
       # build-images.yml (smoke-test-backend-image composite action), so a
       # broken binary or backend image fails the originating PR with
       # a red ❌ on the commit row -- not the finalize-release step
-      # after a tag has already been cut. The previous smoke steps
-      # here were redundant (Docker images are content-addressed, so
-      # the GHCR-pulled image is bit-identical to the one tested at
-      # build time; CLI archive integrity is already verified by the
-      # cosign-signed checksums.txt before publish), and they were
-      # also the only place either probe ran -- meaning a regression
-      # was caught only after a tag was already cut, which is too
-      # late. Build-time smoke makes this gate redundant.
+      # after a tag has already been cut. Re-probing here would prove
+      # nothing: Docker images are content-addressed, so the GHCR-pulled
+      # image is bit-identical to the one tested at build time, and CLI
+      # archive integrity is verified by the cosign-signed checksums.txt
+      # before publish.
 
       - name: Assemble + publish draft
         if: steps.preflight.outputs.proceed == 'true'
@@ -587,25 +583,36 @@ jobs:
             fi
             if [ -n "$PR_NUMBER" ]; then
               HIGHLIGHTS_SOURCE=""
-              # The sticky comment is the canonical copy. A failure to read
-              # comments is a warning rather than a skip, because the body
-              # fallback below may still carry the block.
-              if COMMENTS_OUTPUT=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate 2>&1); then
+              # The sticky comment is the canonical copy, and it is read
+              # through the same gh_retry ladder as every other read in this
+              # step: the PR-body fallback below exists for releases cut
+              # before the comment shipped, not as a resilience path, and
+              # degrading to it on a transient blip would publish whatever
+              # release-please last rewrote the body to.
+              #
+              # Selected by AUTHOR as well as by marker. Anyone can comment on
+              # a public PR, and this block is copied verbatim into an
+              # immutable published release and rendered by `synthorg update`,
+              # so a content-only match would let a stranger write release
+              # notes. `github.token` posts the comment, so
+              # `github-actions[bot]` is the only legitimate author.
+              STICKY_SELECT='flatten(1) | map(select(.user.login == "github-actions[bot]" and (.body | contains("<!-- HIGHLIGHTS_STICKY -->"))))'
+              if COMMENTS_OUTPUT=$(gh_retry gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate --slurp); then
                 HIGHLIGHTS_SOURCE=$(printf '%s' "$COMMENTS_OUTPUT" \
-                  | jq -r 'map(select(.body | contains("<!-- HIGHLIGHTS_STICKY -->"))) | last | .body // empty')
+                  | jq -r "$STICKY_SELECT | first | .body // empty")
                 if [ -n "$HIGHLIGHTS_SOURCE" ]; then
                   echo "Read Highlights from the sticky comment on PR #${PR_NUMBER}."
                 fi
               else
-                echo "::warning::gh api issues/${PR_NUMBER}/comments failed; falling back to the PR body."
+                echo "::warning::gh api issues/${PR_NUMBER}/comments failed after retries; falling back to the PR body."
               fi
 
               # Split the call into capture + classify so an auth /
               # rate-limit failure surfaces a `::warning::` distinct
               # from "PR was deleted" (legitimate skip). The previous
-              # `|| true` swallowed all non-zero exits and conflated
-              # the two -- a regression that would silently lose
-              # Highlights every release until someone noticed.
+              # a blanket `|| true` would conflate the two and silently
+              # lose Highlights on every release with no way to tell which
+              # cause it was.
               if [ -z "$HIGHLIGHTS_SOURCE" ]; then
                 if PR_VIEW_OUTPUT=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq '.body' 2>&1); then
                   HIGHLIGHTS_SOURCE="$PR_VIEW_OUTPUT"
@@ -626,7 +633,7 @@ jobs:
                 # (`grep -nFx`): -n adds line numbers, -F treats the
                 # marker as a fixed string (no regex), -x requires the
                 # entire line to match. This rules out three failure
-                # modes the previous substring approach permitted:
+                # modes a substring match permits:
                 #   1. a docs/code prose block that quotes the marker
                 #      inline (e.g. ``See \`<!-- HIGHLIGHTS_START -->\`...``)
                 #      cannot trigger extraction;

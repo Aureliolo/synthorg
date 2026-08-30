@@ -10,12 +10,23 @@ env:
   # One owner for the model name: the request, the attribution line the
   # release note carries, and the dry-run's default all read this.
   #
-  # `mistral-large-latest` was tier-gated out of the free plan on
-  # 2026-08-29 (HTTP 403, `tier_not_allowed`) and every run silently
-  # produced nothing until someone went looking. The `-latest` alias is
-  # deliberate: it never hits a deprecation date, and the report-failure
-  # job below now surfaces a model that stops answering.
+  # The `-latest` alias is deliberate: it never hits a deprecation date.
+  # A plan can withdraw a model without notice, and because this step is
+  # best-effort that failure has no visible symptom, so the report-failure
+  # job below is what surfaces a model that stops answering.
   HIGHLIGHTS_MODEL: mistral-medium-latest
+
+  # Selects the Highlights sticky comment by AUTHOR as well as by marker.
+  # The release PR is public and stays open for days, so a marker match alone
+  # would let any account post a comment that this workflow then updates,
+  # mirrors into the PR body and promotes into the published release, and
+  # whose forged state line feeds the regeneration throttle. The comment is
+  # posted with `github.token`, so `github-actions[bot]` is the only
+  # legitimate author and is a login no third party can take.
+  #
+  # `flatten(1)` because `--paginate --slurp` yields one array per page; it is
+  # a no-op on an already-flat array, so it is correct either way.
+  STICKY_SELECT: 'flatten(1) | map(select(.user.login == "github-actions[bot]" and (.body | contains("<!-- HIGHLIGHTS_STICKY -->"))))'
 
 # Serialize: every main push updates the SAME sticky release-please PR
 # branch. Two overlapping runs racing the BSL Change Date Contents-API
@@ -57,8 +68,15 @@ jobs:
       # generation that failed. The generate step is continue-on-error, so
       # the job result stays `success` and the existing release-please
       # tracker never fires on it.
+      # Three separate outcomes, because generating the summary, rendering it
+      # and publishing it fail independently. Reporting only the first meant a
+      # render or publish failure left this reading `ok`, and the recovery job
+      # below then closed the tracker asserting a success that never happened.
       highlights_status: ${{ steps.highlights.outputs.status }}
+      highlights_render: ${{ steps.render.outputs.status }}
+      highlights_publish: ${{ steps.publish.outputs.status }}
       highlights_skipped: ${{ steps.digest.outputs.skip }}
+      highlights_throttled: ${{ steps.digest.outputs.regenerate }}
       # A digest cut short by the compare endpoint's 250-commit ceiling omits
       # the oldest work in the release without failing anything, which is the
       # same silent degradation the tracker exists to end.
@@ -166,9 +184,8 @@ jobs:
       # The STICKY COMMENT is the source of truth and the body copy is a
       # convenience for whoever reviews the PR. release-please owns that body
       # and rewrites it whenever the changelog changes, so a body-only block
-      # is deleted by the first rewrite after any failed generation and
-      # nothing puts it back. That is not hypothetical: it is how the feature
-      # ran dead for two days with every release still green.
+      # is deleted by the first rewrite after any failed generation, and
+      # nothing puts it back.
       #
       # The digest comes from commit MESSAGES via the compare API rather than
       # from the PR body. The body carries subjects alone, and a subject names
@@ -210,24 +227,47 @@ jobs:
             exit 0
           fi
 
+          # Every API call below is retry-wrapped and its failure separated
+          # from its legitimate empty answer. This step has no
+          # `continue-on-error`, and the required-status posting that makes the
+          # release PR mergeable runs AFTER it, so an unguarded call here would
+          # let a transient 5xx on a cosmetic feature block a real release.
+          #
           # `releases/latest` excludes drafts and prereleases, so it names the
           # last STABLE release. Dev tags ship as draft prereleases and must
           # not become the base, or the digest would cover a single push.
-          BASE=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name') || BASE=""
+          rc=0
+          BASE=$(.github/scripts/gh_with_retry.sh "latest release read" \
+            gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq '.tag_name') || rc=$?
+          if [ "$rc" -ne 0 ]; then
+            # A read that FAILED is not the same as a repo with no release
+            # yet, and must not be reported as a clean skip: the tracker
+            # ignores skips, so conflating them hides a persistent outage.
+            echo "::warning::could not read the latest release (exit ${rc}); skipping Highlights."
+            echo "status=latest-release read failed (exit ${rc})" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [ -z "$BASE" ]; then
-            echo "::warning::no stable release to compare against; skipping Highlights"
+            echo "::notice::no stable release to compare against yet; skipping Highlights."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
+          rc=0
+          COMPARE=$(.github/scripts/gh_with_retry.sh "compare read" \
+            gh api "repos/$GITHUB_REPOSITORY/compare/${BASE}...${HEAD_SHA}") || rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning::could not compare ${BASE}...${HEAD_SHA} (exit ${rc}); skipping Highlights."
+            echo "status=compare read failed (exit ${rc})" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           # build_release_digest.py drops the structural noise (issue refs,
-          # headings, tables, fenced code, pre-PR review chatter) and caps each
-          # commit, because the uncapped messages for one release run to about
-          # twice any model's context window. Its stderr carries the
-          # truncation warning, which the tracker below reads: a digest cut
-          # short by the compare endpoint's own 250-commit ceiling silently
-          # omits the oldest work in the release.
-          COMPARE=$(gh api "repos/$GITHUB_REPOSITORY/compare/${BASE}...${HEAD_SHA}")
+          # headings, tables, fenced code, pre-PR review chatter), caps each
+          # commit and wraps the result in its untrusted-content fence. Its
+          # stderr carries the truncation warning the tracker below reads: a
+          # digest cut short at the un-paginated compare ceiling silently omits
+          # the OLDEST work in the release.
           TOTAL=$(printf '%s' "$COMPARE" | jq -r '.total_commits // 0')
           DIGEST=$(printf '%s' "$COMPARE" | python3 scripts/build_release_digest.py 2> digest-stderr.txt) || true
           cat digest-stderr.txt
@@ -260,11 +300,24 @@ jobs:
 
           # Prior state rides in the sticky comment, the same place the block
           # itself lives, so there is no second store to fall out of step.
-          STATE=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
-            --jq 'map(select(.body | contains("<!-- HIGHLIGHTS_STICKY -->"))) | last | .body // empty' \
+          # Author-filtered and read with `first`, matching the write side: a
+          # forged comment must not be able to feed the arithmetic below.
+          STATE=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            --paginate --slurp \
+            --jq "$STICKY_SELECT | first | .body // empty" \
             | sed -n 's/.*HIGHLIGHTS_STATE base=\([^ ]*\) commits=\([0-9]*\).*/\1 \2/p') || STATE=""
           PREV_BASE=$(printf '%s' "$STATE" | cut -d' ' -f1)
           PREV_COUNT=$(printf '%s' "$STATE" | cut -d' ' -f2)
+
+          # A digit string is not yet a safe operand: bash reads a leading zero
+          # as octal, so `008` is a fatal arithmetic error under `set -e`, and
+          # this step failing skips the required-status posting below. Anything
+          # not a plain bounded integer degrades to a regeneration, which is
+          # the harmless direction.
+          case "$PREV_COUNT" in
+            0 | [1-9][0-9][0-9][0-9][0-9] | [1-9][0-9][0-9][0-9] | [1-9][0-9][0-9] | [1-9][0-9] | [1-9]) ;;
+            *) PREV_COUNT="" ;;
+          esac
 
           REGENERATE=true
           REASON="no previous Highlights for this release"
@@ -282,20 +335,11 @@ jobs:
           echo "total_commits=${TOTAL}" >> "$GITHUB_OUTPUT"
           echo "base=${BASE}" >> "$GITHUB_OUTPUT"
 
-          # Write to a file because GITHUB_OUTPUT does not handle multi-line
-          # content well via simple echo. Commit prose is gated by
-          # signed-commit branch protection and the commitizen hook, but it is
-          # still human-written and can carry a prompt-injection payload. Wrap
-          # it in an explicit untrusted-content fence and escape any literal
-          # closing tag so the model cannot be tricked into treating the
-          # fenced payload as new instructions.
-          ESCAPED_DIGEST=$(printf '%s' "$DIGEST" \
-            | sed -E 's#</(untrusted-changelog)>#</\1_escaped>#gI')
-          {
-            printf '<untrusted-changelog>\n'
-            printf '%s' "$ESCAPED_DIGEST"
-            printf '\n</untrusted-changelog>\n'
-          } > changelog-digest.txt
+          # Written to a file because GITHUB_OUTPUT does not handle multi-line
+          # content well. The digest arrives already fenced: the script owns
+          # the untrusted-content wrapper and its closing-tag escape, so the
+          # workflow and the dry-run cannot hold two versions of one regex.
+          printf '%s' "$DIGEST" > changelog-digest.txt
           echo "Digest for ${BASE}...${HEAD_SHA}: $(wc -c < changelog-digest.txt) bytes, ${TOTAL} commits"
           echo "skip=false" >> "$GITHUB_OUTPUT"
 
@@ -319,9 +363,7 @@ jobs:
           echo "status=unknown" >> "$GITHUB_OUTPUT"
 
           # The prompt lives in a file both this workflow and the dry-run
-          # read. It was previously copy-pasted into both with a comment
-          # asking humans to keep them in step, which is two owners of one
-          # value.
+          # read, so there is exactly one place to keep it correct.
           PAYLOAD=$(jq -n \
             --arg model "$MISTRAL_MODEL" \
             --rawfile sys .github/release-highlights-prompt.md \
@@ -332,9 +374,15 @@ jobs:
 
           # curl retries transient 429 / 5xx (and transport errors) itself;
           # after exhaustion it returns non-zero, which we swallow (best-effort).
+          # `--max-time` is load-bearing rather than tidy: retries only engage
+          # once curl reports a failure, and a connection that opens then goes
+          # silent has no deadline of its own, so it would ride this step to
+          # the job timeout and take the release-blocking status posting with
+          # it.
           rc=0
           RESP=$(printf '%s' "$PAYLOAD" | curl -sS \
             --retry 3 --retry-delay 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 180 \
             -w '\n%{http_code}' \
             -X POST https://api.mistral.ai/v1/chat/completions \
             -H "Authorization: Bearer $MISTRAL_API_KEY" \
@@ -349,14 +397,17 @@ jobs:
           CODE=$(printf '%s' "$RESP" | tail -n1)
           BODY=$(printf '%s' "$RESP" | sed '$d')
           if [ "$CODE" != "200" ]; then
-            # The response BODY is the diagnosis and the code alone is not:
-            # a 403 saying `tier_not_allowed` (the model left our plan) and a
-            # 403 saying the key was revoked are the same number and
-            # different jobs. Logging only the code cost two days of silent
-            # failure and a workflow dispatch to find out which.
-            DETAIL=$(printf '%s' "$BODY" | head -c 300 | tr -d '\n')
-            echo "::warning::Mistral returned HTTP ${CODE}: ${DETAIL}"
-            echo "status=HTTP ${CODE}: ${DETAIL}" >> "$GITHUB_OUTPUT"
+            # The response BODY is the diagnosis and the code alone is not: a
+            # 403 saying `tier_not_allowed` (the model left the plan) and a
+            # 403 saying the key was revoked are the same number and different
+            # jobs. Only the named error fields are echoed, not the raw body:
+            # this log is public, and a third party's error text is not ours
+            # to republish in full.
+            DETAIL=$(printf '%s' "$BODY" \
+              | jq -r '[.type // .object, .code, .message] | map(select(. != null)) | join(" ")' 2>/dev/null \
+              | head -c 200 | tr -d '\n') || DETAIL=""
+            echo "::warning::Mistral returned HTTP ${CODE}: ${DETAIL:-no parsable error fields}"
+            echo "status=HTTP ${CODE}: ${DETAIL:-unparsable}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -364,6 +415,17 @@ jobs:
           if [ -z "$CONTENT" ]; then
             echo "::warning::Mistral returned empty content; skipping best-effort Highlights."
             echo "status=empty completion" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # The prompt tells the model to answer with this exact line when the
+          # fenced changelog tries to redirect it. Publishing that as an
+          # ordinary summary would make a detected injection attempt the one
+          # outcome nothing reports, so it takes its own status and reaches
+          # the tracker.
+          if printf '%s' "$CONTENT" | grep -qF 'TAGLINE: Release notes unavailable.'; then
+            echo "::warning::model refused: the changelog looks like it carries injected instructions."
+            echo "status=model refused (possible prompt injection in a commit message)" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -387,48 +449,71 @@ jobs:
           MISTRAL_MODEL: ${{ env.HIGHLIGHTS_MODEL }}
         run: |
           set -euo pipefail
+          echo "status=unknown" >> "$GITHUB_OUTPUT"
+
           # Marker collision guard: the prompt already tells the model not to
           # emit the markers, but a prompt-injection payload that smuggled one
           # through would let the next run's sticky-strip delete
-          # human-authored content between the forged markers.
+          # human-authored content between the forged markers. STATE is in the
+          # list because a forged one is read back as the throttle's own
+          # bookkeeping on the next run.
           SAFE=$(printf '%s' "$HIGHLIGHTS" \
-            | sed -E 's/HIGHLIGHTS_(START|END)/HIGHLIGHTS_\1_escaped/g')
+            | sed -E 's/HIGHLIGHTS_(START|END|STATE)/HIGHLIGHTS_\1_escaped/g')
 
-          # The model puts the tagline on the first line behind a `TAGLINE: `
-          # prefix. Missing or empty is not a failure: the bullets are the
-          # substance and a release note without a joke is still a release
-          # note, so the block renders without one.
-          TAGLINE=$(printf '%s' "$SAFE" | sed -n '1s/^TAGLINE:[[:space:]]*//p')
+          # The tagline is the first NON-BLANK line behind a `TAGLINE: `
+          # prefix. Reading line 1 alone meant one leading blank line from the
+          # model published the raw `TAGLINE:` string to every surface.
+          # Missing or empty is not a failure: the bullets are the substance
+          # and a release note without a joke is still a release note.
+          TAGLINE_LINE=$(printf '%s\n' "$SAFE" | grep -n -m1 '[^[:space:]]' | cut -d: -f1)
+          TAGLINE=""
+          if [ -n "$TAGLINE_LINE" ]; then
+            TAGLINE=$(printf '%s\n' "$SAFE" \
+              | sed -n "${TAGLINE_LINE}s/^[[:space:]]*TAGLINE:[[:space:]]*//p")
+          fi
+
           if [ -n "${TAGLINE// /}" ]; then
-            BULLETS=$(printf '%s' "$SAFE" | sed '1d')
-            TAGLINE_BLOCK=$(printf '_%s_\n\n' "$TAGLINE")
+            BULLETS=$(printf '%s\n' "$SAFE" | sed "${TAGLINE_LINE}d")
           else
             echo "::warning::model emitted no TAGLINE line; rendering Highlights without one."
             BULLETS="$SAFE"
-            TAGLINE_BLOCK=""
           fi
 
+          # Assembled with newlines written INSIDE each printf rather than
+          # carried on a variable: `$(...)` strips every trailing newline, so
+          # building the separator into a captured variable silently glued the
+          # tagline and the disclaimer onto one line, where the CLI's
+          # line-anchored strip could no longer see the disclaimer at all.
+          #
           # Attribution sits above the bullets so every reader sees the
           # section is generated before they read it. The model name is read
           # from the same variable the request used, so the two cannot drift.
-          DISCLAIMER=$(printf '> _AI-generated summary (model: `%s` via Mistral). Commit-based changelog below._' "$MISTRAL_MODEL")
-
-          BLOCK=$(printf '<!-- HIGHLIGHTS_START -->\n## Highlights\n\n%s%s\n\n%s\n\n<!-- HIGHLIGHTS_END -->' \
-            "$TAGLINE_BLOCK" "$DISCLAIMER" "$(printf '%s' "$BULLETS" | sed -e 's/^[[:space:]]*$//' -e '/./,$!d')")
+          TRIMMED_BULLETS=$(printf '%s' "$BULLETS" | sed -e 's/^[[:space:]]*$//' -e '/./,$!d')
+          {
+            printf '<!-- HIGHLIGHTS_START -->\n## Highlights\n\n'
+            if [ -n "${TAGLINE// /}" ]; then
+              printf '_%s_\n\n' "$TAGLINE"
+            fi
+            printf '> _AI-generated summary (model: `%s` via Mistral). Commit-based changelog below._\n\n' "$MISTRAL_MODEL"
+            printf '%s\n\n' "$TRIMMED_BULLETS"
+            printf '<!-- HIGHLIGHTS_END -->'
+          } > highlights-block.md
 
           DELIM="HIGHLIGHTS_BLOCK_$(openssl rand -hex 12)"
           {
             printf 'block<<%s\n' "$DELIM"
-            printf '%s\n' "$BLOCK"
-            printf '%s\n' "$DELIM"
+            cat highlights-block.md
+            printf '\n%s\n' "$DELIM"
+            printf 'status=ok\n'
           } >> "$GITHUB_OUTPUT"
 
       - name: Publish Highlights sticky comment
+        id: publish
         if: steps.render.outputs.block != ''
         # The sticky comment is the SOURCE OF TRUTH that release-finalize.yml
         # reads. release-please owns the PR body and rewrites it on every
         # changelog change; it does not touch comments, so a generation
-        # failure can no longer erase a summary that was already produced.
+        # failure leaves the summary already produced exactly where it is.
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -438,6 +523,8 @@ jobs:
           TOTAL: ${{ steps.digest.outputs.total_commits }}
         run: |
           set -euo pipefail
+          echo "status=unknown" >> "$GITHUB_OUTPUT"
+
           # The state marker rides on the comment rather than in a second
           # store, so the record of what was last summarised cannot drift from
           # the summary itself. It sits outside the HIGHLIGHTS markers so
@@ -445,8 +532,14 @@ jobs:
           STATE=$(printf '<!-- HIGHLIGHTS_STATE base=%s commits=%s -->' "$BASE" "$TOTAL")
           COMMENT_BODY=$(printf '%s\n%s\n\n%s\n' '<!-- HIGHLIGHTS_STICKY -->' "$STATE" "$BLOCK")
 
-          EXISTING=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
-            --jq 'map(select(.body | contains("<!-- HIGHLIGHTS_STICKY -->"))) | first | .id // empty')
+          # Selected by AUTHOR as well as content. The release PR is public and
+          # stays open for days, so a marker match alone would let any account
+          # hand us a comment to update, mirror into the PR body and promote
+          # into the published release. `--slurp` because `--paginate --jq`
+          # applies the filter per page, making `first` first-of-page.
+          EXISTING=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            --paginate --slurp \
+            --jq "$STICKY_SELECT | first | .id // empty")
 
           if [ -n "$EXISTING" ]; then
             gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$EXISTING" \
@@ -457,6 +550,7 @@ jobs:
               -f body="$COMMENT_BODY" --silent
             echo "Created Highlights sticky comment on PR #$PR_NUMBER"
           fi
+          echo "status=ok" >> "$GITHUB_OUTPUT"
 
       - name: Mirror Highlights into release PR body
         if: steps.release.outputs.pr != '' && steps.digest.outputs.skip != 'true'
@@ -475,8 +569,9 @@ jobs:
           PR_NUMBER: ${{ steps.release.outputs.pr && fromJSON(steps.release.outputs.pr).number || '' }}
         run: |
           set -euo pipefail
-          COMMENT=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
-            --jq 'map(select(.body | contains("<!-- HIGHLIGHTS_STICKY -->"))) | last | .body // empty')
+          COMMENT=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            --paginate --slurp \
+            --jq "$STICKY_SELECT | first | .body // empty")
           if [ -z "$COMMENT" ]; then
             echo "No Highlights sticky comment yet; nothing to mirror."
             exit 0
@@ -493,9 +588,20 @@ jobs:
           fi
           BLOCK=$(sed -n "${START_LINE},${END_LINE}p" <<< "$COMMENT")
 
+          # The old block is removed by line number for the same reason: an
+          # unterminated start marker in the body would make a `/START/,/END/`
+          # range delete everything after it, taking the changelog with it.
           CUR_BODY=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq '.body')
-          CLEANED=$(printf '%s' "$CUR_BODY" \
-            | sed '/<!-- HIGHLIGHTS_START -->/,/<!-- HIGHLIGHTS_END -->/d')
+          BODY_START=$(grep -nFx '<!-- HIGHLIGHTS_START -->' <<< "$CUR_BODY" | head -n1 | cut -d: -f1 || true)
+          BODY_END=$(grep -nFx '<!-- HIGHLIGHTS_END -->' <<< "$CUR_BODY" | head -n1 | cut -d: -f1 || true)
+          if [ -n "$BODY_START" ] && [ -n "$BODY_END" ] && [ "$BODY_START" -lt "$BODY_END" ]; then
+            CLEANED=$(sed "${BODY_START},${BODY_END}d" <<< "$CUR_BODY")
+          else
+            if [ -n "$BODY_START" ] || [ -n "$BODY_END" ]; then
+              echo "::warning::PR body carries an unpaired Highlights marker; leaving it in place."
+            fi
+            CLEANED="$CUR_BODY"
+          fi
           NEW_BODY=$(printf '%s\n\n%s' "$BLOCK" "$CLEANED")
           if [ "$NEW_BODY" = "$CUR_BODY" ]; then
             echo "PR body already carries this block; no edit needed."
@@ -633,14 +739,18 @@ jobs:
   # ── Highlights generation tracker ──
   # The generate step is deliberately continue-on-error, so the release
   # never blocks on a summary. The cost of that is a failure with no
-  # reader: a model tier-gated out from under us produced nothing for two
-  # days across ~30 runs that all reported success. This job is what makes
-  # the best-effort step observable, matching the CI failure-surfacing
-  # policy every other workflow here follows.
+  # reader: `continue-on-error` lets a step fail while every check around it
+  # stays green. This job is what makes that step observable, matching the
+  # CI failure-surfacing policy every other workflow here follows.
   #
   # `skipped` is not a failure. A `No-Highlights:` trailer, a deferred body
-  # read, a throttled regeneration and the first release (no stable base to
-  # compare against) are all deliberate outcomes and must not open a tracker.
+  # read and the first release (no stable base to compare against) are all
+  # deliberate outcomes and must not open a tracker. Neither is a throttled
+  # run, which produces no status at all because it makes no call.
+  #
+  # Truncation is checked BEFORE the skip gate, not behind it: a compare that
+  # returns fewer commits than it claims sets both flags, and letting `skipped`
+  # suppress it would hide the one condition designed to always alert.
   report-highlights-failure:
     name: Open / update tracking issue on Highlights failure
     needs: release-please
@@ -648,12 +758,18 @@ jobs:
       always()
       && !github.event.repository.fork
       && needs.release-please.result == 'success'
-      && needs.release-please.outputs.highlights_skipped != 'true'
       && (
         needs.release-please.outputs.highlights_truncated == 'true'
         || (
-          needs.release-please.outputs.highlights_status != ''
-          && needs.release-please.outputs.highlights_status != 'ok'
+          needs.release-please.outputs.highlights_skipped != 'true'
+          && (
+            (
+              needs.release-please.outputs.highlights_status != ''
+              && needs.release-please.outputs.highlights_status != 'ok'
+            )
+            || needs.release-please.outputs.highlights_render == 'unknown'
+            || needs.release-please.outputs.highlights_publish == 'unknown'
+          )
         )
       )
     runs-on: ubuntu-24.04
@@ -671,6 +787,8 @@ jobs:
         id: body
         env:
           STATUS: ${{ needs.release-please.outputs.highlights_status }}
+          RENDER: ${{ needs.release-please.outputs.highlights_render }}
+          PUBLISH: ${{ needs.release-please.outputs.highlights_publish }}
           TRUNCATED: ${{ needs.release-please.outputs.highlights_truncated }}
           COMMITS: ${{ needs.release-please.outputs.highlights_commits }}
           MODEL: ${{ env.HIGHLIGHTS_MODEL }}
@@ -684,7 +802,9 @@ jobs:
           Release-notes Highlights degraded at $(date -u +%Y-%m-%dT%H:%M:%SZ) on $HEAD_SHA.
 
           Model: \`${MODEL}\`
-          Generation outcome: \`${STATUS:-not reached}\`
+          Generation: \`${STATUS:-not reached}\`
+          Render: \`${RENDER:-not reached}\`
+          Publish: \`${PUBLISH:-not reached}\`
           Digest truncated: \`${TRUNCATED:-false}\` (${COMMITS:-?} commits in range)
 
           Run: ${RUN_URL}
@@ -720,10 +840,15 @@ jobs:
   close-highlights-tracker:
     name: Close Highlights tracker on recovery
     needs: release-please
+    # Every stage must have succeeded. Closing on the generation status alone
+    # announced a recovery whenever the model answered and the render or the
+    # publish then failed, which is a worse signal than staying quiet.
     if: >-
       always()
       && !github.event.repository.fork
       && needs.release-please.outputs.highlights_status == 'ok'
+      && needs.release-please.outputs.highlights_render == 'ok'
+      && needs.release-please.outputs.highlights_publish == 'ok'
       && needs.release-please.outputs.highlights_truncated != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
