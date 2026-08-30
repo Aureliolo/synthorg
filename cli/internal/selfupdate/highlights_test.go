@@ -111,6 +111,31 @@ func TestExtractHighlights(t *testing.T) {
 				"## [0.0.1]",
 			},
 		},
+		{
+			// The block leads with a tagline, so the attribution blockquote is
+			// no longer the first line under the header. The tagline is the
+			// hook and must survive; the attribution must still go, or the
+			// renderer's own dimmed copy shows up twice.
+			name: "tagline_precedes_attribution",
+			body: "<!-- HIGHLIGHTS_START -->\n## Highlights\n\n" +
+				"_Nineteen new gates, because the last nineteen were not enough._\n\n" +
+				"> _AI-generated summary (model: `example-capable-001` via Example). " +
+				"Commit-based changelog below._\n\n" +
+				"### What's new\n\n- A bullet.\n\n<!-- HIGHLIGHTS_END -->\n\n## [0.0.1]\n",
+			wantOK: true,
+			wantContains: []string{
+				"_Nineteen new gates, because the last nineteen were not enough._",
+				"### What's new",
+				"- A bullet.",
+			},
+			wantOmits: []string{
+				"<!-- HIGHLIGHTS_START -->",
+				"<!-- HIGHLIGHTS_END -->",
+				"## Highlights",
+				"AI-generated summary (model:",
+				"## [0.0.1]",
+			},
+		},
 	}
 
 	for _, tt := range tests {

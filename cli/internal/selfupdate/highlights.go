@@ -14,6 +14,11 @@ const (
 	// instructions / SBOM / verification region in finalised release bodies.
 	// Always at column 0 on its own line.
 	installSeparator = "\n---\n"
+
+	// attributionPrefix opens the blockquote release-cut.yml writes under the
+	// "## Highlights" header. The renderer supplies its own, so the block's
+	// copy is dropped here.
+	attributionPrefix = "> _AI-generated summary"
 )
 
 // ExtractHighlights returns the styled-block content between the
@@ -89,17 +94,26 @@ func stripHighlightsHeader(content string) string {
 	return ""
 }
 
-// stripAttribution removes the AI-attribution blockquote line at the top of
-// the highlights content. The renderer adds its own dimmed attribution.
+// stripAttribution removes the AI-attribution blockquote line from the
+// highlights content. The renderer adds its own dimmed attribution.
+//
+// The line is matched wherever it sits rather than only at the top: the block
+// leads with a tagline, so the attribution is no longer the first line, and a
+// position-bound match would silently start double-rendering the disclaimer
+// the next time the block's layout moves.
 func stripAttribution(content string) string {
-	trimmed := strings.TrimLeft(content, "\n")
-	if !strings.HasPrefix(trimmed, "> _AI-generated summary") {
+	if !strings.Contains(content, attributionPrefix) {
 		return content
 	}
-	if _, rest, ok := strings.Cut(trimmed, "\n"); ok {
-		return rest
+	lines := strings.Split(content, "\n")
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), attributionPrefix) {
+			continue
+		}
+		kept = append(kept, line)
 	}
-	return ""
+	return strings.Join(kept, "\n")
 }
 
 // stripOrphanStartMarker handles a malformed body with a start marker but

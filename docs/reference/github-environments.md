@@ -223,12 +223,22 @@ installation token (valid ≤1 hour) via the
    (both SHA-pinned in-workflow). The latter backs the weekly GHCR prune
    job; an Actions-restricted fork that omits it fails the cleanup at
    action-resolution time.
-8. Add the `MISTRAL_API_KEY` repository secret (a Mistral API key on
-   the free Experiment tier). The release-notes Highlights step in
-   `release-cut.yml` and the `release-highlights-dryrun.yml` dry-run read it; a
-   repository-level secret is visible to the `release` environment
-   job. The step is failure-tolerant, so a missing or invalid key only
-   skips the Highlights block -- it never fails the release.
+8. Add the `MISTRAL_API_KEY` repository secret. The release-notes
+   tagline + Highlights step in `release-cut.yml` and the
+   `release-highlights-dryrun.yml` dry-run read it; a repository-level
+   secret is visible to the `release` environment job. The step is
+   failure-tolerant, so a missing or invalid key only skips the
+   Highlights block, never the release, but a failure now opens the
+   `Release Highlights generation is failing` tracker rather than
+   passing in silence.
+
+   Mistral's free plan carries **$10/month in API credits** (Pro: $30);
+   it is not the token-quota "Experiment tier" older docs describe. The
+   model is declared once as `HIGHLIGHTS_MODEL` in `release-cut.yml`.
+   Which models a plan admits is published nowhere, so when one starts
+   returning `403 tier_not_allowed` the answer is to dispatch
+   `release-highlights-dryrun.yml`, which lists what the key can call
+   and rehearses the prompt against any candidate.
 
 **No rotation schedule**. Installation tokens are ephemeral:
 minted per workflow run and valid for at most one hour, then
