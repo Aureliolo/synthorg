@@ -490,7 +490,6 @@ class DockerSandboxBackgroundMixin:
                 persisted as a job record, since there would be no real
                 job for any caller to poll).
         """
-        registry = self._require_background_jobs()
         if not self._lifecycle_strategy.reuses_container:
             msg = (
                 "The configured sandbox lifecycle strategy destroys its "
@@ -517,34 +516,59 @@ class DockerSandboxBackgroundMixin:
             )
             raise SandboxBackgroundNoReusableContainerError(msg)
 
-        # Held from the cap check through the persisted save: without it,
-        # two concurrent start_background calls for the same owner can
-        # each read a count under the ceiling and both persist, since
-        # nothing else serialises the check against the write.
-        async with self._owner_lock(owner_key):
-            # An unpinned foreground exec decided (under this same lock)
-            # that no live job pins this container, so its own timeout
-            # path stops the container outright rather than killing just
-            # its own process group. Pinning a job here while that exec
-            # is still in flight would leave the job exposed to that
-            # timeout for as long as the exec keeps running.
-            if self._unpinned_execs_in_flight.get(owner_key, 0) > 0:
-                msg = (
-                    f"{owner_key} has an unpinned foreground command "
-                    f"running; its own timeout could stop the container. "
-                    f"Wait for it to finish, or retry, before starting a "
-                    f"background job."
-                )
-                raise SandboxBackgroundUnpinnedExecutionActiveError(msg)
-            live_count = await registry.count_live_by_owner(owner_key)
-            if live_count >= self._background_max_concurrent_jobs:
-                msg = (
-                    f"{owner_key} already holds {live_count} live "
-                    f"background job(s), at the "
-                    f"{self._background_max_concurrent_jobs}-job ceiling."
-                )
-                raise SandboxBackgroundJobLimitError(msg)
+        full_command = " ".join((command, *args)) if args else command
+        record = await self._start_background_locked(
+            owner_key=owner_key,
+            full_command=full_command,
+            cwd=cwd,
+            env_overrides=env_overrides,
+            category=category,
+            owner_id=owner_id,
+            project_id=project_id,
+            max_duration_seconds=max_duration_seconds,
+        )
+        logger.info(
+            SANDBOX_BACKGROUND_JOB_STARTED,
+            job_id=record.job_id,
+            container_id=record.container_id[:12],
+            owner_id=record.owner_id,
+            pid=record.pid,
+        )
+        return record.job_id
 
+    async def _start_background_locked(
+        self,
+        *,
+        owner_key: str,
+        full_command: str,
+        cwd: Path | None,
+        env_overrides: Mapping[str, str] | None,
+        category: str,
+        owner_id: NotBlankStr | None,
+        project_id: NotBlankStr | None,
+        max_duration_seconds: float | None,
+    ) -> BackgroundJobRecord:
+        """Run ``start_background``'s owner-locked cap check and job start.
+
+        Split out of ``start_background`` to keep that method under its
+        line-count cap; the whole body below is one critical section
+        (see the caller for why it must stay held from the cap check
+        through the persisted save).
+
+        Returns:
+            The persisted background job record.
+
+        Raises:
+            SandboxBackgroundUnpinnedExecutionActiveError: An unpinned
+                foreground command is currently running on the
+                container this owner would pin to.
+            SandboxBackgroundJobLimitError: The resolved owner already
+                holds the maximum number of live background jobs.
+            SandboxStartError: The job could not be confirmed started.
+        """
+        registry = self._require_background_jobs()
+        async with self._owner_lock(owner_key):
+            await self._check_background_start_admissible(owner_key, registry)
             (
                 docker,
                 handle,
@@ -558,76 +582,157 @@ class DockerSandboxBackgroundMixin:
                 owner_id=owner_id,
                 project_id=project_id,
             )
-
             job_id = NotBlankStr(str(uuid4()))
-            full_command = " ".join((command, *args)) if args else command
-            program, wrapper_args = build_start_command(
-                job_id, full_command, container_cwd=container_cwd
-            )
-            exec_obj = await self._open_exec(
-                docker,
-                handle,
-                command=program,
-                args=wrapper_args,
+            pid_text = await self._confirm_background_process_started(
+                docker=docker,
+                handle=handle,
                 container_cwd=container_cwd,
                 exec_env=exec_env,
-            )
-            stdout, stderr, timed_out = await self._drain_exec(
-                docker, exec_obj, handle.container_id, _START_EXEC_TIMEOUT_SECONDS
-            )
-            pid_text = stdout.strip()
-            if timed_out or not pid_text.isdigit():
-                logger.warning(
-                    SANDBOX_BACKGROUND_JOB_START_FAILED,
-                    job_id=job_id,
-                    container_id=handle.container_id[:12],
-                    owner_id=owner_key,
-                    timed_out=timed_out,
-                    stderr=safe_error_description(SandboxStartError(stderr))
-                    if stderr
-                    else "",
-                )
-                msg = (
-                    f"Background job failed to start: the wrapper never "
-                    f"confirmed a pid (stdout={pid_text!r})"
-                )
-                raise SandboxStartError(msg)
-
-            now = self._clock.now()
-            record = BackgroundJobRecord(
                 job_id=job_id,
-                container_id=NotBlankStr(handle.container_id),
-                owner_id=owner_key,
-                project_id=project_id,
-                command_repr=full_command[:_COMMAND_REPR_LIMIT],
-                pid=int(pid_text),
-                status=BackgroundJobStatus.RUNNING,
-                output_path=output_path(job_id),
-                started_at=now,
-                updated_at=now,
-                max_duration_seconds=(
-                    max_duration_seconds
-                    if max_duration_seconds is not None and max_duration_seconds > 0
-                    else _DEFAULT_MAX_DURATION_SECONDS
-                ),
+                full_command=full_command,
             )
-            try:
-                await registry.save(record)
-            except Exception:
-                # An unpersisted job is invisible to poll, cancel, expiry
-                # and reap, so it must not be left running.
-                await self._kill_background_process_group(
-                    NotBlankStr(handle.container_id), int(pid_text)
-                )
-                raise
-        logger.info(
-            SANDBOX_BACKGROUND_JOB_STARTED,
-            job_id=job_id,
-            container_id=handle.container_id[:12],
-            owner_id=owner_key,
-            pid=record.pid,
+            return await self._persist_background_job_record(
+                handle=handle,
+                owner_key=owner_key,
+                job_id=job_id,
+                project_id=project_id,
+                full_command=full_command,
+                pid_text=pid_text,
+                max_duration_seconds=max_duration_seconds,
+                registry=registry,
+            )
+
+    async def _check_background_start_admissible(
+        self, owner_key: str, registry: BackgroundJobRegistry
+    ) -> None:
+        """Raise unless *owner_key* may start a new background job right now.
+
+        Called only while ``_owner_lock(owner_key)`` is held.
+
+        Raises:
+            SandboxBackgroundUnpinnedExecutionActiveError: An unpinned
+                foreground command is currently running on the
+                container this owner would pin to; its own timeout
+                could stop the container and collaterally kill a job
+                started now.
+            SandboxBackgroundJobLimitError: The resolved owner already
+                holds the maximum number of live background jobs.
+        """
+        if self._unpinned_execs_in_flight.get(owner_key, 0) > 0:
+            msg = (
+                f"{owner_key} has an unpinned foreground command "
+                f"running; its own timeout could stop the container. "
+                f"Wait for it to finish, or retry, before starting a "
+                f"background job."
+            )
+            raise SandboxBackgroundUnpinnedExecutionActiveError(msg)
+        live_count = await registry.count_live_by_owner(owner_key)
+        if live_count >= self._background_max_concurrent_jobs:
+            msg = (
+                f"{owner_key} already holds {live_count} live "
+                f"background job(s), at the "
+                f"{self._background_max_concurrent_jobs}-job ceiling."
+            )
+            raise SandboxBackgroundJobLimitError(msg)
+
+    async def _confirm_background_process_started(
+        self,
+        *,
+        docker: aiodocker.Docker,
+        handle: ContainerHandle,
+        container_cwd: str,
+        exec_env: dict[str, str],
+        job_id: NotBlankStr,
+        full_command: str,
+    ) -> str:
+        """Start the wrapped background process and confirm its recorded pid.
+
+        Returns:
+            The wrapper's stripped, digit-only pid stdout.
+
+        Raises:
+            SandboxStartError: The wrapper never confirmed a pid (a
+                shell-level failure -- a read-only ``/tmp``, an
+                exhausted tmpfs -- surfacing as empty or non-numeric
+                stdout after the wrapper's own bounded wait).
+        """
+        program, wrapper_args = build_start_command(
+            job_id, full_command, container_cwd=container_cwd
         )
-        return job_id
+        exec_obj = await self._open_exec(
+            docker,
+            handle,
+            command=program,
+            args=wrapper_args,
+            container_cwd=container_cwd,
+            exec_env=exec_env,
+        )
+        stdout, stderr, timed_out = await self._drain_exec(
+            docker, exec_obj, handle.container_id, _START_EXEC_TIMEOUT_SECONDS
+        )
+        pid_text = stdout.strip()
+        if timed_out or not pid_text.isdigit():
+            logger.warning(
+                SANDBOX_BACKGROUND_JOB_START_FAILED,
+                job_id=job_id,
+                container_id=handle.container_id[:12],
+                timed_out=timed_out,
+                stderr=safe_error_description(SandboxStartError(stderr))
+                if stderr
+                else "",
+            )
+            msg = (
+                f"Background job failed to start: the wrapper never "
+                f"confirmed a pid (stdout={pid_text!r})"
+            )
+            raise SandboxStartError(msg)
+        return pid_text
+
+    async def _persist_background_job_record(
+        self,
+        *,
+        handle: ContainerHandle,
+        owner_key: str,
+        job_id: NotBlankStr,
+        project_id: NotBlankStr | None,
+        full_command: str,
+        pid_text: str,
+        max_duration_seconds: float | None,
+        registry: BackgroundJobRegistry,
+    ) -> BackgroundJobRecord:
+        """Build and save the started job's record, rolling back on failure.
+
+        Returns:
+            The persisted record.
+        """
+        now = self._clock.now()
+        record = BackgroundJobRecord(
+            job_id=job_id,
+            container_id=NotBlankStr(handle.container_id),
+            owner_id=owner_key,
+            project_id=project_id,
+            command_repr=full_command[:_COMMAND_REPR_LIMIT],
+            pid=int(pid_text),
+            status=BackgroundJobStatus.RUNNING,
+            output_path=output_path(job_id),
+            started_at=now,
+            updated_at=now,
+            max_duration_seconds=(
+                max_duration_seconds
+                if max_duration_seconds is not None and max_duration_seconds > 0
+                else _DEFAULT_MAX_DURATION_SECONDS
+            ),
+        )
+        try:
+            await registry.save(record)
+        except Exception:
+            # An unpersisted job is invisible to poll, cancel, expiry
+            # and reap, so it must not be left running.
+            await self._kill_background_process_group(
+                NotBlankStr(handle.container_id), int(pid_text)
+            )
+            raise
+        return record
 
     async def _refresh_if_live(
         self, record: BackgroundJobRecord

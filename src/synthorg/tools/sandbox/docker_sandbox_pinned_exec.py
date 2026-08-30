@@ -215,14 +215,23 @@ class DockerSandboxPinnedExecMixin:
         # lint-allow: long-running-loop-kill-switch -- bounded by the
         # deadline above (2s); a single foreground kill's own retry.
         while True:
+            remaining = deadline - self._clock.monotonic()
+            if remaining <= 0:
+                return ""
             pid_text = (
                 await self._run_control_exec(
-                    handle, program, args, timeout=_PINNED_CONTROL_EXEC_TIMEOUT_SECONDS
+                    handle,
+                    program,
+                    args,
+                    timeout=min(_PINNED_CONTROL_EXEC_TIMEOUT_SECONDS, remaining),
                 )
             ).strip()
-            if pid_text or self._clock.monotonic() >= deadline:
+            if pid_text:
                 return pid_text
-            await self._clock.sleep(_PID_READ_RETRY_INTERVAL_SECONDS)
+            remaining = deadline - self._clock.monotonic()
+            if remaining <= 0:
+                return ""
+            await self._clock.sleep(min(_PID_READ_RETRY_INTERVAL_SECONDS, remaining))
 
     async def _kill_pinned_exec(
         self,
