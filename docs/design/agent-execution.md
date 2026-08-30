@@ -694,6 +694,28 @@ sorted per-turn for order-independent comparison.
   `BUDGET_EXHAUSTED`): a run that stopped mid-way has not delivered, and
   parking it at `IN_PROGRESS` hid it from the stall derivation
 
+### Background Job Stall Nudge (not shipped)
+
+Background shell commands (`docs/design/tools.md`, "Background Shell
+Commands") let an agent detach a long-running process and read its output on
+a later turn. A nudge telling the agent when a job it started has been
+running quietly for a while -- so it checks back rather than forgetting the
+job exists -- was scoped as part of that feature but is not implemented.
+
+The blocker is a layering gap, not missing plumbing: the nudge would need to
+ask "does this agent/task's owner have any live background jobs", but the
+owner key a job is actually filed under (see "Owner key, not raw id" in
+`tools.md`) is resolved deep inside `DockerSandbox`, from config the
+`ReactLoop`/`AgentContext` layer that would host the nudge has no way to
+reach or re-derive. Tools also cannot write into `AgentContext` themselves
+(a tool returns a `ToolExecutionResult`; only the loop mutates the context),
+so there is no cheap way for `shell_command`'s own background-start call to
+record "the agent now owns job X" into a loop-visible channel either. Both
+of the two ways the loop could learn which jobs are its own are blocked by
+the same seam. Closing it is a real design decision (a registry query keyed
+on something the engine layer *can* name, or a new context-write path for
+tools) and belongs in its own change, not bundled into this one.
+
 ## Context Budget Management
 
 Agents running long tasks consume their LLM context window without awareness.
