@@ -322,7 +322,10 @@ async def _invoke_tool_calls(
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- returns ERROR result
         reraise_critical(exc)
-        error_msg = f"Tool execution failed on turn {turn_number}: {type(exc).__name__}: {safe_error_description(exc)}"  # noqa: E501
+        error_msg = (
+            f"Tool execution failed on turn {turn_number}: "
+            f"{type(exc).__name__}: {safe_error_description(exc)}"
+        )
         log_exception_redacted(
             logger,
             EXECUTION_LOOP_ERROR,

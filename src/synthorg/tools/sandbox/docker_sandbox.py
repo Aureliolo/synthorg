@@ -260,6 +260,13 @@ class DockerSandbox(
         # one worker process at a time, like `LiveRunLedger`), so this needs
         # no cross-process mechanism.
         self._background_job_locks: dict[str, asyncio.Lock] = {}
+        # Count of unpinned foreground execs currently running per owner
+        # key, held under the same `_owner_lock` as the pin decision and
+        # the `start_background` cap check. A non-zero count keeps
+        # `start_background` from pinning a background job to a
+        # container an in-flight foreground command's own timeout could
+        # still stop outright.
+        self._unpinned_execs_in_flight: dict[str, int] = {}
         self._lock = asyncio.Lock()
         self._init_execution_leases(command_timeout=self._config.timeout_seconds)
         self._clock = clock or SystemClock()

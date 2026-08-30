@@ -318,15 +318,17 @@ class AgentEngine(
             self._approval_gate is not None
             or self._stagnation_detector is not None
             or self._compaction_callback is not None
+            or self._background_job_watcher is not None
         ):
             logger.warning(
                 APPROVAL_GATE_LOOP_WIRING_WARNING,
                 note=(
                     "execution_loop provided externally -- approval_gate, "
-                    "stagnation_detector, and compaction_callback will NOT "
-                    "be wired automatically. Configure the loop with "
-                    "approval_gate=, stagnation_detector=, and "
-                    "compaction_callback= explicitly."
+                    "stagnation_detector, compaction_callback, and "
+                    "background_job_watcher will NOT be wired automatically. "
+                    "Configure the loop with approval_gate=, "
+                    "stagnation_detector=, compaction_callback=, and "
+                    "background_job_watcher= explicitly."
                 ),
             )
         self._loop: ExecutionLoop = execution_loop or self._make_default_loop()

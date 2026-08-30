@@ -102,6 +102,7 @@ class DockerSandboxExecMixin:
         _docker: aiodocker.Docker | None
         _log_shipping_config: ContainerLogShippingConfig
         _background_jobs: BackgroundJobRegistry | None
+        _unpinned_execs_in_flight: dict[str, int]
 
         def _owner_lock(self, owner_key: str) -> asyncio.Lock:
             """Return the per-owner lock guarding the job-cap check + persist.
@@ -731,6 +732,7 @@ class DockerSandboxExecMixin:
         """
         container_id = handle.container_id
         pinned = False
+        reserved_unpinned = False
         if self._background_jobs is not None:
             async with self._owner_lock(owner_key):
                 try:
@@ -750,6 +752,18 @@ class DockerSandboxExecMixin:
                     # timeout-kill target), so failing toward it is the
                     # safer default when live-job status is unknown.
                     pinned = True
+                if not pinned:
+                    # Reserved under the same lock the pin decision was
+                    # made under, so a concurrent start_background call
+                    # either observes this reservation (and refuses to
+                    # pin a job to a container this exec's own timeout
+                    # may still stop) or ran its cap check first and
+                    # this exec will see its live job on its own next
+                    # call -- there is no gap either way sees neither.
+                    self._unpinned_execs_in_flight[owner_key] = (
+                        self._unpinned_execs_in_flight.get(owner_key, 0) + 1
+                    )
+                    reserved_unpinned = True
         logger.debug(
             SANDBOX_EXEC_PIN_DECIDED,
             container_id=container_id[:12],
@@ -766,32 +780,40 @@ class DockerSandboxExecMixin:
                 timeout=timeout,
             )
 
-        exec_obj = await self._open_exec(
-            docker,
-            handle,
-            command=command,
-            args=args,
-            container_cwd=container_cwd,
-            exec_env=exec_env,
-        )
-        start_mono = self._clock.monotonic()
-        stdout, stderr, timed_out = await self._drain_exec(
-            docker,
-            exec_obj,
-            container_id,
-            timeout,
-        )
-        elapsed_ms = int((self._clock.monotonic() - start_mono) * 1000)
+        try:
+            exec_obj = await self._open_exec(
+                docker,
+                handle,
+                command=command,
+                args=args,
+                container_cwd=container_cwd,
+                exec_env=exec_env,
+            )
+            start_mono = self._clock.monotonic()
+            stdout, stderr, timed_out = await self._drain_exec(
+                docker,
+                exec_obj,
+                container_id,
+                timeout,
+            )
+            elapsed_ms = int((self._clock.monotonic() - start_mono) * 1000)
 
-        return await self._finish_exec_result(
-            exec_obj=exec_obj,
-            command=command,
-            args=args,
-            container_id=container_id,
-            drained=(stdout, stderr, timed_out),
-            timeout=timeout,
-            elapsed_ms=elapsed_ms,
-        )
+            return await self._finish_exec_result(
+                exec_obj=exec_obj,
+                command=command,
+                args=args,
+                container_id=container_id,
+                drained=(stdout, stderr, timed_out),
+                timeout=timeout,
+                elapsed_ms=elapsed_ms,
+            )
+        finally:
+            if reserved_unpinned:
+                remaining = self._unpinned_execs_in_flight.get(owner_key, 0) - 1
+                if remaining <= 0:
+                    self._unpinned_execs_in_flight.pop(owner_key, None)
+                else:
+                    self._unpinned_execs_in_flight[owner_key] = remaining
 
     @staticmethod
     async def _collect_exec_output(stream: Stream) -> tuple[str, str]:

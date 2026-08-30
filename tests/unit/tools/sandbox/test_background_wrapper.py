@@ -8,6 +8,7 @@ itself.
 """
 
 import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -64,6 +65,17 @@ def _bash_backgrounding_available() -> bool:
 _HAS_BASH = pytest.mark.skipif(
     not _bash_backgrounding_available(),
     reason="requires a bash on PATH that can background a job and track its pid",
+)
+
+#: ``build_pinned_exec_command`` returns ``"setsid"`` as the program
+#: itself (not merely something its script text invokes), so a
+#: platform without it -- macOS ships no ``setsid`` command by default,
+#: unlike its ``setsid(2)`` syscall -- would fail every test in
+#: ``TestBuildPinnedExecCommand`` with ``FileNotFoundError`` rather than
+#: a clean skip.
+_HAS_SETSID = pytest.mark.skipif(
+    shutil.which("setsid") is None,
+    reason="requires setsid on PATH",
 )
 
 
@@ -399,6 +411,7 @@ class TestBuildKillCommand:
 
 
 @_HAS_BASH
+@_HAS_SETSID
 class TestBuildPinnedExecCommand:
     def test_returns_setsid_wrapping_bash_pipefail_c(self) -> None:
         program, args = build_pinned_exec_command("job-pin", "bash", ("-c", "echo hi"))

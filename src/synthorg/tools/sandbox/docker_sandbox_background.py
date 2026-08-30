@@ -53,6 +53,7 @@ from synthorg.tools.sandbox.errors import (
     SandboxBackgroundJobLimitError,
     SandboxBackgroundJobNotFoundError,
     SandboxBackgroundNoReusableContainerError,
+    SandboxBackgroundUnpinnedExecutionActiveError,
     SandboxBackgroundUnsupportedError,
     SandboxStartError,
 )
@@ -120,6 +121,7 @@ class DockerSandboxBackgroundMixin:
         _background_max_concurrent_jobs: int
         _background_output_byte_cap: int
         _background_job_locks: dict[str, asyncio.Lock]
+        _unpinned_execs_in_flight: dict[str, int]
 
         async def _ensure_docker(self) -> aiodocker.Docker: ...
 
@@ -457,6 +459,11 @@ class DockerSandboxBackgroundMixin:
                 which a background job cannot pin.
             SandboxBackgroundJobLimitError: The resolved owner already
                 holds the maximum number of live background jobs.
+            SandboxBackgroundUnpinnedExecutionActiveError: An unpinned
+                foreground command is currently running on the
+                container this owner would pin to; its own timeout
+                could stop the container and collaterally kill a job
+                started now.
             SandboxStartError: The job could not be confirmed started
                 (covers a shell-level failure -- a read-only ``/tmp``,
                 an exhausted tmpfs -- surfacing as empty or non-numeric
@@ -496,6 +503,20 @@ class DockerSandboxBackgroundMixin:
         # each read a count under the ceiling and both persist, since
         # nothing else serialises the check against the write.
         async with self._owner_lock(owner_key):
+            # An unpinned foreground exec decided (under this same lock)
+            # that no live job pins this container, so its own timeout
+            # path stops the container outright rather than killing just
+            # its own process group. Pinning a job here while that exec
+            # is still in flight would leave the job exposed to that
+            # timeout for as long as the exec keeps running.
+            if self._unpinned_execs_in_flight.get(owner_key, 0) > 0:
+                msg = (
+                    f"{owner_key} has an unpinned foreground command "
+                    f"running; its own timeout could stop the container. "
+                    f"Wait for it to finish, or retry, before starting a "
+                    f"background job."
+                )
+                raise SandboxBackgroundUnpinnedExecutionActiveError(msg)
             live_count = await registry.count_live_by_owner(owner_key)
             if live_count >= self._background_max_concurrent_jobs:
                 msg = (

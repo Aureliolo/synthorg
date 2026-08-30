@@ -7,6 +7,7 @@ cover the branch in ``DockerSandboxExecMixin._exec_command`` that checks
 timed-out exec's own process group instead of stopping the container.
 """
 
+import asyncio
 from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -19,6 +20,7 @@ from synthorg.persistence.background_job_protocol import (
 )
 from synthorg.tools.sandbox.background_jobs import BackgroundJobRegistry
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
+from synthorg.tools.sandbox.errors import SandboxBackgroundUnpinnedExecutionActiveError
 from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
 from synthorg.tools.sandbox.lifecycle.per_agent import PerAgentStrategy
 from tests._shared.fake_background_job_exec import (
@@ -47,6 +49,10 @@ def _make_sandbox(
         workspace=tmp_path,
         lifecycle_strategy=PerAgentStrategy(SandboxLifecycleConfig()),
         background_jobs=registry,
+        # A FakeClock keeps the pinned-kill path's pidfile-read retry
+        # loop (`_read_pinned_pid`) from spending real wall-clock time
+        # sleeping between attempts when a test scripts an empty read.
+        clock=FakeClock(),
     )
 
 
@@ -142,6 +148,47 @@ class TestUnpinnedPath:
         assert result.timed_out
         container_obj.stop.assert_awaited_once()
 
+    async def test_refuses_a_background_job_while_unpinned_exec_is_active(
+        self, tmp_path: Path
+    ) -> None:
+        """A concurrent start_background must not pin to a container an
+        in-flight unpinned exec's own timeout can still stop outright.
+        """
+        registry = BackgroundJobRegistry(_InMemoryBackgroundJobRepository())
+        docker = _make_mock_docker(lambda _script: ExecResponse(hang=True))
+        sandbox = _make_sandbox(tmp_path, registry=registry)
+
+        with _patch_aiodocker(docker):
+            exec_task = asyncio.create_task(
+                sandbox.execute(
+                    command="sleep",
+                    args=("100",),
+                    owner_id="agent-1",
+                    category="terminal",
+                    timeout=0.05,
+                )
+            )
+            try:
+                # Let the exec's pin decision (and its reservation) run;
+                # it awaits the registry check before hanging on the
+                # stream read, so a couple of scheduler turns suffice.
+                for _ in range(5):
+                    await asyncio.sleep(0)
+
+                with pytest.raises(SandboxBackgroundUnpinnedExecutionActiveError):
+                    await sandbox.start_background(
+                        command="echo",
+                        args=("hi",),
+                        owner_id="agent-1",
+                        category="terminal",
+                    )
+            finally:
+                await exec_task
+
+        # The reservation is released once the unpinned exec finishes,
+        # so it must not linger and lock the owner out permanently.
+        assert not sandbox._unpinned_execs_in_flight
+
 
 class TestPinnedPath:
     async def test_completes_before_timeout_streams_normally(
@@ -196,6 +243,57 @@ class TestPinnedPath:
         assert sibling is not None
         assert sibling.status == BackgroundJobStatus.RUNNING
 
+    async def test_pid_arriving_after_a_late_write_still_kills_only_the_group(
+        self, tmp_path: Path
+    ) -> None:
+        """The first couple of pidfile reads race the wrapper's own write.
+
+        A single empty read must not be treated as final: the retry
+        loop in ``_read_pinned_pid`` keeps asking until the pidfile
+        appears (or its own deadline elapses), so a slow-but-legitimate
+        write still ends in a process-group kill, never a container stop.
+        """
+        repo = _InMemoryBackgroundJobRepository()
+        registry = BackgroundJobRegistry(repo, clock=FakeClock())
+        await _seed_live_job(registry)
+        reads = 0
+
+        def _respond(script: str) -> ExecResponse:
+            nonlocal reads
+            if "echo $$ >" in script:
+                return ExecResponse(hang=True)
+            if script.startswith("cat ") or " cat " in script:
+                reads += 1
+                # Empty on the first two reads (racing the wrapper's own
+                # write), a real pid from the third read onward.
+                return ExecResponse(stdout=b"" if reads < 3 else b"555\n")
+            if "kill -TERM -" in script:
+                return ExecResponse(stdout=b"")
+            return ExecResponse(stdout=b"")
+
+        docker = _make_mock_docker(_respond)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
+        container_obj = docker.containers.container()
+
+        with _patch_aiodocker(docker):
+            result = await sandbox.execute(
+                command="sleep",
+                args=("100",),
+                timeout=0.05,
+                owner_id="agent-1",
+            )
+
+        assert result.timed_out
+        assert reads >= 3
+        container_obj.stop.assert_not_awaited()
+        assert any(
+            "kill -TERM -555" in script for script in _issued_scripts(container_obj)
+        )
+
+        sibling = await registry.get("sibling-job")
+        assert sibling is not None
+        assert sibling.status == BackgroundJobStatus.RUNNING
+
     async def test_timeout_with_unreadable_pid_falls_back_to_stop_container(
         self, tmp_path: Path
     ) -> None:
@@ -233,6 +331,33 @@ class TestPinnedPath:
         registry = BackgroundJobRegistry(repo, clock=FakeClock())
         await _seed_live_job(registry)
         docker = _make_mock_docker(_pinned_responder(main_hang=True, pid_reply=b"0\n"))
+        sandbox = _make_sandbox(tmp_path, registry=registry)
+        container_obj = docker.containers.container()
+
+        with _patch_aiodocker(docker):
+            result = await sandbox.execute(
+                command="sleep",
+                args=("100",),
+                timeout=0.05,
+                owner_id="agent-1",
+            )
+
+        assert result.timed_out
+        container_obj.stop.assert_awaited_once()
+
+    async def test_non_ascii_digit_pid_falls_back_to_stop_container(
+        self, tmp_path: Path
+    ) -> None:
+        """A Unicode digit character (e.g. superscript "²") satisfies
+        ``str.isdigit()`` but raises ``ValueError`` from ``int()`` --
+        the read must still be treated as unreadable, not crash.
+        """
+        repo = _InMemoryBackgroundJobRepository()
+        registry = BackgroundJobRegistry(repo, clock=FakeClock())
+        await _seed_live_job(registry)
+        docker = _make_mock_docker(
+            _pinned_responder(main_hang=True, pid_reply="²\n".encode())
+        )
         sandbox = _make_sandbox(tmp_path, registry=registry)
         container_obj = docker.containers.container()
 

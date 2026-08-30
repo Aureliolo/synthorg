@@ -354,7 +354,7 @@ def build_read_pid_command(job_id: str) -> tuple[str, tuple[str, ...]]:
         The ``(program, args)`` pair for the sandbox's attached exec.
     """
     pid_file = pid_path(job_id)
-    script = f"cat {_quote(pid_file)} 2>/dev/null"
+    script = f"cat {_quote(pid_file)} 2>/dev/null || true"
     return SHELL_PROGRAM, (*SHELL_ARGS_PREFIX, script)
 
 

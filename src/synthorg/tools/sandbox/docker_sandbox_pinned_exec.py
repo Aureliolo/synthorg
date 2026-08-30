@@ -54,6 +54,16 @@ logger = get_logger(__name__)
 #: wedged daemon.
 _PINNED_CONTROL_EXEC_TIMEOUT_SECONDS: Final[float] = 10.0
 
+#: Bounds how long the kill path retries an empty pidfile read before
+#: accepting it as final. The wrapper writes the pidfile as its very
+#: first action (``mkdir -p``; ``echo $$ > pidfile``; ``exec``), but a
+#: control exec racing that write -- reached before the daemon has even
+#: scheduled the wrapper's shell -- would otherwise read an empty file
+#: and stop the whole container for a job that was about to record its
+#: pid moments later.
+_PID_READ_DEADLINE_SECONDS: Final[float] = 2.0
+_PID_READ_RETRY_INTERVAL_SECONDS: Final[float] = 0.1
+
 
 class DockerSandboxPinnedExecMixin:
     """Foreground exec pinning: killable by process group, container spared."""
@@ -186,6 +196,32 @@ class DockerSandboxPinnedExecMixin:
             await self._safe_close_stream(stream)
         return stdout, stderr, timed_out
 
+    async def _read_pinned_pid(self, handle: ContainerHandle, job_id: str) -> str:
+        """Read a pinned exec's recorded pid, retrying while the file is empty.
+
+        Retries within ``_PID_READ_DEADLINE_SECONDS`` rather than
+        accepting a single empty read as final -- see that constant's
+        own docstring for why an empty read this early is not yet a
+        failure. A non-empty read (even unparseable) or a real error
+        from the control exec itself both return immediately; only
+        "nothing written yet" keeps retrying.
+
+        Returns:
+            The pidfile's stripped contents, or ``""`` once the
+            deadline elapses with nothing written.
+        """
+        program, args = build_read_pid_command(job_id)
+        deadline = self._clock.monotonic() + _PID_READ_DEADLINE_SECONDS
+        while True:
+            pid_text = (
+                await self._run_control_exec(
+                    handle, program, args, timeout=_PINNED_CONTROL_EXEC_TIMEOUT_SECONDS
+                )
+            ).strip()
+            if pid_text or self._clock.monotonic() >= deadline:
+                return pid_text
+            await self._clock.sleep(_PID_READ_RETRY_INTERVAL_SECONDS)
+
     async def _kill_pinned_exec(
         self,
         docker: aiodocker.Docker,
@@ -205,13 +241,8 @@ class DockerSandboxPinnedExecMixin:
         differently-shaped log entries for the same event.
         """
         handle = ContainerHandle(container_id=container_id)
-        program, args = build_read_pid_command(job_id)
         try:
-            pid_text = (
-                await self._run_control_exec(
-                    handle, program, args, timeout=_PINNED_CONTROL_EXEC_TIMEOUT_SECONDS
-                )
-            ).strip()
+            pid_text = await self._read_pinned_pid(handle, job_id)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
@@ -223,7 +254,14 @@ class DockerSandboxPinnedExecMixin:
             await self._stop_container(docker, container_id)
             return
 
-        if not (pid_text.isdigit() and int(pid_text) > 0):
+        try:
+            # `str.isdigit()` accepts Unicode digit characters (e.g.
+            # superscript "²") that `int()` itself rejects, so a positive
+            # `isdigit()` check alone does not guarantee `int()` succeeds.
+            pid = int(pid_text)
+        except ValueError:
+            pid = 0
+        if pid <= 0:
             logger.warning(
                 SANDBOX_PINNED_EXEC_PID_UNREADABLE,
                 container_id=container_id[:12],
@@ -231,8 +269,6 @@ class DockerSandboxPinnedExecMixin:
             )
             await self._stop_container(docker, container_id)
             return
-
-        pid = int(pid_text)
         try:
             await self._kill_background_process_group(NotBlankStr(container_id), pid)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
