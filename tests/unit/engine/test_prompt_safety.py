@@ -328,12 +328,12 @@ class TestFenceTagRegistry:
 class TestFenceTagInjectionGuard:
     """The injection-detection fence list stays in sync with the registry."""
 
-    def test_loop_tool_execution_covers_every_registry_tag(self) -> None:
-        # The import-time guard in ``loop_tool_execution`` raises if a
+    def test_loop_tool_result_fencing_covers_every_registry_tag(self) -> None:
+        # The import-time guard in ``loop_tool_result_fencing`` raises if a
         # registry tag is missing from ``_FENCE_TAGS``; importing the
         # module here proves the guard passed, and we assert coverage
         # directly so a regression is attributed precisely.
-        from synthorg.engine.loop_tool_execution import _FENCE_TAGS
+        from synthorg.engine.loop_tool_result_fencing import _FENCE_TAGS
 
         assert set(_FENCE_TAGS) >= ALL_FENCE_TAGS
 

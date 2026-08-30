@@ -1236,6 +1236,7 @@ class DockerSandbox(
                 container_cwd=container_cwd,
                 exec_env=exec_env,
                 timeout=effective_timeout,
+                owner_key=owner_key,
             )
         finally:
             sidecar_logs = await self._collect_and_ship_logs(

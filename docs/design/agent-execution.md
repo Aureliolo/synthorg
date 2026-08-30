@@ -169,8 +169,9 @@ composes the execution loop with prompt construction, context management, tool
 invocation, and cost tracking into a single `run()` call. It builds its loop
 through `_make_default_loop()`, which passes every in-flight control the engine
 holds (approval gate, stagnation detector, compaction callback, steering inbox,
-step classifier) by name, so a control the engine was given that the loop never
-received is a type error rather than a silently ungoverned run. An
+step classifier, background job watcher) by name, so a control the engine was
+given that the loop never received is a type error rather than a silently
+ungoverned run. An
 `execution_loop=` may still be injected, which tests use to drive a double.
 
 The engine also exposes an optional ``coordinate()`` method that delegates to a
@@ -243,7 +244,8 @@ LOCKED organisation a weaker response than it chose and said nothing.
    alone when no enforcer is configured.
 9. **Take the loop**: the engine built it at construction, wired with every
    in-process control it holds (`approval_gate`, `stagnation_detector`,
-   `compaction_callback`, `steering_inbox`, `step_classifier`). The boundary
+   `compaction_callback`, `steering_inbox`, `step_classifier`,
+   `background_job_watcher`). The boundary
    checks (budget, shutdown, cancellation, `NO_OP`) are passed per call to
    `execute()`.
 10. **Delegate to loop**: calls `ExecutionLoop.execute()` with context,
@@ -716,10 +718,10 @@ loop captures the job id at the point it is created: `execute_tool_calls`
 `AgentContext` for `load_tool` / `load_tool_resource` results; a
 `shell_command(background=True)` call whose result parses as
 `{"job_id": ...}` is one more case in that same switch, recorded via
-`AgentContext.with_background_job_watched`. This needs no new boot
-collaborator beyond the `BackgroundJobRegistry` already constructed for
-sandbox wiring, and it is scoped to exactly the jobs *this run's context*
-started.
+`AgentContext.with_background_job_watched`. This needs no new kind of boot
+collaborator: the watcher gets its own `BackgroundJobRegistry` instance
+over the same repository sandbox wiring already uses, and it is scoped to
+exactly the jobs *this run's context* started.
 
 **Mechanics.** `BackgroundJobWatchChannel` (`background_job_watch_channel.py`)
 is a dedicated `AgentContext` state channel, separate from `conversation`

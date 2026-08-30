@@ -10,7 +10,6 @@ registry: a collaborator built but never actually reaching what it was
 built for.
 """
 
-from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -78,8 +77,7 @@ def _app_state(
     )
 
 
-async def _engine_for(app_state: AppState, tmp_path: Path) -> AgentEngine:
-    del tmp_path
+async def _engine_for(app_state: AppState) -> AgentEngine:
     return await _construct_agent_engine(
         app_state,
         ScriptedProvider([]),
@@ -90,28 +88,26 @@ async def _engine_for(app_state: AppState, tmp_path: Path) -> AgentEngine:
 
 
 class TestBackgroundJobWatcherBootWiring:
-    async def test_disabled_by_default(self, tmp_path: Path) -> None:
+    async def test_disabled_by_default(self) -> None:
         app_state = _app_state(
             background_job_staleness=BackgroundJobStalenessConfig(),
             persistence_connected=True,
         )
-        engine = await _engine_for(app_state, tmp_path)
+        engine = await _engine_for(app_state)
         assert engine._background_job_watcher is None
 
-    async def test_enabled_with_persistence_connected(self, tmp_path: Path) -> None:
+    async def test_enabled_with_persistence_connected(self) -> None:
         app_state = _app_state(
             background_job_staleness=BackgroundJobStalenessConfig(enabled=True),
             persistence_connected=True,
         )
-        engine = await _engine_for(app_state, tmp_path)
+        engine = await _engine_for(app_state)
         assert isinstance(engine._background_job_watcher, BackgroundJobWatcher)
 
-    async def test_enabled_without_persistence_fails_closed(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_enabled_without_persistence_fails_closed(self) -> None:
         app_state = _app_state(
             background_job_staleness=BackgroundJobStalenessConfig(enabled=True),
             persistence_connected=False,
         )
-        engine = await _engine_for(app_state, tmp_path)
+        engine = await _engine_for(app_state)
         assert engine._background_job_watcher is None

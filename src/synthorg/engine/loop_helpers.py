@@ -8,8 +8,8 @@ The :func:`wrap_untrusted` responsibility lives upstream of the
 loop:
 
 - Tool-result wrapping is owned by
-  :func:`synthorg.engine.loop_tool_execution._wrap_tool_result` (see
-  also ``_FENCE_TAGS`` in that module).
+  :func:`synthorg.engine.loop_tool_result_fencing.wrap_tool_result`
+  (see also ``_FENCE_TAGS`` in that module).
 - User-message wrapping is owned by the per-strategy prompt builders
   that produce the initial ``ChatMessage`` payload, e.g.
   :func:`synthorg.engine.prompt_validation.format_task_instruction`,

@@ -10,12 +10,14 @@ from synthorg.engine.background_job_watch_channel import (
     BackgroundJobWatchChannel,
     WatchedJobRecord,
 )
+from synthorg.engine.compaction.models import CompressionMetadata
 from synthorg.engine.context import AgentContext
+
+pytestmark = pytest.mark.unit
 
 _SINCE = datetime(2026, 4, 14, tzinfo=UTC)
 
 
-@pytest.mark.unit
 class TestAgentContextBackgroundJobWatch:
     """BackgroundJobWatchChannel field on AgentContext."""
 
@@ -76,8 +78,6 @@ class TestAgentContextBackgroundJobWatch:
 
     def test_survives_with_compression(self, sample_agent: AgentIdentity) -> None:
         """State channel must not be touched by compaction."""
-        from synthorg.engine.compaction.models import CompressionMetadata
-
         ctx = AgentContext.from_identity(sample_agent)
         ctx = ctx.with_background_job_watched(
             NotBlankStr("job-1"), watching_since=_SINCE

@@ -61,7 +61,6 @@ from synthorg.tools.ceilings import ToolCeilings
 from synthorg.tools.factory import build_default_tools_from_config
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.registry import ToolRegistry
-from synthorg.tools.sandbox.background_jobs import BackgroundJobRegistry
 from synthorg.tools.sandbox.factory import (
     build_sandbox_backends,
     merge_secure_backend_defaults,
@@ -81,7 +80,7 @@ from synthorg.workers._agent_middleware_assembly import (
     build_agent_middleware_chain_or_none,
 )
 from synthorg.workers._background_job_wiring import (
-    background_job_repo_or_none,
+    background_job_registry_or_none,
     bind_pin_check_if_wired,
     resolve_background_job_ceilings,
 )
@@ -174,12 +173,7 @@ async def _build_tool_registry(
 
     browser_settings = await resolve_browser_settings(config_resolver_of(app_state))
     desktop_settings = await resolve_desktop_settings(config_resolver_of(app_state))
-    background_job_repo = background_job_repo_or_none(app_state)
-    background_jobs = (
-        BackgroundJobRegistry(background_job_repo, clock=app_state.clock)
-        if background_job_repo is not None
-        else None
-    )
+    background_jobs = background_job_registry_or_none(app_state)
     lifecycle_strategy = create_lifecycle_strategy(
         app_state.config.sandboxing.docker.lifecycle,
         clock=app_state.clock,
@@ -569,14 +563,9 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         app_state,
         detector_timeout_seconds=classification_detector_timeout_seconds,
     )
-    background_job_repo = background_job_repo_or_none(app_state)
     background_job_watcher = create_background_job_watcher(
         app_state.config.background_job_staleness,
-        registry=(
-            BackgroundJobRegistry(background_job_repo, clock=app_state.clock)
-            if background_job_repo is not None
-            else None
-        ),
+        registry=background_job_registry_or_none(app_state),
     )
     return AgentEngine(
         agent_middleware_chain=await build_agent_middleware_chain_or_none(

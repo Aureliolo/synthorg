@@ -124,9 +124,9 @@ class BackgroundJobRegistry:
         A plain, read-only check: unlike :meth:`pin_check`'s own
         ``expire_overdue`` call, this never force-cancels a job past its
         own ``max_duration_seconds`` ceiling. It exists for a cheap
-        pre-exec gate (should THIS foreground call be pinned-and-killable
-        rather than today's whole-container-stop), not a place to expire
-        anything.
+        pre-exec gate (should this foreground call be pinned-and-killable
+        rather than sharing the container's own stop-on-timeout path),
+        not a place to expire anything.
 
         Returns:
             ``True`` while at least one live row exists for the container.

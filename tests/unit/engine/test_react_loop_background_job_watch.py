@@ -5,7 +5,7 @@ the same turn-boundary slot, immediately after ``check_steering``.
 """
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import pytest
 
@@ -23,7 +23,16 @@ from synthorg.persistence.background_job_protocol import (
     BackgroundJobStatus,
 )
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage, CompletionResponse, TokenUsage
+from synthorg.providers.models import (
+    ChatMessage,
+    CompletionResponse,
+    TokenUsage,
+    ToolCall,
+)
+from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.tools.base import BaseTool, ToolExecutionResult
+from synthorg.tools.invoker import ToolInvoker
+from synthorg.tools.registry import ToolRegistry
 from synthorg.tools.sandbox.background_jobs import BackgroundJobRegistry
 from tests._shared import FakeClock
 from tests._shared.fake_background_job_repo import (
@@ -51,6 +60,38 @@ def _ctx_with_user_msg(ctx: AgentContext) -> AgentContext:
 
 def _is_nudge_msg(msg: ChatMessage) -> bool:
     return msg.role is MessageRole.USER and "job-1" in (msg.content or "")
+
+
+class _ScriptedShellCommandTool(BaseTool):
+    """A ``shell_command`` double returning a fixed, controllable result."""
+
+    def __init__(self, result: ToolExecutionResult) -> None:
+        super().__init__(
+            name="shell_command",
+            description="Test double",
+            category=ToolCategory.TERMINAL,
+        )
+        self._result = result
+
+    @override
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
+        return self._result
+
+
+def _background_tool_use_response() -> CompletionResponse:
+    return CompletionResponse(
+        content=None,
+        tool_calls=(
+            ToolCall(
+                id="tc-1",
+                name="shell_command",
+                arguments={"command": "sleep 300", "background": True},
+            ),
+        ),
+        finish_reason=FinishReason.TOOL_USE,
+        usage=TokenUsage(input_tokens=10, output_tokens=5, cost=0.001),
+        model="test-model-001",
+    )
 
 
 async def _watcher_with_live_job(
@@ -141,3 +182,78 @@ class TestReactLoopBackgroundJobWatch:
         result = await loop.execute(context=ctx, provider=provider)
 
         assert result.termination_reason is TerminationReason.COMPLETED
+
+    async def test_watcher_wired_captures_a_new_background_job(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A watcher on the loop must reach ``execute_tool_calls``'s own
+        capture gate, not just the per-turn nudge check."""
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory([_background_tool_use_response(), _stop()])
+        invoker = ToolInvoker(
+            ToolRegistry(
+                [
+                    _ScriptedShellCommandTool(
+                        ToolExecutionResult(
+                            content='{"job_id": "new-job"}', is_error=False
+                        )
+                    )
+                ]
+            )
+        )
+        repo = _InMemoryBackgroundJobRepository()
+        registry = BackgroundJobRegistry(repo)
+        await registry.save(
+            BackgroundJobRecord(
+                job_id="new-job",
+                container_id="c1",
+                owner_id="agent-1:rw",
+                command_repr="sleep 300",
+                pid=123,
+                status=BackgroundJobStatus.RUNNING,
+                output_path="/tmp/.synthorg-jobs/new-job/output",  # noqa: S108
+                started_at=_START,
+                updated_at=_START,
+                max_duration_seconds=3600.0,
+            )
+        )
+        watcher = BackgroundJobWatcher(
+            registry, BackgroundJobStalenessConfig(enabled=True)
+        )
+
+        loop = ReactLoop(background_job_watcher=watcher)
+        result = await loop.execute(
+            context=ctx, provider=provider, tool_invoker=invoker
+        )
+
+        assert result.termination_reason is TerminationReason.COMPLETED
+        assert result.context.background_job_watch.get("new-job") is not None
+
+    async def test_no_watcher_never_captures_a_background_job(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory([_background_tool_use_response(), _stop()])
+        invoker = ToolInvoker(
+            ToolRegistry(
+                [
+                    _ScriptedShellCommandTool(
+                        ToolExecutionResult(
+                            content='{"job_id": "new-job"}', is_error=False
+                        )
+                    )
+                ]
+            )
+        )
+
+        loop = ReactLoop()
+        result = await loop.execute(
+            context=ctx, provider=provider, tool_invoker=invoker
+        )
+
+        assert result.termination_reason is TerminationReason.COMPLETED
+        assert result.context.background_job_watch.records == ()

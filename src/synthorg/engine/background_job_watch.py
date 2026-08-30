@@ -4,7 +4,7 @@ A ``shell_command(background=True)`` call detaches a process the agent
 may simply forget about across turns. ``BackgroundJobWatchChannel``
 (``background_job_watch_channel.py``) records the job ids the loop
 itself observed a tool call return (see ``loop_tool_execution.py``'s
-``execute_tool_calls``, which is the single writer); the
+``execute_tool_calls``, the only writer of *new* records); the
 ``BackgroundJobWatcher`` here reads that channel at the existing
 turn-boundary slot beside ``check_steering`` and nudges the agent once a
 watched job has been running quietly past a configurable threshold.
@@ -14,6 +14,8 @@ One implementation with an on/off switch, not a pluggable family like
 background job, so a strategy discriminator would name a choice nobody
 makes.
 """
+
+import asyncio
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,6 +27,7 @@ from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.execution import (
     EXECUTION_BACKGROUND_JOB_NUDGED,
+    EXECUTION_BACKGROUND_JOB_WATCH_DROPPED,
     EXECUTION_BACKGROUND_JOB_WATCH_READ_FAILED,
 )
 from synthorg.persistence.background_job_protocol import (
@@ -109,7 +112,11 @@ class BackgroundJobWatcher:
         """Nudge the agent about any watched job stalled past the threshold.
 
         Drops a watched record once its job has left a live status (or
-        vanished), so a finished job is never nudged about again.
+        vanished), so a finished job is never nudged about again. The
+        threshold is judged against time since the *last* nudge (or since
+        watching began, if never nudged); the nudge message itself instead
+        reports total time watched, since that -- not the interval between
+        nudges -- is what the agent needs to decide whether to keep waiting.
 
         Returns:
             The updated context when a job was nudged or dropped, or
@@ -121,11 +128,19 @@ class BackgroundJobWatcher:
         now = clock.now()
         changed = False
         messages: list[ChatMessage] = []
-        for record in channel.records:
-            job = await self._registry.get(record.job_id)
+        jobs = await asyncio.gather(
+            *(self._registry.get(record.job_id) for record in channel.records)
+        )
+        for record, job in zip(channel.records, jobs, strict=True):
             if job is None or job.status not in LIVE_BACKGROUND_JOB_STATUSES:
                 channel = channel.without_record(record.job_id)
                 changed = True
+                logger.info(
+                    EXECUTION_BACKGROUND_JOB_WATCH_DROPPED,
+                    execution_id=ctx.execution_id,
+                    job_id=record.job_id,
+                    status=job.status if job is not None else None,
+                )
                 continue
             since = record.last_nudged_at or record.started_watching_at
             elapsed = (now - since).total_seconds()

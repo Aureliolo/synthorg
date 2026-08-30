@@ -1,4 +1,4 @@
-"""Tests for the #2880 pinned-container foreground-exec timeout fix.
+"""Tests for the pinned-container foreground-exec timeout fix.
 
 When a container has live background jobs, a foreground ``execute()``
 call must not collaterally kill them on its own timeout. These tests
@@ -89,8 +89,8 @@ def _pinned_responder(
     return _respond
 
 
-class TestUnpinnedPathUnchanged:
-    """No live background jobs: today's exact behaviour, unchanged."""
+class TestUnpinnedPath:
+    """No live background jobs: the ordinary, unwrapped exec path."""
 
     async def test_no_registry_wired_takes_the_ordinary_path(
         self, tmp_path: Path
@@ -175,6 +175,12 @@ class TestPinnedPath:
         container_obj.stop.assert_not_awaited()
         container_obj.delete.assert_not_awaited()
 
+        issued_scripts = [
+            " ".join(str(part) for part in call.kwargs.get("cmd", ()))
+            for call in container_obj.exec.call_args_list
+        ]
+        assert any("kill -TERM -555" in script for script in issued_scripts)
+
         sibling = await registry.get("sibling-job")
         assert sibling is not None
         assert sibling.status == BackgroundJobStatus.RUNNING
@@ -190,10 +196,136 @@ class TestPinnedPath:
         container_obj = docker.containers.container()
 
         with _patch_aiodocker(docker):
-            result = await sandbox.execute(command="sleep", args=("100",), timeout=0.05)
+            # Same explicit owner_id as test_timeout_kills_only_the_process_group:
+            # without it the container degrades to per-call and gets stopped
+            # after every exec regardless of this fix, which would make
+            # ``stop.assert_awaited_once()`` pass for the wrong reason.
+            result = await sandbox.execute(
+                command="sleep",
+                args=("100",),
+                timeout=0.05,
+                owner_id="agent-1",
+            )
+
+        assert result.timed_out
+        issued_scripts = [
+            " ".join(str(part) for part in call.kwargs.get("cmd", ()))
+            for call in container_obj.exec.call_args_list
+        ]
+        assert any(
+            script.startswith("bash") and "cat " in script for script in issued_scripts
+        ), "pid-read control exec was never issued"
+        container_obj.stop.assert_awaited_once()
+
+    async def test_pid_zero_falls_back_to_stop_container(self, tmp_path: Path) -> None:
+        """``0`` parses as a digit but is not a positive pid, unlike an
+        empty or non-numeric pidfile -- both must be refused the same way.
+        """
+        repo = _InMemoryBackgroundJobRepository()
+        registry = BackgroundJobRegistry(repo, clock=FakeClock())
+        await _seed_live_job(registry)
+        docker = _make_mock_docker(_pinned_responder(main_hang=True, pid_reply=b"0\n"))
+        sandbox = _make_sandbox(tmp_path, registry=registry)
+        container_obj = docker.containers.container()
+
+        with _patch_aiodocker(docker):
+            result = await sandbox.execute(
+                command="sleep",
+                args=("100",),
+                timeout=0.05,
+                owner_id="agent-1",
+            )
 
         assert result.timed_out
         container_obj.stop.assert_awaited_once()
+
+    async def test_pid_read_exception_falls_back_to_stop_container(
+        self, tmp_path: Path
+    ) -> None:
+        repo = _InMemoryBackgroundJobRepository()
+        registry = BackgroundJobRegistry(repo, clock=FakeClock())
+        await _seed_live_job(registry)
+
+        def _respond(script: str) -> ExecResponse:
+            if "echo $$ >" in script:
+                return ExecResponse(hang=True)
+            if "cat " in script:
+                msg = "pidfile read exec failed to open"
+                raise RuntimeError(msg)
+            return ExecResponse(stdout=b"")
+
+        docker = _make_mock_docker(_respond)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
+        container_obj = docker.containers.container()
+
+        with _patch_aiodocker(docker):
+            result = await sandbox.execute(
+                command="sleep",
+                args=("100",),
+                timeout=0.05,
+                owner_id="agent-1",
+            )
+
+        assert result.timed_out
+        container_obj.stop.assert_awaited_once()
+
+    async def test_kill_call_failure_falls_back_to_stop_container(
+        self, tmp_path: Path
+    ) -> None:
+        repo = _InMemoryBackgroundJobRepository()
+        registry = BackgroundJobRegistry(repo, clock=FakeClock())
+        await _seed_live_job(registry)
+
+        def _respond(script: str) -> ExecResponse:
+            if "echo $$ >" in script:
+                return ExecResponse(hang=True)
+            if "cat " in script:
+                return ExecResponse(stdout=b"555\n")
+            if "kill -TERM -" in script:
+                msg = "kill exec failed to open"
+                raise RuntimeError(msg)
+            return ExecResponse(stdout=b"")
+
+        docker = _make_mock_docker(_respond)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
+        container_obj = docker.containers.container()
+
+        with _patch_aiodocker(docker):
+            result = await sandbox.execute(
+                command="sleep",
+                args=("100",),
+                timeout=0.05,
+                owner_id="agent-1",
+            )
+
+        assert result.timed_out
+        container_obj.stop.assert_awaited_once()
+
+    async def test_cleanup_failure_does_not_affect_the_result(
+        self, tmp_path: Path
+    ) -> None:
+        repo = _InMemoryBackgroundJobRepository()
+        registry = BackgroundJobRegistry(repo, clock=FakeClock())
+        await _seed_live_job(registry)
+
+        def _respond(script: str) -> ExecResponse:
+            if "echo $$ >" in script:
+                return ExecResponse(stdout=b"out\n")
+            if "rm -rf" in script:
+                msg = "cleanup exec failed to open"
+                raise RuntimeError(msg)
+            return ExecResponse(stdout=b"")
+
+        docker = _make_mock_docker(_respond)
+        sandbox = _make_sandbox(tmp_path, registry=registry)
+
+        with _patch_aiodocker(docker):
+            result = await sandbox.execute(
+                command="echo", args=("out",), owner_id="agent-1"
+            )
+
+        assert not result.timed_out
+        assert result.stdout == "out\n"
 
     async def test_stdout_and_stderr_are_captured_separately(
         self, tmp_path: Path

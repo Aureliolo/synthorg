@@ -305,9 +305,10 @@ def build_pinned_exec_command(
     redirects the real command's own stdout/stderr: the exec this
     produces is meant to be drained exactly like an ordinary foreground
     exec (same attached stream, same separate stdout/stderr, no output
-    cap), so a caller sharing a container with a live background job can
-    keep today's foreground behaviour byte-for-byte while still being
-    able to kill just this one process group on timeout.
+    cap), so a caller sharing a container with a live background job
+    gets identical streaming and exit-code semantics to an unpinned
+    foreground exec, while still being able to kill just this one
+    process group on timeout.
 
     ``setsid`` execs directly into ``bash`` (its own argv[1]), so no fork
     happens there. Inside the script, ``mkdir -p`` may fork (an ordinary,

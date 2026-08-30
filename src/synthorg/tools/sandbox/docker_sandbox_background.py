@@ -63,6 +63,7 @@ from synthorg.tools.sandbox.lifecycle.protocol import (
 
 if TYPE_CHECKING:
     from aiodocker.execs import Exec
+    from aiodocker.stream import Stream
 
 logger = get_logger(__name__)
 
@@ -191,6 +192,12 @@ class DockerSandboxBackgroundMixin:
             timeout: float,  # noqa: ASYNC109
         ) -> tuple[str, str, bool]: ...
 
+        @staticmethod
+        async def _collect_exec_output(stream: Stream) -> tuple[str, str]: ...
+
+        @staticmethod
+        async def _safe_close_stream(stream: Stream) -> None: ...
+
     def _require_background_jobs(self) -> BackgroundJobRegistry:
         """Return the wired registry, or refuse when none was attached.
 
@@ -233,7 +240,17 @@ class DockerSandboxBackgroundMixin:
         *,
         timeout: float,  # noqa: ASYNC109
     ) -> str:
-        """Run a wrapper-builder command and return its stdout.
+        """Run a short administrative exec and return its stdout.
+
+        A control exec reads a file or signals a process; it is never the
+        caller's actual workload. Every caller (poll, read, cancel,
+        pin-check self-cleaning, and the pinned-exec kill/cleanup paths)
+        runs this against a container it wants kept alive, so unlike
+        :meth:`~synthorg.tools.sandbox.docker_sandbox_exec.DockerSandboxExecMixin._drain_exec`,
+        this drains without ever stopping the container on its own
+        timeout: a wedged control exec is not evidence the container
+        itself is compromised, and several callers exist precisely to
+        spare that container from being torn down.
 
         Returns:
             The exec's captured stdout.
@@ -251,15 +268,19 @@ class DockerSandboxBackgroundMixin:
             container_cwd=CONTAINER_TMP,
             exec_env={},
         )
-        stdout, _stderr, timed_out = await self._drain_exec(
-            docker, exec_obj, handle.container_id, timeout
-        )
-        if timed_out:
+        stream = exec_obj.start(detach=False)
+        try:
+            stdout, _stderr = await asyncio.wait_for(
+                self._collect_exec_output(stream), timeout=timeout
+            )
+        except TimeoutError as exc:
             msg = (
                 f"Background-job control command timed out after "
                 f"{timeout}s against container {handle.container_id[:12]}"
             )
-            raise SandboxStartError(msg)
+            raise SandboxStartError(msg) from exc
+        finally:
+            await self._safe_close_stream(stream)
         return stdout
 
     async def _kill_background_process_group(

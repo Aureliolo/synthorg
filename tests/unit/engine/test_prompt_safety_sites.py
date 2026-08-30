@@ -171,12 +171,12 @@ class TestGraderFence:
 
 @pytest.mark.unit
 class TestToolResultFence:
-    """``_wrap_tool_result`` fences content + flags injection patterns."""
+    """``wrap_tool_result`` fences content + flags injection patterns."""
 
     def test_content_wrapped(self) -> None:
         import structlog.testing
 
-        from synthorg.engine.loop_tool_execution import _wrap_tool_result
+        from synthorg.engine.loop_tool_result_fencing import wrap_tool_result
         from synthorg.providers.models import ToolResult
 
         original = ToolResult(
@@ -185,18 +185,18 @@ class TestToolResultFence:
             is_error=False,
         )
         with structlog.testing.capture_logs() as events:
-            wrapped = _wrap_tool_result(original)
+            wrapped = wrap_tool_result(original)
         assert wrapped.content.startswith("<tool-result>\n")
         assert wrapped.content.endswith("\n</tool-result>")
         # No injection pattern -> no detection event.
         assert all(e.get("event") != "tool.injection_pattern.detected" for e in events)
 
     def test_empty_content_wrapped(self) -> None:
-        from synthorg.engine.loop_tool_execution import _wrap_tool_result
+        from synthorg.engine.loop_tool_result_fencing import wrap_tool_result
         from synthorg.providers.models import ToolResult
 
         original = ToolResult(tool_call_id="tc-empty", content="", is_error=False)
-        wrapped = _wrap_tool_result(original)
+        wrapped = wrap_tool_result(original)
         assert wrapped.content == "<tool-result>\n\n</tool-result>"
 
     def test_injection_sample_is_scrubbed(self) -> None:
@@ -204,7 +204,7 @@ class TestToolResultFence:
         # telemetry ``sample=`` field must scrub it.
         import structlog.testing
 
-        from synthorg.engine.loop_tool_execution import _wrap_tool_result
+        from synthorg.engine.loop_tool_result_fencing import wrap_tool_result
         from synthorg.providers.models import ToolResult
 
         leaky = (
@@ -213,7 +213,7 @@ class TestToolResultFence:
         )
         original = ToolResult(tool_call_id="tc-leak", content=leaky, is_error=False)
         with structlog.testing.capture_logs() as events:
-            _wrap_tool_result(original)
+            wrap_tool_result(original)
         injection_events = [
             e for e in events if e.get("event") == "tool.injection_pattern.detected"
         ]
@@ -226,7 +226,7 @@ class TestToolResultFence:
     def test_injection_pattern_flagged(self) -> None:
         import structlog.testing
 
-        from synthorg.engine.loop_tool_execution import _wrap_tool_result
+        from synthorg.engine.loop_tool_result_fencing import wrap_tool_result
         from synthorg.providers.models import ToolResult
 
         original = ToolResult(
@@ -235,7 +235,7 @@ class TestToolResultFence:
             is_error=False,
         )
         with structlog.testing.capture_logs() as events:
-            wrapped = _wrap_tool_result(original)
+            wrapped = wrap_tool_result(original)
         # Still wrapped even though a pattern matched.
         assert wrapped.content.startswith("<tool-result>\n")
         assert any(e.get("event") == "tool.injection_pattern.detected" for e in events)
@@ -243,7 +243,7 @@ class TestToolResultFence:
     def test_closing_tag_breakout_flagged_and_escaped(self) -> None:
         import structlog.testing
 
-        from synthorg.engine.loop_tool_execution import _wrap_tool_result
+        from synthorg.engine.loop_tool_result_fencing import wrap_tool_result
         from synthorg.providers.models import ToolResult
 
         original = ToolResult(
@@ -252,7 +252,7 @@ class TestToolResultFence:
             is_error=False,
         )
         with structlog.testing.capture_logs() as events:
-            wrapped = _wrap_tool_result(original)
+            wrapped = wrap_tool_result(original)
         assert wrapped.content.count("</tool-result>") == 1
         assert "<\\/tool-result>" in wrapped.content
         assert any(e.get("event") == "tool.injection_pattern.detected" for e in events)

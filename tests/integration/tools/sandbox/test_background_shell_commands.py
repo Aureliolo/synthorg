@@ -382,7 +382,7 @@ class TestBackgroundShellCommandEndToEnd:
     async def test_foreground_timeout_spares_a_pinned_container_and_its_job(
         self, tmp_path: Path
     ) -> None:
-        """#2880: a timed-out foreground call must not collaterally kill a
+        """A timed-out foreground call must not collaterally kill a
         live sibling background job's container.
 
         The foreground command's ``&&``-chained second half only runs if
@@ -408,7 +408,7 @@ class TestBackgroundShellCommandEndToEnd:
 
             result = await sandbox.execute(
                 command="sh",
-                args=("-c", "sleep 2 && touch /tmp/fg-should-be-killed"),
+                args=("-c", "sleep 30 && touch /tmp/fg-should-be-killed"),
                 category="terminal",
                 owner_id="owner-pin",
                 timeout=0.2,

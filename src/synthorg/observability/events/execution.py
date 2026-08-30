@@ -21,6 +21,12 @@ EXECUTION_LOOP_TOOL_CALLS: Final[str] = "execution.loop.tool_calls"
 EXECUTION_LOOP_TERMINATED: Final[str] = "execution.loop.terminated"
 EXECUTION_LOOP_EMPTY_RUN_NUDGED: Final[str] = "execution.loop.empty_run_nudged"
 EXECUTION_BACKGROUND_JOB_NUDGED: Final[str] = "execution.background_job.nudged"
+EXECUTION_BACKGROUND_JOB_WATCH_STARTED: Final[str] = (
+    "execution.background_job.watch_started"
+)
+EXECUTION_BACKGROUND_JOB_WATCH_DROPPED: Final[str] = (
+    "execution.background_job.watch_dropped"
+)
 EXECUTION_BACKGROUND_JOB_WATCH_READ_FAILED: Final[str] = (
     "execution.background_job.watch_read_failed"
 )

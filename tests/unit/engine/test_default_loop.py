@@ -149,6 +149,9 @@ class TestCheckpointRebuild:
             step_classifier=cast("StepQualityClassifier", controls["step_classifier"]),
             turn_observer=cast("TurnObserver", observer),
             clock=clock,
+            background_job_watcher=cast(
+                "BackgroundJobWatcher", controls["background_job_watcher"]
+            ),
         )
 
         async def _callback(ctx: AgentContext) -> None:
@@ -171,6 +174,7 @@ class TestCheckpointRebuild:
         assert rebuilt.step_classifier is controls["step_classifier"]
         assert rebuilt._turn_observer is observer
         assert rebuilt._clock is clock
+        assert rebuilt.background_job_watcher is controls["background_job_watcher"]
 
     def test_every_constructor_field_survives_a_rebuild(self) -> None:
         """Derived from the signature, so a field added later is covered.
@@ -192,6 +196,9 @@ class TestCheckpointRebuild:
             ),
             turn_observer=_observe,
             clock=FakeClock(),
+            background_job_watcher=cast(
+                "BackgroundJobWatcher", mock_of[BackgroundJobWatcher]()
+            ),
         )
 
         async def _callback(ctx: AgentContext) -> None:

@@ -88,22 +88,36 @@ class TestBackgroundJobWatchCapture:
         )
         clock = FakeClock()
 
-        result = await execute_tool_calls(ctx, invoker, response, 1, [], clock=clock)
+        result = await execute_tool_calls(
+            ctx, invoker, response, 1, [], clock=clock, watch_background_jobs=True
+        )
 
         assert isinstance(result, AgentContext)
         record = result.background_job_watch.get("abc")
         assert record is not None
         assert record.started_watching_at == clock.now()
 
+    @pytest.mark.parametrize(
+        "content",
+        [
+            "boom",
+            # A well-formed job_id payload must still be skipped: it is
+            # ``is_error`` that gates capture, not whether the content
+            # happens to parse.
+            '{"job_id": "abc"}',
+        ],
+    )
     async def test_skips_a_failed_background_call(
-        self, sample_agent_context: AgentContext
+        self, sample_agent_context: AgentContext, content: str
     ) -> None:
         ctx = _ctx_with_user_msg(sample_agent_context)
         response = _tool_use_response(background=True)
-        invoker = _invoker_returning(ToolExecutionResult(content="boom", is_error=True))
+        invoker = _invoker_returning(
+            ToolExecutionResult(content=content, is_error=True)
+        )
 
         result = await execute_tool_calls(
-            ctx, invoker, response, 1, [], clock=FakeClock()
+            ctx, invoker, response, 1, [], clock=FakeClock(), watch_background_jobs=True
         )
 
         assert isinstance(result, AgentContext)
@@ -129,7 +143,7 @@ class TestBackgroundJobWatchCapture:
         )
 
         result = await execute_tool_calls(
-            ctx, invoker, response, 1, [], clock=FakeClock()
+            ctx, invoker, response, 1, [], clock=FakeClock(), watch_background_jobs=True
         )
 
         assert isinstance(result, AgentContext)
@@ -142,6 +156,22 @@ class TestBackgroundJobWatchCapture:
         response = _tool_use_response(background=False)
         invoker = _invoker_returning(
             ToolExecutionResult(content="ordinary output", is_error=False)
+        )
+
+        result = await execute_tool_calls(
+            ctx, invoker, response, 1, [], clock=FakeClock(), watch_background_jobs=True
+        )
+
+        assert isinstance(result, AgentContext)
+        assert result.background_job_watch.records == ()
+
+    async def test_watch_disabled_never_captures_even_a_valid_background_call(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        response = _tool_use_response(background=True)
+        invoker = _invoker_returning(
+            ToolExecutionResult(content='{"job_id": "abc"}', is_error=False)
         )
 
         result = await execute_tool_calls(
@@ -163,7 +193,7 @@ class TestBackgroundJobWatchCapture:
         )
 
         result = await execute_tool_calls(
-            ctx, invoker, response, 1, [], clock=FakeClock()
+            ctx, invoker, response, 1, [], clock=FakeClock(), watch_background_jobs=True
         )
 
         assert isinstance(result, AgentContext)

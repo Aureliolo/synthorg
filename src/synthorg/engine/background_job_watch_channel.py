@@ -1,13 +1,14 @@
 """The state channel ``AgentContext`` carries for watched background jobs.
 
-A leaf module (no ``AgentContext`` import): ``context.py`` imports the
-channel type directly, and ``background_job_watch.py`` (the watcher
-itself, which needs ``AgentContext`` for its own type hints) imports it
-from here too, mirroring how ``AsyncTaskStateChannel`` lives in
-``communication/async_tasks/models.py`` rather than inside ``context.py``
-or a module that imports it back.
+A leaf module (no ``AgentContext`` import), so both ``context.py`` and
+``background_job_watch.py`` (the watcher, which needs ``AgentContext``
+for its own type hints) can import the channel type from here without a
+cycle -- the same shape ``AsyncTaskStateChannel`` uses, living in
+``communication/async_tasks/models.py`` rather than in ``context.py``
+or in a module ``context.py`` imports.
 """
 
+from collections import Counter
 from datetime import datetime
 from typing import Self
 
@@ -67,15 +68,9 @@ class BackgroundJobWatchChannel(BaseModel):
         Raises:
             ValueError: If two records share a ``job_id``.
         """
-        job_ids = [r.job_id for r in self.records]
-        if len(job_ids) != len(set(job_ids)):
-            seen: set[str] = set()
-            dupes: set[str] = set()
-            for jid in job_ids:
-                if jid in seen:
-                    dupes.add(jid)
-                else:
-                    seen.add(jid)
+        counts = Counter(r.job_id for r in self.records)
+        dupes = {jid for jid, count in counts.items() if count > 1}
+        if dupes:
             msg = f"Duplicate job_ids in records: {dupes}"
             raise ValueError(msg)
         return self

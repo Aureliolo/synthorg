@@ -384,12 +384,13 @@ same container. Before opening the exec, `_exec_command`
 `pin_check`'s own `expire_overdue` is) against the target container. When
 `False` -- no registry wired, or no live jobs -- the exec runs exactly as
 it always has: same `_open_exec` / `_drain_exec`, same unconditional
-`_stop_container` on timeout, byte-for-byte unchanged. When `True`, the
-command is wrapped by `build_pinned_exec_command`
-(`_background_wrapper.py`): `setsid` plus a `pidfile` write ahead of a bare
-final `exec`, so the shell becomes a process-group leader that can be
-signalled as a group, without changing anything else about how the
-command runs -- output still
+`_stop_container` on timeout, byte-for-byte unchanged. When `True`,
+`_exec_command` dispatches to `_exec_command_pinned`
+(`docker_sandbox_pinned_exec.py`'s `DockerSandboxPinnedExecMixin`), which
+wraps the command via `build_pinned_exec_command` (`_background_wrapper.py`):
+`setsid` plus a `pidfile` write ahead of a bare final `exec`, so the shell
+becomes a process-group leader that can be signalled as a group, without
+changing anything else about how the command runs -- output still
 streams through the same attached exec (`_drain_exec_pinned`, a near-copy
 of `_drain_exec`), not through a file, so this deliberately does *not*
 reuse the background-job wrapper's detach-and-poll mechanism (that would

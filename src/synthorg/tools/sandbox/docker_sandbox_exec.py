@@ -44,6 +44,8 @@ from synthorg.observability.events.docker import (
 from synthorg.observability.events.sandbox import (
     SANDBOX_BACKGROUND_JOB_REAP_FAILED,
     SANDBOX_CONTAINER_LOGS_COLLECT_FAILED,
+    SANDBOX_EXEC_PIN_DECIDED,
+    SANDBOX_HAS_LIVE_JOBS_CHECK_FAILED,
     SANDBOX_LIFECYCLE_OWNER_DEGRADED,
     SANDBOX_LIFECYCLE_RELEASE,
     SANDBOX_SIDECAR_REMOVE_FAILED,
@@ -100,6 +102,14 @@ class DockerSandboxExecMixin:
         _docker: aiodocker.Docker | None
         _log_shipping_config: ContainerLogShippingConfig
         _background_jobs: BackgroundJobRegistry | None
+
+        def _owner_lock(self, owner_key: str) -> asyncio.Lock:
+            """Return the per-owner lock guarding the job-cap check + persist.
+
+            Returns:
+                The owner's lock, creating one if this is its first use.
+            """
+            ...
 
         def _validate_env(
             self,
@@ -677,6 +687,7 @@ class DockerSandboxExecMixin:
         container_cwd: str,
         exec_env: dict[str, str],
         timeout: float,  # noqa: ASYNC109
+        owner_key: str,
     ) -> SandboxResult:
         """Run *command* inside an already-running container via exec.
 
@@ -686,10 +697,19 @@ class DockerSandboxExecMixin:
         ``_exec_command_pinned``): a foreground timeout then kills only
         this exec's own process group instead of stopping the whole
         container, which would otherwise collaterally kill every
-        background job sharing it. When no background jobs are pinning
-        the container -- the overwhelming majority of calls, and every
-        call when no registry is wired at all -- this method's own
-        behaviour is unchanged.
+        background job sharing it. Otherwise the command runs via the
+        plain, unpinned exec/drain path, whose own timeout stops the
+        container directly.
+
+        The check and pin/no-pin decision run under the same per-owner
+        lock ``start_background`` holds across its own cap-check through
+        registry-save: without it, a background job whose confirmation
+        drain is still in flight when this check runs is invisible here,
+        so a concurrent foreground call could commit to the unpinned
+        path and still collaterally kill that just-started sibling on
+        its own timeout. The lock is released before the exec itself
+        opens, so a long-running command never blocks a concurrent
+        ``start_background`` call for the rest of its own duration.
 
         Args:
             docker: Docker client.
@@ -699,6 +719,9 @@ class DockerSandboxExecMixin:
             container_cwd: Working directory inside the container.
             exec_env: Resolved, validated environment for the command.
             timeout: Seconds before the command is killed.
+            owner_key: The resolved lifecycle owner key, the same one
+                ``start_background`` resolves and locks on for this
+                container.
 
         Returns:
             A ``SandboxResult`` with captured output and exit status.
@@ -707,10 +730,32 @@ class DockerSandboxExecMixin:
             SandboxStartError: If the exec instance cannot be created.
         """
         container_id = handle.container_id
-        if (
-            self._background_jobs is not None
-            and await self._background_jobs.has_live_jobs(NotBlankStr(container_id))
-        ):
+        pinned = False
+        if self._background_jobs is not None:
+            async with self._owner_lock(owner_key):
+                try:
+                    pinned = await self._background_jobs.has_live_jobs(
+                        NotBlankStr(container_id)
+                    )
+                except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                    reraise_critical(exc)
+                    logger.warning(
+                        SANDBOX_HAS_LIVE_JOBS_CHECK_FAILED,
+                        container_id=container_id[:12],
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+                    # Pinning is a strict behavioural superset of the
+                    # unpinned path (identical streaming, a narrower
+                    # timeout-kill target), so failing toward it is the
+                    # safer default when live-job status is unknown.
+                    pinned = True
+        logger.debug(
+            SANDBOX_EXEC_PIN_DECIDED,
+            container_id=container_id[:12],
+            pinned=pinned,
+        )
+        if pinned:
             return await self._exec_command_pinned(
                 docker=docker,
                 handle=handle,

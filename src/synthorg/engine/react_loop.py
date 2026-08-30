@@ -157,7 +157,7 @@ class ReactLoop:
             disables the nudge.
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(  # noqa: PLR0913 -- one keyword-only param per in-flight control
         self,
         checkpoint_callback: CheckpointCallback | None = None,
         *,
@@ -583,6 +583,7 @@ class ReactLoop:
             turns,
             approval_gate=self._approval_gate,
             clock=self._clock,
+            watch_background_jobs=self._background_job_watcher is not None,
         )
 
     async def _handle_completion(

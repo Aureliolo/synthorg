@@ -374,6 +374,39 @@ class TestCancelBackground:
         assert result.status == BackgroundJobStatus.COMPLETED
 
 
+class TestRunControlExec:
+    """A wedged control exec is not evidence its container is compromised.
+
+    Every caller (poll, read, cancel, pin-check, the pinned-exec kill and
+    cleanup paths) shares this method precisely so none of them fall back
+    to ``DockerSandboxExecMixin._drain_exec``'s own timeout branch, which
+    stops the container.
+    """
+
+    async def test_timeout_raises_without_stopping_the_container(
+        self, tmp_path: Path
+    ) -> None:
+        from synthorg.tools.sandbox.errors import SandboxStartError
+        from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
+        from tests._shared.fake_background_job_exec import ExecResponse
+
+        registry = BackgroundJobRegistry(_InMemoryBackgroundJobRepository())
+        docker = _make_mock_docker(lambda _script: ExecResponse(hang=True))
+        sandbox = _make_sandbox(tmp_path, registry=registry)
+        container_obj = docker.containers.container()
+
+        with _patch_aiodocker(docker), pytest.raises(SandboxStartError):
+            await sandbox._run_control_exec(  # pyright: ignore[reportAttributeAccessIssue]
+                ContainerHandle(container_id="abc123def456"),
+                "cat",
+                ("/tmp/pidfile",),  # noqa: S108
+                timeout=0.05,
+            )
+
+        container_obj.stop.assert_not_awaited()
+        container_obj.delete.assert_not_awaited()
+
+
 class TestCrossOwnerAccessRefused:
     """A job's owner is the only caller who can poll/read/cancel it.
 

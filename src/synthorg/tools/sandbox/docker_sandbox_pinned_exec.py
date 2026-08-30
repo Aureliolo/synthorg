@@ -3,15 +3,19 @@
 
 Split out of :mod:`docker_sandbox_exec` to keep that module under its
 size cap: the pinned path is one cohesive addition (wrap, drain, kill,
-clean up) layered on top of the ordinary exec primitives that module
-still owns (``_open_exec``, ``_collect_exec_output``,
-``_safe_close_stream``, ``_exec_returncode``, ``_log_execution_outcome``),
-declared here as ``TYPE_CHECKING``-only cross-mixin stubs.
+clean up) layered on top of exec primitives three sibling mixins own --
+``_open_exec``, ``_collect_exec_output``, ``_safe_close_stream``,
+``_exec_returncode`` from :mod:`docker_sandbox_exec`;
+``_log_execution_outcome`` and ``_stop_container`` from
+:mod:`docker_sandbox_lifecycle`; ``_kill_background_process_group`` and
+``_run_control_exec`` from :mod:`docker_sandbox_background` -- declared
+here as ``TYPE_CHECKING``-only cross-mixin stubs.
 
 Reached only when the target container already has a live background job
 pinning it (``DockerSandboxExecMixin._exec_command`` checks
-``BackgroundJobRegistry.has_live_jobs`` before opening the exec); every
-other call takes the ordinary, unmodified ``_drain_exec`` path.
+``BackgroundJobRegistry.has_live_jobs`` before opening the exec); a
+container with no live jobs pinning it takes the plain ``_drain_exec``
+path instead.
 """
 
 import asyncio
@@ -29,8 +33,10 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.docker import DOCKER_EXECUTE_TIMEOUT
 from synthorg.observability.events.sandbox import (
     SANDBOX_PINNED_EXEC_CLEANUP_FAILED,
+    SANDBOX_PINNED_EXEC_KILL_FAILED,
     SANDBOX_PINNED_EXEC_KILLED,
     SANDBOX_PINNED_EXEC_PID_UNREADABLE,
+    SANDBOX_PINNED_EXEC_STARTED,
 )
 from synthorg.tools.sandbox._background_wrapper import (
     build_pinned_exec_command,
@@ -191,13 +197,15 @@ class DockerSandboxPinnedExecMixin:
         Reads the pid the wrapped exec recorded via a short control exec.
         A parseable positive pid kills just that process group -- the
         point of pinning: a sibling background job sharing the container
-        survives. An empty or unparseable pidfile means the pid genuinely
-        cannot be recovered, so this falls back to stopping the container,
-        today's unconditional behaviour and the honest floor.
+        survives. Falls back to stopping the container -- the honest
+        floor -- whenever pinning itself cannot be made to hold: the
+        pidfile read fails or times out, its contents are empty or
+        unparseable, or the kill exec itself fails. Each branch logs and
+        falls back exactly once, so a single failure never produces two
+        differently-shaped log entries for the same event.
         """
         handle = ContainerHandle(container_id=container_id)
         program, args = build_read_pid_command(job_id)
-        pid_text = ""
         try:
             pid_text = (
                 await self._run_control_exec(
@@ -212,22 +220,38 @@ class DockerSandboxPinnedExecMixin:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-        if pid_text.isdigit() and int(pid_text) > 0:
-            logger.info(
-                SANDBOX_PINNED_EXEC_KILLED,
-                container_id=container_id[:12],
-                pid=int(pid_text),
-            )
-            await self._kill_background_process_group(
-                NotBlankStr(container_id), int(pid_text)
-            )
-        else:
+            await self._stop_container(docker, container_id)
+            return
+
+        if not (pid_text.isdigit() and int(pid_text) > 0):
             logger.warning(
                 SANDBOX_PINNED_EXEC_PID_UNREADABLE,
                 container_id=container_id[:12],
                 pid_text=pid_text,
             )
             await self._stop_container(docker, container_id)
+            return
+
+        pid = int(pid_text)
+        try:
+            await self._kill_background_process_group(NotBlankStr(container_id), pid)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            logger.warning(
+                SANDBOX_PINNED_EXEC_KILL_FAILED,
+                container_id=container_id[:12],
+                pid=pid,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            await self._stop_container(docker, container_id)
+            return
+
+        logger.info(
+            SANDBOX_PINNED_EXEC_KILLED,
+            container_id=container_id[:12],
+            pid=pid,
+        )
 
     async def _cleanup_pinned_job_dir(self, container_id: str, job_id: str) -> None:
         """Best-effort removal of a pinned exec's own scratch directory.
@@ -329,11 +353,10 @@ class DockerSandboxPinnedExecMixin:
         """Run *command* pinned: killable by process group, container spared.
 
         Reached only when the container already has a live background
-        job pinning it (see ``DockerSandboxExecMixin._exec_command``);
-        every other call takes the ordinary, unmodified path. Streams
-        stdout/stderr exactly like an ordinary foreground exec (see
-        ``build_pinned_exec_command``); only the exec'd script and the
-        timeout branch's kill target differ.
+        job pinning it (see ``DockerSandboxExecMixin._exec_command``).
+        Streams stdout/stderr exactly like an ordinary foreground exec
+        (see ``build_pinned_exec_command``); only the exec'd script and
+        the timeout branch's kill target differ.
 
         Returns:
             A ``SandboxResult`` with captured output and exit status.
@@ -343,6 +366,11 @@ class DockerSandboxPinnedExecMixin:
         """
         container_id = handle.container_id
         job_id = str(uuid4())
+        logger.debug(
+            SANDBOX_PINNED_EXEC_STARTED,
+            container_id=container_id[:12],
+            job_id=job_id,
+        )
         program, wrapped_args = build_pinned_exec_command(job_id, command, args)
         exec_obj = await self._open_exec(
             docker,
@@ -361,9 +389,9 @@ class DockerSandboxPinnedExecMixin:
                 timeout,
                 pinned_job_id=job_id,
             )
+            elapsed_ms = int((self._clock.monotonic() - start_mono) * 1000)
         finally:
             await self._cleanup_pinned_job_dir(container_id, job_id)
-        elapsed_ms = int((self._clock.monotonic() - start_mono) * 1000)
 
         return await self._finish_exec_result(
             exec_obj=exec_obj,
