@@ -21,6 +21,8 @@ from tests._shared.web_timeout import (
 )
 
 _EXPECTED_TOOL_NAMES: tuple[str, ...] = (
+    "cancel_background_job",
+    "check_background_job",
     "code_runner",
     "compact_context",
     "delete_file",
@@ -34,7 +36,9 @@ _EXPECTED_TOOL_NAMES: tuple[str, ...] = (
     "git_status",
     "html_parser",
     "http_request",
+    "list_background_jobs",
     "list_directory",
+    "read_background_job_output",
     "read_file",
     "shell_command",
     "write_file",

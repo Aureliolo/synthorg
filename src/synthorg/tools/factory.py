@@ -350,6 +350,12 @@ def _build_terminal_tools(
     Returns:
         Tuple of ``BaseTool``.
     """
+    from synthorg.tools.terminal.background_job_tools import (  # noqa: PLC0415
+        CancelBackgroundJobTool,
+        CheckBackgroundJobTool,
+        ListBackgroundJobsTool,
+        ReadBackgroundJobOutputTool,
+    )
     from synthorg.tools.terminal.shell_command import ShellCommandTool  # noqa: PLC0415
 
     return (
@@ -360,6 +366,34 @@ def _build_terminal_tools(
             code_execution_records=code_execution_records,
             output_tail_limit=output_tail_limit,
             workspace_root=workspace,
+        ),
+        # Always registered, refusing at invocation time when the
+        # feature setting is off or no sandbox is wired -- the same
+        # shape ShellCommandTool itself has, deliberately NOT gated
+        # behind a separate collaborator-presence check the way
+        # `_build_async_task_tools` is (that shape is the confirmed
+        # defect these tools exist to not repeat: five fully-built,
+        # fully-tested tools that were never reachable at runtime
+        # because boot never passed their collaborator).
+        CheckBackgroundJobTool(
+            sandbox=terminal.sandbox,
+            config=terminal.config,
+            config_resolver=terminal.config_resolver,
+        ),
+        ReadBackgroundJobOutputTool(
+            sandbox=terminal.sandbox,
+            config=terminal.config,
+            config_resolver=terminal.config_resolver,
+        ),
+        CancelBackgroundJobTool(
+            sandbox=terminal.sandbox,
+            config=terminal.config,
+            config_resolver=terminal.config_resolver,
+        ),
+        ListBackgroundJobsTool(
+            sandbox=terminal.sandbox,
+            config=terminal.config,
+            config_resolver=terminal.config_resolver,
         ),
     )
 

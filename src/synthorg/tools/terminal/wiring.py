@@ -21,6 +21,10 @@ class TerminalWiring(BaseModel):
     Attributes:
         sandbox: Where commands run. ``None`` runs them in this process,
             which the secure-defaults merge forbids for a real deployment.
+            The four background-job tools reach the wired
+            ``BackgroundJobRegistry`` through THIS backend (its own
+            ``*_background`` methods), not a second collaborator here:
+            the sandbox is the registry's single owner.
         config: Starting configuration: allow/blocklists, output bound, and
             the command ceiling used when nothing resolves one.
         config_resolver: Live settings resolver, read per command so a

@@ -5,10 +5,11 @@ are validated against allow/blocklist before execution.  Output is
 truncated at ``max_output_bytes``.
 """
 
+import json
 from pathlib import Path
 from typing import ClassVar, Final, override
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from synthorg.core.boundary import parse_typed
 from synthorg.core.clock import Clock, SystemClock
@@ -64,6 +65,39 @@ class ShellCommandArgs(BaseModel):
         le=600,
         description="Command timeout in seconds",
     )
+    background: bool = Field(
+        default=False,
+        description=(
+            "Run detached instead of waiting for completion. Returns a "
+            "job_id immediately; check_background_job / "
+            "read_background_job_output / cancel_background_job address "
+            "it on a later turn. Governed by its own duration ceiling, "
+            "not timeout -- the two are mutually exclusive."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _timeout_requires_foreground(self) -> ShellCommandArgs:
+        """A backgrounded job has no 1-600s foreground timeout to honour.
+
+        Its own duration ceiling governs instead
+        (``shell_command_background_max_duration_seconds``), so
+        combining the two fields would be ambiguous about which one
+        actually applies.
+
+        Returns:
+            ``self``, unchanged.
+
+        Raises:
+            ValueError: Both ``background`` and ``timeout`` were given.
+        """
+        if self.background and self.timeout is not None:
+            msg = (
+                "timeout is a foreground-only setting; a backgrounded "
+                "command is governed by its own duration ceiling instead"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class ShellCommandTool(BaseTerminalTool):
@@ -219,18 +253,6 @@ class ShellCommandTool(BaseTerminalTool):
             )
         command = args.command
         working_dir = args.working_directory
-        # The call's own timeout wins; otherwise the ceiling in force RIGHT
-        # NOW, read live, so an operator who raises it after watching an
-        # install time out does not have to restart anything to find out
-        # whether the new value is enough.
-        timeout: float = (
-            args.timeout
-            if args.timeout is not None
-            else await resolve_shell_command_timeout(
-                self._config_resolver,
-                fallback=self._config.default_timeout,
-            )
-        )
 
         if not command.strip():
             return ToolExecutionResult(
@@ -276,6 +298,21 @@ class ShellCommandTool(BaseTerminalTool):
                 is_error=True,
             )
 
+        if args.background:
+            return await self._execute_background(command, working_dir)
+
+        # The call's own timeout wins; otherwise the ceiling in force RIGHT
+        # NOW, read live, so an operator who raises it after watching an
+        # install time out does not have to restart anything to find out
+        # whether the new value is enough.
+        timeout: float = (
+            args.timeout
+            if args.timeout is not None
+            else await resolve_shell_command_timeout(
+                self._config_resolver,
+                fallback=self._config.default_timeout,
+            )
+        )
         logger.info(
             TERMINAL_COMMAND_START,
             command=command,
@@ -283,6 +320,73 @@ class ShellCommandTool(BaseTerminalTool):
         )
 
         return await self._execute_sandboxed(command, timeout, working_dir)
+
+    async def _execute_background(
+        self,
+        command: str,
+        working_dir: str | None = None,
+    ) -> ToolExecutionResult:
+        """Start *command* detached in the sandbox and return its job id.
+
+        Args:
+            command: Shell command to execute.
+            working_dir: Optional working directory path.
+
+        Returns:
+            A ``ToolExecutionResult`` whose content is
+            ``{"job_id": ...}`` on success.
+
+        Raises:
+            RuntimeError: If the operation fails at runtime.
+            SandboxError: When the backend refuses on a condition no
+                later command can clear. Raised rather than returned so
+                the session ends on the infrastructure failure instead
+                of retrying it.
+        """
+        if self._sandbox is None:  # pragma: no cover -- guarded by caller
+            msg = "_execute_background called without sandbox"
+            raise RuntimeError(msg)
+
+        cwd_or_error = self._validate_working_dir(working_dir)
+        if isinstance(cwd_or_error, ToolExecutionResult):
+            return cwd_or_error
+        cwd = cwd_or_error
+
+        program, args = shell_invocation(command)
+        try:
+            # owner_id deliberately omitted: `None` derives the SAME
+            # owner an unscoped foreground `execute()` call under this
+            # category would use (see `start_background`'s own
+            # docstring), so the job lands in the container this
+            # agent's other terminal calls already use.
+            job_id = await self._sandbox.start_background(
+                command=program,
+                args=args,
+                cwd=cwd,
+                category=self.category.value,
+                project_id=require_project_id(),
+            )
+        except SandboxError as exc:
+            logger.warning(
+                TERMINAL_COMMAND_FAILED,
+                command=command,
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+                retryable=exc.RETRYABLE,
+            )
+            if not exc.RETRYABLE:
+                raise
+            return ToolExecutionResult(
+                content=f"Sandbox error: {agent_facing_message(exc)}",
+                is_error=True,
+            )
+
+        logger.info(
+            TERMINAL_COMMAND_START,
+            command=command,
+            background=True,
+        )
+        return ToolExecutionResult(content=json.dumps({"job_id": job_id}))
 
     async def _execute_sandboxed(
         self,
