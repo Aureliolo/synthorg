@@ -81,6 +81,7 @@ class TestStripHtmlComments:
                 id="closer_then_openers",
             ),
             pytest.param(lambda n: "[\\" * n, id="bracket_run"),
+            pytest.param(lambda n: "[Z](" * n, id="unclosed_link_parens"),
             pytest.param(lambda n: "refs #0" + " " * n + "x", id="trailing_spaces"),
             pytest.param(lambda n: "**high**" + " " * n + "x", id="severity_spaces"),
         ],

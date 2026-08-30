@@ -76,9 +76,16 @@ _TRAILER = re.compile(
 )
 # A link's text carries the reference a reader needs (``#2883``, a design page
 # name); its URL is pure token cost and no summary ever quotes one.
-# ``[`` is excluded from the label for the same reason as above: allowing it
-# lets every ``[`` in a run start a scan that runs to the next ``]``.
-_MD_LINK = re.compile(r"\[([^\][]+)\]\([^)]*\)")
+#
+# Both classes are narrower than the obvious ``[^\]]`` and ``[^)]``, and both
+# narrowings are what keeps this linear on text an author controls. Excluding
+# ``[`` from the label stops every ``[`` in a run from starting a scan to the
+# next ``]``; excluding ``(`` from the URL stops an unclosed ``(`` from
+# scanning to end-of-string once per opener, which is the shape ``[Z](``
+# repeated produces. Whitespace goes with it because an unencoded space is not
+# a URL. The cost is that a link whose URL contains a literal ``(`` is left as
+# text rather than stripped, which spends a few tokens and loses nothing.
+_MD_LINK = re.compile(r"\[([^\][]+)\]\([^()\s]*\)")
 _BARE_URL = re.compile(r"https?://\S+")
 
 _BLANK_RUN = re.compile(r"\n{3,}")

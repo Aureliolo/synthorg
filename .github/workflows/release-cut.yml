@@ -275,10 +275,20 @@ jobs:
           # digest cut short at the un-paginated compare ceiling silently omits
           # the OLDEST work in the release.
           TOTAL=$(printf '%s' "$COMPARE" | jq -r '.total_commits // 0')
-          DIGEST=$(printf '%s' "$COMPARE" | python3 scripts/build_release_digest.py 2> digest-stderr.txt) || true
+          rc=0
+          DIGEST=$(printf '%s' "$COMPARE" | python3 scripts/build_release_digest.py 2> digest-stderr.txt) || rc=$?
           cat digest-stderr.txt
           if grep -q 'digest is partial' digest-stderr.txt; then
             echo "truncated=true" >> "$GITHUB_OUTPUT"
+          fi
+          # A refused payload is a FAILURE, not a skip. Swallowing the exit
+          # code let the empty-digest branch below write `skip=true`, and the
+          # tracker excludes skipped runs, so a compare shape the script
+          # rejects would drop Highlights with nothing raised anywhere.
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning::digest builder rejected the compare payload (exit ${rc}); skipping Highlights."
+            echo "status=digest builder failed (exit ${rc})" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           if [ -z "${DIGEST//[[:space:]]/}" ]; then
             echo "::warning::digest for ${BASE}...${HEAD_SHA} came out empty; skipping Highlights"
@@ -475,16 +485,30 @@ jobs:
           # and a release note without a joke is still a release note.
           TAGLINE_LINE=$(printf '%s\n' "$SAFE" | grep -n -m1 '[^[:space:]]' | cut -d: -f1)
           TAGLINE=""
+          HAS_MARKER=0
           if [ -n "$TAGLINE_LINE" ]; then
+            # Whether the marker is THERE and what value it carries are two
+            # questions. Keying the line removal on the VALUE answers only the
+            # second, so a bare `TAGLINE:` kept its line and published the raw
+            # marker into the release body as if it were prose.
+            if printf '%s\n' "$SAFE" \
+              | sed -n "${TAGLINE_LINE}p" \
+              | grep -q '^[[:space:]]*TAGLINE:'; then
+              HAS_MARKER=1
+            fi
             TAGLINE=$(printf '%s\n' "$SAFE" \
               | sed -n "${TAGLINE_LINE}s/^[[:space:]]*TAGLINE:[[:space:]]*//p")
           fi
 
-          if [ -n "${TAGLINE//[[:space:]]/}" ]; then
+          # The marker line goes whenever it is present, valued or not; only
+          # the tagline's own rendering below is conditional on the value.
+          if [ "$HAS_MARKER" -eq 1 ]; then
             BULLETS=$(printf '%s\n' "$SAFE" | sed "${TAGLINE_LINE}d")
           else
-            echo "::warning::model emitted no TAGLINE line; rendering Highlights without one."
             BULLETS="$SAFE"
+          fi
+          if [ -z "${TAGLINE//[[:space:]]/}" ]; then
+            echo "::warning::model emitted no TAGLINE value; rendering Highlights without one."
           fi
 
           # Assembled with newlines written INSIDE each printf rather than

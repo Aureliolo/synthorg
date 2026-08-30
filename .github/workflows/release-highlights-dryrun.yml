@@ -240,22 +240,36 @@ jobs:
             # string as if it were prose.
             TAGLINE_LINE=$(printf '%s\n' "$RESPONSE" | grep -n -m1 '[^[:space:]]' | cut -d: -f1)
             TAGLINE=""
+            HAS_MARKER=0
             if [ -n "$TAGLINE_LINE" ]; then
+              # Whether the marker is THERE and what value it carries are two
+              # questions. Answering only the second leaves a bare `TAGLINE:`
+              # to fall through to the else-branch, which prints the response
+              # whole and so publishes the raw marker as if it were prose.
+              if printf '%s\n' "$RESPONSE" \
+                | sed -n "${TAGLINE_LINE}p" \
+                | grep -q '^[[:space:]]*TAGLINE:'; then
+                HAS_MARKER=1
+              fi
               TAGLINE=$(printf '%s\n' "$RESPONSE" \
                 | sed -n "${TAGLINE_LINE}s/^[[:space:]]*TAGLINE:[[:space:]]*//p")
             fi
+            # The marker line is dropped whenever it is present, with or
+            # without a value; only the tagline's own rendering is conditional.
+            BODY=$(printf '%s\n' "$RESPONSE")
+            if [ "$HAS_MARKER" -eq 1 ]; then
+              BODY=$(printf '%s\n' "$RESPONSE" | sed "${TAGLINE_LINE}d")
+            fi
             if [ -n "${TAGLINE//[[:space:]]/}" ]; then
               printf '_%s_\n\n' "$TAGLINE"
-              echo "> _AI-generated summary (model: \`${MISTRAL_MODEL}\` via Mistral). Commit-based changelog below._"
-              echo ""
-              printf '%s\n' "$RESPONSE" | sed "${TAGLINE_LINE}d"
-            else
-              echo "> _AI-generated summary (model: \`${MISTRAL_MODEL}\` via Mistral). Commit-based changelog below._"
-              echo ""
+            fi
+            echo "> _AI-generated summary (model: \`${MISTRAL_MODEL}\` via Mistral). Commit-based changelog below._"
+            echo ""
+            if [ -z "${TAGLINE//[[:space:]]/}" ]; then
               echo "_Model emitted no TAGLINE line._"
               echo ""
-              printf '%s\n' "$RESPONSE"
             fi
+            printf '%s\n' "$BODY"
             echo ""
             echo "---"
             echo ""
