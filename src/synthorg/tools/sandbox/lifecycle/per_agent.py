@@ -127,13 +127,13 @@ class PerAgentStrategy:
             the container is already gone (the other timer, or a
             liveness eviction, got there first).
         """
+        consecutive_failures = 0
         # Upper-bounded by pin_check's own self-cleaning expiry (a job
         # past its own max_duration_seconds is force-cancelled, so this
         # never outlives a wedged job indefinitely); cleanup_all()
         # cancels this task on shutdown like every other per-owner pump.
         # lint-allow: long-running-loop-kill-switch -- bounded by
         # pin_check expiry; cleanup cancels.
-        consecutive_failures = 0
         while True:
             async with self._lock:
                 handle = self._containers.get(owner_id)
