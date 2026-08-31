@@ -120,6 +120,7 @@ def with_connection_rate_limit(
                     logger.warning(
                         TOOL_RATE_LIMIT_HIT,
                         connection_name=connection_name,
+                        error_type=type(exc).__name__,
                         error=safe_error_description(exc),
                     )
                     raise

@@ -50,6 +50,7 @@ async def test_a_full_connection_window_logs_before_raising(
     assert len(matches) == 1
     assert matches[0]["log_level"] == "warning"
     assert matches[0]["connection_name"] == "conn-a"
+    assert matches[0]["error_type"] == "ConnectionRateLimitError"
 
 
 async def test_a_free_window_does_not_log_the_hit_event(
