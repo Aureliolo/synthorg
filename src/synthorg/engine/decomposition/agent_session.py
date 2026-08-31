@@ -24,6 +24,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
+from synthorg.engine.agent_sampling import binding_sampling
 from synthorg.engine.agent_state_recording import (
     make_runtime_state_observer,
     mark_agent_running,
@@ -85,7 +86,7 @@ from synthorg.observability.events.decomposition import (
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import DriverNotRegisteredError
-from synthorg.providers.models import ChatMessage, CompletionConfig
+from synthorg.providers.models import ChatMessage
 from synthorg.providers.protocol import CompletionProvider, ProviderSelector
 from synthorg.security.autonomy.enums import ActionType
 from synthorg.tools.base import BaseTool
@@ -623,9 +624,12 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
                 tool_invoker=invoker,
                 budget_checker=self._budget_checker(),
                 shutdown_checker=self._shutdown_checker,
-                completion_config=CompletionConfig(
-                    temperature=self._config.temperature
-                ),
+                # The owner's own binding, exactly as a work session reads it.
+                # A strategy-level default here was a second answer to how the
+                # bound model should be sampled, and it could not be a right
+                # one: the value a vendor publishes is a property of the model,
+                # which a strategy config does not know.
+                completion_config=binding_sampling(owner),
             )
 
     def _build_invoker(

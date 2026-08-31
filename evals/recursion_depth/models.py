@@ -967,6 +967,16 @@ class Provenance(BaseModel):
         reviewer_connection_sha256: The same fact for ``reviewer``. Digested
             separately because the two pairs can sit on different connections,
             and a swap of either one contaminates the curve.
+        sandbox_image: The image every unit built in and every grading ran in,
+            as resolved rather than as requested. A sweep executes
+            agent-authored code and grades it by importing it, so which build
+            of that image was in force is part of what the curve was measured
+            against; it was previously recoverable only from the recorder's
+            own boot log, which is not something a published artifact carries.
+            ``None`` on a recording made before this field existed. Pinned into
+            the matrix identity like every other field here, so a run that
+            resumes against a different image is refused rather than splicing
+            two toolchains into one curve.
         cost_basis: Whether this sweep's cost figures are money or an honest
             absence of it, resolved once from both pairs' connections.
             ``PRICED`` on a recording made before this field existed: those
@@ -991,6 +1001,7 @@ class Provenance(BaseModel):
     executor_connection_sha256: NotBlankStr | None = None
     reviewer_connection_sha256: NotBlankStr | None = None
     cost_basis: CostBasis = CostBasis.PRICED
+    sandbox_image: NotBlankStr | None = None
 
     @field_validator("generated_at")
     @classmethod

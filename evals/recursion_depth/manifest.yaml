@@ -51,11 +51,49 @@ repetitions:
   4: 2
 arms:
   - gated
+# Sampling and reasoning depth are declared PER PAIR, and they have to be:
+# the two models this matrix binds are published with different values on
+# different dials, so one figure for the matrix is guaranteed wrong for one of
+# them. The executor's family publishes a temperature and a top_p and exposes
+# no graded reasoning parameter at all; the reviewer's exposes reasoning effort
+# and states that temperature and top_p have NO EFFECT while thinking is on,
+# which is its default. Declaring both fields on both pairs is what lets one
+# manifest say that honestly instead of averaging it away.
+#
+# Every value here was chosen and written down. The previous recording let all
+# of them default: 0.7 for a work session, 0.2 for a planning session (two
+# owners for one fact, and the quieter one won), no reasoning depth on the wire
+# at all, and a flat per-response ceiling. None of that was anybody's decision,
+# and all of it is an input to the result.
+#
+# `temperature` and `top_p` move TOGETHER because a vendor publishes them
+# together: applying one without the other produces a distribution nobody
+# tested, which is worse than leaving both alone.
 executor:
   provider: example-provider
   model_id: example-capable-001
   capability: capable
   family: example-family-a
+  # The smoke cells sweep this at three points before the matrix commits to
+  # one: the status quo, the vendor's own published figure, and the
+  # conservative floor its neighbours publish. The value here is the status
+  # quo, so cell A records what the previous attempt actually ran at.
+  temperature: 0.7
+  top_p: 1.0
+  # Deliberately unset. Graded reasoning effort is not a parameter this model's
+  # family accepts, so sending one would record a treatment that never reached
+  # the wire, which is worse than the honest absence. Thinking is on by default
+  # either way.
+  reasoning_effort: null
+  # Raised beyond reach for the smoke, then MEASURED and pinned from what the
+  # transcripts show a response actually uses. A reasoning model spends this
+  # budget on hidden reasoning before it can emit content, so a ceiling sized
+  # for a model that answers directly buys sessions that think until truncated
+  # and report finished work. It costs nothing unused: probed against this
+  # endpoint, a request capped at 131072 returned 27 completion tokens.
+  # Bounded by the window rather than by taste: the connection guarantees 512K
+  # of context, so this leaves roughly 380K for the prompt a deep merge needs.
+  max_tokens: 131072
 # The declared `family` travels with the placeholder, so the pair a company
 # config aliases these to must actually belong to the family named here: the
 # cross_family claim below is checked against these strings, and nothing
@@ -72,6 +110,27 @@ reviewer:
   model_id: example-expert-001
   capability: expert
   family: example-family-b
+  # Declared, and recorded as INERT. This model's family documents that
+  # temperature and top_p "will not trigger an error but will also have no
+  # effect" while thinking is on, which is its default state. Written down
+  # anyway, at the vendor's own published figures, so the artifact says what
+  # was asked rather than leaving a reader to assume nothing was; the smoke
+  # cells confirm from the response bodies whether thinking is in fact engaged,
+  # and if it is not these stop being inert and become the real dial.
+  temperature: 0.6
+  top_p: 0.95
+  # The dial that DOES work here, and the vendor's own default made explicit.
+  # It was already running at this depth with nobody having chosen it, which is
+  # the same defect as an unchosen temperature wearing a different name.
+  reasoning_effort: high
+  # Higher than the executor's because this model reasons at a declared depth
+  # and its vendor recommends far more output room at that depth than the flat
+  # ceiling this harness used to grant. That collision is a live candidate for
+  # the previous attempt's no-verdict failure, where a review spent 1,058,678
+  # tokens across 42 turns and submitted nothing: reasoning is spent BEFORE
+  # content, so a verdict can be squeezed out entirely. Its window is 1M, so
+  # this leaves ample prompt room.
+  max_tokens: 262144
 independence: cross_family
 # How many attempts one merge gets. Equal across arms by construction, which
 # matters whenever a matrix declares more than one: repair only in the gated arm

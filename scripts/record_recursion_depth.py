@@ -142,6 +142,32 @@ def _pair(pair: ModelPair) -> str:
     return f"{pair.label} ({detail})"
 
 
+def _sampling(pair: ModelPair) -> str:
+    """Render what one pair will be asked to sample and reason at.
+
+    Printed on the plan because this is the screen where an operator decides
+    to spend, and these are inputs to the result rather than incidental
+    settings: a previous recording let every one of them default and could not
+    afterwards say what it had measured. Each dial is shown only when it is
+    set, because "unset" and "set to the provider's own default" are different
+    claims and a rendered number would assert the second.
+
+    Returns:
+        A comma-separated rendering, or a statement that nothing is pinned.
+    """
+    stated = [
+        f"{name} {value}"
+        for name, value in (
+            ("temperature", pair.temperature),
+            ("top_p", pair.top_p),
+            ("reasoning_effort", pair.reasoning_effort),
+            ("max_tokens", pair.max_tokens),
+        )
+        if value is not None
+    ]
+    return ", ".join(stated) if stated else "provider defaults, nothing pinned"
+
+
 def _resolved_family(pair: ModelPair, config: RootConfig) -> str | None:
     """The family the model actually answering for *pair* belongs to.
 
@@ -439,7 +465,9 @@ def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
         + ", ".join(f"cap {d}: {manifest.repetitions[d]}" for d in manifest.depths),
         f"  arms          : {', '.join(arm.value for arm in manifest.arms)}",
         f"  executor      : {_pair(manifest.executor)}",
+        f"  exec sampling : {_sampling(manifest.executor)}",
         f"  reviewer      : {_pair(manifest.reviewer)}",
+        f"  revw sampling : {_sampling(manifest.reviewer)}",
         f"  independence  : {manifest.independence.value}",
         f"  merge attempts: {manifest.merge_attempts} (the SAME in every arm)",
         "",
@@ -491,6 +519,7 @@ async def _sweep_under(
     manifest: RecursionDepthManifest,
     spec: SpecBrief,
     company_config: RootConfig,
+    sandbox_image: str,
 ) -> RecursionDepthReport:
     """Stamp what this run is measured against, then run it.
 
@@ -504,6 +533,10 @@ async def _sweep_under(
         manifest: The recording matrix.
         spec: The specification the sweep builds.
         company_config: The config the pairs actually dispatch through.
+        sandbox_image: The image the host resolved, which is what every unit
+            builds in and what every grading runs in. Read off the booted host
+            rather than off the command line, because the flag is an override
+            that may be absent and the resolved value is what actually ran.
 
     Returns:
         The report the sweep produced.
@@ -517,6 +550,7 @@ async def _sweep_under(
             spec=spec,
             company_config=company_config,
             out_dir=args.out_dir,
+            sandbox_image=sandbox_image,
         )
     )
     return await run_sweep(
@@ -574,6 +608,7 @@ async def _record(
                 manifest=manifest,
                 spec=spec,
                 company_config=company_config,
+                sandbox_image=host.sandbox_image,
             )
             # Written inside the host's lifetime so a teardown that overruns
             # cannot discard a sweep that already cost real money to produce.
@@ -913,6 +948,33 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--executor-temperature",
+        type=float,
+        default=None,
+        help=(
+            "Override the executor pair's sampling temperature for this run. "
+            "The lever for a sampling A/B, on the same footing as "
+            "--repetitions: the committed value is the experimental DESIGN, so "
+            "a probe overrides it per run rather than editing it into "
+            "something the next reader inherits, and an untracked variant "
+            "manifest would mark the whole recording dirty. Folded into the "
+            "manifest before the plan prints, so the treatment the plan shows "
+            "is the one that runs, and it reaches the provenance, so two "
+            "variants can never be resumed into one another's journal."
+        ),
+    )
+    parser.add_argument(
+        "--executor-top-p",
+        type=float,
+        default=None,
+        help=(
+            "Override the executor pair's nucleus threshold. Moves WITH "
+            "--executor-temperature, because a vendor publishes the two "
+            "together and applying one without the other produces a "
+            "distribution nobody tested."
+        ),
+    )
+    parser.add_argument(
         "--leaf-concurrency",
         type=_positive_int,
         default=1,
@@ -1111,11 +1173,36 @@ def parse_repetitions(
     return wanted
 
 
+def _resampled(
+    manifest: RecursionDepthManifest,
+    *,
+    temperature: float | None,
+    top_p: float | None,
+) -> dict[str, object]:
+    """The executor-pair override a sampling probe asked for, if any.
+
+    Returns:
+        A single-key override for the executor pair, or empty when neither
+        dial was named.
+    """
+    stated: dict[str, float] = {}
+    if temperature is not None:
+        stated["temperature"] = temperature
+    if top_p is not None:
+        stated["top_p"] = top_p
+    if not stated:
+        return {}
+    return {"executor": manifest.executor.model_dump() | stated}
+
+
 def narrow(
     manifest: RecursionDepthManifest,
     depths: str | None,
     max_sessions: int | None = None,
     repetitions: str | None = None,
+    *,
+    executor_temperature: float | None = None,
+    executor_top_p: float | None = None,
 ) -> RecursionDepthManifest:
     """Narrow *manifest* to what this run records, and what it may spend.
 
@@ -1140,6 +1227,12 @@ def narrow(
             where ARIES puts the transition), and an operator trading one of
             them for a schedule should not have to edit that design into
             something the next reader inherits.
+        executor_temperature: Sampling override for the executor pair, or
+            ``None`` to keep the manifest's own. The lever for a sampling
+            probe, on the same footing as *repetitions* and for the same
+            reason: the committed value is the design.
+        executor_top_p: Nucleus override for the executor pair, moving with
+            *executor_temperature*.
 
     Returns:
         The narrowed matrix.
@@ -1148,9 +1241,12 @@ def narrow(
         ValueError: A named cap is not in the manifest.
     """
     counts = parse_repetitions(repetitions, manifest)
-    if depths is None and max_sessions is None and counts is None:
+    sampled = _resampled(
+        manifest, temperature=executor_temperature, top_p=executor_top_p
+    )
+    if depths is None and max_sessions is None and counts is None and not sampled:
         return manifest
-    override: dict[str, object] = {}
+    override: dict[str, object] = dict(sampled)
     if max_sessions is not None:
         override["max_sessions"] = max_sessions
     if counts is not None:
@@ -1355,6 +1451,8 @@ def main(argv: list[str] | None = None) -> int:
         args.depths,
         args.max_sessions,
         args.repetitions,
+        executor_temperature=args.executor_temperature,
+        executor_top_p=args.executor_top_p,
     )
     spec = load_spec_brief(Path(manifest.spec_dir))
     company_config = load_config(args.company_config)

@@ -52,9 +52,15 @@ _DEFAULT_CEILINGS: Final[SessionCeilings] = SessionCeilings(
 class AgentSessionDecompositionConfig(BaseModel):
     """Configuration for the agent-session decomposition strategy.
 
+    Sampling is deliberately absent: it belongs to the bound model rather than
+    to the strategy, so the planning session reads it off the owner's own
+    binding (:func:`synthorg.engine.agent_sampling.binding_sampling`), exactly
+    as a work session does. A field here would be a second answer that could
+    not be a right one, since a strategy config does not know which model is
+    bound and the value a vendor publishes is a property of that model.
+
     Attributes:
         max_turns: Hard turn cap for the planning session.
-        temperature: Sampling temperature for the planning turns.
         ceilings: Both spend bounds on the planning session. One field, not
             two, so a wiring path that resolves the money bound cannot leave
             the token bound at its default in silence: money measures nothing
@@ -75,12 +81,6 @@ class AgentSessionDecompositionConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     max_turns: int = Field(default=12, ge=1, le=50, description="Planning turn cap")
-    temperature: float = Field(
-        default=0.2,
-        ge=0.0,
-        le=2.0,
-        description="Sampling temperature",
-    )
     ceilings: SessionCeilings = Field(
         default=_DEFAULT_CEILINGS,
         description="Per-session money + token bounds",

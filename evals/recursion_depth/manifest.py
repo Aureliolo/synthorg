@@ -37,6 +37,7 @@ from evals.errors import (
     RecursionDepthJudgeNotIndependentError,
 )
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.types import CapabilityLevel, NotBlankStr
 
 #: The shallowest cap worth recording: one level of planning, every unit
@@ -156,6 +157,24 @@ class ModelPair(BaseModel):
             live identity, which carries no such field; the loader requires it
             wherever a manifest claims decorrelation, so it cannot be missing
             at the point it decides anything.
+        temperature: Sampling temperature this pair runs at. Declared PER PAIR
+            rather than once for the matrix because it is a property of the
+            model: the two pairs a sweep binds are published with different
+            values, so one number for both is guaranteed wrong for one of them.
+        top_p: Nucleus threshold, which moves with the temperature because a
+            vendor publishes the two together. Applying one without the other
+            produces a distribution nobody tested.
+        reasoning_effort: Reasoning depth to ask this pair for, or ``None`` to
+            send none. Which of this and ``temperature`` actually reaches a
+            given model is the model's business and they differ sharply: some
+            families expose graded effort and ignore sampling while thinking,
+            others expose no effort parameter at all. Declaring both per pair
+            is what lets one manifest describe both honestly.
+        max_tokens: Per-RESPONSE output ceiling, or ``None`` to defer. Declared
+            here for the same reason as the rest: a reasoning model spends this
+            budget on hidden reasoning BEFORE it can emit content, so the right
+            value depends on the depth that model reasons at, which is a
+            per-pair fact.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -164,6 +183,10 @@ class ModelPair(BaseModel):
     model_id: NotBlankStr
     capability: CapabilityLevel
     family: NotBlankStr | None = None
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    top_p: float | None = Field(default=None, ge=0.0, le=1.0)
+    reasoning_effort: ReasoningEffort | None = None
+    max_tokens: int | None = Field(default=None, gt=0)
 
     @property
     def label(self) -> str:
@@ -225,11 +248,20 @@ class ModelPair(BaseModel):
             for pair in declared
             if pair.family is not None
         }
+        # Sampling is read off the IDENTITY, unlike `family`, because an
+        # identity does carry it: these are the values the session actually
+        # dispatched with. Reading them back off the manifest instead would
+        # record what the roster was asked to bind rather than what ran, which
+        # is the distinction this whole method exists to preserve.
         return cls(
             provider=provider,
             model_id=model_id,
             capability=identity.model.capability,
             family=families.get((provider, model_id)),
+            temperature=identity.model.temperature,
+            top_p=identity.model.top_p,
+            reasoning_effort=identity.model.reasoning_effort,
+            max_tokens=identity.model.max_tokens,
         )
 
 

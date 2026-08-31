@@ -38,7 +38,12 @@ _BUILDER_ROLE: Final[str] = "Developer"
 _DEPARTMENT: Final[str] = "Engineering"
 _HIRING_DATE: Final[date] = date(2026, 1, 1)
 
-#: Per-RESPONSE output ceiling for every agent this sweep staffs.
+#: Per-RESPONSE output ceiling for an agent whose pair declares none.
+#:
+#: A fallback now rather than the answer: `ModelPair.max_tokens` overrides it,
+#: because how much room one response needs depends on how deeply that model
+#: reasons before emitting content, which differs per pair and is exactly what
+#: this figure cannot know.
 #:
 #: Declared rather than left to resolve, because the agent's own binding is
 #: what reaches the provider: the capability record is read by nothing when a
@@ -118,17 +123,27 @@ def _identity(*, slug: str, name: str, role: str, pair: ModelPair) -> AgentIdent
     Returns:
         The identity.
     """
+    # `temperature` is omitted rather than defaulted when the pair declares
+    # none, so `ModelConfig`'s own default stands instead of a copy of it here
+    # that a later change to that default would silently leave behind. Built
+    # through `model_validate` rather than by keyword for that reason: it is
+    # the one shape that can leave a field unsaid.
+    fields: dict[str, object] = {
+        "provider": pair.provider,
+        "model_id": pair.model_id,
+        "capability": pair.capability,
+        "top_p": pair.top_p,
+        "reasoning_effort": pair.reasoning_effort,
+        "max_tokens": pair.max_tokens or _RESPONSE_TOKEN_CEILING,
+    }
+    if pair.temperature is not None:
+        fields["temperature"] = pair.temperature
     return AgentIdentity(
         id=uuid5(_ROSTER_NAMESPACE, slug),
         name=NotBlankStr(name),
         role=NotBlankStr(role),
         department=NotBlankStr(_DEPARTMENT),
-        model=ModelConfig(
-            provider=pair.provider,
-            model_id=pair.model_id,
-            capability=pair.capability,
-            max_tokens=_RESPONSE_TOKEN_CEILING,
-        ),
+        model=ModelConfig.model_validate(fields),
         hiring_date=_HIRING_DATE,
     )
 

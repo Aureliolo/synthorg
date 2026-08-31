@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
 from scripts import record_recursion_depth as record_module
 from scripts.record_recursion_depth import (
     _reclaim_workspaces,
@@ -398,6 +399,56 @@ class TestPlanMode:
 
         assert "CAVEAT" in plan
         assert "share a model family" in plan
+
+
+class TestSamplingIsStatedBeforeAnythingIsSpent:
+    """The treatment reaches the plan, and an override reaches the manifest.
+
+    A previous recording let every sampling dial default and could not
+    afterwards say what it had measured. The plan is the screen where the
+    spend decision is taken, so it is where these have to appear.
+    """
+
+    def test_the_plan_states_what_each_pair_will_sample_at(self) -> None:
+        plan = describe_plan(load_manifest(_MANIFEST), _spec())
+
+        assert "exec sampling" in plan
+        assert "revw sampling" in plan
+
+    def test_an_override_reaches_the_plan_not_just_the_run(self) -> None:
+        # A value applied downstream of the plan prints the manifest's own
+        # figure beside the flag meant to change it, which is the one moment
+        # the number is being relied on.
+        probed = narrow(
+            load_manifest(_MANIFEST),
+            None,
+            None,
+            None,
+            executor_temperature=1.0,
+            executor_top_p=0.95,
+        )
+
+        assert probed.executor.temperature == pytest.approx(1.0)
+        assert probed.executor.top_p == pytest.approx(0.95)
+        assert "temperature 1.0, top_p 0.95" in describe_plan(probed, _spec())
+
+    def test_an_override_leaves_the_reviewer_alone(self) -> None:
+        # The two pairs run on different dials, so a probe of one must not
+        # silently move the other.
+        shipped = load_manifest(_MANIFEST)
+        probed = narrow(shipped, None, None, None, executor_temperature=1.0)
+
+        assert probed.reviewer == shipped.reviewer
+
+    def test_naming_no_dial_changes_nothing(self) -> None:
+        shipped = load_manifest(_MANIFEST)
+
+        assert narrow(shipped, None, None, None) == shipped
+
+    def test_an_out_of_range_override_is_refused(self) -> None:
+        # Re-validated rather than copied: the value came off a command line.
+        with pytest.raises(ValidationError):
+            narrow(load_manifest(_MANIFEST), None, None, None, executor_top_p=1.5)
 
 
 class TestPreflightGuardsTheBoot:

@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from synthorg.core.autonomy_enums import AutonomyLevel
+from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.memory_enums import MemoryCategory, MemoryLevel
 from synthorg.core.normalization import normalize_identifier
 from synthorg.core.role import Authority, Skill
@@ -102,6 +103,20 @@ class ModelConfig(BaseModel):
         provider: LLM provider name (e.g. ``"example-provider"``).
         model_id: Model identifier (e.g. ``"example-capable-001"``).
         temperature: Sampling temperature (0.0 to 2.0).
+        top_p: Nucleus-sampling threshold, or ``None`` to leave the provider's
+            own. Carried here because a vendor publishes it beside the
+            temperature and the two are one recommendation: a binding able to
+            state a temperature but not its matching truncation can only ever
+            apply half of one, which is a distribution the vendor never
+            tested.
+        reasoning_effort: Depth of extended reasoning this agent asks for, or
+            ``None`` to defer. Deferring reaches the stakes ladder
+            (``CapabilityPolicy.reasoning_effort``), so this is an ordered
+            precedence with one resolver rather than a second authority: the
+            agent's own value wins when set, the ladder answers otherwise.
+            Which of the two dials actually reaches a given model is the
+            provider's business; some model families expose graded effort and
+            no usable sampling, and others exactly the reverse.
         max_tokens: Output ceiling for ONE response, or ``None`` to defer to
             ``engine.agent_max_response_tokens``. Two answers to one question
             is the defect this shape avoids: the agent's own value wins when
@@ -126,6 +141,21 @@ class ModelConfig(BaseModel):
         ge=0.0,
         le=2.0,
         description="Sampling temperature",
+    )
+    top_p: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Nucleus-sampling threshold; None leaves the provider's own. Moves "
+            "with temperature, which vendors publish it beside"
+        ),
+    )
+    reasoning_effort: ReasoningEffort | None = Field(
+        default=None,
+        description=(
+            "Reasoning depth this agent asks for; None defers to the stakes ladder"
+        ),
     )
     max_tokens: int | None = Field(
         default=None,

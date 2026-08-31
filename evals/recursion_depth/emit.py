@@ -274,6 +274,18 @@ def _provenance_lines(report: RecursionDepthReport) -> list[str]:
             f"reviewer `{provenance.reviewer.label}` "
             f"({provenance.independence.value})"
         ),
+        # The sampling and reasoning depth each pair ran at. Published rather
+        # than left in the manifest because a reader holding the curve is the
+        # one who needs to know what was asked of the models that produced it,
+        # and because these were unchosen defaults until they were written
+        # down: printing them is what keeps them a decision.
+        f"- Executor sampling: {_sampling_cell(provenance.executor)}",
+        f"- Reviewer sampling: {_sampling_cell(provenance.reviewer)}",
+        *(
+            [f"- Sandbox image `{provenance.sandbox_image}`"]
+            if provenance.sandbox_image is not None
+            else []
+        ),
         (
             f"- Total spend: {_cost_cell(report.total_cost)} across "
             f"{report.total_tokens} tokens "
@@ -281,6 +293,29 @@ def _provenance_lines(report: RecursionDepthReport) -> list[str]:
         ),
         "",
     ]
+
+
+def _sampling_cell(pair: ModelPair) -> str:
+    """Render what one pair was asked to sample and reason at.
+
+    Each dial is shown only when it was set, because "unset" and "set to the
+    provider's own default" are different claims and rendering a number for
+    the first would assert the second.
+
+    Returns:
+        A comma-separated rendering, or a statement that nothing was pinned.
+    """
+    parts = [
+        f"{name} {value}"
+        for name, value in (
+            ("temperature", pair.temperature),
+            ("top_p", pair.top_p),
+            ("reasoning_effort", pair.reasoning_effort),
+            ("max_tokens", pair.max_tokens),
+        )
+        if value is not None
+    ]
+    return ", ".join(parts) if parts else "provider defaults, nothing pinned"
 
 
 def _curve_sections(report: RecursionDepthReport) -> list[str]:

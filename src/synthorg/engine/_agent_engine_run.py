@@ -13,6 +13,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
+from synthorg.engine.agent_sampling import binding_sampling
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_budget_defaults import DEFAULT_MAX_TURNS
 from synthorg.engine.response_budget import resolve_response_tokens
@@ -213,9 +214,7 @@ class AgentEngineRunMixin:
         Returns:
             A config carrying an explicit ceiling.
         """
-        base = completion_config or CompletionConfig(
-            temperature=identity.model.temperature
-        )
+        base = completion_config or binding_sampling(identity)
         if base.max_tokens is not None:
             return base
         resolved = await resolve_response_tokens(self._config_resolver, identity)
@@ -318,21 +317,27 @@ class AgentEngineRunMixin:
     ) -> CompletionConfig | None:
         """Fold the stakes-driven reasoning effort into the run config.
 
-        Leaves the config untouched (possibly ``None``, so the loop builds
-        its own default) when no reasoning effort is requested. Otherwise
-        builds on the caller-supplied config, or a fresh one carrying the
-        agent's temperature / max_tokens, so those are preserved alongside
-        the reasoning dial.
+        An effort already stated wins, whether it came from the caller or from
+        the agent's own binding, and the ladder answers only for a run that
+        stated none. That ordering is what keeps this a precedence rather than
+        a second authority: a depth an operator bound to an agent describes
+        the MODEL (some families expose graded effort and ignore sampling
+        entirely, others the reverse), while the ladder describes the WORK, so
+        the specific claim outranks the general one.
+
+        Leaves the config untouched (possibly ``None``, so the loop builds its
+        own default) when nothing requests a depth at all. Otherwise builds on
+        the caller-supplied config, or a fresh one carrying the agent's own
+        sampling, so that is preserved alongside the reasoning dial.
 
         Returns:
             The completion config to run with, or ``None`` when unchanged.
         """
+        base = completion_config or binding_sampling(identity)
+        if base.reasoning_effort is not None:
+            return base
         if reasoning_effort is None:
             return completion_config
-        base = completion_config or CompletionConfig(
-            temperature=identity.model.temperature,
-            max_tokens=identity.model.max_tokens,
-        )
         return base.model_copy(update={"reasoning_effort": reasoning_effort})
 
     async def _resolve_live_bool(
@@ -427,10 +432,7 @@ class AgentEngineRunMixin:
         )
         if not enabled:
             return completion_config
-        base = completion_config or CompletionConfig(
-            temperature=identity.model.temperature,
-            max_tokens=identity.model.max_tokens,
-        )
+        base = completion_config or binding_sampling(identity)
         return base.model_copy(update={"prompt_caching": True})
 
     async def _resolve_max_turns(self, *, agent_id: str, task_id: str) -> int:

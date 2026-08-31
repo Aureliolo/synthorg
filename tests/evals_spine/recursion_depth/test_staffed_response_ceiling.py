@@ -11,6 +11,7 @@ from evals.recursion_depth.staffing import (
     build_roster,
 )
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.role_catalog import COMPLETION_REVIEWER_ROLE_NAME
 from synthorg.engine.response_budget import DEFAULT_AGENT_MAX_RESPONSE_TOKENS
 from synthorg.engine.routing_policy.capability_policy import (
@@ -114,6 +115,61 @@ async def test_staffed_agents_carry_the_bound_pair_unchanged() -> None:
     for reviewer in roster.reviewers:
         assert reviewer.model.provider == _REVIEWER.provider
         assert reviewer.model.model_id == _REVIEWER.model_id
+
+
+async def test_each_role_samples_at_its_own_pairs_declared_values() -> None:
+    """A pair's sampling reaches the agents bound to it, and only those.
+
+    The two pairs a matrix binds are published with different values on
+    different dials: one family exposes a temperature and a nucleus threshold
+    and no graded reasoning parameter, the other exposes reasoning depth and
+    documents that sampling has no effect while thinking is on. Collapsing them
+    to one figure is guaranteed wrong for one of the two, so builders take the
+    executor's values and reviewers the reviewer's.
+    """
+    roster = await build_roster(
+        executor=_EXECUTOR.model_copy(
+            update={"temperature": 1.0, "top_p": 0.95, "max_tokens": 131_072}
+        ),
+        reviewer=_REVIEWER.model_copy(
+            update={
+                "temperature": 0.6,
+                "top_p": 0.5,
+                "reasoning_effort": ReasoningEffort.HIGH,
+                "max_tokens": 262_144,
+            }
+        ),
+        capability=CapabilityPolicy(
+            config=CapabilityPolicyConfig(),
+            reader=ResolvedAgentCapabilityReader(_UngradedResolver()),
+        ),
+    )
+
+    assert roster.builders
+    assert roster.reviewers
+    for builder in roster.builders:
+        assert builder.model.temperature == pytest.approx(1.0)
+        assert builder.model.top_p == pytest.approx(0.95)
+        assert builder.model.reasoning_effort is None
+        assert builder.model.max_tokens == 131_072
+    for reviewer in roster.reviewers:
+        assert reviewer.model.temperature == pytest.approx(0.6)
+        assert reviewer.model.top_p == pytest.approx(0.5)
+        assert reviewer.model.reasoning_effort is ReasoningEffort.HIGH
+        assert reviewer.model.max_tokens == 262_144
+
+
+async def test_an_undeclared_temperature_leaves_the_product_default() -> None:
+    """Saying nothing inherits the product's value, not one this module picks.
+
+    Copying that default here would diverge from it silently the day it moved.
+    """
+    roster = await _roster()
+    default = ModelConfig(provider="p", model_id="m").temperature
+
+    for identity in _staffed(roster):
+        assert identity.model.temperature == pytest.approx(default)
+        assert identity.model.top_p is None
 
 
 async def test_the_planner_is_never_offered_the_reviewer_role() -> None:

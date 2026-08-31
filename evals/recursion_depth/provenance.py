@@ -67,6 +67,7 @@ def capture_provenance(
     spec: SpecBrief,
     company_config: RootConfig,
     out_dir: Path | None = None,
+    sandbox_image: str | None = None,
 ) -> Provenance:
     """Stamp what this sweep is being measured against.
 
@@ -85,6 +86,10 @@ def capture_provenance(
             from the dirty check. The default out-dir is tracked, so a finished
             stage would otherwise dirty the tree with its own artifacts and the
             next ``--resume`` would be refused on an identity mismatch.
+        sandbox_image: The image the host RESOLVED for this run, which is what
+            the units actually ran in and not necessarily what was asked for.
+            Passed in rather than resolved here because the resolution needs a
+            booted host, and this is deliberately called before one exists.
 
     Returns:
         The provenance stamp.
@@ -118,6 +123,7 @@ def capture_provenance(
         executor_connection_sha256=executor_connection,
         reviewer_connection_sha256=reviewer_connection,
         cost_basis=cost_basis,
+        sandbox_image=NotBlankStr(sandbox_image) if sandbox_image else None,
     )
 
 

@@ -225,6 +225,64 @@ class TestFoldStakesReasoning:
         assert folded.max_tokens == 99
         assert folded.top_p == 0.5
 
+    def test_the_agents_own_depth_outranks_the_ladder(self) -> None:
+        """A depth bound to the agent describes the MODEL; the ladder the WORK.
+
+        The specific claim wins, which is what keeps this an ordered precedence
+        with one resolver rather than two authorities racing. Some model
+        families expose graded effort and ignore sampling entirely while others
+        expose no effort parameter at all, so an operator who bound a depth to
+        a pair knew something the stakes ladder cannot.
+        """
+        identity = _identity("expert").model_copy(
+            update={
+                "model": ModelConfig(
+                    provider=_PROVIDER,
+                    model_id=_TIER_MODEL_IDS["expert"],
+                    capability="expert",
+                    reasoning_effort=ReasoningEffort.LOW,
+                ),
+            },
+        )
+        folded = AgentEngineRunMixin._fold_stakes_reasoning(
+            None, identity, ReasoningEffort.HIGH
+        )
+        assert folded is not None
+        assert folded.reasoning_effort is ReasoningEffort.LOW
+
+    def test_an_unbound_depth_still_defers_to_the_ladder(self) -> None:
+        """The complement: stating nothing is what lets the ladder answer."""
+        folded = AgentEngineRunMixin._fold_stakes_reasoning(
+            None, _identity("expert"), ReasoningEffort.HIGH
+        )
+        assert folded is not None
+        assert folded.reasoning_effort is ReasoningEffort.HIGH
+
+    def test_the_binding_top_p_survives_the_fold(self) -> None:
+        """Sampling declared on the pair reaches the request beside the depth.
+
+        A vendor publishes ``top_p`` in the same breath as the temperature, so
+        a fold that carried one and dropped the other would send a distribution
+        nobody tested.
+        """
+        identity = _identity("expert").model_copy(
+            update={
+                "model": ModelConfig(
+                    provider=_PROVIDER,
+                    model_id=_TIER_MODEL_IDS["expert"],
+                    capability="expert",
+                    temperature=1.0,
+                    top_p=0.95,
+                ),
+            },
+        )
+        folded = AgentEngineRunMixin._fold_stakes_reasoning(
+            None, identity, ReasoningEffort.HIGH
+        )
+        assert folded is not None
+        assert folded.temperature == pytest.approx(1.0)
+        assert folded.top_p == pytest.approx(0.95)
+
 
 @pytest.mark.unit
 class TestFoldPromptCaching:
