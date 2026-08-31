@@ -43,16 +43,17 @@ ci:
   #     check-no-modify-migration:
   #     rebase / migration state checks meaningful only on the pushing
   #     developer's clone, not in an ephemeral cloud runner.
-  # ``no-release-please-token`` and ``workflow-shell-git-commits`` are
+  # ``no-release-please-token`` and ``gh-slurp-not-with-jq`` are
   # deliberately NOT skipped: both are pure-Python, zero-dependency
-  # scripts with no CI counterpart, and letting pre-commit.ci enforce
-  # them at the pre-commit stage closes the gap where a PR from a
-  # contributor who skipped local hooks would otherwise introduce a
-  # regression unchecked. ``no-review-origin-in-code`` and
-  # ``no-migration-framing`` run at ``stages: [pre-push]`` (the
-  # local-only pre-push hook surface) so pre-commit.ci does not pick
-  # them up; their CI counterpart is the ``Lint`` job in ``verify-backend.yml``
-  # which runs the same scripts on every PR.
+  # scripts with no CI counterpart, and both run at the pre-commit stage
+  # (neither overrides ``stages:``), so letting pre-commit.ci enforce
+  # them closes the gap where a PR from a contributor who skipped local
+  # hooks would otherwise introduce a regression unchecked.
+  # ``workflow-shell-git-commits``, ``no-review-origin-in-code`` and
+  # ``no-migration-framing`` run at ``stages: [pre-push]``, which
+  # pre-commit.ci does not reach: it runs the pre-commit stage only.
+  # Their CI counterpart is the ``Gates`` job in ``verify-backend.yml``,
+  # which runs ``pre-commit run --all-files`` at BOTH stages.
   skip: [commitizen, gitleaks, hadolint-docker, markdownlint, caddy-validate, zizmor, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test, lychee, vale, vale-ledger-complete, web-checks, check-push-rebased, check-single-migration-per-pr, check-no-modify-migration, no-new-logger-exception-str-exc, completion-config-temperature, otlp-span-redaction, doc-drift-counts, list-pagination, runtime-stats-freshness, dto-types-ts-in-sync, no-client-state-persistence, no-growth-in-god-modules, no-central-junk-drawer, lint-imports, python-audits, sqlfluff, yamllint, consolidated-python-gates]
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -335,6 +336,18 @@ repos:
         args: [run, python, scripts/check_no_release_please_token.py]
         language: system
         files: ^\.github/.*\.ya?ml$
+
+      - id: gh-slurp-not-with-jq
+        name: block `gh api` pagination flags that cannot mean what they read as
+        entry: uv
+        args: [run, python, scripts/check_gh_slurp_not_with_jq.py, --scan-all]
+        language: system
+        # `--scan-all` with `pass_filenames: false`, and the checker itself in
+        # `files:`, because the per-path mode would otherwise be handed only
+        # the non-workflow paths when the checker is what changed, and pass
+        # having scanned zero workflows: a weakened gate would land unchecked.
+        files: ^(\.github/.*\.ya?ml|scripts/check_gh_slurp_not_with_jq\.py|\.pre-commit-config\.yaml)$
+        pass_filenames: false
 
       - id: workflow-shell-git-commits
         name: block shell git commit+push in workflows (must mint App token)

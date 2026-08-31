@@ -5,7 +5,7 @@
 SynthOrg is **pre-alpha**, and the plain summary is that the loop does not yet
 complete.
 
-The platform underneath it is built and tested: <!--RS:tests-->46,000+<!--/RS-->
+The platform underneath it is built and tested: <!--RS:tests-->47,000+<!--/RS-->
 tests in the most recent run, a REST + WebSocket API, a React 19 dashboard, a Go
 CLI, and deterministic end-to-end harnesses that drive the agent runtime, the
 multi-agent coordinator, the work pipeline spine, the intake engine, sandbox

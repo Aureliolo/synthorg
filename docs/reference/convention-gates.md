@@ -64,6 +64,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_frozen_model_extra_forbid.py` | push | `src/synthorg/` + `tests/` | full | no | none | keep |
 | `check_gate_roles_not_assignable.py` | push | `src/synthorg/` + `evals/` | full | no | none | add |
 | `check_gateway_explicit_binding.py` | push | `api/gateway/` | full | no | none | add |
+| `check_gh_slurp_not_with_jq.py` | commit+push | `.github/**/*.{yml,yaml}` | full | no | none | add |
 | `check_governed_destructive_tools.py` | push | `tools/` | full | no | none | add |
 | `check_handler_arguments_get.py` | push | `meta/mcp/` | full | no | none | add |
 | `check_image_signatures.py` | CI (`build-images.yml`) | published image digests | n/a | n/a | none | keep |
@@ -107,7 +108,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_no_raw_id_in_ui.py` | push | `web/src/**/*.{tsx,ts}` + `src/synthorg/` | full | no | none | add |
 | `check_no_raw_playwright_imports.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_no_redundant_timeout.py` | commit+push | `tests/` | staged | yes | none | harden |
-| `check_no_release_please_token.py` | commit+push | `.github/**/*.yml` | staged | yes | none | keep |
+| `check_no_release_please_token.py` | commit+push | `.github/**/*.{yml,yaml}` | staged | yes | none | keep |
 | `check_no_review_origin_in_code.py` | push | `src/synthorg/` + `tests/` | full | no | none | keep |
 | `check_no_ruff100_self_cloak.py` | commit+push | every tracked `.py` | full | no | none | **add** |
 | `check_no_silent_embedder_fallback.py` | push | `src/synthorg/` | full | no | none | add |
@@ -160,7 +161,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->135<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->136<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 
@@ -315,8 +316,8 @@ Adding an entry therefore means regenerating the baseline, which `check_baseline
 
 1. Wire each new gate so it runs locally and in CI. A `commit+push` Python gate that must also run at pre-commit gets its own `.pre-commit-config.yaml` hook entry. A **push-only** Python gate is instead appended to the `_GATES` tuple in `scripts/run_prepush_python_gates.py`: the single `consolidated-python-gates` pre-push hook runs every entry, fanned across a bounded reused-worker pool (the per-gate failure reporting and exit codes are preserved), so adding a separate per-gate pre-push hook is redundant. `check_local_ci_parity.py` verifies the consolidated hook, not the individual push-only gate ids.
 2. Per-line opt-outs use a stable `# lint-allow: <gate-name> -- <reason>` comment; the reason is mandatory non-empty.
-3. Add a corresponding entry in the machine-readable inventory at `scripts/convention_gate_map.yaml`.
-4. Add a row to the gate-inventory table above and bump the `<!--RS:convention_gates-->` count macro.
+3. Add a corresponding entry in the machine-readable inventory at `scripts/convention_gate_map.yaml`, but ONLY if the gate backs a `(MANDATORY)` paragraph in the canonical doc set. Entries there are keyed by `(file, header)` of such a paragraph, and `check_convention_gate_inventory.py` rejects an entry matching none of them as stale, so a narrow gate with no MANDATORY behind it (`check_no_release_please_token.py`, `check_gh_slurp_not_with_jq.py`) takes a table row and nothing else.
+4. Add a row to the gate-inventory table above, then regenerate the `<!--RS:convention_gates-->` count macro with `uv run python scripts/generate_runtime_stats.py && uv run python scripts/inject_runtime_stats.py`.
 
 ## Meta-gate
 
