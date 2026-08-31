@@ -204,8 +204,14 @@ jobs:
           )
 
           # Sticky comment via the hidden marker at the top of the body.
-          EXISTING=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
-            --jq 'map(select(.body | startswith("<!-- sbom-diff:backend -->"))) | .[0].id // empty')
+          # `--slurp` then a SEPARATE jq: `--paginate --jq` runs the filter
+          # once per page, so `.[0]` means first-of-page and a PR long enough
+          # to paginate emits one id per matching page, which reaches the
+          # PATCH below as a multi-line URL segment. gh also refuses `--slurp`
+          # beside `--jq`, so the selection cannot live in the same call.
+          # `flatten(1)` folds the one-array-per-page shape.
+          EXISTING=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate --slurp \
+            | jq -r 'flatten(1) | map(select(.body | startswith("<!-- sbom-diff:backend -->"))) | .[0].id // empty')
           if [ -n "$EXISTING" ]; then
             gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$EXISTING" \
               -f body="$COMMENT" >/dev/null
