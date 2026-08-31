@@ -50,6 +50,7 @@ const makeProvider = (
   models: modelIds.map((id) => ({
     id,
     alias: null,
+    capability_overrides: null,
     max_context: 8192,
     cost_per_1k_input: 0,
     cost_per_1k_output: 0,

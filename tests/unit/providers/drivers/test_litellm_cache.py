@@ -1,6 +1,7 @@
 """Tests for prompt-caching cache_control breakpoint placement."""
 
 import pytest
+import structlog.testing
 
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.drivers.litellm_cache import apply_cache_control
@@ -13,10 +14,6 @@ def _caps(*, supports_prompt_caching: bool) -> ModelCapabilities:
     return ModelCapabilities(
         model_id="example-expert-001",
         provider="example-provider",
-        max_context_tokens=200_000,
-        max_output_tokens=8192,
-        cost_per_1k_input=0.003,
-        cost_per_1k_output=0.015,
         supports_prompt_caching=supports_prompt_caching,
     )
 
@@ -60,6 +57,18 @@ class TestApplyCacheControl:
 
         assert messages[0]["content"] == "sys"
         assert messages[1]["content"] == "hi"
+
+    def test_noop_for_non_caching_model_logs_at_info(self) -> None:
+        """A feature silently disabling itself must not hide at debug."""
+        messages: list[dict[str, object]] = [{"role": "user", "content": "hi"}]
+        with structlog.testing.capture_logs() as logs:
+            _apply(_kwargs(messages), supports_prompt_caching=False)
+
+        matches = [
+            log for log in logs if log.get("event") == "provider.prompt_caching.skipped"
+        ]
+        assert len(matches) == 1
+        assert matches[0]["log_level"] == "info"
 
     def test_marks_last_system_and_rolling_tail(self) -> None:
         messages: list[dict[str, object]] = [

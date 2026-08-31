@@ -83,6 +83,9 @@ from synthorg.providers.management._capabilities_mixin import (
     ProviderCapabilitiesMixin,
 )
 from synthorg.providers.management._capability_helpers import delete_local_model
+from synthorg.providers.management._capability_overrides_mixin import (
+    ProviderCapabilityOverridesMixin,
+)
 from synthorg.providers.management._config_transforms import (
     apply_update,
 )
@@ -255,6 +258,7 @@ def _cheapest_probe_model_id(models: tuple[ProviderModelConfig, ...]) -> str:
 class ProviderManagementService(
     ProviderDiscoveryMixin,
     ProviderCapabilitiesMixin,
+    ProviderCapabilityOverridesMixin,
     ProviderToolCallCapabilityMixin,
     ProviderTransactionMixin,
 ):
@@ -1217,14 +1221,14 @@ class ProviderManagementService(
             )
             return updated
 
-    # ── Capability mutations live on ``ProviderCapabilitiesMixin`` ─
+    # ── Capability mutations live on ``ProviderCapabilitiesMixin`` /
+    #    ``ProviderCapabilityOverridesMixin`` ─
 
-    # The six new mutation entry points (audit log, rate-limits
-    # GET/PATCH, preset overrides, credentials rotate, manual model
-    # add, bulk model sync) are defined on
-    # ``ProviderCapabilitiesMixin`` so this file stays under the
-    # 800-line ceiling.  Keep the import + inheritance intact at
-    # the class declaration.
+    # The mutation entry points (audit log, rate-limits GET/PATCH,
+    # preset overrides, credentials rotate, manual model add, bulk
+    # model sync, capability-override PATCH) are defined on those two
+    # mixins so this file stays under the 800-line ceiling.  Keep the
+    # imports + inheritance intact at the class declaration.
 
     def _build_router(
         self,

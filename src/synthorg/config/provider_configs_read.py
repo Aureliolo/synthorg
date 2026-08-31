@@ -35,6 +35,7 @@ from synthorg.observability import describe_without_input
 PROVIDERS_CONFIG_SCHEMA_VERSION: Final[int] = 1
 
 _DEGRADATION_FIELD: Final[str] = "degradation"
+_DEFAULTS_FIELD: Final[str] = "defaults"
 _PROVIDERS_FIELD: Final[str] = "providers"
 
 
@@ -355,7 +356,7 @@ def _read_each_entry(
 def _strip_retired_settings(
     raw: dict[str, object],
 ) -> tuple[dict[str, object], tuple[CoercedProviderSetting, ...]]:
-    """Return *raw* with every entry's retired degradation settings removed.
+    """Return *raw* with every entry's retired settings removed.
 
     Returns:
         The blob to validate and what was stripped from it. *raw* itself
@@ -372,10 +373,7 @@ def _strip_retired_settings(
     for name, entry in entries.items():
         if not isinstance(entry, Mapping):
             continue
-        degradation = entry.get(_DEGRADATION_FIELD)
-        if not isinstance(degradation, Mapping):
-            continue
-        cleaned, stripped = strip_retired_degradation_settings(degradation)
+        cleaned_entry, stripped = _strip_entry_retired_settings(entry)
         if not stripped:
             continue
         coerced.extend(
@@ -384,10 +382,40 @@ def _strip_retired_settings(
         )
         if cleaned_entries is None:
             cleaned_entries = dict(entries)
-        cleaned_entries[name] = {**entry, _DEGRADATION_FIELD: cleaned}
+        cleaned_entries[name] = cleaned_entry
     if cleaned_entries is None:
         return raw, ()
     return {**raw, _PROVIDERS_FIELD: cleaned_entries}, tuple(coerced)
+
+
+def _strip_entry_retired_settings(
+    entry: Mapping[str, object],
+) -> tuple[dict[str, object], tuple[str, ...]]:
+    """Strip one provider entry's retired top-level and nested settings.
+
+    ``defaults`` (``ProviderModelDefaults``) is retired whole: its one
+    field, a fallback output-token cap, is now derived per model instead
+    of configured provider-wide, so a persisted ``defaults`` key is
+    dropped outright rather than transformed.
+
+    Returns:
+        The cleaned entry and the names of the settings removed, empty
+        when there was nothing to strip.
+    """
+    cleaned: dict[str, object] = dict(entry)
+    stripped: list[str] = []
+    if _DEFAULTS_FIELD in cleaned:
+        del cleaned[_DEFAULTS_FIELD]
+        stripped.append(_DEFAULTS_FIELD)
+    degradation = cleaned.get(_DEGRADATION_FIELD)
+    if isinstance(degradation, Mapping):
+        cleaned_degradation, degradation_stripped = strip_retired_degradation_settings(
+            degradation
+        )
+        if degradation_stripped:
+            cleaned[_DEGRADATION_FIELD] = cleaned_degradation
+            stripped.extend(degradation_stripped)
+    return cleaned, tuple(stripped)
 
 
 def _unreadable(

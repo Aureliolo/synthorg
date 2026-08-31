@@ -25,6 +25,7 @@ from synthorg.config.model_metadata import MetadataSource
 from synthorg.config.model_staleness import ModelStaleness
 from synthorg.config.schema import (
     LocalModelParams,
+    ModelCapabilityOverrides,
     ProviderModelConfig,
 )
 from synthorg.core.billing_enums import BillingModel
@@ -59,6 +60,14 @@ class ProviderModelResponse(BaseModel):
             text prompts (image output modality).
         supports_reasoning: Whether the model exposes extended reasoning
             (thinking / o1-style models).
+        supports_prompt_caching: Whether the model supports prompt-prefix
+            caching (stable system/tools/history blocks re-billed at a
+            discount instead of full input-token cost).
+        capability_overrides: The operator's declared capability overrides
+            for this model, if any (each field already folded into the
+            booleans above; carried separately so the dashboard can show
+            and pre-populate which fields are operator-set versus
+            resolved from the card/probe).
         family: Parsed model family used to group models in the picker.
         metadata_source: Provenance of the capability metadata (litellm /
             preset / probe / unknown); ``unknown`` drives the UI's
@@ -142,6 +151,14 @@ class ProviderModelResponse(BaseModel):
     supports_reasoning: bool = Field(
         default=False,
         description="Exposes extended reasoning (thinking/o1-style models)",
+    )
+    supports_prompt_caching: bool = Field(
+        default=False,
+        description="Supports prompt-prefix caching at a discount",
+    )
+    capability_overrides: ModelCapabilityOverrides | None = Field(
+        default=None,
+        description="Operator-declared capability overrides, if any",
     )
     family: NotBlankStr | None = Field(
         default=None,

@@ -55,6 +55,11 @@ function CapabilityBadges({ model }: { model: ProviderModelResponse }) {
             show: model.supports_image_generation,
             className: 'bg-accent/15 text-accent',
           },
+          {
+            label: 'cached',
+            show: model.supports_prompt_caching,
+            className: 'bg-info/15 text-info',
+          },
         ]
 
   const visible = badges.filter((b) => b.show)

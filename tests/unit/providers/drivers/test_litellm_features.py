@@ -4,6 +4,7 @@ from collections.abc import Sequence
 
 import litellm
 import pytest
+import structlog.testing
 
 from synthorg.config.provider_schema import ProviderModelConfig
 from synthorg.core.completion_enums import ReasoningEffort
@@ -34,10 +35,6 @@ def _caps(*, supports_reasoning: bool) -> ModelCapabilities:
     return ModelCapabilities(
         model_id=_MODEL_ID,
         provider="example-provider",
-        max_context_tokens=200_000,
-        max_output_tokens=8192,
-        cost_per_1k_input=0.0,
-        cost_per_1k_output=0.0,
         supports_reasoning=supports_reasoning,
     )
 
@@ -93,9 +90,19 @@ class TestReasoningEffortGate:
     ) -> None:
         _route_answers(monkeypatch, ["reasoning_effort"])
 
-        result = _apply(_MODEL_ID, supports_reasoning=False, routing_key=_HOSTED_ROUTE)
+        with structlog.testing.capture_logs() as logs:
+            result = _apply(
+                _MODEL_ID, supports_reasoning=False, routing_key=_HOSTED_ROUTE
+            )
 
         assert "reasoning_effort" not in result
+        matches = [
+            log
+            for log in logs
+            if log.get("event") == "provider.reasoning_effort.dropped"
+        ]
+        assert len(matches) == 1
+        assert matches[0]["log_level"] == "info"
 
     def test_dropped_when_the_route_will_not_carry_the_parameter(
         self, monkeypatch: pytest.MonkeyPatch
@@ -109,9 +116,19 @@ class TestReasoningEffortGate:
         """
         _route_answers(monkeypatch, ["temperature", "max_tokens"])
 
-        result = _apply(_MODEL_ID, supports_reasoning=True, routing_key=_HOSTED_ROUTE)
+        with structlog.testing.capture_logs() as logs:
+            result = _apply(
+                _MODEL_ID, supports_reasoning=True, routing_key=_HOSTED_ROUTE
+            )
 
         assert "reasoning_effort" not in result
+        matches = [
+            log
+            for log in logs
+            if log.get("event") == "provider.reasoning_effort.dropped"
+        ]
+        assert len(matches) == 1
+        assert matches[0]["log_level"] == "info"
 
     def test_kept_when_both_the_model_and_the_route_support_it(
         self, monkeypatch: pytest.MonkeyPatch

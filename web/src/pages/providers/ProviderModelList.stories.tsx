@@ -8,6 +8,7 @@ const models: ProviderModelResponse[] = [
   {
     id: 'example-expert-001',
     alias: 'large',
+    capability_overrides: null,
     cost_per_1k_input: 0.015,
     cost_per_1k_output: 0.075,
     cost_per_image: null,
@@ -22,6 +23,7 @@ const models: ProviderModelResponse[] = [
     supports_embeddings: false,
     supports_reasoning: false,
     supports_image_generation: false,
+    supports_prompt_caching: false,
     family: null,
     metadata_source: 'litellm',
     stale: null,
@@ -29,6 +31,7 @@ const models: ProviderModelResponse[] = [
   {
     id: 'example-capable-001',
     alias: 'medium',
+    capability_overrides: null,
     cost_per_1k_input: 0.003,
     cost_per_1k_output: 0.015,
     cost_per_image: null,
@@ -43,6 +46,7 @@ const models: ProviderModelResponse[] = [
     supports_embeddings: false,
     supports_reasoning: false,
     supports_image_generation: false,
+    supports_prompt_caching: false,
     family: null,
     metadata_source: 'litellm',
     stale: null,
@@ -50,6 +54,7 @@ const models: ProviderModelResponse[] = [
   {
     id: 'example-basic-001',
     alias: 'small',
+    capability_overrides: null,
     cost_per_1k_input: 0.0008,
     cost_per_1k_output: 0.004,
     cost_per_image: null,
@@ -64,6 +69,7 @@ const models: ProviderModelResponse[] = [
     supports_embeddings: false,
     supports_reasoning: false,
     supports_image_generation: false,
+    supports_prompt_caching: true,
     family: null,
     metadata_source: 'litellm',
     stale: null,
@@ -99,6 +105,7 @@ export const CapabilitiesUnverified: Story = {
     models: [{
       id: 'test-local-001',
       alias: 'local-basic',
+      capability_overrides: null,
       cost_per_1k_input: 0,
       cost_per_1k_output: 0,
       cost_per_image: null,
@@ -113,6 +120,7 @@ export const CapabilitiesUnverified: Story = {
       supports_embeddings: false,
       supports_reasoning: false,
       supports_image_generation: false,
+      supports_prompt_caching: false,
       family: null,
       metadata_source: 'unknown',
       stale: null,

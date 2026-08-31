@@ -3812,6 +3812,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/providers/{name}/models/{model_id}/capabilities": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        /** UpdateModelCapabilityOverrides */
+        readonly patch: operations["ApiV1ProvidersNameModelsModelIdCapabilitiesUpdateModelCapabilityOverrides"];
+        readonly trace?: never;
+    };
     readonly "/api/v1/providers/{name}/models/{model_id}/config": {
         readonly parameters: {
             readonly query?: never;
@@ -8869,6 +8886,16 @@ export type components = {
              */
             readonly reason: string;
         };
+        /** CapabilityOverridesUpdateRequest */
+        readonly CapabilityOverridesUpdateRequest: {
+            readonly supports_embeddings?: boolean | null;
+            readonly supports_image_generation?: boolean | null;
+            readonly supports_prompt_caching?: boolean | null;
+            readonly supports_reasoning?: boolean | null;
+            readonly supports_streaming?: boolean | null;
+            readonly supports_tools?: boolean | null;
+            readonly supports_vision?: boolean | null;
+        };
         /** CapabilityRecommendationDTO */
         readonly CapabilityRecommendationDTO: {
             /**
@@ -12576,6 +12603,16 @@ export type components = {
             readonly agent: components["schemas"]["AgentMiddlewareConfig"];
             readonly coordination: components["schemas"]["CoordinationMiddlewareConfig"];
         };
+        /** ModelCapabilityOverrides */
+        readonly ModelCapabilityOverrides: {
+            readonly supports_embeddings: boolean | null;
+            readonly supports_image_generation: boolean | null;
+            readonly supports_prompt_caching: boolean | null;
+            readonly supports_reasoning: boolean | null;
+            readonly supports_streaming: boolean | null;
+            readonly supports_tools: boolean | null;
+            readonly supports_vision: boolean | null;
+        };
         /**
          * ModelConfig
          * @description LLM model configuration
@@ -15168,6 +15205,8 @@ export type components = {
         readonly ProviderModelConfig: {
             /** @description Short alias for routing rules */
             readonly alias: string | null;
+            /** @description Operator-declared capability overrides applied on top of the resolved metadata; None means no override on any field. */
+            readonly capability_overrides: components["schemas"]["ModelCapabilityOverrides"] | null;
             /**
              * @description Cost per 1k input tokens (base currency)
              * @default 0
@@ -15199,6 +15238,8 @@ export type components = {
         readonly ProviderModelResponse: {
             /** @description Short alias for routing rules */
             readonly alias: string | null;
+            /** @description Operator-declared capability overrides, if any */
+            readonly capability_overrides: components["schemas"]["ModelCapabilityOverrides"] | null;
             /**
              * @description Cost per 1k input tokens
              * @default 0
@@ -15247,6 +15288,11 @@ export type components = {
              * @default false
              */
             readonly supports_image_generation: boolean;
+            /**
+             * @description Supports prompt-prefix caching at a discount
+             * @default false
+             */
+            readonly supports_prompt_caching: boolean;
             /**
              * @description Exposes extended reasoning (thinking/o1-style models)
              * @default false
@@ -27291,6 +27337,43 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersNameModelsModelIdCapabilitiesUpdateModelCapabilityOverrides: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Model whose capability overrides to update. */
+                readonly model_id: string;
+                /** @description Resource name */
+                readonly name: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CapabilityOverridesUpdateRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_ProviderModelResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

@@ -268,6 +268,53 @@ setting plus the model's streaming capability, not a `CompletionConfig` field:
   `BaseCompletionProvider`; the loop falls back to `complete()` when streaming is
   off or unsupported.
 
+### Capability metadata resolution
+
+`ModelCapabilities` (`providers/capabilities.py`) is a transient, per-request
+record consumed by capability-gated call sites -- prompt caching, reasoning
+effort, vision verification, image generation -- never by routing, which
+resolves its own `ResolvedModel` from `ProviderModelConfig`. Every field it
+declares has a real reader outside its own module (`check_capability_field_has_reader.py`
+enforces this at pre-push/CI with no baseline); a field that only its own
+validator ever read is dead weight, not a capability, and six such fields
+(`max_output_tokens`, `max_context_tokens`, `cost_per_1k_input`,
+`cost_per_1k_output`, `supports_system_messages`,
+`supports_streaming_tool_calls`) were retired for exactly that reason.
+
+`extract_model_metadata` (`drivers/litellm_model_info.py`) falls back **per
+field**, not whole-record: it takes the model's persisted `ModelMetadata` as
+a base and fills only the fields litellm's static card actually carries, so a
+partial card supplements the probe instead of discarding it. Four fields fail
+**closed** on a missing value (prompt caching, reasoning, vision, image
+generation), so a partial card that silently replaced the probe used to turn
+those features off with no operator-visible cause.
+
+Cached-token capture: `litellm_response.py::_extract_cache_hit` reads the
+response usage object's cached-input-token count (`prompt_tokens_details.cached_tokens`,
+falling back to `cache_read_input_tokens`) and sets `_synthorg_cache_hit` --
+`True`/`False` when the provider reported cache data, `None` (never `False`)
+when it reported none at all, since the two are different facts for
+`cache_hit_rate` analytics. This is the sole production writer of that key;
+nothing corrects `supports_prompt_caching` from the observed hit rate, on
+purpose -- a wrong caching claim costs a cache-write premium on a prefix,
+attended and visible as a real `cache_hit_rate` rather than unattended and
+catastrophic, so the fix is an operator setting the capability explicitly
+once the card is wrong, not a second automatic writer racing it.
+
+**Operator capability override**: `PATCH /api/v1/providers/{name}/models/{model_id}/capabilities`
+takes a partial `CapabilityOverridesUpdateRequest` (one optional `bool | None`
+field per `ModelCapabilities` flag except `model_id`/`provider`) and merges it
+onto the model's persisted `ModelCapabilityOverrides` block; an explicit
+`null` clears that field's override rather than being rejected as a no-op,
+since "stop overriding this" is itself a meaningful instruction. `build_capabilities`
+applies the merged overrides last, after every card/probe-derived value is
+resolved, so an operator who knows a model's card is wrong (most commonly
+prompt caching on a locally-probed or gateway-routed model with no litellm
+entry) can force any of the seven flags on or off without waiting on a card
+update. The response's `ProviderModelResponse.capability_overrides` field
+echoes the persisted block back so the dashboard can show which flags are
+operator-set rather than resolved.
+
 ## Provider Management
 
 Providers can be managed at runtime through the API without restarting:

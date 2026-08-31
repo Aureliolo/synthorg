@@ -42,13 +42,9 @@ class TestToProviderModelResponse:
         caps = ModelCapabilities(
             model_id="test-expert-001",
             provider="test-provider",
-            max_context_tokens=200_000,
-            max_output_tokens=4096,
             supports_tools=True,
             supports_vision=True,
             supports_streaming=True,
-            cost_per_1k_input=0.03,
-            cost_per_1k_output=0.06,
         )
         resp = to_provider_model_response(config, caps)
         assert resp.id == "test-expert-001"
@@ -100,10 +96,6 @@ class TestToProviderModelResponse:
         caps = ModelCapabilities(
             model_id="test-image-001",
             provider="test-provider",
-            max_context_tokens=1,
-            max_output_tokens=1,
-            cost_per_1k_input=0.0,
-            cost_per_1k_output=0.0,
             supports_image_generation=True,
         )
         resp = to_provider_model_response(config, caps)

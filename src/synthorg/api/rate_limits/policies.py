@@ -292,6 +292,7 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "providers.sync_models": (5, 60),
     "providers.test": (20, 60),
     "providers.update": (20, 60),
+    "providers.update_model_capability_overrides": (50, 60),
     "providers.update_model_config": (50, 60),
     "providers.update_preset_override": (10, 60),
     "providers.update_rate_limits": (20, 60),

@@ -27,6 +27,7 @@ function model(
   return {
     id,
     alias: null,
+    capability_overrides: null,
     cost_per_1k_input: 0,
     cost_per_1k_output: 0,
     cost_per_image: null,

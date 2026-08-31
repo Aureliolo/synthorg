@@ -5,9 +5,15 @@ credential helpers are stateless transforms over a discriminated-union
 DTO and the system-actor constant is a sentinel.
 """
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Final, assert_never
 
+from synthorg.config.provider_schema import (
+    ModelCapabilityOverrides,
+    ProviderConfig,
+    ProviderModelConfig,
+)
 from synthorg.core.actor_context import current_actor
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.iso_datetime import format_iso_utc
@@ -199,3 +205,49 @@ def credentials_update_fields(
             )
         case _ as unreachable:  # pragma: no cover - exhaustive over the union
             assert_never(unreachable)
+
+
+def resolve_capability_override_update(
+    existing: ProviderConfig,
+    *,
+    provider_name: str,
+    model_id: str,
+    explicit: Mapping[str, object],
+) -> tuple[ProviderConfig, ProviderModelConfig]:
+    """Merge a partial capability-override patch onto one model.
+
+    Merges onto any existing overrides so a prior override on a different
+    field survives; a field's value of ``None`` explicitly clears that
+    field's override.
+
+    Returns:
+        The ``(updated_provider_config, updated_model)`` pair.
+
+    Raises:
+        ProviderModelNotFoundError: If no model with *model_id* exists on
+            *existing*.
+    """
+    model_idx = next(
+        (i for i, m in enumerate(existing.models) if m.id == model_id),
+        None,
+    )
+    if model_idx is None:
+        msg = f"Model {model_id!r} not found in provider {provider_name!r}"
+        logger.warning(
+            PROVIDER_VALIDATION_FAILED,
+            provider=provider_name,
+            model=model_id,
+            error=msg,
+        )
+        raise ProviderModelNotFoundError(msg)
+    model = existing.models[model_idx]
+    current_overrides = model.capability_overrides or ModelCapabilityOverrides()
+    new_overrides = current_overrides.model_copy(update=dict(explicit))
+    updated_model = model.model_copy(update={"capability_overrides": new_overrides})
+    new_models = (
+        *existing.models[:model_idx],
+        updated_model,
+        *existing.models[model_idx + 1 :],
+    )
+    updated = existing.model_copy(update={"models": new_models})
+    return updated, updated_model

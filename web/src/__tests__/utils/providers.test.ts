@@ -183,6 +183,7 @@ describe("sortProviders", () => {
         {
           id: "m1",
           alias: null,
+          capability_overrides: null,
           cost_per_1k_input: 0,
           cost_per_1k_output: 0,
           cost_per_image: null,
@@ -215,6 +216,7 @@ describe("sortProviders", () => {
         {
           id: "m1",
           alias: null,
+          capability_overrides: null,
           cost_per_1k_input: 0,
           cost_per_1k_output: 0,
           cost_per_image: null,
@@ -242,6 +244,7 @@ describe("sortProviders", () => {
         {
           id: "m2",
           alias: null,
+          capability_overrides: null,
           cost_per_1k_input: 0,
           cost_per_1k_output: 0,
           cost_per_image: null,

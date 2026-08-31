@@ -326,6 +326,110 @@ class TestModelMutations:
 
 
 @pytest.mark.unit
+class TestUpdateModelCapabilityOverrides:
+    async def test_partial_update_merges_onto_existing_overrides(
+        self,
+        service: ProviderManagementService,
+        actor: ProviderAuditActor,
+    ) -> None:
+        from synthorg.api.dto_provider_capabilities import (
+            CapabilityOverridesUpdateRequest,
+        )
+        from synthorg.config.schema import ModelCapabilityOverrides
+
+        model = ProviderModelConfig(
+            id="example-expert-001",
+            capability_overrides=ModelCapabilityOverrides(supports_vision=True),
+        )
+        config = _make_provider_config(models=(model,))
+        service._config_resolver.get_provider_configs = AsyncMock(  # type: ignore[method-assign]
+            return_value={"cloud-test": config},
+        )
+
+        updated = await service.update_model_capability_overrides(
+            "cloud-test",
+            "example-expert-001",
+            CapabilityOverridesUpdateRequest(supports_prompt_caching=True),
+        )
+
+        assert updated.capability_overrides is not None
+        assert updated.capability_overrides.supports_vision is True
+        assert updated.capability_overrides.supports_prompt_caching is True
+
+    async def test_explicit_null_clears_a_field(
+        self,
+        service: ProviderManagementService,
+        actor: ProviderAuditActor,
+    ) -> None:
+        from synthorg.api.dto_provider_capabilities import (
+            CapabilityOverridesUpdateRequest,
+        )
+        from synthorg.config.schema import ModelCapabilityOverrides
+
+        model = ProviderModelConfig(
+            id="example-expert-001",
+            capability_overrides=ModelCapabilityOverrides(supports_vision=True),
+        )
+        config = _make_provider_config(models=(model,))
+        service._config_resolver.get_provider_configs = AsyncMock(  # type: ignore[method-assign]
+            return_value={"cloud-test": config},
+        )
+
+        updated = await service.update_model_capability_overrides(
+            "cloud-test",
+            "example-expert-001",
+            CapabilityOverridesUpdateRequest(supports_vision=None),
+        )
+
+        assert updated.capability_overrides is not None
+        assert updated.capability_overrides.supports_vision is None
+
+    async def test_unknown_model_raises(
+        self,
+        service: ProviderManagementService,
+        actor: ProviderAuditActor,
+    ) -> None:
+        from synthorg.api.dto_provider_capabilities import (
+            CapabilityOverridesUpdateRequest,
+        )
+        from synthorg.providers.errors import ProviderModelNotFoundError
+
+        with pytest.raises(ProviderModelNotFoundError):
+            await service.update_model_capability_overrides(
+                "cloud-test",
+                "missing-model",
+                CapabilityOverridesUpdateRequest(supports_tools=True),
+            )
+
+    async def test_unknown_provider_raises(
+        self,
+        service: ProviderManagementService,
+        actor: ProviderAuditActor,
+    ) -> None:
+        from synthorg.api.dto_provider_capabilities import (
+            CapabilityOverridesUpdateRequest,
+        )
+        from synthorg.providers.errors import ProviderNotFoundError
+
+        with pytest.raises(ProviderNotFoundError):
+            await service.update_model_capability_overrides(
+                "unknown-provider",
+                "example-expert-001",
+                CapabilityOverridesUpdateRequest(supports_tools=True),
+            )
+
+    async def test_empty_patch_is_rejected_at_the_dto(self) -> None:
+        from pydantic import ValidationError
+
+        from synthorg.api.dto_provider_capabilities import (
+            CapabilityOverridesUpdateRequest,
+        )
+
+        with pytest.raises(ValidationError):
+            CapabilityOverridesUpdateRequest()
+
+
+@pytest.mark.unit
 class TestCredentialsRotation:
     async def test_rotate_api_key(
         self,

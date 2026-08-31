@@ -905,14 +905,12 @@ class TestGetModelCapabilities:
 
         assert caps.model_id == "test-model-001"
         assert caps.provider == "example-provider"
-        assert caps.max_context_tokens == 200_000
-        assert caps.max_output_tokens == 8192
         assert caps.supports_tools is True
         assert caps.supports_vision is True
-        assert caps.cost_per_1k_input == 0.003
-        assert caps.cost_per_1k_output == 0.015
 
-    async def test_capabilities_fallback_on_litellm_error(self) -> None:
+    async def test_capabilities_degrade_rather_than_raise_on_litellm_error(
+        self,
+    ) -> None:
         driver = _make_driver()
 
         with patch(
@@ -922,12 +920,6 @@ class TestGetModelCapabilities:
             caps = await driver.get_model_capabilities("medium")
 
         assert caps.model_id == "test-model-001"
-        # Derived from the model's own window rather than taken flat: a metadata
-        # source that publishes no cap (every model behind an
-        # openai-compatible endpoint) would otherwise leave a 200k-context
-        # model described as a 4096-token responder, which is simply false.
-        assert caps.max_output_tokens > 4096
-        assert caps.max_output_tokens <= caps.max_context_tokens
 
     @pytest.mark.parametrize(
         "bad_max_output",
@@ -938,15 +930,16 @@ class TestGetModelCapabilities:
             pytest.param(True, id="bool"),
         ],
     )
-    async def test_non_numeric_max_output_falls_back(
+    async def test_non_numeric_max_output_does_not_raise(
         self,
         bad_max_output: object,
     ) -> None:
-        """A non-numeric ``max_output_tokens`` falls back instead of raising.
+        """A non-numeric ``max_output_tokens`` degrades instead of raising.
 
         The ``Any`` -> ``object`` retype means ``int(raw)`` can no longer be
-        called blindly; an unexpected type must degrade to the derived
-        fallback rather than raising out of capability discovery.
+        called blindly; an unexpected type must degrade capability discovery
+        rather than raise out of it. The coerced value itself is covered at
+        the ``extract_model_metadata`` unit level.
         """
         driver = _make_driver()
         model_info = {"max_output_tokens": bad_max_output}
@@ -957,37 +950,24 @@ class TestGetModelCapabilities:
         ):
             caps = await driver.get_model_capabilities("medium")
 
-        # Unusable metadata degrades to the SAME answer as absent metadata,
-        # which is derived from the model's window, not a flat constant.
-        assert caps.max_output_tokens > 4096
-        assert caps.max_output_tokens <= caps.max_context_tokens
+        assert caps.model_id == "test-model-001"
 
     @pytest.mark.parametrize(
-        (
-            "supports_native_streaming",
-            "supports_function_calling",
-            "expected_streaming",
-            "expected_streaming_tool_calls",
-        ),
+        ("supports_native_streaming", "expected_streaming"),
         [
-            pytest.param(False, True, False, False, id="streaming_false"),
-            pytest.param(True, False, True, False, id="tools_false"),
-            pytest.param(None, True, True, True, id="streaming_none_defaults_true"),
+            pytest.param(False, False, id="streaming_false"),
+            pytest.param(True, True, id="streaming_true"),
+            pytest.param(None, True, id="streaming_none_defaults_true"),
         ],
     )
     async def test_streaming_capabilities(
         self,
         supports_native_streaming: bool | None,
-        supports_function_calling: bool,
         expected_streaming: bool,
-        expected_streaming_tool_calls: bool,
     ) -> None:
         """supports_streaming follows model_info; None is treated as unknown."""
         driver = _make_driver()
-        model_info = {
-            "supports_native_streaming": supports_native_streaming,
-            "supports_function_calling": supports_function_calling,
-        }
+        model_info = {"supports_native_streaming": supports_native_streaming}
 
         with patch(
             _PATCH_MODEL_INFO,
@@ -996,31 +976,6 @@ class TestGetModelCapabilities:
             caps = await driver.get_model_capabilities("medium")
 
         assert caps.supports_streaming is expected_streaming
-        assert caps.supports_streaming_tool_calls is expected_streaming_tool_calls
-
-    async def test_max_output_capped_at_context(self) -> None:
-        config = make_provider_config(
-            models=(
-                ProviderModelConfig(
-                    id="small-model",
-                    max_context=1024,
-                    cost_per_1k_input=0.001,
-                    cost_per_1k_output=0.002,
-                ),
-            ),
-        )
-        driver = _make_driver(config=config)
-        model_info = {"max_output_tokens": 999_999}
-
-        with patch(
-            _PATCH_MODEL_INFO,
-            return_value=model_info,
-        ):
-            caps = await driver.get_model_capabilities(
-                "small-model",
-            )
-
-        assert caps.max_output_tokens == 1024
 
 
 @pytest.mark.unit
@@ -1051,10 +1006,8 @@ class TestBatchGetCapabilities:
         assert set(result) == {"model-a", "model-b"}
         assert result["model-a"] is not None
         assert result["model-a"].model_id == "model-a"
-        assert result["model-a"].max_context_tokens == 1024
         assert result["model-b"] is not None
         assert result["model-b"].model_id == "model-b"
-        assert result["model-b"].max_context_tokens == 2048
 
     async def test_unknown_model_id_is_none(self) -> None:
         driver = _make_driver()

@@ -359,6 +359,9 @@ PROVIDER_MODEL_PULL_FAILED: Final[str] = "provider.model.pull_failed"
 PROVIDER_MODEL_DELETED: Final[str] = "provider.model.deleted"
 PROVIDER_MODEL_DELETE_FAILED: Final[str] = "provider.model.delete_failed"
 PROVIDER_MODEL_CONFIG_UPDATED: Final[str] = "provider.model.config_updated"
+PROVIDER_MODEL_CAPABILITY_OVERRIDES_UPDATED: Final[str] = (
+    "provider.model.capability_overrides_updated"
+)
 PROVIDER_LOCAL_MANAGER_NOT_AVAILABLE: Final[str] = (
     "provider.local_manager.not_available"
 )

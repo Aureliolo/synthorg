@@ -29,6 +29,7 @@ function makeProvider(name: string): ProviderWithName {
       {
         id: "test-model",
         alias: "test",
+        capability_overrides: null,
         cost_per_1k_input: 0.003,
         cost_per_1k_output: 0.015,
         cost_per_image: null,
@@ -76,6 +77,7 @@ const testModels: ProviderModelResponse[] = [
   {
     id: "test-model",
     alias: "test",
+    capability_overrides: null,
     cost_per_1k_input: 0.003,
     cost_per_1k_output: 0.015,
     cost_per_image: null,
@@ -90,6 +92,7 @@ const testModels: ProviderModelResponse[] = [
     supports_embeddings: false,
     supports_reasoning: false,
     supports_image_generation: false,
+    supports_prompt_caching: false,
     family: null,
     metadata_source: "unknown",
     stale: null,

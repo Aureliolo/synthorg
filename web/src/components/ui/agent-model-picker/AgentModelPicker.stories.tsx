@@ -11,6 +11,7 @@ function model(
   return {
     id,
     alias: null,
+    capability_overrides: null,
     cost_per_1k_input: 0,
     cost_per_1k_output: 0,
     cost_per_image: null,
@@ -25,6 +26,7 @@ function model(
     supports_embeddings: false,
     supports_reasoning: false,
     supports_image_generation: false,
+    supports_prompt_caching: false,
     family: null,
     metadata_source: 'unknown',
     stale: null,

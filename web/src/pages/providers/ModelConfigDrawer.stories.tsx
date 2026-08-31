@@ -7,6 +7,7 @@ import { DEFAULT_CURRENCY } from '@/utils/currencies'
 const baseModel: ProviderModelResponse = {
   id: 'test-local-7b',
   alias: 'local-7b',
+  capability_overrides: null,
   cost_per_1k_input: 0,
   cost_per_1k_output: 0,
   cost_per_image: null,
@@ -21,6 +22,7 @@ const baseModel: ProviderModelResponse = {
   supports_embeddings: false,
   supports_reasoning: false,
   supports_image_generation: false,
+  supports_prompt_caching: false,
   family: null,
   metadata_source: 'unknown',
   stale: null,

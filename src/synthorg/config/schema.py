@@ -27,6 +27,7 @@ from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.posture_config import PostureConfig
 from synthorg.config.provider_schema import (
     LocalModelParams,
+    ModelCapabilityOverrides,
     ProviderConfig,
     ProviderModelConfig,
 )
@@ -76,6 +77,7 @@ logger = get_logger(__name__)
 
 __all__ = [
     "LocalModelParams",
+    "ModelCapabilityOverrides",
     "ModelMetadata",
     "ProviderConfig",
     "ProviderModelConfig",

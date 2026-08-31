@@ -66,6 +66,7 @@ export const modelsHandlers = [
       successFor<typeof updateModelConfig>({
         id: decodeURIComponent(String(params['modelId'])),
         alias: null,
+        capability_overrides: null,
         cost_per_1k_input: 0,
         cost_per_1k_output: 0,
         cost_per_image: null,
@@ -80,6 +81,7 @@ export const modelsHandlers = [
         supports_embeddings: false,
         supports_reasoning: false,
         supports_image_generation: false,
+        supports_prompt_caching: false,
         family: null,
         metadata_source: 'unknown',
         stale: null,

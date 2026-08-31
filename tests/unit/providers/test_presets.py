@@ -165,11 +165,8 @@ class TestProviderPresets:
             model,
             routing_key="ollama",  # bypass the live litellm DB lookup
             provider_name="openai",
-            fallback_max_output_tokens=2048,
         )
         assert caps.supports_image_generation is True
-        assert caps.max_context_tokens > 0
-        assert caps.max_output_tokens <= caps.max_context_tokens
 
     def test_get_preset_by_name(self) -> None:
         preset = get_preset("ollama")

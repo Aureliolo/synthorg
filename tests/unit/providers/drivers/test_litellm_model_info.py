@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 import structlog.testing
 
+from synthorg.config.model_metadata import ModelMetadata
 from synthorg.observability.events.provider import (
     PROVIDER_MODEL_INFO_UNAVAILABLE,
     PROVIDER_MODEL_INFO_UNEXPECTED_ERROR,
@@ -17,6 +18,10 @@ from synthorg.providers.family_parser import RegexFamilyParser
 
 # Generic-only parser (no provider rules): vendor-free.
 _PARSER = RegexFamilyParser({})
+
+# No prior config-layer record: the base every "nothing to fall back to"
+# test in this module supplies.
+_NO_BASE = ModelMetadata()
 
 _LOOKUP = "synthorg.providers.drivers.litellm_model_info._litellm.get_model_info"
 
@@ -74,6 +79,7 @@ class TestExtractModelMetadata:
             litellm_provider="example-provider",
             model_id="examplemodel2.0",
             parser=_PARSER,
+            base=_NO_BASE,
         )
         assert meta.supports_tools is True
         assert meta.supports_vision is True
@@ -90,6 +96,7 @@ class TestExtractModelMetadata:
             litellm_provider=None,
             model_id="plainmodel",
             parser=_PARSER,
+            base=_NO_BASE,
         )
         assert meta.supports_tools is False
         assert meta.supports_vision is False
@@ -104,6 +111,7 @@ class TestExtractModelMetadata:
             litellm_provider=None,
             model_id="examplemodel1.0",
             parser=_PARSER,
+            base=_NO_BASE,
         )
         assert meta.max_output_tokens == 8192
 
@@ -113,6 +121,7 @@ class TestExtractModelMetadata:
             litellm_provider=None,
             model_id="examplemodel1.0",
             parser=_PARSER,
+            base=_NO_BASE,
         )
         assert meta.max_output_tokens is None
 
@@ -123,6 +132,7 @@ class TestExtractModelMetadata:
             litellm_provider=None,
             model_id="examplemodel1.0",
             parser=_PARSER,
+            base=_NO_BASE,
         )
         assert meta.max_output_tokens is None
 
@@ -132,6 +142,155 @@ class TestExtractModelMetadata:
             litellm_provider=None,
             model_id="examplemodel1.0",
             parser=_PARSER,
+            base=_NO_BASE,
             source="preset",
         )
         assert meta.metadata_source == "preset"
+
+
+@pytest.mark.unit
+class TestPerFieldFallback:
+    """A partial card supplements the base record, never replaces it.
+
+    Each fail-closed consumer (litellm_cache, litellm_features, llm_vision,
+    the image-provider wiring) reads one of these fields directly off the
+    resolved ``ModelMetadata``; losing a probe-sourced ``True`` here silently
+    turns the feature off for every model litellm has ANY partial data for.
+    """
+
+    def _base(self, *, max_output_tokens: int | None = None) -> ModelMetadata:
+        return ModelMetadata(
+            supports_tools=True,
+            supports_reasoning=True,
+            supports_vision=True,
+            supports_prompt_caching=True,
+            supports_embeddings=True,
+            supports_image_generation=True,
+            tool_calls_verified=True,
+            parameter_count=7_000_000_000,
+            cost_tier=2,
+            metadata_source="probe",
+            max_output_tokens=max_output_tokens,
+        )
+
+    def test_partial_card_keeps_base_prompt_caching(self) -> None:
+        meta = extract_model_metadata(
+            {"supports_vision": False},
+            litellm_provider=None,
+            model_id="examplemodel1.0",
+            parser=_PARSER,
+            base=self._base(),
+        )
+        assert meta.supports_prompt_caching is True
+
+    def test_partial_card_keeps_base_reasoning(self) -> None:
+        meta = extract_model_metadata(
+            {"supports_vision": False},
+            litellm_provider=None,
+            model_id="examplemodel1.0",
+            parser=_PARSER,
+            base=self._base(),
+        )
+        assert meta.supports_reasoning is True
+
+    def test_partial_card_keeps_base_vision_when_silent(self) -> None:
+        meta = extract_model_metadata(
+            {"supports_reasoning": False},
+            litellm_provider=None,
+            model_id="examplemodel1.0",
+            parser=_PARSER,
+            base=self._base(),
+        )
+        assert meta.supports_vision is True
+
+    def test_card_asserting_vision_false_wins_over_base(self) -> None:
+        # A field the card DOES speak on is not a partial gap: the fresh
+        # reading is taken, never the stale base.
+        meta = extract_model_metadata(
+            {"supports_vision": False, "supports_reasoning": False},
+            litellm_provider=None,
+            model_id="examplemodel1.0",
+            parser=_PARSER,
+            base=self._base(),
+        )
+        assert meta.supports_vision is False
+        assert meta.supports_reasoning is False
+
+    def test_partial_card_keeps_base_image_generation(self) -> None:
+        meta = extract_model_metadata(
+            {"supports_vision": False},
+            litellm_provider=None,
+            model_id="examplemodel1.0",
+            parser=_PARSER,
+            base=self._base(),
+        )
+        assert meta.supports_image_generation is True
+
+    def test_partial_card_keeps_base_embeddings_when_mode_absent(self) -> None:
+        meta = extract_model_metadata(
+            {"supports_vision": False},
+            litellm_provider=None,
+            model_id="examplemodel1.0",
+            parser=_PARSER,
+            base=self._base(),
+        )
+        assert meta.supports_embeddings is True
+
+    def test_mode_present_overrides_base_embeddings(self) -> None:
+        meta = extract_model_metadata(
+            {"mode": "chat"},
+            litellm_provider=None,
+            model_id="examplemodel1.0",
+            parser=_PARSER,
+            base=self._base(),
+        )
+        assert meta.supports_embeddings is False
+
+    def test_partial_card_keeps_base_max_output_tokens(self) -> None:
+        meta = extract_model_metadata(
+            {"supports_vision": False},
+            litellm_provider=None,
+            model_id="examplemodel1.0",
+            parser=_PARSER,
+            base=self._base(max_output_tokens=4096),
+        )
+        assert meta.max_output_tokens == 4096
+
+    def test_card_max_output_tokens_wins_over_base(self) -> None:
+        meta = extract_model_metadata(
+            {"max_output_tokens": 8192},
+            litellm_provider=None,
+            model_id="examplemodel1.0",
+            parser=_PARSER,
+            base=self._base(max_output_tokens=4096),
+        )
+        assert meta.max_output_tokens == 8192
+
+    def test_litellm_static_table_never_carries_runtime_fields(self) -> None:
+        # tool_calls_verified / parameter_count / cost_tier have no litellm
+        # equivalent, so they are unconditionally carried from base.
+        meta = extract_model_metadata(
+            {
+                "supports_function_calling": False,
+                "supports_vision": True,
+                "supports_reasoning": True,
+                "supports_prompt_caching": True,
+            },
+            litellm_provider=None,
+            model_id="examplemodel1.0",
+            parser=_PARSER,
+            base=self._base(),
+        )
+        assert meta.tool_calls_verified is True
+        assert meta.parameter_count == 7_000_000_000
+        assert meta.cost_tier == 2
+
+    def test_card_asserting_tools_false_wins_over_base(self) -> None:
+        meta = extract_model_metadata(
+            {"supports_function_calling": False},
+            litellm_provider=None,
+            model_id="examplemodel1.0",
+            parser=_PARSER,
+            base=self._base(),
+        )
+        assert meta.supports_tools is False
