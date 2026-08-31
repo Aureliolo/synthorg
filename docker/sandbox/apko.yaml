@@ -10,7 +10,7 @@
 # shape any interactive terminal tool needs and the package costs a megabyte.
 #
 # Both halves of the node/npm pair are named: npm 12 accepts
-# ^22.22.2 || ^24.15.0 || >=26.0.0, and nodejs-24 sits inside that range.
+# ^22.22.2 || ^24.15.0 || >=26.0.0, and nodejs-26 sits inside that range.
 # Naming one half only leaves the other free to move out of the range this
 # comment claims, which is a pairing nothing would flag. An unsupported
 # pairing is not cosmetic: npm prints its unsupported-engine banner on stderr
@@ -39,7 +39,7 @@ contents:
     - bash
     - tmux
     - git
-    - nodejs-24
+    - nodejs-26
     - npm-12
     - python-3.14
     # A test runner belongs in the image that runs untrusted code, not on the

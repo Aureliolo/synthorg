@@ -67,8 +67,8 @@ Four properties keep the lock honest, and each is enforced rather than assumed
 - **A manifest names what installs.** Wolfi resolves an unversioned name
   through `provides` to whichever series it serves that week, so a bare
   `glibc`, `npm` or `postgresql-client` reads like a pin while tracking a
-  moving target. Manifests name the resolved package (`glibc-2.43`, `npm-12`,
-  `postgresql-18-client`), the same way `nodejs-24` and `python-3.14` already
+  moving target. Manifests name the resolved package (`glibc-2.44`, `npm-12`,
+  `postgresql-18-client`), the same way `nodejs-26` and `python-3.14` already
   did.
 - **Whatever else names an apko package agrees with the manifest.** Two
   modules name packages by hand: `tools/mcp/runtime_provision.py`, which

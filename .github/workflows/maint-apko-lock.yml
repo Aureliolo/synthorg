@@ -257,7 +257,7 @@ jobs:
             cat "$pr_create_output"
           fi
 
-  # A series pin (`nodejs-24`, `postgresql-18-client`) is the shape the
+  # A series pin (`nodejs-26`, `postgresql-18-client`) is the shape the
   # apko-lock gate demands, and it is also the shape nothing else can watch:
   # `apko lock` above faithfully re-resolves the series that was asked for, and
   # no Renovate manager reads `apko.yaml`. So the newer-series question is asked
