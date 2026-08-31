@@ -20,6 +20,8 @@ import httpx
 
 from synthorg.core.normalization import normalize_base_url
 from synthorg.integrations.chat_api.inbound.decode import (
+    FRAME_DISCONNECT,
+    FRAME_HELLO,
     ROUTINE_DROP_REASONS,
     decode_frame,
 )
@@ -114,7 +116,11 @@ class SlackSocketModeClient:
         logger.info(CHAT_INBOUND_CONNECTED)
         async with self._connector(url) as session:
             async for frame in session:
-                logger.debug(CHAT_INBOUND_EVENT_RECEIVED)
+                # hello/disconnect are protocol control frames, not
+                # Slack-originated activity; counting them here would let a
+                # quiet channel's keepalive traffic read as event volume.
+                if frame.get("type") not in {FRAME_HELLO, FRAME_DISCONNECT}:
+                    logger.debug(CHAT_INBOUND_EVENT_RECEIVED)
                 decoded = decode_frame(frame)
                 if decoded.disconnect:
                     if decoded.envelope_id:

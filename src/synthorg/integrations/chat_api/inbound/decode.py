@@ -26,9 +26,13 @@ from synthorg.integrations.chat_api.inbound.models import (
     InboundEventKind,
 )
 
-# Socket-Mode frame ``type`` values.
-_FRAME_HELLO: Final[str] = "hello"
-_FRAME_DISCONNECT: Final[str] = "disconnect"
+# Socket-Mode frame ``type`` values. HELLO and DISCONNECT are public: they
+# are the two frame types that carry no Slack-originated activity (a
+# keepalive ack and a server-initiated reconnect signal), so the receive
+# loop needs them to keep its own "an event arrived" volume signal from
+# counting protocol chatter as an event.
+FRAME_HELLO: Final[str] = "hello"
+FRAME_DISCONNECT: Final[str] = "disconnect"
 _FRAME_EVENTS_API: Final[str] = "events_api"
 
 # Slack inner-event ``type`` values we route.
@@ -157,9 +161,9 @@ def decode_frame(frame: Mapping[str, object]) -> DecodedFrame:
         naming why via ``drop_reason`` where an event was actually lost.
     """
     frame_type = frame.get("type")
-    if frame_type == _FRAME_DISCONNECT:
+    if frame_type == FRAME_DISCONNECT:
         return DecodedFrame(disconnect=True)
-    if frame_type == _FRAME_HELLO:
+    if frame_type == FRAME_HELLO:
         return DecodedFrame()
     envelope_id = frame.get("envelope_id")
     envelope = envelope_id if isinstance(envelope_id, str) else ""
@@ -285,6 +289,8 @@ def _reaction_event(
 
 
 __all__ = [
+    "FRAME_DISCONNECT",
+    "FRAME_HELLO",
     "ROUTINE_DROP_REASONS",
     "DecodeDropReason",
     "DecodedFrame",

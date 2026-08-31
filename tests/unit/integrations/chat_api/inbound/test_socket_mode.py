@@ -110,7 +110,10 @@ class TestStream:
         assert received[0].user == "U1"
 
     @respx.mock
-    async def test_receipt_logged_debug_for_every_frame(self) -> None:
+    async def test_hello_and_disconnect_do_not_count_as_receipt(self) -> None:
+        """hello/disconnect are protocol control frames, not Slack activity;
+        counting them would let a quiet channel's keepalive traffic read as
+        event volume."""
         _open_ok()
         session = _FakeWsSession([{"type": "hello"}, {"type": "disconnect"}])
 
@@ -122,7 +125,39 @@ class TestStream:
             for log in logs
             if log.get("event") == "integrations.chat_inbound.event_received"
         ]
-        assert len(received_logs) == 2
+        assert received_logs == []
+
+    @respx.mock
+    async def test_a_genuine_slack_frame_is_counted_as_receipt(self) -> None:
+        _open_ok()
+        session = _FakeWsSession(
+            [
+                {
+                    "type": "events_api",
+                    "envelope_id": "env-1",
+                    "payload": {
+                        "event": {
+                            "type": "app_mention",
+                            "user": "U1",
+                            "text": "hi",
+                            "ts": "1.0",
+                            "channel": "C1",
+                        }
+                    },
+                },
+                {"type": "disconnect"},
+            ]
+        )
+
+        with structlog.testing.capture_logs() as logs:
+            await _client(session).stream(on_event=self._noop)
+
+        received_logs = [
+            log
+            for log in logs
+            if log.get("event") == "integrations.chat_inbound.event_received"
+        ]
+        assert len(received_logs) == 1
 
     @respx.mock
     async def test_decode_failure_logged_with_its_reason(self) -> None:
