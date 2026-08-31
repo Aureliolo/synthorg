@@ -482,8 +482,19 @@ class TestSamplingIsStatedBeforeAnythingIsSpent:
 
     def test_an_out_of_range_override_is_refused(self) -> None:
         # Re-validated rather than copied: the value came off a command line.
+        # BOTH dials are passed so the pairing guard admits the call and the
+        # range check is what refuses it; naming one alone would be refused a
+        # step earlier, and the test would pass while proving nothing about
+        # the bound it claims to cover.
         with pytest.raises(ValidationError):
-            narrow(load_manifest(_MANIFEST), None, None, None, executor_top_p=1.5)
+            narrow(
+                load_manifest(_MANIFEST),
+                None,
+                None,
+                None,
+                executor_temperature=1.0,
+                executor_top_p=1.5,
+            )
 
 
 class TestPreflightGuardsTheBoot:
