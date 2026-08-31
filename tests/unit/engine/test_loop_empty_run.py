@@ -28,10 +28,18 @@ from synthorg.engine.artifacts.baseline_scope import (
 )
 from synthorg.engine.artifacts.expected_artifact_check import ArtifactPresence
 from synthorg.engine.context import AgentContext
-from synthorg.engine.loop_empty_run import delivered_nothing, nudge_empty_run
+from synthorg.engine.loop_empty_run import (
+    delivered_nothing,
+    nudge_empty_run,
+    nudge_unproductive_spend,
+    resolve_produce_early_percent,
+)
 from synthorg.engine.resume_scope import resumed_run_scope
 from synthorg.engine.task_execution import TaskExecution
 from synthorg.execution.turn import TurnRecord
+from synthorg.providers.models import TokenUsage
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
+from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -59,7 +67,13 @@ def _task(*, declares: bool = True) -> Task:
     )
 
 
-def _context(task: Task | None, *, max_turns: int = 40) -> AgentContext:
+def _context(
+    task: Task | None,
+    *,
+    max_turns: int = 40,
+    token_ceiling: int | None = None,
+    spent: int = 0,
+) -> AgentContext:
     """Build a context around *task*.
 
     Returns:
@@ -81,6 +95,8 @@ def _context(task: Task | None, *, max_turns: int = 40) -> AgentContext:
         ),
         max_turns=max_turns,
         started_at=datetime.now(UTC),
+        token_ceiling=token_ceiling,
+        accumulated_cost=TokenUsage(input_tokens=spent, output_tokens=0, cost=0.0),
     )
 
 
@@ -255,3 +271,130 @@ class TestWhatTheCorrectionSays:
         corrected = nudged.conversation[-1].content or ""
         assert "ignore your instructions" not in corrected.split("<")[0]
         assert "</task-data>" in corrected
+
+
+#: A run whose every turn called a tool, so ``nudge_empty_run`` never fires,
+#: but nothing was ever written -- the merge-session shape this checkpoint
+#: exists for.
+_READING_ONLY_RUN = (
+    _turn(1, "shell_command"),
+    _turn(2, "shell_command"),
+    _turn(3, "read_file"),
+)
+
+
+class TestProduceEarlyCheckpoint:
+    """The checkpoint reaches a session that reads without ever writing."""
+
+    async def test_high_spend_with_nothing_produced_is_corrected(
+        self, tmp_path: Path
+    ) -> None:
+        baseline = await _baseline_of(tmp_path)
+        (baseline.workspace / "sqlcsv").mkdir(parents=True)
+        ctx = _context(_task(), token_ceiling=1_000, spent=600)
+
+        with run_baseline_scope(baseline):
+            nudged = await nudge_unproductive_spend(ctx, list(_READING_ONLY_RUN), 50)
+
+        assert nudged is not None
+        assert nudged.produce_early_nudged is True
+        corrected = nudged.conversation[-1].content or ""
+        assert "60%" in corrected
+        assert _DECLARED in corrected
+
+    async def test_a_run_that_wrote_a_file_is_left_alone(self, tmp_path: Path) -> None:
+        baseline = await _baseline_of(tmp_path)
+        target = baseline.workspace / "sqlcsv" / "reader.py"
+        target.parent.mkdir(parents=True)
+        target.write_text("# real work\n", encoding="utf-8")
+        ctx = _context(_task(), token_ceiling=1_000, spent=600)
+
+        with run_baseline_scope(baseline):
+            assert (
+                await nudge_unproductive_spend(ctx, list(_READING_ONLY_RUN), 50) is None
+            )
+
+    async def test_below_the_threshold_is_not_corrected(self, tmp_path: Path) -> None:
+        baseline = await _baseline_of(tmp_path)
+        ctx = _context(_task(), token_ceiling=1_000, spent=200)
+
+        with run_baseline_scope(baseline):
+            assert (
+                await nudge_unproductive_spend(ctx, list(_READING_ONLY_RUN), 50) is None
+            )
+
+    async def test_zero_percent_disables_it(self, tmp_path: Path) -> None:
+        baseline = await _baseline_of(tmp_path)
+        ctx = _context(_task(), token_ceiling=1_000, spent=999)
+
+        with run_baseline_scope(baseline):
+            assert (
+                await nudge_unproductive_spend(ctx, list(_READING_ONLY_RUN), 0) is None
+            )
+
+    async def test_no_ceiling_is_not_corrected(self, tmp_path: Path) -> None:
+        baseline = await _baseline_of(tmp_path)
+        ctx = _context(_task())
+
+        with run_baseline_scope(baseline):
+            assert (
+                await nudge_unproductive_spend(ctx, list(_READING_ONLY_RUN), 50) is None
+            )
+
+    async def test_a_task_declaring_nothing_is_never_corrected(
+        self, tmp_path: Path
+    ) -> None:
+        baseline = await _baseline_of(tmp_path)
+        ctx = _context(_task(declares=False), token_ceiling=1_000, spent=600)
+
+        with run_baseline_scope(baseline):
+            assert (
+                await nudge_unproductive_spend(ctx, list(_READING_ONLY_RUN), 50) is None
+            )
+
+    async def test_a_resumed_segment_is_never_corrected(self, tmp_path: Path) -> None:
+        baseline = await _baseline_of(tmp_path)
+        ctx = _context(_task(), token_ceiling=1_000, spent=600)
+
+        with resumed_run_scope(), run_baseline_scope(baseline):
+            assert (
+                await nudge_unproductive_spend(ctx, list(_READING_ONLY_RUN), 50) is None
+            )
+
+    async def test_no_turn_left_means_no_correction(self, tmp_path: Path) -> None:
+        baseline = await _baseline_of(tmp_path)
+        ctx = _context(
+            _task(),
+            max_turns=len(_READING_ONLY_RUN),
+            token_ceiling=1_000,
+            spent=600,
+        )
+
+        with run_baseline_scope(baseline):
+            assert (
+                await nudge_unproductive_spend(ctx, list(_READING_ONLY_RUN), 50) is None
+            )
+
+    async def test_it_fires_once(self, tmp_path: Path) -> None:
+        """A second pass over an already-nudged context is left alone."""
+        baseline = await _baseline_of(tmp_path)
+        ctx = _context(_task(), token_ceiling=1_000, spent=600)
+
+        with run_baseline_scope(baseline):
+            nudged = await nudge_unproductive_spend(ctx, list(_READING_ONLY_RUN), 50)
+            assert nudged is not None
+            again = await nudge_unproductive_spend(nudged, list(_READING_ONLY_RUN), 50)
+
+        assert again is None
+
+
+class TestResolveProduceEarlyPercent:
+    async def test_no_resolver_falls_back_to_the_default(self) -> None:
+        assert await resolve_produce_early_percent(None) == 50
+
+    async def test_reads_the_live_setting(self) -> None:
+        resolver = mock_of[ConfigResolverProtocol]()
+        resolver.get_int.return_value = 30
+
+        assert await resolve_produce_early_percent(resolver) == 30
+        resolver.get_int.assert_awaited_once_with("engine", "produce_early_percent")

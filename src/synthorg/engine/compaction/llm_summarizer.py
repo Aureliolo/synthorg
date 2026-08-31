@@ -40,6 +40,17 @@ _SYSTEM_PROMPT = (
     + untrusted_content_directive((TAG_TASK_DATA,))
 )
 
+# Appended to the base prompt when the caller (an agent's own
+# ``compact_context(preserve_markers=True)`` request, or the config default)
+# asks epistemic markers to survive compaction -- the text-only summariser's
+# equivalent instruction lives in ``_build_summary``'s ``preserve_markers``
+# branch; this is what keeps the two paths honouring the same request.
+_PRESERVE_MARKERS_INSTRUCTION = (
+    "Preserve hedging, reconsideration, and other epistemic markers "
+    "verbatim where they appear in the source turns, rather than "
+    "smoothing them into a confident-sounding summary."
+)
+
 
 # Mirror ``CompactionConfig.llm_summary_{temperature,max_tokens}`` so a
 # directly-constructed summariser matches the wired path, which sources
@@ -103,6 +114,7 @@ class LLMSummarizer:
         archivable: tuple[ChatMessage, ...],
         *,
         fallback_text: str,
+        preserve_markers: bool = False,
     ) -> str:
         """Summarise the archived batch, falling back to ``fallback_text``.
 
@@ -113,6 +125,11 @@ class LLMSummarizer:
         Args:
             archivable: The conversation messages being archived.
             fallback_text: The text summary used on any failure.
+            preserve_markers: When ``True``, instructs the summary to keep
+                epistemic markers (hedging, reconsideration) verbatim rather
+                than smoothing them away -- the same request an agent's
+                explicit ``compact_context(preserve_markers=True)`` makes of
+                the text-only summariser.
 
         Returns:
             The LLM summary text, or ``fallback_text`` when the provider
@@ -130,8 +147,11 @@ class LLMSummarizer:
         execution_id = (
             identity.execution_id if identity is not None else NotBlankStr("unknown")
         )
+        system_prompt = _SYSTEM_PROMPT
+        if preserve_markers:
+            system_prompt = f"{system_prompt}\n\n{_PRESERVE_MARKERS_INSTRUCTION}"
         messages = [
-            ChatMessage(role=MessageRole.SYSTEM, content=_SYSTEM_PROMPT),
+            ChatMessage(role=MessageRole.SYSTEM, content=system_prompt),
             ChatMessage(role=MessageRole.USER, content=transcript),
         ]
         logger.debug(

@@ -122,7 +122,7 @@ def _cost_series(points: Iterable[DepthPoint]) -> dict[Arm, list[tuple[int, floa
         # A bucket with no run in it has no spend to plot, and only an empty
         # bucket reaches this: a run whose leaves all failed still scores
         # against the specification and still books what it cost.
-        if point.cells == 0:
+        if point.cells == 0 or point.cost is None:
             continue
         series[point.arm].append((point.depth, point.cost))
     for values in series.values():

@@ -24,6 +24,7 @@ that logic is how one of them comes to be subtly less durable than the other.
 
 import json
 import os
+import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from io import TextIOWrapper
@@ -102,39 +103,50 @@ class ResumeState[RecordT: BaseModel]:
 
 
 class RunJournal[RecordT: BaseModel]:
-    """Append-only record of every cell a recording finishes."""
+    """Append-only record of every cell a recording finishes.
 
-    __slots__ = ("_handle", "_spec")
+    Scoped per open handle rather than module-global: two journals living in
+    one output directory (``cells.jsonl`` and ``progress.jsonl``) are
+    independent files, and a shared lock would serialise them for no reason.
+    """
+
+    __slots__ = ("_handle", "_lock", "_spec")
 
     def __init__(self, handle: TextIOWrapper, spec: JournalSpec[RecordT]) -> None:
         self._handle = handle
         self._spec = spec
+        self._lock = threading.Lock()
 
     def record(self, record: RecordT) -> None:
         """Append *record* and put it beyond this process's survival.
 
         Flushed and fsynced rather than left to the OS: the failure this exists
         for is the process dying, and a line sitting in a buffer at that moment
-        is a line that was never written.
+        is a line that was never written. The write, flush and fsync run under
+        the journal's own lock so a concurrent :meth:`close` cannot land
+        between the write and its fsync, and so two concurrent recorders
+        cannot interleave their bytes onto one line.
 
         Args:
             record: The finished cell, measured or not.
         """
-        try:
-            self._handle.write(record.model_dump_json() + "\n")
-            self._handle.flush()
-            os.fsync(self._handle.fileno())
-        except (OSError, ValueError) as exc:
-            # Raised as its own type rather than as whatever the filesystem
-            # said, because a driver's per-cell handler must not treat this as
-            # a cell outcome: a journal that cannot be written is true of every
-            # remaining cell, and recording an "unavailable" row for it would
-            # try to write that row to the same broken file.
-            msg = (
-                f"the journal could not be written, so this recording can no "
-                f"longer keep what it pays for: {exc}"
-            )
-            raise HarnessJournalUnwritableError(msg) from exc
+        with self._lock:
+            try:
+                self._handle.write(record.model_dump_json() + "\n")
+                self._handle.flush()
+                os.fsync(self._handle.fileno())
+            except (OSError, ValueError) as exc:
+                # Raised as its own type rather than as whatever the
+                # filesystem said, because a driver's per-cell handler must
+                # not treat this as a cell outcome: a journal that cannot be
+                # written is true of every remaining cell, and recording an
+                # "unavailable" row for it would try to write that row to the
+                # same broken file.
+                msg = (
+                    f"the journal could not be written, so this recording can "
+                    f"no longer keep what it pays for: {exc}"
+                )
+                raise HarnessJournalUnwritableError(msg) from exc
         logger.info(
             EVALS_HARNESS_RECORD_JOURNALLED,
             journal_kind=self._spec.kind,
@@ -144,7 +156,8 @@ class RunJournal[RecordT: BaseModel]:
 
     def close(self) -> None:
         """Release the file."""
-        self._handle.close()
+        with self._lock:
+            self._handle.close()
 
 
 class RecordedCells[RecordT: BaseModel]:
@@ -398,9 +411,17 @@ def _started[RecordT: BaseModel](
         The open journal.
     """
     handle = path.open("w", encoding="utf-8", newline="")
-    handle.write(json.dumps({_HEADER_KIND_FIELD: spec.kind} | dict(identity)) + "\n")
-    handle.flush()
-    os.fsync(handle.fileno())
+    try:
+        header = {_HEADER_KIND_FIELD: spec.kind} | dict(identity)
+        handle.write(json.dumps(header) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    except OSError, ValueError:
+        # A partially-written header leaves nothing worth keeping open: the
+        # handle would otherwise leak until GC/process exit, held for a
+        # journal this call is about to fail out of anyway.
+        handle.close()
+        raise
     return RunJournal(handle, spec)
 
 

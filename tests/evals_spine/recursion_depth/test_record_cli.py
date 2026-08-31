@@ -293,8 +293,25 @@ class TestPlanMode:
 
         plan = describe_plan(manifest, _spec())
 
-        assert f"{manifest.max_sessions * manifest.unit_token_ceiling:,}" in plan
+        widest = record_module._widest_token_ceiling(manifest)
+        assert f"{manifest.max_sessions * widest:,}" in plan
         assert "flat-rate" in plan
+
+    def test_the_bound_uses_the_widest_role_not_the_leafs_flat_one(self) -> None:
+        # A merge and a review scale with fan-in up to their own declared
+        # caps, which the shipped matrix sets above the leaf's flat budget. A
+        # bound stated in the leaf's terms alone would understate what a
+        # sweep dominated by wide merges can actually spend.
+        manifest = load_manifest(_MANIFEST)
+
+        widest = record_module._widest_token_ceiling(manifest)
+
+        assert widest == max(
+            manifest.unit_token_ceiling,
+            manifest.merge_token_cap,
+            manifest.review_token_cap,
+        )
+        assert widest > manifest.unit_token_ceiling
 
     def test_the_shipped_manifest_needs_no_independence_caveat(self) -> None:
         plan = describe_plan(load_manifest(_MANIFEST), _spec())

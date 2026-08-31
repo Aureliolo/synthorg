@@ -160,7 +160,8 @@
         "SQLiteBenchmarkScoreRepository",
         "QuotaTracker",
         "RiskTracker",
-        "CallAnalyticsService"
+        "CallAnalyticsService",
+        "SessionBudgetChecker"
       ],
       "mcp_tool_names": [
         "synthorg_budget_get_config",
@@ -488,7 +489,8 @@
         "ManualDecompositionStrategy",
         "build_work_pipeline",
         "ForecastGate",
-        "ShipRetroCaptureService"
+        "ShipRetroCaptureService",
+        "make_context_indicator"
       ],
       "mcp_tool_names": [
         "synthorg_tasks_list",
@@ -1000,7 +1002,8 @@
       "depends_on": [],
       "directory": "src/synthorg/observability",
       "ghost_wired_symbols": [
-        "install_audit_chain_sink"
+        "install_audit_chain_sink",
+        "AuditChainVerificationScheduler"
       ],
       "mcp_tool_names": [],
       "name": "observability",
@@ -1469,6 +1472,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-31T07:11:15.288740Z",
+  "generated_at": "2026-08-31T14:27:01.986166Z",
   "schema_version": 1
 }

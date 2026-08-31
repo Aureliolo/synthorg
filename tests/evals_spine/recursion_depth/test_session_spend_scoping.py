@@ -144,6 +144,7 @@ def _session(
         gateway_hosted=True,
         task_id=task_id,
         already=already,
+        priced=True,
     )
 
 

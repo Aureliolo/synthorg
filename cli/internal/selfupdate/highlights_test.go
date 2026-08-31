@@ -54,9 +54,10 @@ func TestExtractHighlights(t *testing.T) {
 			},
 		},
 		{
-			// The shape a fresh release carries: tagline first, two sections,
-			// no "Under the hood". Kept as a fixture beside the pre-tagline
-			// one so a change to either shape has something to fail.
+			// The shape a fresh release carries: attribution first, then the
+			// tagline, then two sections, no "Under the hood". Kept as a
+			// fixture beside the pre-tagline one so a change to either shape
+			// has something to fail.
 			name:   "tagline_and_two_sections",
 			body:   "fixture:tagline_two_section.md",
 			wantOK: true,
@@ -140,15 +141,41 @@ func TestExtractHighlights(t *testing.T) {
 			},
 		},
 		{
-			// A tagline leads the block, so the attribution blockquote sits
-			// somewhere in the middle rather than directly under the header.
-			// The tagline is the hook and must survive; the attribution must
+			// A tagline leads the block in this shape, so the attribution
+			// blockquote sits somewhere in the middle rather than directly
+			// under the header. Already-published release bodies are
+			// immutable and the walk spans (installed, target], so this
+			// order is a live input rather than a historical artefact. The
+			// tagline is the hook and must survive; the attribution must
 			// still go, since the walk has no room to explain what it names.
 			name: "tagline_precedes_attribution",
 			body: "<!-- HIGHLIGHTS_START -->\n## Highlights\n\n" +
 				"_Nineteen new gates, because the last nineteen were not enough._\n\n" +
 				"> _AI-generated summary (model: `example-capable-001` via Example). " +
 				"Commit-based changelog below._\n\n" +
+				"### What's new\n\n- A bullet.\n\n<!-- HIGHLIGHTS_END -->\n\n## [0.0.1]\n",
+			wantOK: true,
+			wantContains: []string{
+				"_Nineteen new gates, because the last nineteen were not enough._",
+				"### What's new",
+				"- A bullet.",
+			},
+			wantOmits: []string{
+				"<!-- HIGHLIGHTS_START -->",
+				"<!-- HIGHLIGHTS_END -->",
+				"## Highlights",
+				"AI-generated summary (model:",
+				"## [0.0.1]",
+			},
+		},
+		{
+			// Attribution leads the block so a reader is told the summary is
+			// AI-generated before reading the tagline.
+			name: "attribution_precedes_tagline",
+			body: "<!-- HIGHLIGHTS_START -->\n## Highlights\n\n" +
+				"> _AI-generated summary (model: `example-capable-001` via Example). " +
+				"Commit-based changelog below._\n\n" +
+				"_Nineteen new gates, because the last nineteen were not enough._\n\n" +
 				"### What's new\n\n- A bullet.\n\n<!-- HIGHLIGHTS_END -->\n\n## [0.0.1]\n",
 			wantOK: true,
 			wantContains: []string{
@@ -223,6 +250,45 @@ func TestExtractHighlights(t *testing.T) {
 				if strings.Contains(got, omit) {
 					t.Errorf("ExtractHighlights output should not contain %q\n--- got ---\n%s", omit, got)
 				}
+			}
+		})
+	}
+}
+
+// TestStripAttribution exercises the private function directly rather than
+// through ExtractHighlights, whose own strings.TrimSpace call masks the gap-
+// closing behaviour whenever the attribution happens to sit at the very
+// start of the content (the shape a fresh release currently produces).
+// stripAttribution's mid-block dedup only shows up when there is real,
+// non-blank content on both sides of the removed line.
+func TestStripAttribution(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			// Dropping the attribution line alone would leave the blank
+			// lines either side of it back to back, costing the walk a row
+			// of a viewport that only holds fourteen.
+			name: "closes_the_gap_it_leaves_mid_block",
+			in: "Line before.\n\n" +
+				"> _AI-generated summary (model: `example-capable-001`)._\n\n" +
+				"Line after.",
+			want: "Line before.\n\nLine after.",
+		},
+		{
+			name: "no_attribution_present_is_a_no_op",
+			in:   "Line one.\n\nLine two.",
+			want: "Line one.\n\nLine two.",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := stripAttribution(tt.in); got != tt.want {
+				t.Errorf("stripAttribution(%q) = %q, want %q", tt.in, got, tt.want)
 			}
 		})
 	}
@@ -364,7 +430,7 @@ func FuzzExtractHighlights(f *testing.F) {
 	f.Add("<!-- HIGHLIGHTS_END -->")
 	f.Add("<!-- HIGHLIGHTS_START --><!-- HIGHLIGHTS_END -->")
 	f.Add("\r\n\r\n<!-- HIGHLIGHTS_START -->\r\n")
-	for _, name := range []string{"with_highlights.md", "no_highlights.md", "dev_release.md", "truncated.md", "no_separator.md"} {
+	for _, name := range []string{"with_highlights.md", "tagline_two_section.md", "no_highlights.md", "dev_release.md", "truncated.md", "no_separator.md"} {
 		data, err := os.ReadFile(filepath.Join("testdata", "bodies", name))
 		if err == nil {
 			f.Add(string(data))

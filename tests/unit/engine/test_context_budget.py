@@ -73,6 +73,40 @@ class TestContextBudgetIndicator:
         with pytest.raises(ValidationError):
             ContextBudgetIndicator(fill_tokens=100, capacity_tokens=0)
 
+    def test_no_ceiling_carries_no_budget_segment(self) -> None:
+        # The unbounded case: identical to the pre-A2 shape, so a session
+        # with no token ceiling reads exactly as it always has.
+        ind = ContextBudgetIndicator(fill_tokens=12_450, capacity_tokens=16_000)
+        assert "Budget" not in ind.format()
+        assert ind.spend_percent is None
+
+    def test_format_includes_token_spend_against_ceiling(self) -> None:
+        ind = ContextBudgetIndicator(
+            fill_tokens=1_000,
+            spend_tokens=340_000,
+            token_ceiling=1_500_000,
+        )
+        result = ind.format()
+        assert "340,000" in result
+        assert "1,500,000" in result
+        assert "23%" in result
+
+    def test_spend_percent_computed(self) -> None:
+        ind = ContextBudgetIndicator(
+            fill_tokens=0,
+            spend_tokens=750_000,
+            token_ceiling=1_500_000,
+        )
+        assert ind.spend_percent == pytest.approx(50.0)
+
+    def test_spend_percent_none_without_ceiling(self) -> None:
+        ind = ContextBudgetIndicator(fill_tokens=0, spend_tokens=1_000)
+        assert ind.spend_percent is None
+
+    def test_token_ceiling_zero_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ContextBudgetIndicator(fill_tokens=100, token_ceiling=0)
+
 
 # ── estimate_context_fill ─────────────────────────────────────────
 
@@ -148,6 +182,32 @@ class TestMakeContextIndicator:
         assert ind.fill_tokens == 0
         assert ind.capacity_tokens is None
         assert ind.archived_blocks == 0
+
+    def test_from_context_with_token_ceiling(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        ctx = sample_agent_context.model_copy(update={"token_ceiling": 1_500_000})
+        ctx = ctx.model_copy(
+            update={
+                "accumulated_cost": ctx.accumulated_cost.model_copy(
+                    update={"input_tokens": 340_000}
+                ),
+            }
+        )
+        ind = make_context_indicator(ctx)
+        assert ind.token_ceiling == 1_500_000
+        assert ind.spend_tokens == 340_000
+
+    def test_from_context_without_token_ceiling_has_no_spend(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        # A run with no token ceiling has nothing to report a share of; the
+        # spend axis stays absent rather than reporting against nothing.
+        ind = make_context_indicator(sample_agent_context)
+        assert ind.token_ceiling is None
+        assert ind.spend_tokens is None
 
 
 # ── update_context_fill ───────────────────────────────────────────

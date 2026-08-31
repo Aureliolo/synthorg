@@ -6,15 +6,20 @@ from typing import TYPE_CHECKING, Final, NamedTuple, cast
 from pydantic import TypeAdapter
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
+from synthorg.budget.session_budget import SessionBudgetChecker
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
+from synthorg.engine._ceiling_publish import ctx_ceiling_values
+from synthorg.engine._ceiling_sync import ceiling_synced_task
 from synthorg.engine.context import AgentContext
+from synthorg.engine.context_budget import make_context_indicator
 from synthorg.engine.errors import (
     ProjectNotFoundError,
     ProjectRepositoryNotConfiguredError,
 )
+from synthorg.engine.loop_protocol import make_budget_checker
 from synthorg.engine.loop_turn_budget import resolve_turn_extensions
 from synthorg.engine.loop_unresolved_tools import resolve_max_unresolved_tool_turns
 from synthorg.engine.prompt import SystemPrompt, build_system_prompt
@@ -37,6 +42,7 @@ from synthorg.observability.events.memory import (
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
+from synthorg.providers.protocol import CompletionProvider
 from synthorg.tools.protocol import ToolInvokerProtocol
 
 if TYPE_CHECKING:
@@ -44,6 +50,7 @@ if TYPE_CHECKING:
     from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.memory.injection import MemoryInjectionStrategyProvider
+    from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
     from synthorg.persistence.project_protocol import ProjectRepository
     from synthorg.settings.resolver import ConfigResolver
 
@@ -78,6 +85,28 @@ class MemoryContextInputs(NamedTuple):
     strategy: MemoryInjectionStrategy | None
 
 
+class RunExecutionDeps(NamedTuple):
+    """What a run's loop execution needs, resolved once by the caller.
+
+    Grouped for the same reason as :class:`MemoryContextInputs`: the three
+    travel together from one construction site (``AgentEngine.execute``'s
+    fresh-run and resume paths) through ``_prepare_context`` and on into the
+    loop, so a single parameter here is one fewer thing for that path to
+    keep in sync.
+
+    Attributes:
+        provider: The bound completion provider for this run.
+        budget_checker: The checker this run's turns are measured against,
+            or ``None`` when every bound is disabled.
+        tool_invoker: The tool invoker for this run, or ``None`` when the
+            identity carries no tools.
+    """
+
+    provider: CompletionProvider
+    budget_checker: SessionBudgetChecker | None
+    tool_invoker: ToolInvokerProtocol | None
+
+
 class AgentEngineContextMixin:
     """Mixin providing context preparation and project validation."""
 
@@ -87,9 +116,118 @@ class AgentEngineContextMixin:
     _budget_enforcer: BudgetEnforcer | None
     _capability: CapabilityPolicy | None
     _config_resolver: ConfigResolver | None
+    _cost_forecast_repo: CostForecastRepository | None
     _task_engine: TaskEngine | None
     _project_repo: ProjectRepository | None
     _memory_injection_strategy_provider: MemoryInjectionStrategyProvider | None
+
+    async def _build_budget_checker(
+        self,
+        task: Task,
+        agent_id: str,
+        *,
+        project_id: str | None,
+        project_budget: float = 0.0,
+    ) -> SessionBudgetChecker | None:
+        """Build the checker this run's turns are measured against.
+
+        The single owner of that construction: a caller reads
+        :attr:`SessionBudgetChecker.ceilings` off exactly the object it is
+        about to pass to the loop, rather than resolving the same ceiling a
+        second time to render it. The fresh-run path (before the prompt is
+        built, so the declaration can go in it), the approval-resume path
+        (before ``AgentExecuteRequest`` is built) and the checkpoint-resume
+        path (before the reconstituted context re-enters the loop) all call
+        here.
+
+        Args:
+            task: The task the checker enforces against.
+            agent_id: Agent identifier for logging.
+            project_id: The project the checker is scoped to. Required
+                rather than defaulted, so each caller states its own answer
+                instead of inheriting one that happens to suit a different
+                caller: the checkpoint-resume path threads a project id that
+                can diverge from ``task.project`` before a project repo is
+                wired, so ``task.project`` is not a safe default here.
+            project_budget: Total project budget (0 = disabled).
+
+        Returns:
+            The checker, or ``None`` when every bound is disabled.
+        """
+        if self._budget_enforcer is not None:
+            return await self._budget_enforcer.make_budget_checker(
+                await ceiling_synced_task(task, self._cost_forecast_repo),
+                agent_id,
+                project_id=project_id,
+                project_budget=project_budget,
+            )
+        return make_budget_checker(task)
+
+    async def _resolve_context_capacity_tokens(
+        self,
+        provider: CompletionProvider,
+        identity: AgentIdentity,
+        *,
+        agent_id: str,
+        task_id: str,
+    ) -> int | None:
+        """Resolve the bound model's context window, for the budget gauge.
+
+        A lookup failure degrades to ``None``, which is the value every task
+        run already carried before this seam existed, so the failure mode
+        cannot get worse than the status quo it replaces.
+
+        Returns:
+            The model's ``max_context_tokens``, or ``None`` on any failure.
+        """
+        try:
+            capabilities = await provider.get_model_capabilities(
+                identity.model.model_id
+            )
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            # lint-allow: swallow-ok -- degrade-to-unknown-capacity wiring
+            reraise_critical(exc)
+            logger.warning(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                note="context-capacity lookup failed; budget gauge fill unknown",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return None
+        return capabilities.max_context_tokens
+
+    async def _resolve_ceilings(
+        self,
+        *,
+        provider: CompletionProvider,
+        identity: AgentIdentity,
+        budget_checker: SessionBudgetChecker | None,
+        agent_id: str,
+        task_id: str,
+    ) -> tuple[float | None, int | None, int | None]:
+        """Resolve what this run's context should be constructed with.
+
+        ``budget_checker.ceilings.as_optionals()`` is the translation between
+        ``SessionCeilings``'s "disabled" (0) and ``AgentContext``'s (``None``,
+        a ``gt=0`` field): a verbatim stamp of a genuinely-zero money bound (a
+        flat-rate connection) would fail the context's own validation.
+
+        Returned rather than stamped via ``model_copy``: ``AgentContext``'s
+        ``gt=0`` / no-NaN constraints on these three fields only validate
+        through the constructor, per ``from_identity``'s own docstring, so
+        the caller must pass them into ``AgentContext.from_identity``
+        itself.
+
+        Returns:
+            ``(cost_ceiling, token_ceiling, context_capacity_tokens)``.
+        """
+        cost_ceiling, token_ceiling = ctx_ceiling_values(budget_checker)
+        context_capacity_tokens = await self._resolve_context_capacity_tokens(
+            provider, identity, agent_id=agent_id, task_id=task_id
+        )
+        return cost_ceiling, token_ceiling, context_capacity_tokens
 
     async def _prepare_context(
         self,
@@ -100,7 +238,7 @@ class AgentEngineContextMixin:
         task_id: str,
         max_turns: int,
         memory: MemoryContextInputs,
-        tool_invoker: ToolInvokerProtocol | None = None,
+        execution: RunExecutionDeps,
         effective_autonomy: EffectiveAutonomy | None = None,
     ) -> tuple[AgentContext, SystemPrompt]:
         """Build system prompt and prepare execution context.
@@ -110,11 +248,51 @@ class AgentEngineContextMixin:
             with memory and instruction messages threaded in and the
             corresponding :class:`SystemPrompt`.
         """
-        l1_summaries = tool_invoker.get_l1_summaries() if tool_invoker else ()
+        l1_summaries = (
+            execution.tool_invoker.get_l1_summaries() if execution.tool_invoker else ()
+        )
         cur_code = (
             self._budget_enforcer.currency
             if self._budget_enforcer is not None
             else DEFAULT_CURRENCY
+        )
+        (
+            cost_ceiling,
+            token_ceiling,
+            context_capacity_tokens,
+        ) = await self._resolve_ceilings(
+            provider=execution.provider,
+            identity=identity,
+            budget_checker=execution.budget_checker,
+            agent_id=agent_id,
+            task_id=task_id,
+        )
+
+        # Built before the prompt so the declaration below reads the exact
+        # ceilings the run will be measured against, rather than resolving
+        # them a second time to render them.
+        ctx = AgentContext.from_identity(
+            identity,
+            task=task,
+            max_turns=max_turns,
+            turn_extensions=await resolve_turn_extensions(
+                self._config_resolver, agent_id=agent_id, task_id=task_id
+            ),
+            max_unresolved_tool_turns=await resolve_max_unresolved_tool_turns(
+                self._config_resolver, agent_id=agent_id, task_id=task_id
+            ),
+            context_capacity_tokens=context_capacity_tokens,
+            cost_ceiling=cost_ceiling,
+            token_ceiling=token_ceiling,
+        )
+        # The declaration renders once, at zero spend: an honest reading of
+        # the ceiling's magnitude, not a live percentage that would go stale
+        # for the rest of the session. The turn boundary (loop_budget_signal)
+        # is what reports the live remainder as the run proceeds.
+        indicator = (
+            make_context_indicator(ctx)
+            if token_ceiling is not None or context_capacity_tokens is not None
+            else None
         )
         # build_system_prompt is pure CPU + blocking strategy-pack file reads
         # (principles.py) and runs on every agent turn; offload it so the
@@ -129,18 +307,7 @@ class AgentEngineContextMixin:
             effective_autonomy=effective_autonomy,
             currency=cur_code,
             capability=described_capability(self._capability, identity.model),
-        )
-
-        ctx = AgentContext.from_identity(
-            identity,
-            task=task,
-            max_turns=max_turns,
-            turn_extensions=await resolve_turn_extensions(
-                self._config_resolver, agent_id=agent_id, task_id=task_id
-            ),
-            max_unresolved_tool_turns=await resolve_max_unresolved_tool_turns(
-                self._config_resolver, agent_id=agent_id, task_id=task_id
-            ),
+            context_budget_indicator=indicator.format() if indicator else None,
         )
         ctx = ctx.with_message(
             ChatMessage(role=MessageRole.SYSTEM, content=system_prompt.content),

@@ -15,11 +15,13 @@ from typing import NamedTuple, Protocol, Self, runtime_checkable
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.budget.session_budget import (
+    SessionBudgetChecker,
     SessionCeilings,
     build_session_budget_checker,
 )
 from synthorg.core.task import Task
 from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_budget_signal import BudgetSignalConfig
 from synthorg.engine.quality.models import StepQualitySignal
 from synthorg.execution.turn import TurnRecord
 from synthorg.providers.models import CompletionConfig
@@ -208,6 +210,8 @@ class ExecutionLoop(Protocol):
         task_cancellation_checker: TaskCancellationChecker | None = None,
         turn_observer: TurnObserver | None = None,
         streaming_enabled: bool = False,
+        budget_signal_config: BudgetSignalConfig | None = None,
+        produce_early_percent: int | None = None,
     ) -> ExecutionResult:
         """Run the execution loop.
 
@@ -231,6 +235,13 @@ class ExecutionLoop(Protocol):
             streaming_enabled: When ``True``, each per-turn LLM call streams
                 and is interruptible mid-flight (operator cancellation and
                 steering REDIRECT); otherwise a non-streaming call is used.
+            budget_signal_config: Optional turn-boundary thresholds for
+                reporting live spend against ``context.token_ceiling``;
+                ``None`` disables the signal (a run with no token ceiling
+                reports nothing regardless).
+            produce_early_percent: Share of ``context.token_ceiling`` that
+                must pass, with nothing produced, before a corrective nudge
+                fires once; ``None`` or non-positive disables it.
 
         Returns:
             Execution result with final context and termination reason.
@@ -246,7 +257,7 @@ class ExecutionLoop(Protocol):
         ...
 
 
-def make_budget_checker(task: Task) -> BudgetChecker | None:
+def make_budget_checker(task: Task) -> SessionBudgetChecker | None:
     """Create a budget checker if the task carries either bound.
 
     The returned callable returns ``True`` when accumulated cost meets the

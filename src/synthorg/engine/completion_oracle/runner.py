@@ -91,7 +91,9 @@ class ReviewerAgentEngineRunner:
         session = as_review_session(reviewer)
         task = self._build_transient_task(review_input, prompt, session)
         try:
-            result = await self._engine.run(identity=session, task=task)
+            result = await self._engine.run(
+                identity=session, task=task, max_turns=review_input.max_turns
+            )
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -130,6 +132,13 @@ class ReviewerAgentEngineRunner:
         already chosen for that requirement, so the review runs at the same
         bar rather than at a bar this module invented.
 
+        ``hard_token_ceiling`` carries ``review_input.token_ceiling`` through
+        unchanged: ``None`` for every ordinary dispatch, leaving enforcement
+        to whatever the engine already resolves; a caller that declared the
+        review's own token budget gets that budget applied to the session
+        that actually runs it, the same way ``run()`` passes
+        ``review_input.max_turns`` straight to ``AgentEngine.run``.
+
         Returns:
             The transient ``Task`` carrying the reviewer prompt and criteria,
             assigned to the selected reviewer.
@@ -164,4 +173,5 @@ class ReviewerAgentEngineRunner:
             status=TaskStatus.IN_PROGRESS,
             estimated_complexity=review_input.estimated_complexity,
             stakes=review_input.stakes,
+            hard_token_ceiling=review_input.token_ceiling,
         )

@@ -1,9 +1,9 @@
 <!-- HIGHLIGHTS_START -->
 ## Highlights
 
-_Nineteen new gates shipped, because the previous nineteen were merely a warm-up._
-
 > _AI-generated summary (model: `example-provider/example-capable-001` via Example). Commit-based changelog below._
+
+_Nineteen new gates shipped, because the previous nineteen were merely a warm-up._
 
 ### What you'll notice
 

@@ -68,7 +68,7 @@ class TestCompactContextTool:
 
         assert result.content
         assert isinstance(result.content, str)
-        assert "Compaction directive accepted" in result.content
+        assert "Compaction requested" in result.content
 
     async def test_execute_has_correct_metadata_keys(self) -> None:
         """Execute result metadata contains strategy, preserve_markers, reason."""

@@ -8,6 +8,7 @@ import pytest
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.errors import RunHardCeilingExceededError
 from synthorg.core.completion_enums import FinishReason
+from synthorg.engine.compaction_request_channel import CompactionRequest
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_control_helpers import (
     check_budget,
@@ -632,9 +633,10 @@ class TestResponseToMessage:
     def test_a_reasoning_only_turn_says_nothing_out_loud(self) -> None:
         """The working is not something the model said, so it is not content.
 
-        Nor is it an empty assistant message: an OpenAI-compatible provider
-        rejects one outright ("Assistant message must have either content or
-        tool_calls, but not none"), so replaying it kills the very next call.
+        Nor is it an empty assistant message: a chat-completions-style
+        provider rejects one outright ("Assistant message must have either
+        content or tool_calls, but not none"), so replaying it kills the
+        very next call.
         The turn is recorded by its ``TurnRecord``; the conversation records
         what was said, and nothing was.
         """
@@ -1150,7 +1152,12 @@ class TestInvokeCompaction:
         self,
         sample_agent_context: AgentContext,
     ) -> None:
-        async def _callback(ctx: AgentContext) -> AgentContext:
+        async def _callback(
+            ctx: AgentContext,
+            *,
+            force: bool = False,
+            preserve_markers: bool | None = None,
+        ) -> AgentContext:
             return ctx
 
         result = await invoke_compaction(sample_agent_context, _callback, 1)
@@ -1160,7 +1167,12 @@ class TestInvokeCompaction:
         self,
         sample_agent_context: AgentContext,
     ) -> None:
-        async def _callback(ctx: AgentContext) -> AgentContext:
+        async def _callback(
+            ctx: AgentContext,
+            *,
+            force: bool = False,
+            preserve_markers: bool | None = None,
+        ) -> AgentContext:
             msg = "compaction boom"
             raise ValueError(msg)
 
@@ -1171,8 +1183,107 @@ class TestInvokeCompaction:
         self,
         sample_agent_context: AgentContext,
     ) -> None:
-        async def _callback(ctx: AgentContext) -> AgentContext:
+        async def _callback(
+            ctx: AgentContext,
+            *,
+            force: bool = False,
+            preserve_markers: bool | None = None,
+        ) -> AgentContext:
             raise MemoryError
 
         with pytest.raises(MemoryError):
             await invoke_compaction(sample_agent_context, _callback, 1)
+
+
+@pytest.mark.unit
+class TestInvokeCompactionWithAPendingRequest:
+    """A pending ``compaction_request`` forces the call and is always cleared."""
+
+    def _requested(self, ctx: AgentContext, *, preserve_markers: bool) -> AgentContext:
+        return ctx.model_copy(
+            update={
+                "compaction_request": CompactionRequest(
+                    strategy="summarize",
+                    reason="context at 90 percent fill",
+                    preserve_markers=preserve_markers,
+                )
+            }
+        )
+
+    async def test_forces_the_callback_with_the_requested_preserve_markers(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        calls: list[tuple[bool, bool | None]] = []
+
+        async def _callback(
+            ctx: AgentContext,
+            *,
+            force: bool = False,
+            preserve_markers: bool | None = None,
+        ) -> AgentContext | None:
+            calls.append((force, preserve_markers))
+            return ctx
+
+        ctx = self._requested(sample_agent_context, preserve_markers=False)
+        result = await invoke_compaction(ctx, _callback, 1)
+
+        assert calls == [(True, False)]
+        assert result is not None
+        assert result.compaction_request is None
+
+    async def test_declined_compaction_still_clears_the_request(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        """A decline (too few messages, nothing to archive) must not re-fire
+        on every subsequent turn."""
+
+        async def _callback(
+            ctx: AgentContext,
+            *,
+            force: bool = False,
+            preserve_markers: bool | None = None,
+        ) -> AgentContext | None:
+            return None
+
+        ctx = self._requested(sample_agent_context, preserve_markers=True)
+        result = await invoke_compaction(ctx, _callback, 1)
+
+        assert result is not None
+        assert result.compaction_request is None
+
+    async def test_a_swallowed_error_still_clears_the_request(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        async def _callback(
+            ctx: AgentContext,
+            *,
+            force: bool = False,
+            preserve_markers: bool | None = None,
+        ) -> AgentContext | None:
+            msg = "compaction boom"
+            raise ValueError(msg)
+
+        ctx = self._requested(sample_agent_context, preserve_markers=True)
+        result = await invoke_compaction(ctx, _callback, 1)
+
+        assert result is not None
+        assert result.compaction_request is None
+
+    async def test_a_critical_error_still_reraises(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        async def _callback(
+            ctx: AgentContext,
+            *,
+            force: bool = False,
+            preserve_markers: bool | None = None,
+        ) -> AgentContext | None:
+            raise MemoryError
+
+        ctx = self._requested(sample_agent_context, preserve_markers=True)
+        with pytest.raises(MemoryError):
+            await invoke_compaction(ctx, _callback, 1)

@@ -15,6 +15,7 @@ from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.approval_gate import ApprovalGate
+from synthorg.engine.compaction_request_channel import CompactionRequest
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
@@ -29,6 +30,9 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_PARK_TASKLESS,
+)
+from synthorg.observability.events.context_budget import (
+    CONTEXT_BUDGET_AGENT_COMPACTION_REQUESTED,
 )
 from synthorg.observability.events.execution import (
     EXECUTION_BACKGROUND_JOB_WATCH_STARTED,
@@ -191,19 +195,25 @@ async def _park_for_approval(
     )
 
 
-def _is_background_call(raw: object) -> bool:
-    """Whether *raw* (a tool call's raw ``background`` argument) means true.
+def _coerced_bool(raw: object, *, default: bool) -> bool:
+    """Coerce a raw tool-call argument to bool, matching Pydantic's lax mode.
 
-    Coerces the same way Pydantic's default lax ``bool`` validation does,
-    rather than checking identity against the Python literal ``True``.
+    Tool-call arguments read here are the RAW values the model emitted, not
+    the validated ones the tool itself parses, so a bool-shaped argument
+    (``background``, ``preserve_markers``) may legally arrive as ``1`` or
+    ``"true"`` and must be coerced the same way the tool's own arg model
+    would, or the loop reads a call the tool accepted as one it declined.
 
     Returns:
-        Whether the tool call requested background execution.
+        The coerced value, or *default* when *raw* is absent or not
+        coercible.
     """
+    if raw is None:
+        return default
     try:
         return _BOOL_ADAPTER.validate_python(raw)
     except ValidationError:
-        return False
+        return default
 
 
 def _parsed_background_job_id(raw_content: str) -> NotBlankStr | None:
@@ -250,7 +260,10 @@ def _apply_tool_call_side_effect(
     backgrounded ``shell_command`` (only while *watch_background_jobs* is
     set -- the stall nudge is off by default, and there is no point
     growing ``AgentContext.background_job_watch`` for a run nothing ever
-    reads it back for), and ``load_tool_resource``. Called only for a
+    reads it back for), ``load_tool_resource``, and ``compact_context``
+    (recorded from the tool CALL's own arguments, not the tool's result --
+    the invoker boundary drops ``ToolExecutionResult.metadata`` before it
+    ever reaches the loop). Called only for a
     result that already passed ``result.is_error``.
 
     Returns:
@@ -269,7 +282,7 @@ def _apply_tool_call_side_effect(
     elif (
         watch_background_jobs
         and tc.name == _SHELL_COMMAND_TOOL_NAME
-        and _is_background_call(tc.arguments.get("background"))
+        and _coerced_bool(tc.arguments.get("background"), default=False)
     ):
         job_id = _parsed_background_job_id(result.content)
         if job_id is not None:
@@ -294,6 +307,30 @@ def _apply_tool_call_side_effect(
                 execution_id=ctx.execution_id,
                 tool_name=t_name,
                 resource_id=r_id,
+                turn=turn_number,
+            )
+    elif tc.name == "compact_context":
+        strategy = tc.arguments.get("strategy")
+        reason = tc.arguments.get("reason")
+        if isinstance(strategy, str) and isinstance(reason, str):
+            preserve_markers = _coerced_bool(
+                tc.arguments.get("preserve_markers"), default=True
+            )
+            ctx = ctx.model_copy(
+                update={
+                    "compaction_request": CompactionRequest(
+                        strategy=strategy,
+                        reason=reason,
+                        preserve_markers=preserve_markers,
+                    )
+                }
+            )
+            logger.info(
+                CONTEXT_BUDGET_AGENT_COMPACTION_REQUESTED,
+                execution_id=ctx.execution_id,
+                strategy=strategy,
+                reason=reason,
+                preserve_markers=preserve_markers,
                 turn=turn_number,
             )
     return ctx

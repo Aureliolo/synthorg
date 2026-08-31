@@ -751,9 +751,14 @@ puts the blow-up, so halving the arms is what pays for both. It also dissolves
 the paired-tree confound rather than requiring a fix for it: with one arm there
 is no arm comparison left to confound. The gated arm survives because the
 shipped product gates every merge, so the curve describes the product's own
-behaviour rather than a configuration nobody runs, and because it is not the
-dearer arm (3.05 merge attempts against 6.00, since an ungated merge has no
-verdict to stop on and always burns its whole budget).
+behaviour rather than a configuration nobody runs, and because it was not the
+dearer arm in this pilot (3.05 merge attempts against 6.00, since an ungated
+merge has no verdict to stop on and always burns its whole budget). **That gap
+was measured under a harness bug** (see below: a park used to end the repair
+loop early, the same way an approval does), so a gated merge that parks now
+also burns its whole budget rather than stopping after one round -- the cost
+comparison is not assumed to hold under the fixed harness and needs
+re-measuring, not carried forward as a settled fact.
 
 Leaf-level verification is untouched either way, so what the recorded curve
 measures is depth under the product's own aggregation.
@@ -1127,11 +1132,16 @@ findings feed the next attempt, the workspace is mutated in place, and the final
 tree is used whatever the last verdict said. Both arms get the same attempt
 budget; only the gated arm's repairs are informed.
 
-**Parking short-circuits repair, against the gated arm.** `run_merge` breaks on
-`approved is True or parked`, so a merge escalating with no human to decide gets
-fewer rounds than a rejected one. The gated arm parked 6 of 19 merges at depth 3
-(against 1 of 7 at depth 2) and the ungated arm parks never, so the arm credited
-with repair received less of it as depth rose.
+**Parking short-circuited repair, against the gated arm, for this pilot.**
+`run_merge` broke on `approved is True or parked` when this recording ran, so a
+merge escalating with no human to decide got fewer rounds than a rejected one.
+The gated arm parked 6 of 19 merges at depth 3 (against 1 of 7 at depth 2) and
+the ungated arm parks never, so the arm credited with repair received less of
+it as depth rose. This was a harness bug: a park no longer takes the
+approval branch, so a parked merge now keeps repairing through its remaining
+attempts like a rejected one does, and the report separates cells that never
+reached a verdict from the judged curve rather than counting them as gated.
+The figures above are this pilot's own, measured under the old behaviour.
 
 **The reviewer pays a compliance tax the executor does not.** 31 verdict
 submissions were refused for rejecting with an empty findings list, gated arms
