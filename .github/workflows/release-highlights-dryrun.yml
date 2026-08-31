@@ -56,6 +56,16 @@ on:
         type: string
         required: false
         default: ""
+      reasoning_effort:
+        description: >-
+          Optional Mistral reasoning_effort ("none", "low", "medium",
+          "high"). Blank omits the field entirely (production's current
+          behaviour). Only mistral-small-latest and mistral-medium-3-5
+          (what mistral-medium-latest currently resolves to) accept it;
+          any other model rejects a non-blank value with HTTP 422.
+        type: string
+        required: false
+        default: ""
 
 permissions: {}
 
@@ -167,15 +177,26 @@ jobs:
         env:
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           MISTRAL_MODEL: ${{ inputs.model }}
+          REASONING_EFFORT: ${{ inputs.reasoning_effort }}
         run: |
           set -euo pipefail
+          # A thinking chunk eats into max_tokens before the final answer is
+          # written, so a reasoning call needs more headroom than a plain
+          # one or the answer can be truncated away entirely.
+          MAX_TOKENS=4000
+          if [ -n "$REASONING_EFFORT" ]; then
+            MAX_TOKENS=12000
+          fi
           PAYLOAD=$(jq -n \
             --arg model "$MISTRAL_MODEL" \
+            --arg reasoning "$REASONING_EFFORT" \
+            --argjson max_tokens "$MAX_TOKENS" \
             --rawfile sys .github/release-highlights-prompt.md \
             --rawfile digest changelog-digest.txt \
-            '{model: $model, temperature: 0.4, max_tokens: 4000,
+            '{model: $model, temperature: 0.4, max_tokens: $max_tokens,
               messages: [{role: "system", content: $sys},
-                         {role: "user", content: $digest}]}')
+                         {role: "user", content: $digest}]}
+             + (if $reasoning != "" then {reasoning_effort: $reasoning} else {} end)')
 
           RESP=$(printf '%s' "$PAYLOAD" | curl -sS \
             --retry 3 --retry-delay 3 --retry-all-errors \
@@ -196,7 +217,20 @@ jobs:
             echo "::error::Mistral returned HTTP ${CODE}: ${DETAIL:-no parsable error fields}"
             exit 1
           fi
-          CONTENT=$(printf '%s' "$BODY" | jq -r '.choices[0].message.content // empty')
+          # reasoning_effort makes message.content a list of {type, ...}
+          # chunks (thinking + text) instead of a plain string; without
+          # reasoning it stays a plain string. Handle both.
+          CONTENT=$(printf '%s' "$BODY" | jq -r '
+            .choices[0].message.content as $c
+            | if ($c | type) == "array"
+              then [$c[] | select(.type == "text") | .text] | join("")
+              else ($c // empty)
+              end')
+          THINKING_TOKENS=$(printf '%s' "$BODY" | jq -r '
+            [.choices[0].message.content // [] | .[]?
+             | select(.type == "thinking") | .thinking[]? | .text // empty]
+            | join("") | length')
+          echo "thinking_chars=$THINKING_TOKENS" >> "$GITHUB_OUTPUT"
           USAGE=$(printf '%s' "$BODY" | jq -r '.usage | "\(.prompt_tokens) in / \(.completion_tokens) out"')
           echo "usage=$USAGE" >> "$GITHUB_OUTPUT"
           # The step summary below is the primary output, but it renders
@@ -221,13 +255,17 @@ jobs:
           RESPONSE: ${{ steps.highlights.outputs.response }}
           USAGE: ${{ steps.highlights.outputs.usage }}
           MISTRAL_MODEL: ${{ inputs.model }}
+          REASONING_EFFORT: ${{ inputs.reasoning_effort }}
+          THINKING_CHARS: ${{ steps.highlights.outputs.thinking_chars }}
         run: |
           set -euo pipefail
           {
             echo "## Highlights dry-run"
             echo ""
             echo "**Model**: \`${MISTRAL_MODEL}\` via Mistral"
+            echo "**Reasoning effort**: \`${REASONING_EFFORT:-<none>}\`"
             echo "**Tokens**: ${USAGE}"
+            echo "**Thinking chars**: ${THINKING_CHARS:-0}"
             echo ""
             # Every kind of whitespace, not just spaces: a reply of newlines
             # or tabs passes a space-only test, and the `grep` below then
