@@ -20,6 +20,7 @@ from synthorg.core.agent import ModelConfig, ToolPermissions
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.loop_budget_defaults import DEFAULT_BUDGET_SIGNAL_TERMINAL_PERCENT
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.integrations.connections.models import AuthMethod, ConnectionType
@@ -321,12 +322,21 @@ def _extensions(count: int) -> ConfigResolver:
     Returns:
         A resolver double. Zero is a meaningful answer for every other
         integer setting the engine reads here (each treats it as unset and
-        falls back to its own default), so only the extension budget needs
-        naming.
+        falls back to its own default), except
+        ``engine.budget_signal_terminal_percent``: unlike its siblings, that
+        one setting has no zero-disables reading (``BudgetSignalConfig``
+        requires it strictly positive), so an unset resolution must mirror
+        what a real resolver returns for an unset key -- its own declared
+        default -- rather than the blanket 0 every other key here treats as
+        unset.
     """
 
     async def _get_int(namespace: str, key: str) -> int:
-        return count if (namespace, key) == ("engine", "max_turn_extensions") else 0
+        if (namespace, key) == ("engine", "max_turn_extensions"):
+            return count
+        if (namespace, key) == ("engine", "budget_signal_terminal_percent"):
+            return DEFAULT_BUDGET_SIGNAL_TERMINAL_PERCENT
+        return 0
 
     resolver: ConfigResolver = mock_of[ConfigResolver](
         get_int=AsyncMock(side_effect=_get_int),
