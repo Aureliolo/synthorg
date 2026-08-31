@@ -8,6 +8,7 @@ their inputs: the driver owns the capability lookup and passes it in.
 """
 
 from collections.abc import Callable
+from enum import StrEnum
 from typing import Final, Literal
 
 import litellm
@@ -21,6 +22,7 @@ from synthorg.observability.events.provider import (
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.drivers.litellm_cache import apply_cache_control
 from synthorg.providers.drivers.litellm_kwargs import _AcompletionKwargs
+from synthorg.providers.drivers.litellm_model_info import litellm_knows_model
 from synthorg.providers.models import CompletionConfig
 
 logger = get_logger(__name__)
@@ -31,24 +33,44 @@ logger = get_logger(__name__)
 _REASONING_PARAM: Final[Literal["reasoning_effort"]] = "reasoning_effort"
 
 
-def route_carries_reasoning_effort(model_id: str, routing_key: str) -> bool:
-    """Whether the target route will accept ``reasoning_effort`` at all.
+class RouteReasoningSupport(StrEnum):
+    """What LiteLLM's view of the route says about ``reasoning_effort``.
+
+    Three states, not two, and collapsing the last two is what made a declared
+    treatment vanish: LiteLLM answers an unknown model with the ROUTE's generic
+    parameter list, so "the list omits it" and "there is no list about this
+    model" look identical while meaning opposite things.
+    """
+
+    #: LiteLLM lists the parameter for this model. Send it as-is.
+    PUBLISHED = "published"
+    #: LiteLLM knows this model and its list omits the parameter. It refuses.
+    ABSENT = "absent"
+    #: LiteLLM cannot speak for this model. Only our own metadata can.
+    UNKNOWN = "unknown"
+
+
+def route_reasoning_support(model_id: str, routing_key: str) -> RouteReasoningSupport:
+    """Ask LiteLLM what it knows about ``reasoning_effort`` for this model.
 
     Our own capability metadata describes the *model*; whether the parameter
-    survives the request is a property of the *route*. An OpenAI-compatible
-    endpoint validates parameters against LiteLLM's view of the model, and a
-    model absent from that view rejects ``reasoning_effort`` with a
-    non-retryable error that fails the task on its first turn. So the route is
-    asked directly, and its answer overrides ours.
+    survives the request is also a property of the *route*, because LiteLLM
+    validates parameters against its own view before anything is sent and
+    refuses an unlisted one with a non-retryable error that fails the task on
+    its first turn. So the route is asked, and its answer is reported at the
+    resolution it actually has.
 
     Returns:
-        ``True`` when the route publishes a parameter list containing
-        ``reasoning_effort``, and when it publishes no list at all. An empty
-        answer means "unknown", not "refused": a route served by our own
-        discovery rather than LiteLLM's static database has nothing to
-        publish, and withholding reasoning from every model behind it would
-        trade one silent degradation for another.
+        Which of the three states LiteLLM's view is in.
     """
+    if not litellm_knows_model(model_id):
+        # A model LiteLLM has no entry for does not get a per-model answer
+        # below: it gets the ROUTE's generic list, identical for every unknown
+        # model behind that route and naming no reasoning parameter, because a
+        # generic OpenAI-compatible endpoint has none. That is a fact about the
+        # route, not about this model, and reading it as this model's refusal
+        # removes the parameter from every model behind every custom endpoint.
+        return RouteReasoningSupport.UNKNOWN
     try:
         supported = litellm.get_supported_openai_params(
             model=model_id, custom_llm_provider=routing_key
@@ -65,10 +87,15 @@ def route_carries_reasoning_effort(model_id: str, routing_key: str) -> bool:
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return True
+        return RouteReasoningSupport.UNKNOWN
     if not supported:
-        return True
-    return _REASONING_PARAM in supported
+        # A route served by our own discovery rather than LiteLLM's static
+        # database has nothing to publish, and withholding reasoning from every
+        # model behind it would trade one silent degradation for another.
+        return RouteReasoningSupport.UNKNOWN
+    if _REASONING_PARAM in supported:
+        return RouteReasoningSupport.PUBLISHED
+    return RouteReasoningSupport.ABSENT
 
 
 def apply_capability_gated_features(
@@ -83,10 +110,12 @@ def apply_capability_gated_features(
     """Drop or apply request features per the target model's capabilities.
 
     ``reasoning_effort`` is dropped for a model without reasoning support and
-    for a route that will not carry the parameter, and ``cache_control``
-    breakpoints are placed only for a caching-capable model. Capabilities are
-    resolved once, and only when a gated feature is actually requested, so the
-    common path stays free of the model-info lookup.
+    for a route whose published parameters omit it, and declared allowed for a
+    model LiteLLM cannot speak for, which is the only way it reaches an endpoint
+    LiteLLM has no entry for. ``cache_control`` breakpoints are placed only for
+    a caching-capable model. Capabilities are resolved once, and only when a
+    gated feature is actually requested, so the common path stays free of the
+    model-info lookup.
 
     Returns:
         The kwargs mapping with unsupported features removed and supported
@@ -109,17 +138,28 @@ def apply_capability_gated_features(
             model=model_config.id,
             reason="model_lacks_reasoning_support",
         )
-    elif wants_reasoning and not route_carries_reasoning_effort(
-        model_config.id, routing_key
-    ):
-        kwargs.pop(_REASONING_PARAM, None)
-        logger.info(
-            PROVIDER_REASONING_EFFORT_DROPPED,
-            provider=provider_name,
-            model=model_config.id,
-            routing_key=routing_key,
-            reason="route_rejects_parameter",
-        )
+    elif wants_reasoning:
+        support = route_reasoning_support(model_config.id, routing_key)
+        if support is RouteReasoningSupport.ABSENT:
+            kwargs.pop(_REASONING_PARAM, None)
+            logger.info(
+                PROVIDER_REASONING_EFFORT_DROPPED,
+                provider=provider_name,
+                model=model_config.id,
+                routing_key=routing_key,
+                reason="route_rejects_parameter",
+            )
+        elif support is RouteReasoningSupport.UNKNOWN:
+            # LiteLLM cannot speak for this model, and its default when it
+            # cannot is to refuse the parameter client-side rather than let the
+            # endpoint answer. Declaring the parameter allowed is how LiteLLM is
+            # told to forward it instead; measured against an endpoint that then
+            # returns a reasoning field, where sending it undeclared raises
+            # UnsupportedParamsError and dropping it degrades in silence. Our
+            # own `supports_reasoning`, already required above, is the whole
+            # basis for the claim, which is why this branch is unreachable
+            # without it.
+            kwargs["allowed_openai_params"] = [_REASONING_PARAM]
 
     if wants_caching:
         apply_cache_control(
