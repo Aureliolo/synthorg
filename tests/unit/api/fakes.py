@@ -1018,19 +1018,6 @@ class FakeHeartbeatRepository:
     async def get(self, execution_id: NotBlankStr) -> Heartbeat | None:
         return self._heartbeats.get(execution_id)
 
-    async def get_stale(
-        self,
-        threshold: AwareDatetime,
-        *,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> tuple[Heartbeat, ...]:
-        stale = [
-            h for h in self._heartbeats.values() if h.last_heartbeat_at < threshold
-        ]
-        stale.sort(key=lambda h: (h.last_heartbeat_at, h.execution_id))
-        return tuple(stale[offset : offset + limit])
-
     async def delete(self, execution_id: NotBlankStr) -> bool:
         return self._heartbeats.pop(execution_id, None) is not None
 

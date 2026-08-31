@@ -23,6 +23,7 @@ import { ProviderFormModal } from './providers/ProviderFormModal'
 import { TestConnectionResult } from './providers/TestConnectionResult'
 import { ModelPullDialog } from './providers/ModelPullDialog'
 import { ModelConfigDrawer } from './providers/ModelConfigDrawer'
+import { CapabilityOverridesConfirmDialog } from './providers/CapabilityOverridesConfirmDialog'
 import { AuditLogDrawer } from './providers/AuditLogDrawer'
 import { RateLimitsDrawer } from './providers/RateLimitsDrawer'
 import { CredentialsRotateDialog } from './providers/CredentialsRotateDialog'
@@ -236,7 +237,6 @@ function ProviderDetailBody({
         <ProviderModelList
           models={models}
           supportsDelete={provider.supports_model_delete}
-          supportsConfig={provider.supports_model_config}
           onDelete={(modelId) => d.setDeleteModelId(modelId)}
           onConfigure={(model) => d.setConfigModel(model)}
           onReenableToolCalling={(modelId) => {
@@ -318,6 +318,7 @@ function ProviderDetailDialogs({
         model={d.configModel}
         open={d.configModel !== null}
         onClose={() => d.setConfigModel(null)}
+        supportsLocalParams={provider.supports_model_config}
       />
 
       <DeleteProviderModelDialog d={d} decodedName={decodedName} />
@@ -349,6 +350,8 @@ function ProviderDetailDialogs({
         open={d.syncOpen}
         onClose={() => d.setSyncOpen(false)}
       />
+
+      <CapabilityOverridesConfirmDialog />
     </>
   )
 }

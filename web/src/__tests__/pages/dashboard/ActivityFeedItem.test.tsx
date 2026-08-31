@@ -79,4 +79,21 @@ describe('ActivityFeedItem', () => {
     expect(screen.queryByText('Run failed')).not.toBeInTheDocument()
     expect(screen.queryByText('Produced nothing')).not.toBeInTheDocument()
   })
+
+  it('exposes the action-type dot to screen readers when there is no run outcome', () => {
+    renderWithRouter(<ActivityFeedItem activity={makeActivity({ action_type: 'task.created' })} />)
+    expect(screen.getByRole('img', { name: 'Action: task created' })).toBeInTheDocument()
+  })
+
+  it('hides the action-type dot from screen readers when a run outcome supplies its own label', () => {
+    renderWithRouter(
+      <ActivityFeedItem
+        activity={makeActivity({
+          action_type: 'task.status_changed',
+          run_outcome: 'failed',
+        })}
+      />,
+    )
+    expect(screen.queryByRole('img', { name: /Action:/ })).not.toBeInTheDocument()
+  })
 })

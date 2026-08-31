@@ -8,7 +8,10 @@ plus the three-tier embedding detection.
 import pytest
 
 from synthorg.config.model_metadata import ModelMetadata
-from synthorg.config.provider_schema import ProviderModelConfig
+from synthorg.config.provider_schema import (
+    ModelCapabilityOverrides,
+    ProviderModelConfig,
+)
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.drivers.litellm_capabilities import build_capabilities
 
@@ -46,7 +49,6 @@ def _ollama_caps(config: ProviderModelConfig) -> ModelCapabilities:
         config,
         routing_key="ollama",
         provider_name="test-provider",
-        fallback_max_output_tokens=2048,
     )
 
 
@@ -81,12 +83,6 @@ def test_chat_model_is_not_embedding() -> None:
     assert _ollama_caps(_config("llama3:8b")).supports_embeddings is False
 
 
-def test_max_output_tokens_clamped_to_context() -> None:
-    # The fallback output cap must never exceed the model's context window.
-    caps = _ollama_caps(_config("small", max_context=1024))
-    assert caps.max_output_tokens <= 1024
-
-
 def test_ollama_image_generation_flag_from_metadata() -> None:
     caps = _ollama_caps(_config("local-image-001", image_generation=True))
     assert caps.supports_image_generation is True
@@ -113,46 +109,58 @@ def test_image_generation_detected_by_litellm_mode(
         _config("hosted-image-001"),
         routing_key="example-provider",
         provider_name="example-provider",
-        fallback_max_output_tokens=2048,
     )
     assert caps.supports_image_generation is True
 
 
-def test_large_context_model_gets_more_than_the_flat_fallback() -> None:
-    # A metadata source that publishes no output cap (every model behind an
-    # openai-compatible endpoint) must not leave a million-token model
-    # answering in the flat fallback: a reasoning model spends that budget on
-    # hidden reasoning and emits no tool call at all, which the loop reads as a
-    # finished session rather than a truncation.
-    caps = _ollama_caps(_config("big-context-001", max_context=1_048_576))
+class TestCapabilityOverrides:
+    """An operator override wins over the card/probe-resolved value."""
 
-    assert caps.max_output_tokens > 2048
+    def test_override_forces_a_capability_on(self) -> None:
+        config = _config("m").model_copy(
+            update={
+                "capability_overrides": ModelCapabilityOverrides(
+                    supports_prompt_caching=True
+                )
+            }
+        )
+        assert _ollama_caps(config).supports_prompt_caching is True
 
+    def test_override_forces_a_capability_off(self) -> None:
+        config = _config("m", tools=True).model_copy(
+            update={
+                "capability_overrides": ModelCapabilityOverrides(supports_tools=False)
+            }
+        )
+        assert _ollama_caps(config).supports_tools is False
 
-def test_derived_output_cap_is_bounded() -> None:
-    # Derived from the window, but not proportional to it without limit: one
-    # runaway turn must not be able to consume a whole session budget.
-    caps = _ollama_caps(_config("big-context-001", max_context=1_048_576))
+    def test_unset_override_leaves_the_resolved_value(self) -> None:
+        config = _config("m", vision=True).model_copy(
+            update={"capability_overrides": ModelCapabilityOverrides()}
+        )
+        assert _ollama_caps(config).supports_vision is True
 
-    assert caps.max_output_tokens == 65_536
+    def test_override_wins_over_the_id_substring_embedding_detection(self) -> None:
+        config = _config("nomic-embed-text").model_copy(
+            update={
+                "capability_overrides": ModelCapabilityOverrides(
+                    supports_embeddings=False
+                )
+            }
+        )
+        assert _ollama_caps(config).supports_embeddings is False
 
-
-def test_configured_fallback_is_a_floor_never_a_ceiling() -> None:
-    # A small-context model derives less than the operator's configured value,
-    # and keeps the operator's value: this widens an allowance, never narrows
-    # one somebody deliberately set.
-    caps = _ollama_caps(_config("small-context-001", max_context=8192))
-
-    assert caps.max_output_tokens == 2048
-
-
-def test_declared_metadata_cap_still_wins() -> None:
-    # Deriving is the answer only when nothing published a cap. A model that
-    # declares one keeps it, so an operator's per-model figure is authoritative.
-    config = _config("declared-001", max_context=1_048_576).model_copy(
-        update={"metadata": ModelMetadata(max_output_tokens=1024)}
-    )
-
-    caps = _ollama_caps(config)
-
-    assert caps.max_output_tokens == 1024
+    def test_override_wins_over_the_litellm_streaming_default(self) -> None:
+        config = _config("hosted-001").model_copy(
+            update={
+                "capability_overrides": ModelCapabilityOverrides(
+                    supports_streaming=False
+                )
+            }
+        )
+        caps = build_capabilities(
+            config,
+            routing_key="example-provider",
+            provider_name="example-provider",
+        )
+        assert caps.supports_streaming is False

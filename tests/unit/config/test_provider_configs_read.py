@@ -139,6 +139,28 @@ class TestReadProviderConfigs:
             ("alpha", "fallback_providers")
         ]
 
+    def test_retired_defaults_key_is_stripped_not_rejected(self) -> None:
+        """A persisted ``defaults`` block is dropped whole, not rejected.
+
+        ``ProviderModelDefaults`` is retired: its one field moved to a
+        per-model derivation, so a config carrying the old block must not
+        cost the provider its whole entry under ``extra=\"forbid\"``.
+        """
+        result = read_provider_configs(
+            _envelope(
+                {
+                    "alpha": _entry(defaults={"fallback_max_output_tokens": 8192}),
+                    "beta": _entry(),
+                }
+            ),
+            {},
+        )
+
+        assert result.status is ProviderConfigsStatus.OK
+        assert sorted(result.providers) == ["alpha", "beta"]
+        assert result.rejected == ()
+        assert [(c.name, c.setting) for c in result.coerced] == [("alpha", "defaults")]
+
     def test_retired_fallback_strategy_is_coerced(self) -> None:
         result = read_provider_configs(
             _envelope({"alpha": _entry(degradation={"strategy": "fallback"})}), {}

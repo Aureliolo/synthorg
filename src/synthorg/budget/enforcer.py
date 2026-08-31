@@ -61,6 +61,7 @@ from synthorg.observability.events.budget import (
     BUDGET_BASELINE_ERROR,
     BUDGET_DAILY_LIMIT_EXCEEDED,
     BUDGET_ENFORCEMENT_CHECK,
+    BUDGET_HARD_CEILING_CONFIGURED,
     BUDGET_HARD_STOP_EXCEEDED,
     BUDGET_NOTIFICATION_FAILED,
     BUDGET_PREFLIGHT_ERROR,
@@ -707,6 +708,24 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             if task.hard_token_ceiling is not None
             else cfg.run_hard_token_ceiling
         )
+        if hard_ceiling > 0 or hard_token_ceiling > 0:
+            # Each ceiling has its own origin: a task can set one without the
+            # other (or neither, falling back to the run-wide setting), so a
+            # single shared `source` would misattribute whichever ceiling it
+            # was not actually derived from.
+            logger.info(
+                BUDGET_HARD_CEILING_CONFIGURED,
+                task_id=str(task.id),
+                hard_ceiling=hard_ceiling,
+                hard_token_ceiling=hard_token_ceiling,
+                currency=cfg.currency,
+                hard_ceiling_source="task"
+                if task.hard_ceiling is not None
+                else "setting",
+                hard_token_ceiling_source=(
+                    "task" if task.hard_token_ceiling is not None else "setting"
+                ),
+            )
 
         # All enforcement disabled. Logged rather than returned in silence:
         # "this run has no budget bound at all" is the state an operator most

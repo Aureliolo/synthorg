@@ -4,7 +4,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from synthorg.core.persistence_errors import QueryError
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.checkpoint.models import Heartbeat
 from synthorg.persistence.protocol import PersistenceBackend
@@ -52,31 +51,6 @@ class TestHeartbeatRepository:
         fetched = await backend.heartbeats.get(NotBlankStr("exec-001"))
         assert fetched is not None
         assert fetched.last_heartbeat_at == later
-
-    async def test_get_stale_returns_old_heartbeats(
-        self, backend: PersistenceBackend
-    ) -> None:
-        old = _NOW - timedelta(minutes=10)
-        fresh = _NOW - timedelta(seconds=5)
-        await backend.heartbeats.save(
-            _heartbeat(execution_id="stale", at=old),
-        )
-        await backend.heartbeats.save(
-            _heartbeat(execution_id="fresh", at=fresh),
-        )
-
-        stale = await backend.heartbeats.get_stale(
-            threshold=_NOW - timedelta(minutes=1),
-        )
-        ids = {h.execution_id for h in stale}
-        assert "stale" in ids
-        assert "fresh" not in ids
-
-    async def test_get_stale_rejects_naive(self, backend: PersistenceBackend) -> None:
-        with pytest.raises(QueryError):
-            await backend.heartbeats.get_stale(
-                threshold=datetime(2025, 1, 1),  # noqa: DTZ001 -- naive on purpose
-            )
 
     async def test_delete_existing(self, backend: PersistenceBackend) -> None:
         await backend.heartbeats.save(_heartbeat())

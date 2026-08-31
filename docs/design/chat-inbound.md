@@ -130,6 +130,34 @@ leave the thread correlation in place so an authorised decider can still
 act. Without it, membership of the notified channel would be the whole
 authorisation model for a governed action.
 
+## Observability
+
+Every real event gets a signal, so a stuck consumer or a dropped human reply
+is visible without re-instrumenting the loop to find out.
+`CHAT_INBOUND_EVENT_RECEIVED` fires at `debug` on every frame except Slack's
+own `hello` and `disconnect` protocol-control frames (a volume signal for
+actual traffic, not connection upkeep), and `CHAT_INBOUND_DECODE_FAILED`
+fires whenever `decode_frame` returns a `DecodeDropReason`, carrying the
+`reason` value and never the payload. Severity splits in two: a reason any
+channel member triggers just by using Slack normally (`ROUTINE_DROP_REASONS`
+in `decode.py`) logs at `info`, so ordinary chat traffic cannot bury the
+`warning` that means an event was genuinely lost or malformed:
+
+| Reason | Meaning | Level |
+| --- | --- | --- |
+| `no_envelope_id` | A fully-decoded, routable event (reaction included) arrived with no envelope id and cannot be acked or routed -- the sharpest case, because it drops a human reply that decoded successfully | `warning` |
+| `malformed_payload` / `malformed_event` | The envelope's `payload` or `payload["event"]` was not the expected mapping shape | `warning` |
+| `validation_failed` | The event failed `InboundChatEvent` validation | `warning` |
+| `bot_authored` | Bot echo, dropped to prevent a feedback loop | `info` |
+| `message_subtype` | An edit/join/etc. subtype, not a human reply | `info` |
+| `unroutable_type` | An event type the router has no handler for | `info` |
+| `missing_attribution` | No user or channel on an otherwise-decodable event | `warning` |
+| `malformed_reaction` | A `reaction_added` event with an unexpected shape | `warning` |
+
+`decode_frame` stays pure (it returns the reason; it does not log), so
+`socket_mode.py`'s receive loop is the one place that turns a drop into a log
+line, and a valid frame still routes normally alongside the log call.
+
 ## Kill-switch + resilience
 
 The consumer is a resident `start()`/`stop()` service wired like

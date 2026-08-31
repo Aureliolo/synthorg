@@ -7,6 +7,7 @@ import { apiClient, unwrap, unwrapVoid } from '../../client'
 import type { ApiResponse } from '@/api/types/http'
 import type {
   AddModelRequest,
+  CapabilityOverridesUpdateRequest,
   LocalModelParams,
   ProviderConfig,
   ProviderModelResponse,
@@ -241,6 +242,18 @@ export async function updateModelConfig(
   const response = await apiClient.put<ApiResponse<ProviderModelResponse>>(
     `/providers/${encodeURIComponent(name)}/models/${encodeModelIdPath(modelId)}/config`,
     payload,
+  )
+  return unwrap(response)
+}
+
+export async function updateModelCapabilityOverrides(
+  name: string,
+  modelId: string,
+  overrides: CapabilityOverridesUpdateRequest,
+): Promise<ProviderModelResponse> {
+  const response = await apiClient.patch<ApiResponse<ProviderModelResponse>>(
+    `/providers/${encodeURIComponent(name)}/models/${encodeModelIdPath(modelId)}/capabilities`,
+    overrides,
   )
   return unwrap(response)
 }

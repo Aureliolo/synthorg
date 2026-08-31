@@ -441,14 +441,6 @@ virtual time deterministically via `clock.advance(seconds)`,
 (which advances and yields once so awaiters wake up the same way they
 would under `SystemClock`).
 
-### Grandfathered callable shape
-
-`communication/loop_prevention/{circuit_breaker,dedup,rate_limit}.py` deliberately use the
-`clock: Callable[[], float] = time.monotonic` shape rather than the `Clock`
-Protocol: the churn of converting ~30 test sites passing callables <!-- lint-allow: doc-numeric-macros -- clock-migration test-site count, not a build-time stat -->
-outweighs the testability win, so this is a permanent carve-out. New code uses
-the `Clock` Protocol; do not add new modules to this list without justification.
-
 ## 12.1. Test-double ladder
 
 The test-double ladder (Protocol fake, `mock_of[T]` / `create_autospec`, `SimpleNamespace`, and why a bare `MagicMock` is forbidden at a typed boundary) has its own focused reference: [Test-Double Ladder](test-doubles.md). It covers the four rungs, a need-to-tool table, and the `scripts/check_mock_spec.py` gate.
@@ -477,6 +469,18 @@ with `security.` (or `tool.registry.integrity.`) is signed and
 appended to the audit chain by `AuditChainSink`. See
 [docs/design/observability.md](../design/observability.md#audit-chain)
 for the opt-in rule and the sink's record-shape extraction logic.
+
+A declared constant with no live emitter is the cheapest marker of a
+feature that never actually shipped: a call-graph trace measured 247
+of 4,357 (5.7%) in that state. `check_declared_event_is_emitted.py` fails a
+`Final[str]` constant under `observability/events/` referenced nowhere
+in `src/synthorg/` outside the events package itself (imports, `evals/`
+and `scripts/` are legitimate out-of-package consumers; a docstring or
+comment mention, a re-export through `events/__init__.py`, or a
+test-only reference never counts). No baseline; opt out per-line with
+`# lint-allow: unemitted-event -- <reason>`, the reason mandatory
+because the only legitimate case is a constant an external consumer
+reads by value.
 
 ### `events/telemetry.py` namespace split
 

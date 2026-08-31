@@ -124,6 +124,7 @@ run the generator after `scripts/export_openapi.py` to refresh.
 |---|---|---|
 | Admin | `/admin` | 16 routes under Admin. |
 | Analytics | `/analytics` | 3 routes under Analytics. |
+| Audit Chain | `/observability/audit-chain/verify` | Audit Chain endpoint. |
 | Backups | `/admin/backups` | 3 routes under Backups. |
 | Budget | `/budget` | 15 routes under Budget. |
 | Capabilities | `/capabilities` | Capabilities endpoint. |
@@ -147,7 +148,7 @@ run the generator after `scripts/export_openapi.py` to refresh.
 | Meta Evolution | `/meta/evolution` | 3 routes under Meta Evolution. |
 | Metrics | `/metrics` | Metrics endpoint. |
 | Model Refresh | `/providers/model-refresh` | 5 routes under Model Refresh. |
-| Providers | `/providers` | 46 routes under Providers. |
+| Providers | `/providers` | 47 routes under Providers. |
 | Reports | `/reports` | 2 routes under Reports. |
 | SSRF Violations | `/providers/ssrf-violations` | 2 routes under SSRF Violations. |
 | Security | `/security` | 3 routes under Security. |

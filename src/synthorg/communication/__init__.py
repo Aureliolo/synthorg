@@ -14,12 +14,6 @@ if TYPE_CHECKING:
         MessageBusConfig,
         MessageRetentionConfig,
     )
-    from synthorg.communication.delegation import (
-        AuthorityCheckResult,
-        AuthorityValidator,
-        DelegationService,
-        HierarchyResolver,
-    )
     from synthorg.communication.dispatcher import (
         DispatchResult,
         MessageDispatcher,
@@ -35,14 +29,6 @@ if TYPE_CHECKING:
         ChannelAlreadyExistsError,
         ChannelNotFoundError,
         CommunicationError,
-        DelegationAncestryError,
-        DelegationAuthorityError,
-        DelegationCircuitOpenError,
-        DelegationDepthError,
-        DelegationDuplicateError,
-        DelegationError,
-        DelegationLoopError,
-        DelegationRateLimitError,
         HierarchyResolutionError,
         MessageBusAlreadyRunningError,
         MessageBusNotRunningError,
@@ -54,21 +40,7 @@ if TYPE_CHECKING:
         MessageHandler,
         MessageHandlerFunc,
     )
-    from synthorg.communication.loop_prevention import (
-        CircuitBreakerState,
-        DelegationCircuitBreaker,
-        DelegationDeduplicator,
-        DelegationGuard,
-        DelegationRateLimiter,
-        GuardCheckOutcome,
-        check_ancestry,
-        check_delegation_depth,
-    )
-    from synthorg.communication.loop_prevention.config import (
-        CircuitBreakerConfig,
-        LoopPreventionConfig,
-        RateLimitConfig,
-    )
+    from synthorg.communication.hierarchy import HierarchyResolver
     from synthorg.communication.message import (
         DataPart,
         FilePart,
@@ -78,7 +50,6 @@ if TYPE_CHECKING:
         TextPart,
         UriPart,
     )
-    from synthorg.communication.messenger import AgentMessenger
     from synthorg.communication.subscription import (
         DeliveryEnvelope,
         Subscription,
@@ -97,43 +68,15 @@ _LAZY_EXPORTS: Final[dict[str, tuple[str, str]]] = {
     ),
     "MessageBus": ("synthorg.communication.bus_protocol", "MessageBus"),
     "Channel": ("synthorg.communication.channel", "Channel"),
-    "CircuitBreakerConfig": (
-        "synthorg.communication.loop_prevention.config",
-        "CircuitBreakerConfig",
-    ),
     "CommunicationConfig": (
         "synthorg.communication.config",
         "CommunicationConfig",
     ),
     "HierarchyConfig": ("synthorg.communication.config", "HierarchyConfig"),
-    "LoopPreventionConfig": (
-        "synthorg.communication.loop_prevention.config",
-        "LoopPreventionConfig",
-    ),
     "MessageBusConfig": ("synthorg.communication.config", "MessageBusConfig"),
     "MessageRetentionConfig": (
         "synthorg.communication.config",
         "MessageRetentionConfig",
-    ),
-    "RateLimitConfig": (
-        "synthorg.communication.loop_prevention.config",
-        "RateLimitConfig",
-    ),
-    "AuthorityCheckResult": (
-        "synthorg.communication.delegation",
-        "AuthorityCheckResult",
-    ),
-    "AuthorityValidator": (
-        "synthorg.communication.delegation",
-        "AuthorityValidator",
-    ),
-    "DelegationService": (
-        "synthorg.communication.delegation",
-        "DelegationService",
-    ),
-    "HierarchyResolver": (
-        "synthorg.communication.delegation",
-        "HierarchyResolver",
     ),
     "DispatchResult": ("synthorg.communication.dispatcher", "DispatchResult"),
     "MessageDispatcher": (
@@ -163,35 +106,6 @@ _LAZY_EXPORTS: Final[dict[str, tuple[str, str]]] = {
         "synthorg.communication.errors",
         "CommunicationError",
     ),
-    "DelegationAncestryError": (
-        "synthorg.communication.errors",
-        "DelegationAncestryError",
-    ),
-    "DelegationAuthorityError": (
-        "synthorg.communication.errors",
-        "DelegationAuthorityError",
-    ),
-    "DelegationCircuitOpenError": (
-        "synthorg.communication.errors",
-        "DelegationCircuitOpenError",
-    ),
-    "DelegationDepthError": (
-        "synthorg.communication.errors",
-        "DelegationDepthError",
-    ),
-    "DelegationDuplicateError": (
-        "synthorg.communication.errors",
-        "DelegationDuplicateError",
-    ),
-    "DelegationError": ("synthorg.communication.errors", "DelegationError"),
-    "DelegationLoopError": (
-        "synthorg.communication.errors",
-        "DelegationLoopError",
-    ),
-    "DelegationRateLimitError": (
-        "synthorg.communication.errors",
-        "DelegationRateLimitError",
-    ),
     "HierarchyResolutionError": (
         "synthorg.communication.errors",
         "HierarchyResolutionError",
@@ -218,37 +132,9 @@ _LAZY_EXPORTS: Final[dict[str, tuple[str, str]]] = {
         "synthorg.communication.handler",
         "MessageHandlerFunc",
     ),
-    "CircuitBreakerState": (
-        "synthorg.communication.loop_prevention",
-        "CircuitBreakerState",
-    ),
-    "DelegationCircuitBreaker": (
-        "synthorg.communication.loop_prevention",
-        "DelegationCircuitBreaker",
-    ),
-    "DelegationDeduplicator": (
-        "synthorg.communication.loop_prevention",
-        "DelegationDeduplicator",
-    ),
-    "DelegationGuard": (
-        "synthorg.communication.loop_prevention",
-        "DelegationGuard",
-    ),
-    "DelegationRateLimiter": (
-        "synthorg.communication.loop_prevention",
-        "DelegationRateLimiter",
-    ),
-    "GuardCheckOutcome": (
-        "synthorg.communication.loop_prevention",
-        "GuardCheckOutcome",
-    ),
-    "check_ancestry": (
-        "synthorg.communication.loop_prevention",
-        "check_ancestry",
-    ),
-    "check_delegation_depth": (
-        "synthorg.communication.loop_prevention",
-        "check_delegation_depth",
+    "HierarchyResolver": (
+        "synthorg.communication.hierarchy",
+        "HierarchyResolver",
     ),
     "DataPart": ("synthorg.communication.message", "DataPart"),
     "FilePart": ("synthorg.communication.message", "FilePart"),
@@ -260,7 +146,6 @@ _LAZY_EXPORTS: Final[dict[str, tuple[str, str]]] = {
     "Part": ("synthorg.communication.message", "Part"),
     "TextPart": ("synthorg.communication.message", "TextPart"),
     "UriPart": ("synthorg.communication.message", "UriPart"),
-    "AgentMessenger": ("synthorg.communication.messenger", "AgentMessenger"),
     "DeliveryEnvelope": (
         "synthorg.communication.subscription",
         "DeliveryEnvelope",
@@ -310,43 +195,23 @@ def __dir__() -> list[str]:
 
 
 __all__ = [
-    "AgentMessenger",
-    "AuthorityCheckResult",
-    "AuthorityValidator",
     "Channel",
     "ChannelAlreadyExistsError",
     "ChannelNotFoundError",
     "ChannelType",
-    "CircuitBreakerConfig",
-    "CircuitBreakerState",
     "CommunicationConfig",
     "CommunicationError",
     "CommunicationPattern",
     "DataPart",
-    "DelegationAncestryError",
-    "DelegationAuthorityError",
-    "DelegationCircuitBreaker",
-    "DelegationCircuitOpenError",
-    "DelegationDeduplicator",
-    "DelegationDepthError",
-    "DelegationDuplicateError",
-    "DelegationError",
-    "DelegationGuard",
-    "DelegationLoopError",
-    "DelegationRateLimitError",
-    "DelegationRateLimiter",
-    "DelegationService",
     "DeliveryEnvelope",
     "DispatchResult",
     "FilePart",
     "FunctionHandler",
-    "GuardCheckOutcome",
     "HandlerRegistration",
     "HierarchyConfig",
     "HierarchyResolutionError",
     "HierarchyResolver",
     "InMemoryMessageBus",
-    "LoopPreventionConfig",
     "Message",
     "MessageBus",
     "MessageBusAlreadyRunningError",
@@ -362,10 +227,7 @@ __all__ = [
     "MessageType",
     "NotSubscribedError",
     "Part",
-    "RateLimitConfig",
     "Subscription",
     "TextPart",
     "UriPart",
-    "check_ancestry",
-    "check_delegation_depth",
 ]

@@ -318,9 +318,6 @@ deliberate: the log is where an operator debugging poor recall months
 later will look, and by then the reason will not be obvious.
 """
 
-MEMORY_EMBEDDER_CHECKPOINT_ACTIVE: Final[str] = "memory.embedder.checkpoint_active"
-MEMORY_EMBEDDER_CHECKPOINT_MISSING: Final[str] = "memory.embedder.checkpoint_missing"
-
 # ── Fine-tuning pipeline ─────────────────────────────────────────
 
 MEMORY_FINE_TUNE_REQUESTED: Final[str] = "memory.fine_tune.requested"
@@ -361,9 +358,6 @@ MEMORY_FINE_TUNE_CHECKPOINT_REJECTED: Final[str] = (
 )
 MEMORY_TRAINING_SOURCE_HARVESTED: Final[str] = "memory.training_source.harvested"
 MEMORY_TRAINING_SOURCE_DEGRADED: Final[str] = "memory.training_source.degraded"
-MEMORY_FINE_TUNE_CHECKPOINT_ROLLED_BACK: Final[str] = (
-    "memory.fine_tune.checkpoint_rolled_back"
-)
 MEMORY_FINE_TUNE_CHECKPOINT_DELETED: Final[str] = "memory.fine_tune.checkpoint_deleted"
 MEMORY_FINE_TUNE_PREFLIGHT_COMPLETED: Final[str] = (
     "memory.fine_tune.preflight_completed"

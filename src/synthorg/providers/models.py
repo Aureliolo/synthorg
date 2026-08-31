@@ -14,11 +14,7 @@ from pydantic import (
 )
 
 from synthorg.core.completion_enums import FinishReason, ReasoningEffort
-from synthorg.core.tool_disclosure import (
-    ToolL1Metadata,
-    ToolL2Body,
-    ToolL3Resource,
-)
+from synthorg.core.tool_disclosure import ToolL1Metadata
 from synthorg.core.types import NotBlankStr
 from synthorg.providers._stream_chunk_validation import validate_stream_chunk_fields
 
@@ -113,18 +109,9 @@ class ToolDefinition(BaseModel):
         description="JSON Schema for tool parameters",
     )
 
-    # ── Progressive disclosure tiers ─────────────────────────────
     l1_metadata: ToolL1Metadata | None = Field(
         default=None,
         description="L1 always-in-context summary",
-    )
-    l2_body: ToolL2Body | None = Field(
-        default=None,
-        description="L2 on-demand instruction body",
-    )
-    l3_resources: tuple[ToolL3Resource, ...] = Field(
-        default=(),
-        description="L3 explicit-request resources",
     )
 
     @model_validator(mode="after")
@@ -515,7 +502,11 @@ class CompletionResponse(BaseModel):
     )
     provider_metadata: dict[str, object] = Field(
         default_factory=dict,
-        description="Provider metadata injected by the base class (_synthorg_* keys).",
+        description=(
+            "Provider metadata (_synthorg_* keys): retry/latency injected by "
+            "the base class, capability signals such as cache_hit by the "
+            "driver's own response mapping."
+        ),
     )
 
     @model_validator(mode="after")

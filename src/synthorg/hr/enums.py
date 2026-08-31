@@ -58,8 +58,7 @@ class ActivityEventType(StrEnum):
     """Event types produced by the activity feed timeline.
 
     Superset of ``LifecycleEventType`` plus operational event types
-    generated from task metrics, cost records, tool invocations,
-    and delegation records.
+    generated from task metrics, cost records, and tool invocations.
     """
 
     HIRED = "hired"
@@ -75,8 +74,6 @@ class ActivityEventType(StrEnum):
     TASK_EMPTY = "task_empty"
     COST_INCURRED = "cost_incurred"
     TOOL_USED = "tool_used"
-    DELEGATION_SENT = "delegation_sent"
-    DELEGATION_RECEIVED = "delegation_received"
 
 
 # Import-time check: ActivityEventType must be a superset of LifecycleEventType.

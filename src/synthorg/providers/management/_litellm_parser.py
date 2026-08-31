@@ -165,6 +165,7 @@ def models_from_litellm(
                     litellm_provider=litellm_provider,
                     model_id=config.id,
                     parser=parser,
+                    base=config.metadata,
                 ),
             },
         )

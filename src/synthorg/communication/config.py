@@ -10,7 +10,6 @@ from synthorg.communication.enums import (
     MessageBusBackend,
     QuadraticEnforcementStrategy,
 )
-from synthorg.communication.loop_prevention.config import LoopPreventionConfig
 from synthorg.core.types import (
     NotBlankStr,
     validate_unique_strings,
@@ -396,7 +395,6 @@ class CommunicationConfig(BaseModel):
         default_pattern: High-level communication pattern.
         message_bus: Message bus configuration.
         hierarchy: Hierarchy enforcement settings.
-        loop_prevention: Loop prevention safeguards.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -412,8 +410,4 @@ class CommunicationConfig(BaseModel):
     hierarchy: HierarchyConfig = Field(
         default_factory=HierarchyConfig,
         description="Hierarchy enforcement settings",
-    )
-    loop_prevention: LoopPreventionConfig = Field(
-        default_factory=LoopPreventionConfig,
-        description="Loop prevention safeguards",
     )

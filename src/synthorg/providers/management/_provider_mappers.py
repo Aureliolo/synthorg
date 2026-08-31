@@ -155,6 +155,12 @@ def to_provider_model_response(
             if capabilities is not None
             else config.metadata.supports_reasoning
         ),
+        supports_prompt_caching=(
+            capabilities.supports_prompt_caching
+            if capabilities is not None
+            else config.metadata.supports_prompt_caching
+        ),
+        capability_overrides=config.capability_overrides,
         family=config.metadata.family,
         metadata_source=config.metadata.metadata_source,
         stale=config.stale,

@@ -101,45 +101,6 @@ class MessageBusAlreadyRunningError(CommunicationError):
     """start() called on a message bus that is already running."""
 
 
-class DelegationError(CommunicationError):
-    """Base exception for delegation-related errors."""
-
-
-class DelegationAuthorityError(DelegationError):
-    """Delegator lacks authority to delegate to the target agent."""
-
-
-class DelegationLoopError(DelegationError):
-    """Base for loop prevention mechanism rejections."""
-
-
-class DelegationDepthError(DelegationLoopError):
-    """Delegation chain exceeds maximum depth."""
-
-
-class DelegationAncestryError(DelegationLoopError):
-    """Delegation would create a cycle in the task ancestry."""
-
-
-class DelegationRateLimitError(DelegationLoopError):
-    """Delegation rate limit exceeded for agent pair.
-
-    Despite the "rate limit" name this is NOT retryable (it inherits
-    ``is_retryable = False`` from ``CommunicationError``): it is a
-    loop-prevention policy rejection for this agent pair, not a transient
-    network rate limit. The caller should surface it to the orchestrator
-    rather than backing off and retrying.
-    """
-
-
-class DelegationCircuitOpenError(DelegationLoopError):
-    """Circuit breaker is open for agent pair."""
-
-
-class DelegationDuplicateError(DelegationLoopError):
-    """Duplicate delegation detected within dedup window."""
-
-
 class QuadraticConnectionBlockedError(CommunicationError):
     """A new agent connection is rejected under quadratic ``hard_block``.
 

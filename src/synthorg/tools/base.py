@@ -228,10 +228,11 @@ class BaseTool(ABC):
     def to_definition(self) -> ToolDefinition:
         """Convert this tool to a ``ToolDefinition`` for LLM providers.
 
-        Populates both the flat provider-facing fields (``name``,
-        ``description``, ``parameters_schema``) and the tiered
-        disclosure fields (``l1_metadata``, ``l2_body``,
-        ``l3_resources``).
+        Populates the flat provider-facing fields (``name``,
+        ``description``, ``parameters_schema``) and the L1 disclosure
+        field.  L2/L3 disclosure is read separately, through
+        ``get_l2_body()`` / ``get_l3_resources()`` on the discovery
+        manager, not through ``ToolDefinition``.
 
         Returns:
             A ``ToolDefinition`` with all fields populated.
@@ -241,8 +242,6 @@ class BaseTool(ABC):
             description=self._description,
             parameters_schema=self.parameters_schema or {},
             l1_metadata=self.to_l1_metadata(),
-            l2_body=self.to_l2_body(),
-            l3_resources=self.get_l3_resources(),
         )
 
     async def transport_fault(self, arguments: Mapping[str, object]) -> str | None:

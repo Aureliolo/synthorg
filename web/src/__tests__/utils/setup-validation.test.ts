@@ -47,6 +47,7 @@ const makeModel = (
 ): ProviderModelConfig => ({
   id: "test-model-001",
   alias: null,
+  capability_overrides: null,
   max_context: 8192,
   cost_per_1k_input: 0,
   cost_per_1k_output: 0,

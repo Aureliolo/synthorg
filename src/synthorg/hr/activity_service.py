@@ -3,7 +3,7 @@
 
 Aggregates the multiple activity sources that ``activity.py`` already
 knows how to merge (lifecycle events, task metrics, cost records,
-tool invocations, delegation records) into a single call per agent.
+tool invocations) into a single call per agent.
 MCP handlers use this service to shim
 ``synthorg_agents_get_activity`` without reimplementing the
 multi-source merge in the handler layer.
@@ -25,7 +25,6 @@ from synthorg.budget.tracker_protocol import (
     collect_all_records,
 )
 from synthorg.core.critical_errors import reraise_critical
-from synthorg.core.delegation_types import DelegationRecord
 from synthorg.core.types import NotBlankStr
 from synthorg.hr._activity_validation import (
     validate_pagination,
@@ -50,17 +49,11 @@ from synthorg.tools.invocation_record import ToolInvocationRecord
 from synthorg.tools.invocation_tracker import ToolInvocationTracker
 
 if TYPE_CHECKING:
-    # Cycle breakers (signatures only, lazily resolved under PEP 649):
-    # - ``budget.cost_record`` triggers the budget<->providers cold-import
-    #   cycle (providers/__init__ eagerly re-exports BaseCompletionProvider,
-    #   which imports budget.cost_record back).
-    # - ``communication.delegation.*`` triggers the communication<->engine
-    #   cold-import cycle (communication/__init__ pulls engine ->
-    #   classification -> delegation back through communication.config).
+    # Cycle breaker (signature only, lazily resolved under PEP 649):
+    # ``budget.cost_record`` triggers the budget<->providers cold-import
+    # cycle (providers/__init__ eagerly re-exports BaseCompletionProvider,
+    # which imports budget.cost_record back).
     from synthorg.budget.cost_record import CostRecord
-    from synthorg.communication.delegation.record_store import (
-        DelegationRecordStore,
-    )
 
 logger = get_logger(__name__)
 
@@ -109,16 +102,14 @@ class ActivityFeedService:
 
     Constructor dependencies are injected individually so MCP bootstrap
     can wire whichever sources the current deployment has available.
-    The optional sources (cost / tool invocation / delegation /
-    config resolver) default to ``None``; missing sources either skip
-    (cost / tool / delegation) or fall back to the neutral
-    :data:`DEFAULT_CURRENCY` (config resolver).
+    The optional sources (cost / tool invocation / config resolver)
+    default to ``None``; missing sources either skip (cost / tool) or
+    fall back to the neutral :data:`DEFAULT_CURRENCY` (config resolver).
     """
 
     __slots__ = (
         "_config_resolver",
         "_cost_tracker",
-        "_delegation_store",
         "_lifecycle_repo",
         "_performance_tracker",
         "_tool_invocation_tracker",
@@ -131,7 +122,6 @@ class ActivityFeedService:
         lifecycle_repo: LifecycleEventRepository,
         cost_tracker: CostTrackerProtocol | None = None,
         tool_invocation_tracker: ToolInvocationTracker | None = None,
-        delegation_store: DelegationRecordStore | None = None,
         config_resolver: ConfigResolver | None = None,
     ) -> None:
         """Initialize with the required + optional sources."""
@@ -139,7 +129,6 @@ class ActivityFeedService:
         self._lifecycle_repo = lifecycle_repo
         self._cost_tracker = cost_tracker
         self._tool_invocation_tracker = tool_invocation_tracker
-        self._delegation_store = delegation_store
         self._config_resolver = config_resolver
 
     async def get_agent_activity(
@@ -203,16 +192,9 @@ class ActivityFeedService:
             tool_task = tg.create_task(
                 self._fetch_tools(agent_key, since, now),
             )
-            delegation_task = tg.create_task(
-                self._fetch_delegations(agent_key, since, now),
-            )
 
         cost_records = _collect_result(cost_task, source="cost_tracker")
         tool_invocations = _collect_result(tool_task, source="tool_tracker")
-        sent, received = _collect_result(
-            delegation_task,
-            source="delegation_store",
-        )
 
         currency = await self._resolve_currency()
         timeline = merge_activity_timeline(
@@ -220,8 +202,6 @@ class ActivityFeedService:
             task_metrics=task_metrics,
             cost_records=cost_records,
             tool_invocations=tool_invocations,
-            delegation_records_sent=sent,
-            delegation_records_received=received,
             currency=currency,
         )
         total = len(timeline)
@@ -253,8 +233,7 @@ class ActivityFeedService:
         are intrinsically agent-scoped) are included only in the
         unfiltered view; filtering by ``task_id`` or ``project`` drops
         lifecycle events automatically since they don't carry those
-        identifiers. Delegations are agent-scoped and therefore not
-        included by this method.
+        identifiers.
 
         Args:
             project: Optional project filter. When set, only events
@@ -603,80 +582,6 @@ class ActivityFeedService:
                 error=safe_error_description(exc),
             )
             return ()
-
-    async def _fetch_delegations(
-        self,
-        agent_id: str,
-        since: datetime,
-        now: datetime,
-    ) -> tuple[tuple[DelegationRecord, ...], tuple[DelegationRecord, ...]]:
-        """Best-effort delegation fetch; returns ``(sent, received)``.
-
-        Both fetches are independent best-effort workers -- neither
-        direction's failure should abort the sibling. Wraps each task
-        body per the CLAUDE.md async convention.
-
-        Returns:
-            Tuple ``(tuple[DelegationRecord, ...], tuple[DelegationRecord, ...])``.
-        """
-        store = self._delegation_store
-        if store is None:
-            return (), ()
-
-        async def _safe_delegator() -> tuple[DelegationRecord, ...]:
-            """Safe delegator.
-
-            Returns:
-                Tuple of ``DelegationRecord``.
-            """
-            try:
-                return await store.get_records_as_delegator(
-                    agent_id,
-                    start=since,
-                    end=now,
-                )
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                logger.warning(
-                    HR_ACTIVITY_SOURCE_FETCH_FAILED,
-                    source="delegation_store.delegator",
-                    agent_id=agent_id,
-                    since=since.isoformat(),
-                    until=now.isoformat(),
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                return ()
-
-        async def _safe_delegatee() -> tuple[DelegationRecord, ...]:
-            """Safe delegatee.
-
-            Returns:
-                Tuple of ``DelegationRecord``.
-            """
-            try:
-                return await store.get_records_as_delegatee(
-                    agent_id,
-                    start=since,
-                    end=now,
-                )
-            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-                reraise_critical(exc)
-                logger.warning(
-                    HR_ACTIVITY_SOURCE_FETCH_FAILED,
-                    source="delegation_store.delegatee",
-                    agent_id=agent_id,
-                    since=since.isoformat(),
-                    until=now.isoformat(),
-                    error_type=type(exc).__name__,
-                    error=safe_error_description(exc),
-                )
-                return ()
-
-        async with asyncio.TaskGroup() as tg:
-            sent_task = tg.create_task(_safe_delegator())
-            recv_task = tg.create_task(_safe_delegatee())
-        return sent_task.result(), recv_task.result()
 
 
 __all__ = ["ActivityFeedService"]

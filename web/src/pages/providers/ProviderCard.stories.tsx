@@ -4,16 +4,17 @@ import type { ProviderWithName } from "@/utils/providers";
 import type { ProviderHealthSummary } from "@/api/types/providers";
 
 const baseProvider: ProviderWithName = {
-  name: "anthropic",
+  name: "example-provider",
   driver: "litellm",
-  litellm_provider: "anthropic",
+  litellm_provider: "example-provider",
   auth_type: "api_key",
   base_url: null,
   keep_alive: null,
   models: [
     {
-      id: "claude-sonnet-4-20250514",
-      alias: "sonnet",
+      id: "example-expert-001",
+      alias: "large",
+      capability_overrides: null,
       cost_per_1k_input: 0.003,
       cost_per_1k_output: 0.015,
       cost_per_image: null,
@@ -39,8 +40,9 @@ const baseProvider: ProviderWithName = {
       stale: null,
     },
     {
-      id: "claude-haiku-4-5-20251001",
-      alias: "haiku",
+      id: "example-basic-001",
+      alias: "small",
+      capability_overrides: null,
       cost_per_1k_input: 0.0008,
       cost_per_1k_output: 0.004,
       cost_per_image: null,

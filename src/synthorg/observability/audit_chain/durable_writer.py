@@ -26,7 +26,6 @@ from synthorg.observability.events.audit_chain import (
     AUDIT_CHAIN_PERSIST_DRAIN_FAILED,
     AUDIT_CHAIN_PERSIST_ENQUEUE_DROPPED,
     AUDIT_CHAIN_PERSIST_HYDRATED,
-    AUDIT_CHAIN_PERSIST_INTEGRITY_FAILED,
     AUDIT_CHAIN_PERSIST_STARTED,
     AUDIT_CHAIN_PERSIST_STOPPED,
 )
@@ -87,9 +86,11 @@ class DurableAuditChainWriter:
 
         Pages with a ``min_position`` cursor (not OFFSET) so each page is an
         indexed range scan on the ``position`` primary key; an unbounded
-        chain hydrates in O(N) total rather than O(N^2). After the rebuild
-        the chain is verified so a durable gap or tampered row surfaces
-        loudly instead of silently poisoning subsequent appends.
+        chain hydrates in O(N) total rather than O(N^2). Restores the
+        entries in-memory only; full verification (hash continuity AND
+        signatures) is the caller's job, via
+        :meth:`~synthorg.observability.audit_chain.sink.AuditChainSink.verify_chain`,
+        so there is exactly one place that walks the chain and reports on it.
         """
         entries: list[ChainEntry] = []
         min_position: int | None = None
@@ -104,8 +105,6 @@ class DurableAuditChainWriter:
                 break
             min_position = page[-1].position + 1
         chain.restore(tuple(entries))
-        if entries and not chain.verify_integrity():
-            logger.warning(AUDIT_CHAIN_PERSIST_INTEGRITY_FAILED, entries=len(entries))
         logger.info(AUDIT_CHAIN_PERSIST_HYDRATED, entries=len(entries))
 
     async def start(self) -> None:

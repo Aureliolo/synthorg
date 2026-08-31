@@ -25,7 +25,6 @@ RISK_BUDGET_ENFORCEMENT_CHECK: Final[str] = "risk_budget.enforcement.check"
 RISK_BUDGET_LIMIT_EXCEEDED: Final[str] = "risk_budget.limit.exceeded"
 RISK_BUDGET_DAILY_LIMIT_EXCEEDED: Final[str] = "risk_budget.daily_limit.exceeded"
 RISK_BUDGET_TASK_LIMIT_EXCEEDED: Final[str] = "risk_budget.task_limit.exceeded"
-RISK_BUDGET_DOWNGRADE_TRIGGERED: Final[str] = "risk_budget.downgrade.triggered"
 
 # Shadow mode events
 RISK_BUDGET_SHADOW_LOGGED: Final[str] = "risk_budget.shadow.logged"

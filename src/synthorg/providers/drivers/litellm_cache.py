@@ -126,7 +126,7 @@ def apply_cache_control(
         model_id: Target model id for the log event.
     """
     if not capabilities.supports_prompt_caching:
-        logger.debug(
+        logger.info(
             PROVIDER_PROMPT_CACHING_SKIPPED,
             provider=provider_name,
             model=model_id,

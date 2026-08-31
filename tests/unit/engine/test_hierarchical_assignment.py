@@ -2,7 +2,7 @@
 
 import pytest
 
-from synthorg.communication.delegation.hierarchy import HierarchyResolver
+from synthorg.communication.hierarchy import HierarchyResolver
 from synthorg.core.company import Company
 from synthorg.core.company_departments import Department, Team
 from synthorg.core.task_enums import Complexity

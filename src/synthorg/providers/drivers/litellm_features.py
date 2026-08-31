@@ -103,7 +103,7 @@ def apply_capability_gated_features(
 
     if wants_reasoning and not capabilities.supports_reasoning:
         kwargs.pop(_REASONING_PARAM, None)
-        logger.debug(
+        logger.info(
             PROVIDER_REASONING_EFFORT_DROPPED,
             provider=provider_name,
             model=model_config.id,
@@ -113,7 +113,7 @@ def apply_capability_gated_features(
         model_config.id, routing_key
     ):
         kwargs.pop(_REASONING_PARAM, None)
-        logger.debug(
+        logger.info(
             PROVIDER_REASONING_EFFORT_DROPPED,
             provider=provider_name,
             model=model_config.id,

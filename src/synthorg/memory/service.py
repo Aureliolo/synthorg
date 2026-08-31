@@ -73,6 +73,7 @@ from synthorg.observability.events.memory import (
     MEMORY_ENTRY_DELETE_FAILED,
     MEMORY_ENTRY_DELETED,
     MEMORY_FINE_TUNE_BACKEND_UNSUPPORTED,
+    MEMORY_FINE_TUNE_CHECKPOINT_DELETED,
 )
 from synthorg.persistence.fine_tune_protocol import (
     FineTuneCheckpointRepository,
@@ -656,6 +657,10 @@ class MemoryService:
                 )
                 msg = f"Checkpoint {checkpoint_id} not found"
                 raise CheckpointNotFoundError(msg)
+        logger.info(
+            MEMORY_FINE_TUNE_CHECKPOINT_DELETED,
+            checkpoint_id=checkpoint_id,
+        )
 
     async def list_runs(
         self,

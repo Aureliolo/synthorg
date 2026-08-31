@@ -58,6 +58,7 @@ from synthorg.observability.events.memory import (
     MEMORY_FINE_TUNE_BACKUP_READ_SKIPPED,
     MEMORY_FINE_TUNE_CHECKPOINT_DEPLOY_PARTIAL,
     MEMORY_FINE_TUNE_CHECKPOINT_DEPLOYED,
+    MEMORY_FINE_TUNE_CHECKPOINT_SAVED,
     MEMORY_FINE_TUNE_DEPENDENCY_MISSING,
     MEMORY_FINE_TUNE_ENCODE_INVOKED,
     MEMORY_FINE_TUNE_ENCODE_TRUNCATION_LIKELY,
@@ -811,6 +812,10 @@ async def contrastive_fine_tune(  # noqa: PLR0913
     )
 
     await asyncio.to_thread(save_checkpoint, model=model, destination=checkpoint_dir)
+    logger.info(
+        MEMORY_FINE_TUNE_CHECKPOINT_SAVED,
+        checkpoint_dir=str(checkpoint_dir),
+    )
     return checkpoint_dir
 
 

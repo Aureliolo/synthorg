@@ -322,8 +322,7 @@
         "message_bus",
         "message_service",
         "event_stream_hub",
-        "interrupt_store",
-        "delegation_record_store"
+        "interrupt_store"
       ]
     },
     {
@@ -997,12 +996,14 @@
     },
     {
       "controllers": [
-        "MetricsController"
+        "MetricsController",
+        "AuditChainController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/observability",
       "ghost_wired_symbols": [
-        "install_audit_chain_sink"
+        "install_audit_chain_sink",
+        "AuditChainVerificationScheduler"
       ],
       "mcp_tool_names": [],
       "name": "observability",
@@ -1010,7 +1011,8 @@
       "settings_namespace": "observability",
       "state_slice_fields": [
         "prometheus_collector",
-        "trace_handler"
+        "trace_handler",
+        "audit_chain_verify_scheduler"
       ]
     },
     {
@@ -1470,6 +1472,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-31T04:30:48.687636Z",
+  "generated_at": "2026-08-31T14:27:01.986166Z",
   "schema_version": 1
 }

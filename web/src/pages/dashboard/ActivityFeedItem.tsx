@@ -31,8 +31,6 @@ const ACTION_DOT_COLORS: Partial<Record<ActivityEventType | WsEventType, string>
   task_empty: 'bg-warning',
   cost_incurred: 'bg-warning',
   tool_used: 'bg-accent',
-  delegation_sent: 'bg-accent',
-  delegation_received: 'bg-accent',
   // WS event types
   'task.created': 'bg-accent',
   'task.updated': 'bg-accent',
@@ -92,10 +90,13 @@ function ActivityFeedItemImpl({ activity, className }: ActivityFeedItemProps) {
           )}
           // With a run outcome the dot's colour mirrors the outcome and the
           // RunOutcomeBadge already supplies the accessible name, so the dot
-          // is decorative; otherwise it announces the action type.
+          // is decorative; otherwise it announces the action type. A bare
+          // `<span aria-label>` has no implicit role, so most screen readers
+          // drop the label; `role="img"` makes it the accessible name.
           {...(activity.run_outcome
             ? { 'aria-hidden': true }
             : {
+                role: 'img',
                 'aria-label': `Action: ${activity.action_type.replace(/[._]/g, ' ')}`,
               })}
         />

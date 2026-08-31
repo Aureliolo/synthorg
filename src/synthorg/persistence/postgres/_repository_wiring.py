@@ -46,9 +46,6 @@ from synthorg.persistence.postgres.capability_source_status_repo import (
 from synthorg.persistence.postgres.checkpoint_repo import (
     PostgresCheckpointRepository,
 )
-from synthorg.persistence.postgres.circuit_breaker_repo import (
-    PostgresCircuitBreakerStateRepository,
-)
 from synthorg.persistence.postgres.code_execution_repo import (
     PostgresCodeExecutionRecordRepository,
 )
@@ -286,7 +283,6 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._decision_records = None
         self._risk_overrides = None
         self._ssrf_violations = None
-        self._circuit_breaker_state = None
         self._model_tool_call_signals = None
         self._model_capability_scores = None
         self._capability_source_statuses = None
@@ -408,7 +404,6 @@ class _PostgresRepositoryWiring(_PostgresBackendRepositoryAccessors):
         self._decision_records = PostgresDecisionRepository(pool)
         self._risk_overrides = PostgresRiskOverrideRepository(pool)
         self._ssrf_violations = PostgresSsrfViolationRepository(pool)
-        self._circuit_breaker_state = PostgresCircuitBreakerStateRepository(pool)
         self._model_tool_call_signals = PostgresModelToolCallSignalRepository(pool)
         self._model_capability_scores = PostgresModelCapabilityScoreRepository(pool)
         self._capability_source_statuses = PostgresCapabilitySourceStatusRepository(

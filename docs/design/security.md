@@ -689,19 +689,18 @@ communication, configurable per direction:
 
 ### Inbound Request Validation
 
-Every inbound A2A request passes through two validation layers before reaching internal
-agents:
+Every inbound A2A request passes through external-specific checks before reaching
+internal agents:
 
-1. **DelegationGuard**: the same
-   [five loop prevention mechanisms](communication-coordination.md#loop-prevention) that protect
-   internal delegation also apply to external requests. External agents are treated as
-   delegation sources with the gateway as the entry point into the delegation chain.
+- Agent Card verification (see below)
+- Request signature validation (when configured)
+- Rate limiting scoped to external callers (separate from internal per-pair limits)
+- Payload size validation (configurable max request body size)
 
-2. **External-specific checks**:
-    - Agent Card verification (see below)
-    - Request signature validation (when configured)
-    - Rate limiting scoped to external callers (separate from internal per-pair limits)
-    - Payload size validation (configurable max request body size)
+`message/send` creates a new root task via `task_engine.create_task`, not a delegated
+sub-task, so the [delegation depth and cycle guard](communication-coordination.md#delegation-depth-and-cycle-guard)
+(which walks a task's *parent*-task chain) has no ancestry to check at inbound admission;
+it applies once an internal agent delegates that task's work onward.
 
 ### Agent Trust Establishment
 

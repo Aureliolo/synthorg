@@ -155,7 +155,7 @@ These conventions are used throughout the codebase. For full details on each, se
 | **Workspace isolation** | Adopted | Pluggable `WorkspaceIsolationStrategy` protocol. Default: git worktrees with sequential merge on completion. |
 | **Graceful shutdown** | Adopted | Pluggable `ShutdownStrategy` protocol with cooperative 30-second timeout. Force-cancel after timeout with `INTERRUPTED` status. |
 | **Template inheritance** | Adopted | `extends` field triggers parent resolution at render time with deep merge by field type. Circular chain detection included. |
-| **Communication foundation** | Adopted | `MessageBus` protocol with pull-model `receive()`, `MessageDispatcher` for concurrent handler routing, `AgentMessenger` per-agent facade. |
-| **Delegation and loop prevention** | Adopted | `DelegationGuard` orchestrates five mechanisms (ancestry, depth, dedup, rate limit, circuit breaker) in sequence with short-circuit on first rejection. |
+| **Communication foundation** | Adopted | `MessageBus` protocol with pull-model `receive()`, `MessageDispatcher` for concurrent handler routing, `MessageService` as the MCP-facing send boundary. |
+| **Delegation** | Adopted | Blocking sub-agent delegation in `engine/delegation/`: `InProcessSubAgentRunner` reuses `AgentEngine.run` inline for a child `Task`, bounded by an ancestry + depth guard against recursion. |
 | **Task assignment** | Adopted | `TaskAssignmentStrategy` protocol with six strategies: Manual, RoleBased, LoadBalanced, CostOptimized, Hierarchical, and Auction. |
 | **Pydantic alias for YAML directives** | Adopted | `Field(alias="_remove")` in `TemplateAgentConfig`: YAML uses `_remove: true`, Python accesses `agent.remove`. Keeps YAML human-readable while avoiding leading-underscore attributes. |

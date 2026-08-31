@@ -311,10 +311,26 @@ call. `outcome` is `valid` when the chain is intact and `broken` on
 any mismatch. Any exception raised by the signer (crypto / network /
 key-unavailable) is also reported as `outcome="broken"` before the
 exception is re-raised, so a transient verifier outage cannot create
-a tamper-detection blind spot. The matching log event
-`security.audit_chain.verify.outcome` carries the same `outcome`
-plus `entries_checked` and `first_break_position` for offline
-incident triage.
+a tamper-detection blind spot. A successful verification logs
+`audit_chain.verify.complete` (`entries_checked`); a broken one logs
+`security.audit_chain.break_detected` at the offending position
+instead, and the durability-side scheduler additionally warns under
+`audit_chain.persist.integrity_failed` (`entries_checked`,
+`first_break_position`, `trigger`).
+
+Three paths call it, so the `broken` alert stays reachable for the
+life of a deployment rather than only at the next restart:
+
+- **Boot**, right after `AuditChainSink.attach_persistence` hydrates the
+  chain from durable storage.
+- **On a cadence**, via `AuditChainVerificationScheduler`
+  (`observability.audit_chain_verify_interval_seconds`, live-tunable,
+  default 3600s): its first cycle runs eagerly on `start()`, so it is
+  also the boot-time check above (`trigger="boot_verify"` on that first
+  cycle, `"periodic_verify"` on every one after).
+- **On demand**, `POST /observability/audit-chain/verify`
+  (CEO-guarded, rate-limited), for an operator investigating an
+  incident without waiting for the next scheduled sweep.
 
 ### Uvicorn Integration
 
@@ -461,7 +477,7 @@ The `/metrics` endpoint exposes business and infrastructure metrics under the `s
 **Audit chain + OTLP health**
 
 - `synthorg_audit_chain_appends_total{status}`, `synthorg_audit_chain_depth`, `synthorg_audit_chain_last_append_timestamp_seconds`.
-- `synthorg_audit_chain_verifications_total{outcome}`: counter incremented once per `AuditChainVerifier.verify_chain()` call. `outcome` is one of `valid` / `broken` (bounded via `VALID_AUDIT_VERIFICATION_OUTCOMES`). Any `broken` increment is alertable -- it indicates hash-chain tampering, signature corruption, or a verifier-side failure (crypto / network).
+- `synthorg_audit_chain_verifications_total{outcome}`: counter incremented once per `AuditChainVerifier.verify_chain()` call, driven at boot, on the `observability.audit_chain_verify_interval_seconds` cadence (default 3600s, live-tunable) and on demand via `POST /observability/audit-chain/verify`. `outcome` is one of `valid` / `broken` (bounded via `VALID_AUDIT_VERIFICATION_OUTCOMES`). Any `broken` increment is alertable -- it indicates hash-chain tampering, signature corruption, or a verifier-side failure (crypto / network).
 - `synthorg_otlp_export_batches_total{kind, outcome}`, `synthorg_otlp_export_dropped_records_total{kind}`.
 
 **Decisions (approval / blueprint)**

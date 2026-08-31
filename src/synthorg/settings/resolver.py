@@ -982,9 +982,7 @@ class ConfigResolver:
                 ("bus_bridge_max_consecutive_errors", "int"),
                 ("nats_history_batch_size", "int"),
                 ("nats_history_fetch_timeout_seconds", "float"),
-                ("delegation_record_store_max_size", "int"),
                 ("event_stream_max_queue_size", "int"),
-                ("loop_prevention_window_seconds", "float"),
             ),
         )
         return CommunicationBridgeConfig(**values)

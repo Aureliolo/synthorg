@@ -66,14 +66,9 @@ TEST_CAPABILITIES = ModelCapabilities(
     model_id=_QUALITY_MODEL,
     provider=_TEST_PROVIDER,
     max_context_tokens=200_000,
-    max_output_tokens=8_192,
     supports_tools=True,
     supports_vision=False,
     supports_streaming=True,
-    supports_streaming_tool_calls=True,
-    supports_system_messages=True,
-    cost_per_1k_input=0.001,
-    cost_per_1k_output=0.002,
 )
 
 

@@ -19,6 +19,7 @@ the wire boundary" convention while leaving the symbol importable.
 
 from synthorg.providers.management.capability_dtos import (
     AddModelRequest,
+    CapabilityOverridesUpdateRequest,
     CredentialsRotateRequest,
     PresetOverride,
     PresetOverrideUpdateRequest,
@@ -37,6 +38,7 @@ from synthorg.providers.management.capability_dtos import (
 
 __all__ = [
     "AddModelRequest",
+    "CapabilityOverridesUpdateRequest",
     "CredentialsRotateRequest",
     "PresetOverride",
     "PresetOverrideUpdateRequest",

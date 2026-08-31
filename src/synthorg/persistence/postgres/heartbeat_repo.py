@@ -4,7 +4,7 @@ This is the Postgres sibling of src/synthorg/persistence/sqlite/heartbeat_repo.p
 Postgres stores timestamps as native TIMESTAMPTZ columns (SQLite uses ISO strings).
 """
 
-from datetime import UTC, datetime
+from datetime import UTC
 
 import psycopg
 from psycopg.rows import DictRow, dict_row
@@ -19,12 +19,9 @@ from synthorg.observability.events.persistence.heartbeat import (
     PERSISTENCE_HEARTBEAT_DELETE_FAILED,
     PERSISTENCE_HEARTBEAT_DESERIALIZE_FAILED,
     PERSISTENCE_HEARTBEAT_NOT_FOUND,
-    PERSISTENCE_HEARTBEAT_QUERIED,
     PERSISTENCE_HEARTBEAT_QUERY_FAILED,
     PERSISTENCE_HEARTBEAT_SAVE_FAILED,
 )
-from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
-from synthorg.persistence._shared import validate_pagination_args
 
 logger = get_logger(__name__)
 
@@ -116,69 +113,6 @@ ON CONFLICT(execution_id) DO UPDATE SET
             return None
 
         return self._row_to_model(dict(row))
-
-    async def get_stale(
-        self,
-        threshold: datetime,
-        *,
-        limit: int = DEFAULT_PAGE_SIZE,
-        offset: int = 0,
-    ) -> tuple[Heartbeat, ...]:
-        """Bounded page of heartbeats older than the threshold.
-
-        ``execution_id`` is the stable secondary sort so rows sharing
-        a ``last_heartbeat_at`` page deterministically.
-
-        Args:
-            threshold: Heartbeats with ``last_heartbeat_at`` before
-                this timestamp are considered stale. Must be
-                timezone-aware; a naive value is rejected.
-            limit: Maximum rows to return.
-            offset: Rows to skip from the head of the ordering.
-
-        Returns:
-            Tuple of matching rows; empty when no rows match.
-
-        Raises:
-            QueryError: If ``threshold`` is naive, or the database query fails.
-        """
-        if threshold.tzinfo is None:
-            msg = "threshold must be timezone-aware; a naive datetime is rejected"
-            raise QueryError(msg)
-        limit = validate_pagination_args(
-            limit, offset, event=PERSISTENCE_HEARTBEAT_QUERY_FAILED
-        )
-        threshold_utc = threshold.astimezone(UTC)
-        try:
-            async with (
-                self._pool.connection() as conn,
-                conn.cursor(row_factory=dict_row) as cur,
-            ):
-                await cur.execute(
-                    "SELECT execution_id, agent_id, task_id, last_heartbeat_at "
-                    "FROM heartbeats WHERE last_heartbeat_at < %s "
-                    "ORDER BY last_heartbeat_at, execution_id "
-                    "LIMIT %s OFFSET %s",
-                    (threshold_utc, limit, offset),
-                )
-                rows = await cur.fetchall()
-        except psycopg.Error as exc:
-            msg = "Failed to query stale heartbeats"
-            logger.warning(
-                PERSISTENCE_HEARTBEAT_QUERY_FAILED,
-                threshold=threshold,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
-            raise QueryError(msg) from exc
-
-        results = tuple(self._row_to_model(dict(row)) for row in rows)
-        logger.debug(
-            PERSISTENCE_HEARTBEAT_QUERIED,
-            threshold=threshold,
-            count=len(results),
-        )
-        return results
 
     async def delete(self, execution_id: NotBlankStr) -> bool:
         """Delete a heartbeat by execution ID.

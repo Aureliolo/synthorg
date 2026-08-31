@@ -28,9 +28,6 @@ from synthorg.api.state import AppState
 from synthorg.approval.enums import ApprovalRiskLevel, ApprovalStatus
 from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.tracker import CostTracker
-from synthorg.communication.delegation.record_store import (
-    DelegationRecordStore,
-)
 from synthorg.communication.event_stream.interrupt import InterruptStore
 from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.config.provider_schema import ProviderConfig
@@ -419,11 +416,6 @@ def tool_invocation_tracker() -> ToolInvocationTracker:
 
 
 @pytest.fixture(scope="session")
-def delegation_record_store() -> DelegationRecordStore:
-    return DelegationRecordStore()
-
-
-@pytest.fixture(scope="session")
 def fake_task_engine(
     fake_persistence: FakePersistenceBackend,
 ) -> TaskEngine:
@@ -480,7 +472,6 @@ def _shared_app(  # noqa: PLR0913
     provider_registry: ProviderRegistry,
     provider_health_tracker: ProviderHealthTracker,
     tool_invocation_tracker: ToolInvocationTracker,
-    delegation_record_store: DelegationRecordStore,
     audit_log: AuditLog,
     coordination_metrics_store: CoordinationMetricsStore,
     event_stream_hub: EventStreamHub,
@@ -516,7 +507,6 @@ def _shared_app(  # noqa: PLR0913
         provider_registry=provider_registry,
         provider_health_tracker=provider_health_tracker,
         tool_invocation_tracker=tool_invocation_tracker,
-        delegation_record_store=delegation_record_store,
         artifact_storage=FakeArtifactStorage(),
         audit_log=audit_log,
         coordination_metrics_store=coordination_metrics_store,
@@ -575,7 +565,6 @@ class _ResetServices:
     agent_registry: AgentRegistryService
     provider_health_tracker: ProviderHealthTracker
     tool_invocation_tracker: ToolInvocationTracker
-    delegation_record_store: DelegationRecordStore
     audit_log: AuditLog
     coordination_metrics_store: CoordinationMetricsStore
     auth_service: AuthService
@@ -597,7 +586,6 @@ def _reset_service_state(services: _ResetServices) -> None:
         services.agent_registry,
         services.provider_health_tracker,
         services.tool_invocation_tracker,
-        services.delegation_record_store,
         services.audit_log,
         services.coordination_metrics_store,
     )
@@ -959,7 +947,6 @@ def _reset_services(  # noqa: PLR0913
     agent_registry: AgentRegistryService,
     provider_health_tracker: ProviderHealthTracker,
     tool_invocation_tracker: ToolInvocationTracker,
-    delegation_record_store: DelegationRecordStore,
     audit_log: AuditLog,
     coordination_metrics_store: CoordinationMetricsStore,
     auth_service: AuthService,
@@ -974,7 +961,6 @@ def _reset_services(  # noqa: PLR0913
         agent_registry=agent_registry,
         provider_health_tracker=provider_health_tracker,
         tool_invocation_tracker=tool_invocation_tracker,
-        delegation_record_store=delegation_record_store,
         audit_log=audit_log,
         coordination_metrics_store=coordination_metrics_store,
         auth_service=auth_service,

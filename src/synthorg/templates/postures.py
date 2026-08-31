@@ -51,7 +51,6 @@ _POSTURE_BUNDLES: MappingProxyType[PostureName, PostureConfig] = MappingProxyTyp
     {
         PostureName.AUTONOMOUS: _bundle(
             PostureName.AUTONOMOUS,
-            knowledge_substrate=True,
             steering=True,
         ),
         PostureName.SUPERVISED_CLIENT_FACING: _bundle(
@@ -64,7 +63,6 @@ _POSTURE_BUNDLES: MappingProxyType[PostureName, PostureConfig] = MappingProxyTyp
         ),
         PostureName.KNOWLEDGE_HEAVY: _bundle(
             PostureName.KNOWLEDGE_HEAVY,
-            knowledge_substrate=True,
             chat_propose=True,
             steering=True,
         ),
@@ -74,14 +72,12 @@ _POSTURE_BUNDLES: MappingProxyType[PostureName, PostureConfig] = MappingProxyTyp
         ),
         PostureName.SECURITY_HARDENED: _bundle(
             PostureName.SECURITY_HARDENED,
-            knowledge_substrate=True,
             red_team=True,
             red_team_grounding="knowledge_substrate",
             steering=True,
         ),
         PostureName.RESEARCH_AUTONOMOUS: _bundle(
             PostureName.RESEARCH_AUTONOMOUS,
-            knowledge_substrate=True,
             chat_propose=True,
             chat_routing=True,
             steering=True,

@@ -8,6 +8,7 @@ import aiohttp
 import httpx
 import pytest
 import respx
+import structlog
 
 from synthorg.integrations.chat_api.inbound.models import InboundChatEvent
 from synthorg.integrations.chat_api.inbound.socket_mode import (
@@ -107,6 +108,149 @@ class TestStream:
         assert session.acked == ["env-1"]
         assert len(received) == 1
         assert received[0].user == "U1"
+
+    @respx.mock
+    async def test_hello_and_disconnect_do_not_count_as_receipt(self) -> None:
+        """hello/disconnect are protocol control frames, not Slack activity;
+        counting them would let a quiet channel's keepalive traffic read as
+        event volume."""
+        _open_ok()
+        session = _FakeWsSession([{"type": "hello"}, {"type": "disconnect"}])
+
+        with structlog.testing.capture_logs() as logs:
+            await _client(session).stream(on_event=self._noop)
+
+        received_logs = [
+            log
+            for log in logs
+            if log.get("event") == "integrations.chat_inbound.event_received"
+        ]
+        assert received_logs == []
+
+    @respx.mock
+    async def test_a_genuine_slack_frame_is_counted_as_receipt(self) -> None:
+        _open_ok()
+        session = _FakeWsSession(
+            [
+                {
+                    "type": "events_api",
+                    "envelope_id": "env-1",
+                    "payload": {
+                        "event": {
+                            "type": "app_mention",
+                            "user": "U1",
+                            "text": "hi",
+                            "ts": "1.0",
+                            "channel": "C1",
+                        }
+                    },
+                },
+                {"type": "disconnect"},
+            ]
+        )
+
+        with structlog.testing.capture_logs() as logs:
+            await _client(session).stream(on_event=self._noop)
+
+        received_logs = [
+            log
+            for log in logs
+            if log.get("event") == "integrations.chat_inbound.event_received"
+        ]
+        assert len(received_logs) == 1
+
+    @respx.mock
+    async def test_decode_failure_logged_with_its_reason(self) -> None:
+        _open_ok()
+        session = _FakeWsSession(
+            [
+                {"type": "events_api", "envelope_id": "e1", "payload": "nope"},
+                {"type": "disconnect"},
+            ]
+        )
+
+        with structlog.testing.capture_logs() as logs:
+            await _client(session).stream(on_event=self._noop)
+
+        failures = [
+            log
+            for log in logs
+            if log.get("event") == "integrations.chat_inbound.decode_failed"
+        ]
+        assert len(failures) == 1
+        assert failures[0]["reason"] == "malformed_payload"
+        assert failures[0]["log_level"] == "warning"
+
+    @respx.mock
+    async def test_routine_drop_reason_logged_at_info_not_warning(self) -> None:
+        _open_ok()
+        session = _FakeWsSession(
+            [
+                {
+                    "type": "events_api",
+                    "envelope_id": "e1",
+                    "payload": {
+                        "event": {
+                            "type": "message",
+                            "user": "U1",
+                            "text": "echo",
+                            "ts": "1.0",
+                            "channel": "C1",
+                            "bot_id": "B1",
+                        }
+                    },
+                },
+                {"type": "disconnect"},
+            ]
+        )
+
+        with structlog.testing.capture_logs() as logs:
+            await _client(session).stream(on_event=self._noop)
+
+        failures = [
+            log
+            for log in logs
+            if log.get("event") == "integrations.chat_inbound.decode_failed"
+        ]
+        assert len(failures) == 1
+        assert failures[0]["reason"] == "bot_authored"
+        assert failures[0]["log_level"] == "info"
+
+    @respx.mock
+    async def test_valid_frame_logs_no_decode_failure(self) -> None:
+        _open_ok()
+        session = _FakeWsSession(
+            [
+                {
+                    "type": "events_api",
+                    "envelope_id": "env-1",
+                    "payload": {
+                        "event": {
+                            "type": "app_mention",
+                            "user": "U1",
+                            "text": "hi",
+                            "ts": "1.0",
+                            "channel": "C1",
+                        }
+                    },
+                },
+                {"type": "disconnect"},
+            ]
+        )
+
+        with structlog.testing.capture_logs() as logs:
+            await _client(session).stream(on_event=self._noop)
+
+        failures = [
+            log
+            for log in logs
+            if log.get("event") == "integrations.chat_inbound.decode_failed"
+        ]
+        assert failures == []
+
+    @staticmethod
+    async def _noop(_event: InboundChatEvent) -> None:
+        return None
 
     @respx.mock
     async def test_open_auth_error_raises(self) -> None:

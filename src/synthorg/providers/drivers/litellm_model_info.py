@@ -227,38 +227,76 @@ def extract_model_metadata(
     litellm_provider: str | None,
     model_id: str,
     parser: FamilyParser,
+    base: ModelMetadata,
     source: MetadataSource = "litellm",
 ) -> ModelMetadata:
     """Build :class:`ModelMetadata` from a LiteLLM info dict and a parser.
 
     Single reader of the capability flags so the persisted config-layer
-    metadata and the routing-layer ``ModelCapabilities`` never drift.
-    The output-token value is coerced through :func:`coerce_max_output_tokens`
-    and dropped (``None``) when absent or non-positive.
+    metadata and the transient, per-request ``ModelCapabilities`` never
+    drift. The output-token value is coerced through
+    :func:`coerce_max_output_tokens` and dropped when absent or non-positive.
+
+    Falls back to *base* **per field** rather than as a whole record: a
+    LiteLLM card that is silent on one capability (a partial or missing
+    entry) must not discard what a probe or an operator already established
+    for the others, including the fields LiteLLM's static table never
+    carries at all (``tool_calls_verified``, ``parameter_count``,
+    ``cost_tier``), which this function always inherits unchanged from
+    *base*.
 
     Args:
         info: A LiteLLM model-info / ``model_cost`` entry.
         litellm_provider: Provider hint for family-rule selection.
         model_id: The bare model id (no routing prefix).
         parser: Family/generation parser.
+        base: The existing config-layer metadata to fall back to per field.
         source: Provenance stamped onto the result.
 
     Returns:
-        A populated ``ModelMetadata`` (safe defaults for missing keys).
+        A populated ``ModelMetadata``, per-field-supplemented from *base*.
     """
     identity = parser.parse(model_id, litellm_provider=litellm_provider)
     raw_max = info.get("max_output_tokens") or info.get("max_tokens")
-    max_output: int | None = None
+    max_output = base.max_output_tokens
     if raw_max:
         coerced = coerce_max_output_tokens(raw_max, fallback=0, litellm_model=model_id)
-        max_output = coerced if coerced > 0 else None
+        max_output = coerced if coerced > 0 else base.max_output_tokens
     return ModelMetadata(
-        supports_tools=bool(info.get("supports_function_calling", False)),
-        supports_vision=bool(info.get("supports_vision", False)),
-        supports_reasoning=bool(info.get("supports_reasoning", False)),
-        supports_prompt_caching=bool(info.get("supports_prompt_caching", False)),
-        supports_image_generation=str(info.get("mode") or "") == "image_generation",
+        supports_tools=(
+            bool(info["supports_function_calling"])
+            if info.get("supports_function_calling") is not None
+            else base.supports_tools
+        ),
+        tool_calls_verified=base.tool_calls_verified,
+        supports_vision=(
+            bool(info["supports_vision"])
+            if info.get("supports_vision") is not None
+            else base.supports_vision
+        ),
+        supports_reasoning=(
+            bool(info["supports_reasoning"])
+            if info.get("supports_reasoning") is not None
+            else base.supports_reasoning
+        ),
+        supports_prompt_caching=(
+            bool(info["supports_prompt_caching"])
+            if info.get("supports_prompt_caching") is not None
+            else base.supports_prompt_caching
+        ),
+        supports_embeddings=(
+            str(info["mode"]) == "embedding"
+            if info.get("mode") is not None
+            else base.supports_embeddings
+        ),
+        supports_image_generation=(
+            str(info["mode"]) == "image_generation"
+            if info.get("mode") is not None
+            else base.supports_image_generation
+        ),
         max_output_tokens=max_output,
+        parameter_count=base.parameter_count,
+        cost_tier=base.cost_tier,
         family=identity.family,
         generation=identity.generation,
         release_date=identity.release_date,

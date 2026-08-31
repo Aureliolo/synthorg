@@ -38,6 +38,7 @@ export {
   pullModel,
   reenableToolCalling,
   syncProviderModels,
+  updateModelCapabilityOverrides,
   updateModelConfig,
 } from './providers/models'
 

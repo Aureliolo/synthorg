@@ -41,10 +41,7 @@ def thread_posture_knobs(
     The posture knob is the merge base and any template-declared section is
     the override, so an explicit ``security`` value in the template wins (a
     template can opt out of a posture default) while other keys in that
-    section survive rather than being clobbered. ``knowledge_substrate``
-    has no config knob: it is recorded on ``result["posture"]`` and the
-    knowledge engine enables it at boot when a memory backend is present,
-    degrading cleanly when one is not.
+    section survive rather than being clobbered.
     """
     result["posture"] = posture.model_dump()
     if posture.red_team:

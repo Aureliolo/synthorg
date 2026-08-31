@@ -16,8 +16,6 @@ src/synthorg/memory/retriever_fetch.py::fetch_sparse_memories::retrieve_sparse::
 src/synthorg/memory/retriever_fetch.py::fetch_sparse_memories::supports_sparse_search::1
 src/synthorg/meta/mcp/handlers/_mcp_handler_common.py::_to_jsonable::model_dump::1
 src/synthorg/observability/audit_chain/tsa_client.py::_check_pki_status::status_string::2
-src/synthorg/observability/audit_chain/verifier.py::AuditChainVerifier.verify_evidence_package::canonical_bytes::1
-src/synthorg/observability/audit_chain/verifier.py::AuditChainVerifier.verify_evidence_package::signed_bytes::1
 src/synthorg/ontology/decorator.py::_annotation_to_str::__args__::1
 src/synthorg/ontology/decorator.py::_annotation_to_str::__origin__::1
 src/synthorg/persistence/postgres/_integrity.py::constraint_name::constraint_name::1

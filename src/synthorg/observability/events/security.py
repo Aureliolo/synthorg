@@ -57,11 +57,7 @@ SECURITY_LLM_EVAL_SKIPPED_FULL_AUTONOMY: Final[str] = (
 )
 
 # ── Audit chain events ──────────────────────────────────────────
-SECURITY_AUDIT_CHAIN_SIGNED: Final[str] = "security.audit_chain.signed"
 SECURITY_AUDIT_CHAIN_VERIFY_START: Final[str] = "security.audit_chain.verify.start"
-SECURITY_AUDIT_CHAIN_VERIFY_COMPLETE: Final[str] = (
-    "security.audit_chain.verify.complete"
-)
 SECURITY_AUDIT_CHAIN_BREAK_DETECTED: Final[str] = "security.audit_chain.break_detected"
 SECURITY_AUDIT_CHAIN_VERIFY_OUTCOME: Final[LiteralString] = (
     "security.audit_chain.verify.outcome"

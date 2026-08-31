@@ -23,10 +23,6 @@ Cost tracking, budget enforcement, quota management, and CFO optimisation.
 
 ::: synthorg.budget.cost_tiers
 
-## Hierarchy
-
-::: synthorg.budget.hierarchy
-
 ## Tracker
 
 ::: synthorg.budget.tracker

@@ -20,7 +20,7 @@ The design specification is split into focused documentation pages. Each page co
 | [Organisation & Templates](design/organization.md) | Company Structure, Templates | Company types, hierarchy, departments, template system |
 | [Communication](design/communication.md) | Communication Architecture | Message bus transport, patterns, message format, config, and lifecycle |
 | [Communication A2A Gateway](design/communication-a2a.md) | External Federation | Optional gateway, agent cards, concept mapping, SSE streaming, outbound client |
-| [Communication Coordination](design/communication-coordination.md) | Orchestration | Loop prevention, MCP facades, failure guardrails |
+| [Communication Coordination](design/communication-coordination.md) | Orchestration | Delegation depth/cycle guard, MCP facades, failure guardrails |
 | [Communication Event Stream](design/communication-events.md) | Observability + HITL | AG-UI projection, SSE endpoint, interrupt/resume, EvidencePackage, async delegation, citations |
 | [Chat Inbound](design/chat-inbound.md) | Human replies re-enter tasks | Slack Socket-Mode consumer routing a mention, DM, thread reply or reaction back to the parked approval it answers; off by default, and inbound content reaches an LLM only as a fenced resume reason |
 | [Distributed Runtime](design/distributed-runtime.md) | Transport Evaluation, Bus Backend, Task Queue, Migration | Pluggable distributed backend design, NATS JetStream first implementation, distributed task queue hook into TaskEngine |

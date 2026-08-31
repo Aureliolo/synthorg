@@ -18,11 +18,6 @@ from synthorg.communication.enums import (
     MessagePriority,
     MessageType,
 )
-from synthorg.communication.loop_prevention.config import (
-    CircuitBreakerConfig,
-    LoopPreventionConfig,
-    RateLimitConfig,
-)
 from synthorg.communication.message import Message, MessageMetadata, TextPart
 from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 
@@ -89,23 +84,6 @@ class HierarchyConfigFactory(ModelFactory[HierarchyConfig]):
     __model__ = HierarchyConfig
 
 
-class RateLimitConfigFactory(ModelFactory[RateLimitConfig]):
-    __model__ = RateLimitConfig
-
-
-class CircuitBreakerConfigFactory(ModelFactory[CircuitBreakerConfig]):
-    __model__ = CircuitBreakerConfig
-    # Ensure max_cooldown_seconds >= cooldown_seconds (validator constraint).
-    cooldown_seconds = 300
-    max_cooldown_seconds = 3600
-
-
-class LoopPreventionConfigFactory(ModelFactory[LoopPreventionConfig]):
-    __model__ = LoopPreventionConfig
-    ancestry_tracking = True
-    circuit_breaker = CircuitBreakerConfigFactory
-
-
 class SubscriptionFactory(ModelFactory[Subscription]):
     __model__ = Subscription
 
@@ -122,7 +100,6 @@ class CommunicationConfigFactory(ModelFactory[CommunicationConfig]):
     # NatsConfig.url now enforces a scheme allow-list at config load and
     # polyfactory's random string generator picks values that fail it.
     message_bus = MessageBusConfigFactory
-    loop_prevention = LoopPreventionConfigFactory
 
 
 # ── Sample Fixtures ────────────────────────────────────────────────

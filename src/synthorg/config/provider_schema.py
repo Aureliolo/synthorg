@@ -23,7 +23,6 @@ from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
-from synthorg.providers.defaults_config import ProviderModelDefaults
 from synthorg.providers.enums import AuthType
 from synthorg.providers.vram_guard_config import OllamaVramGuardConfig
 
@@ -44,6 +43,33 @@ class LocalModelParams(BaseModel):
         gt=0.0,
         description="Repetition penalty",
     )
+
+
+class ModelCapabilityOverrides(BaseModel):
+    """Operator-declared capability overrides for one model.
+
+    ``extract_model_metadata`` falls back per field to persisted metadata
+    when a provider's card is silent on a capability, but a card can also be
+    silent because the provider has no card at all (Ollama, an unlisted
+    model): there is no probe result to fall back to, and the feature stays
+    off with no path to enable it. Each field here is a three-state
+    override applied on top of the fully-resolved capability in
+    ``build_capabilities``: ``True``/``False`` forces the value regardless
+    of what the card or probe reported, and ``None`` (the default, and the
+    explicit-null wire value) means no override -- the resolved value
+    stands. The operator who knows their own model gets the final word,
+    per the config precedence ladder (card, then operator).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    supports_tools: bool | None = Field(default=None)
+    supports_vision: bool | None = Field(default=None)
+    supports_streaming: bool | None = Field(default=None)
+    supports_embeddings: bool | None = Field(default=None)
+    supports_image_generation: bool | None = Field(default=None)
+    supports_reasoning: bool | None = Field(default=None)
+    supports_prompt_caching: bool | None = Field(default=None)
 
 
 class ProviderModelConfig(BaseModel):
@@ -99,6 +125,13 @@ class ProviderModelConfig(BaseModel):
         description=(
             "Set by the periodic model-refresh service when the id is no "
             "longer advertised by its provider; None means current."
+        ),
+    )
+    capability_overrides: ModelCapabilityOverrides | None = Field(
+        default=None,
+        description=(
+            "Operator-declared capability overrides applied on top of the "
+            "resolved metadata; None means no override on any field."
         ),
     )
 
@@ -216,14 +249,6 @@ class ProviderConfig(BaseModel):
     degradation: DegradationConfig = Field(
         default_factory=DegradationConfig,
         description="Degradation strategy when quota exhausted",
-    )
-    defaults: ProviderModelDefaults = Field(
-        default_factory=ProviderModelDefaults,
-        description=(
-            "Last-resort defaults applied when a driver cannot discover "
-            "per-model metadata (currently used by the LiteLLM driver's "
-            "fallback ``max_output_tokens``)."
-        ),
     )
     preset_name: NotBlankStr | None = Field(
         default=None,

@@ -1,10 +1,9 @@
 """Communication feature state slice.
 
 Holds the messaging / event-stream services: the message bus + message
-service, the event-stream hub and interrupt store, and the delegation
-record store. The bus, hub, interrupt store, and delegation store are
-constructor-injected; the rest are wired lazily. All fields are
-``None`` until wired; readers guard accordingly.
+service, and the event-stream hub and interrupt store. The bus, hub,
+and interrupt store are constructor-injected; the rest are wired
+lazily. All fields are ``None`` until wired; readers guard accordingly.
 """
 
 from pydantic import ConfigDict
@@ -12,9 +11,6 @@ from pydantic import ConfigDict
 from synthorg._core.features import BaseFeatureStateSlice, require_service
 from synthorg.api.state_slices import AppStateSliceMixin
 from synthorg.communication.bus_protocol import MessageBus
-from synthorg.communication.delegation.record_store import (
-    DelegationRecordStore,
-)
 from synthorg.communication.event_stream.interrupt import InterruptStore
 from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.communication.messages.service import MessageService
@@ -29,7 +25,6 @@ class CommunicationStateSlice(BaseFeatureStateSlice):
     message_service: MessageService | None = None
     event_stream_hub: EventStreamHub | None = None
     interrupt_store: InterruptStore | None = None
-    delegation_record_store: DelegationRecordStore | None = None
 
 
 def message_bus_of(app_state: AppStateSliceMixin) -> MessageBus:

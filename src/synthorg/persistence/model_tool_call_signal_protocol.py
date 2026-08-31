@@ -29,10 +29,8 @@ class ModelToolCallSignal(BaseModel):
             (an absent row reads as a clean zero score). When it crosses
             the configured threshold the model is downgraded.
         decayed_at: Epoch seconds (UTC wall clock) at which
-            ``failure_score`` was last recomputed. Stored as a float (the
-            same decay-arithmetic timing representation as
-            ``CircuitBreakerStateRecord.opened_at``) so the next
-            observation can decay the score forward across process
+            ``failure_score`` was last recomputed. Stored as a float so the
+            next observation can decay the score forward across process
             restarts without an ISO round-trip.
     """
 

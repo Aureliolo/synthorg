@@ -40,8 +40,6 @@ class ToolDefinitionFactory(ModelFactory[ToolDefinition]):
         "required": ["location"],
     }
     l1_metadata = None
-    l2_body = None
-    l3_resources = ()
 
 
 class ToolCallFactory(ModelFactory[ToolCall]):
@@ -107,15 +105,9 @@ class ModelCapabilitiesFactory(ModelFactory[ModelCapabilities]):
     __model__ = ModelCapabilities
     model_id = "test-model"
     provider = "test-provider"
-    max_context_tokens = 200_000
-    max_output_tokens = 8_192
     supports_tools = True
     supports_vision = True
     supports_streaming = True
-    supports_streaming_tool_calls = True
-    supports_system_messages = True
-    cost_per_1k_input = 0.003
-    cost_per_1k_output = 0.015
 
 
 # ── FakeProvider for protocol/base tests ──────────────────────────
@@ -264,14 +256,9 @@ def sample_model_capabilities() -> ModelCapabilities:
         model_id="test-model",
         provider="test-provider",
         max_context_tokens=200_000,
-        max_output_tokens=8_192,
         supports_tools=True,
         supports_vision=True,
         supports_streaming=True,
-        supports_streaming_tool_calls=True,
-        supports_system_messages=True,
-        cost_per_1k_input=0.003,
-        cost_per_1k_output=0.015,
     )
 
 

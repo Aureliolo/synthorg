@@ -1,7 +1,6 @@
 """AuditChainSink -- logging handler that signs and chains security events."""
 
 import concurrent.futures
-import hashlib
 import inspect
 import json
 import logging
@@ -19,11 +18,21 @@ from synthorg.observability import (
     log_exception_redacted,
     safe_error_description,
 )
+from synthorg.observability.audit_chain._record_extraction import (
+    build_binding_payload,
+    extract_event_dict,
+    extract_event_name,
+    optional_field,
+)
 from synthorg.observability.audit_chain.chain import ChainEntry, HashChain
 from synthorg.observability.audit_chain.config import AuditChainConfig
 from synthorg.observability.audit_chain.payloads import AuditChainEventPayload
 from synthorg.observability.audit_chain.protocol import SignedPayload
 from synthorg.observability.audit_chain.timestamping import TimestampResult
+from synthorg.observability.audit_chain.verifier import (
+    AuditChainVerifier,
+    ChainVerificationResult,
+)
 from synthorg.observability.events.audit_chain import (
     AUDIT_CHAIN_CALLBACK_ERROR,
     AUDIT_CHAIN_CONFIG_ERROR,
@@ -72,110 +81,6 @@ if TYPE_CHECKING:
 AppendCallback = Callable[[str, int, float], None]
 
 logger = get_logger(__name__)
-
-
-def _build_binding_payload(
-    *,
-    tail_hash: str,
-    event_data: bytes,
-    signature: bytes,
-) -> bytes:
-    """Return the bytes a TSA should timestamp for an append.
-
-    Including the current tail hash, a digest of the event data, and
-    the signature produces a per-append payload that an attacker
-    cannot precompute. The resulting TSA token is cryptographically
-    bound to both the prior chain state and the specific event being
-    appended, so replaying the token on a different append (or a
-    different chain) fails hash binding at verification.
-    """
-    hasher = hashlib.sha256()
-    hasher.update(tail_hash.encode("utf-8"))
-    hasher.update(b"\x00")
-    hasher.update(event_data)
-    hasher.update(b"\x00")
-    hasher.update(signature)
-    return hasher.digest()
-
-
-def _extract_event_dict(record: logging.LogRecord) -> dict[str, object] | None:
-    """Return the structlog event_dict bridged onto the record, if any.
-
-    ``structlog.stdlib.ProcessorFormatter.wrap_for_formatter`` sets
-    ``record.msg`` to the event_dict (or a ``(event_dict, ...)`` tuple),
-    so the structured kwargs a caller passed (``principal``, ``resource``,
-    ...) live INSIDE the dict, not as ``record`` attributes. Plain stdlib
-    emissions (``logger.info("security.x")``) keep ``msg`` a string and
-    carry their structured fields as record attributes via ``extra=`` --
-    that path is handled by the ``getattr`` fallback in
-    :func:`_optional_field`.
-
-    Returns:
-        The bridged event_dict, or ``None`` for a plain-string record.
-    """
-    msg = record.msg
-    if isinstance(msg, dict):
-        return msg
-    if isinstance(msg, tuple) and msg and isinstance(msg[0], dict):
-        return msg[0]
-    return None
-
-
-def _optional_field(
-    record: logging.LogRecord,
-    event_dict: dict[str, object] | None,
-    name: str,
-) -> str | None:
-    """Resolve an optional forensic field from the event_dict or record.
-
-    Prefers the structlog event_dict (where ``logger.info(event, **kw)``
-    kwargs land) and falls back to a stdlib ``record`` attribute for
-    plain ``extra=``-style emissions. Coerces non-string values to ``str``
-    to match the ``default=str`` JSON serialisation the chain hashes.
-
-    Returns:
-        The field value as a string, or ``None`` when absent on both.
-    """
-    raw: object = None
-    if event_dict is not None:
-        raw = event_dict.get(name)
-    if raw is None:
-        raw = getattr(record, name, None)
-    if raw is None:
-        return None
-    return raw if isinstance(raw, str) else str(raw)
-
-
-def _extract_event_name(record: logging.LogRecord) -> str | None:
-    """Return the canonical event name from a stdlib LogRecord.
-
-    Handles three shapes of ``record.msg`` produced by the codebase:
-
-    * ``str`` -- a plain ``logger.info("security.x.y")`` call. The
-      string IS the event name.
-    * ``dict`` -- a structlog event_dict bridged via
-      :func:`structlog.stdlib.LoggerFactory` BEFORE
-      ``wrap_for_formatter`` has been applied. The event name lives at
-      ``msg["event"]``.
-    * ``tuple`` of ``(event_dict, foreign_pre_chain)`` -- a structlog
-      record post ``wrap_for_formatter``. The first tuple element is
-      the event_dict.
-
-    Returns ``None`` when the shape doesn't match any known pattern; the
-    caller treats that as "not a security event" AND logs a warning so
-    a future logging-bridge change is visible to operators rather than
-    silently dropping security events on the floor.
-    """
-    msg = record.msg
-    if isinstance(msg, str):
-        return record.getMessage()
-    if isinstance(msg, dict):
-        event = msg.get("event")
-        return event if isinstance(event, str) else None
-    if isinstance(msg, tuple) and msg and isinstance(msg[0], dict):
-        event = msg[0].get("event")
-        return event if isinstance(event, str) else None
-    return None
 
 
 # Dedicated thread pool for async-to-sync bridging.  A single worker
@@ -266,13 +171,28 @@ class AuditChainSink(logging.Handler):
         self._persistence_writer: AuditChainPersistenceWriter | None = None
 
     async def attach_persistence(self, writer: AuditChainPersistenceWriter) -> None:
-        """Hydrate the live chain, start the writer, and register it.
+        """Hydrate the live chain from durable storage, then start the writer.
 
         Called from the startup wiring once the persistence backend is
         connected and before traffic. Hydration rebuilds the in-memory
         chain (tail hash + entries) from durable storage so verification
-        survives restarts; afterwards appended entries are handed to
-        ``writer.enqueue`` inside the sink lock.
+        survives restarts. Full verification (hash continuity AND every
+        entry's signature) is deliberately left to the caller's own
+        ``AuditChainVerificationScheduler``: its first cycle runs eagerly
+        on ``start()``, before any wait, so a scheduler started immediately
+        after this returns already IS the boot-time check. A second
+        explicit walk here would duplicate the same O(N) signature
+        verification on every restart. Afterwards appended entries are
+        handed to ``writer.enqueue`` inside the sink lock.
+
+        ``writer.hydrate`` is handed a DETACHED chain, never the live
+        ``self._chain``, so its paginated repository reads (``await``,
+        potentially many) can never interleave with a concurrent
+        ``emit()``'s unlocked read of the live chain. Once hydration
+        finishes, the loaded entries are swapped into the live chain in
+        one synchronous, lock-held step (no ``await`` inside the lock,
+        so a re-entrant ``emit()`` on this same thread cannot deadlock on
+        a lock this coroutine already holds).
 
         Raises:
             TypeError: If ``writer.enqueue`` is a coroutine function. The
@@ -283,9 +203,28 @@ class AuditChainSink(logging.Handler):
         if inspect.iscoroutinefunction(writer.enqueue):
             msg = "AuditChainPersistenceWriter.enqueue must be synchronous"
             raise TypeError(msg)
-        await writer.hydrate(self._chain)
+        detached = HashChain(initial_hash=self._chain.initial_hash)
+        await writer.hydrate(detached)
+        with self._lock:
+            self._chain.restore(detached.entries)
         await writer.start()
         self._persistence_writer = writer
+
+    async def verify_chain(self) -> ChainVerificationResult:
+        """Verify the live chain's hash continuity and every entry's signature.
+
+        Builds a fresh :class:`AuditChainVerifier` over this sink's own
+        signer, so a caller never needs a second copy of the signing key.
+        Verifies :attr:`chain`, a read-only snapshot, so a concurrent
+        ``emit()`` appending mid-walk (including one triggered by the
+        verifier's own ``security.audit_chain.*`` logging, which this sink
+        captures and re-appends) can never mutate the sequence under it.
+
+        Returns:
+            The :class:`ChainVerificationResult` from walking the snapshot.
+        """
+        verifier = AuditChainVerifier(self._signer)
+        return await verifier.verify_chain(self.chain)
 
     async def aclose_persistence(self) -> None:
         """Detach and stop the durable writer (flushing queued entries)."""
@@ -385,7 +324,7 @@ class AuditChainSink(logging.Handler):
             and the timestamp provider's result over the binding payload.
         """
         signed = await self._signer.sign(data)
-        binding_payload = _build_binding_payload(
+        binding_payload = build_binding_payload(
             tail_hash=self._chain.tail_hash,
             event_data=data,
             signature=signed.signature,
@@ -419,7 +358,7 @@ class AuditChainSink(logging.Handler):
         # canonical event name we filter on. Plain stdlib emissions
         # (``logger.info("security.x.y")``) keep ``msg`` as a string
         # and fall through to ``getMessage()``.
-        msg = _extract_event_name(record)
+        msg = extract_event_name(record)
         if msg is None:
             # Unrecognised record shape: a future logging-bridge change
             # could otherwise silently drop security events on the
@@ -467,22 +406,22 @@ class AuditChainSink(logging.Handler):
         Returns:
             The UTF-8 JSON bytes to sign and append.
         """
-        event_dict = _extract_event_dict(record)
+        event_dict = extract_event_dict(record)
         payload_model = AuditChainEventPayload(
             event=msg,
             level=record.levelname,
             timestamp=record.created,
             module=record.module,
-            tool_name=_optional_field(record, event_dict, "tool_name"),
-            expected_hash=_optional_field(record, event_dict, "expected_hash"),
-            actual_hash=_optional_field(record, event_dict, "actual_hash"),
-            correlation_id=_optional_field(record, event_dict, "correlation_id"),
-            principal=_optional_field(record, event_dict, "principal"),
-            resource=_optional_field(record, event_dict, "resource"),
-            action_type=_optional_field(record, event_dict, "action_type"),
-            error=_optional_field(record, event_dict, "error"),
-            verdict=_optional_field(record, event_dict, "verdict"),
-            model=_optional_field(record, event_dict, "model"),
+            tool_name=optional_field(record, event_dict, "tool_name"),
+            expected_hash=optional_field(record, event_dict, "expected_hash"),
+            actual_hash=optional_field(record, event_dict, "actual_hash"),
+            correlation_id=optional_field(record, event_dict, "correlation_id"),
+            principal=optional_field(record, event_dict, "principal"),
+            resource=optional_field(record, event_dict, "resource"),
+            action_type=optional_field(record, event_dict, "action_type"),
+            error=optional_field(record, event_dict, "error"),
+            verdict=optional_field(record, event_dict, "verdict"),
+            model=optional_field(record, event_dict, "model"),
         )
         payload = payload_model.model_dump(exclude_none=True)
         return json.dumps(

@@ -325,47 +325,24 @@ integration is complete, conflicts requiring human judgment are silently unresol
 
 ## Guardrails Against Swarm Drift
 
-### Delegation Guard (5 Mechanisms)
+### Delegation Guard
 
-**Source**: `src/synthorg/communication/loop_prevention/guard.py`
+The async `DelegationGuard` this section originally analysed
+(`communication/loop_prevention/`, `communication/delegation/`) was superseded by
+`engine/delegation/` (blocking `delegate_and_await` + `InProcessSubAgentRunner`)
+and deleted whole (#2888): production delegation had run through the live
+mechanism all along, so the analysed guard was never in the request path and its
+5-mechanism design (dedup window, rate limiter, circuit breaker) never actually
+protected anything.
 
-The `DelegationGuard` runs 5 checks in order, short-circuiting on first failure:
-
-1. **Ancestry check**: Prevents delegating to an agent in the delegation chain (cycle)
-2. **Max depth**: Configurable limit (default 5); raises `DelegationDepthError`
-3. **Deduplication**: 60s window; identical task content from same delegator is rejected
-4. **Rate limiting**: 10 delegations/min per agent-pair
-5. **Circuit breaker**: Trips after 3 bounces (same pair, short window)
-
-**Vulnerability: circuit breaker bounce count reset**:
-
-After cooldown (default 300s), the circuit breaker evicts the state entry entirely:
-
-```python
-# circuit_breaker.py:112-114
-# Cooldown expired: evict the stale entry
-del self._pairs[key]
-```
-
-This resets the bounce count to 0. A pair that was tripped can resume with a fresh
-counter after 300 seconds. The deduplication window (60s) and rate limiter (10/min) mitigate
-within a single cycle, but slow-burn patterns (where the same pair redelegates with
->60s gaps) can bypass all guards:
-
-- Bounce 1 at t=0 (counted)
-- Bounce 2 at t=90s (outside dedup window, counted)
-- Bounce 3 at t=180s (circuit trips)
-- t=480s: cooldown expires, counter resets to 0
-- Pattern repeats indefinitely
-
-This is a genuine slow-burn delegation vulnerability. The existing 5-mechanism design would
-benefit from an exponential backoff strategy on the circuit breaker reset (e.g., first
-reset at 5 min, second at 10 min, third at 20 min) or a global per-pair bounce counter that
-persists across resets.
-
-**Additional concern**: All delegation guard state is in-memory. A service restart resets
-all circuit breakers, dedup windows, and rate limiters. Immediate post-restart, delegation
-storms that were being suppressed can resume.
+The live mechanism checks ancestry and chain depth in one step
+(`SubAgentDelegationDepthExceededError`, `engine.delegation_max_depth`) and bounds
+a delegated run with `engine.delegation_max_turns` / `engine.delegation_timeout_seconds`.
+It has no dedup window, rate limiter, or circuit breaker: a synchronous,
+awaited call has no window in which a burst of duplicate or rapid delegations
+could accumulate the way an async, fire-and-forget path could, so the
+slow-burn bounce-reset vulnerability this section originally analysed does not
+apply to it. See [communication-coordination.md](../design/communication-coordination.md).
 
 ### Stagnation Detection
 

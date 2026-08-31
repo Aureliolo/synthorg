@@ -62,9 +62,8 @@ _SCRIPTED_INPUT_TOKENS: Final[int] = 1
 _SCRIPTED_OUTPUT_TOKENS: Final[int] = 1
 _SCRIPTED_COST: Final[float] = 0.0
 _SCRIPTED_IMAGE_COST: Final[float] = 0.0
-_DET_DIGEST_LEN: Final[int] = 12
 _CAP_MAX_CONTEXT_TOKENS: Final[int] = 200_000
-_CAP_MAX_OUTPUT_TOKENS: Final[int] = 8_192
+_DET_DIGEST_LEN: Final[int] = 12
 
 
 class ScriptedProviderExhaustedError(DomainError):
@@ -376,12 +375,8 @@ class ScriptedDriver(ImageGenerationMixin, BaseCompletionProvider):
             model_id=model or _DEFAULT_MODEL_ID,
             provider=self._provider_name,
             max_context_tokens=_CAP_MAX_CONTEXT_TOKENS,
-            max_output_tokens=_CAP_MAX_OUTPUT_TOKENS,
             supports_tools=True,
             supports_streaming=True,
-            supports_system_messages=True,
-            cost_per_1k_input=_SCRIPTED_COST,
-            cost_per_1k_output=_SCRIPTED_COST,
         )
 
     @override

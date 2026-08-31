@@ -1,6 +1,6 @@
 ---
 title: Communication Coordination
-description: Loop prevention, MCP service facades, and multi-agent failure pattern guardrails.
+description: Delegation depth/cycle guard, MCP service facades, and multi-agent failure pattern guardrails.
 ---
 
 # Communication Coordination
@@ -10,41 +10,43 @@ blocked, and known multi-agent failure modes carry explicit guardrails.
 
 See also: [Communication](communication.md) (transport), [A2A Gateway](communication-a2a.md) (federation), [Event Stream](communication-events.md) (SSE + HITL).
 
-## Loop Prevention
+## Delegation Depth and Cycle Guard
 
-Agent communication loops (A delegates to B who delegates back to A) are a
-critical risk. The framework enforces multiple safeguards:
+Blocking sub-agent delegation (`engine/delegation/`) is bounded by one guard
+rather than a persisted per-pair state machine. Before a supervisor's
+`delegate_and_await` tool spawns a child agent, `InProcessSubAgentRunner`
+(`engine/delegation/runner.py`) walks the task's parent-task chain and
+refuses when either condition holds:
 
-| Mechanism | Description | Default |
-|-----------|-------------|---------|
-| **Max delegation depth** | Hard limit on chain length (A->B->C->D stops at depth N) | 5 |
-| **Message rate limit** | Max messages per agent pair within a time window | 10 per minute |
-| **Identical request dedup** | Detects and rejects duplicate task delegations within a window | 60s window |
-| **Circuit breaker** | If an agent pair exceeds the bounce threshold, block further messages until manual reset or cooldown; the cooldown grows by exponential backoff on repeated trips | 3 bounces, 5min initial cooldown (capped at 1hr) |
-| **Task ancestry tracking** | Every delegated task carries its full delegation chain; agents cannot delegate back to any ancestor in the chain | Always on |
+| Condition | Check | Default |
+|-----------|-------|---------|
+| **Chain depth** | Refuse at or past `engine.delegation_max_depth` | 5 |
+| **Cycle** | The target agent already appears as an ancestor task's assignee (including self-delegation) | Always on |
 
-???+ example "Loop prevention configuration"
+Both checks run in one pass over the parent-task chain, bounded by
+`max_depth + 1` iterations. There is no separate persisted state to expire
+or rehydrate: the chain itself, walked from the task graph, is the state. A
+refusal raises `SubAgentDelegationDepthExceededError`, surfaced to the
+supervisor as an ordinary tool failure on its next turn.
+
+Two further caps apply to the child run itself, both read live per
+delegation: `engine.delegation_max_turns` bounds the child's own turn count,
+and `engine.delegation_timeout_seconds` bounds its wall-clock run (`0`
+means no limit). `engine.delegation_enabled` is the feature's kill switch.
+
+???+ example "Delegation depth configuration"
 
     ```yaml
-    loop_prevention:
-      max_delegation_depth: 5
-      rate_limit:
-        max_per_pair_per_minute: 10
-        burst_allowance: 3
-      dedup_window_seconds: 60
-      circuit_breaker:
-        bounce_threshold: 3
-        cooldown_seconds: 300
+    engine:
+      delegation_enabled: true
+      delegation_max_depth: 5
+      delegation_max_turns: 10
+      delegation_timeout_seconds: 0.0
     ```
 
-    Ancestry tracking is always enabled and is not user-configurable.
-
-When a loop is detected, the framework:
-
-1. Blocks the looping message
-2. Notifies the sending agent with the detected loop chain
-3. Escalates to the sender's manager (or human if at top of hierarchy)
-4. Logs the loop for analytics and process improvement
+This mechanism is unrelated to `coordination.max_delegation_rounds`, which
+bounds the coordinator's own re-planning rounds rather than sub-agent
+delegation depth.
 
 ---
 
@@ -92,20 +94,10 @@ participation.
 
 ### Delegation Guard
 
-Five mechanisms protect against swarm drift (`communication/loop_prevention/guard.py`):
-
-1. Ancestry check (cycle prevention)
-2. Max delegation depth (default 5)
-3. Content deduplication (60s window)
-4. Per-pair rate limiting (10/min)
-5. Circuit breaker (3 bounces, exponential backoff cooldown capped at `max_cooldown_seconds`)
-
-Circuit breaker uses exponential backoff: `cooldown = base * 2^(trip_count - 1)`,
-capped at `max_cooldown_seconds` (default 3600s). On cooldown expiry, the bounce count
-resets but the trip count is preserved, so successive trips produce progressively longer
-cooldowns. Circuit breaker state (trip count, bounce count) is persisted to SQLite
-via `CircuitBreakerStateRepository` so guardrails survive restarts. Dedup window and rate
-limiter remain in-memory (short-lived by design).
+Swarm drift via sub-agent delegation is bounded by the ancestry + depth guard
+described above (`engine/delegation/runner.py`): a chain deeper than
+`engine.delegation_max_depth`, or a target that already appears as an
+ancestor's assignee, is refused before the child agent is spawned.
 
 ### Microservices Anti-Patterns: Assessment
 

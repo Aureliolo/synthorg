@@ -72,9 +72,6 @@ def _stub_capabilities(model_id: str) -> ModelCapabilities:
         model_id=model_id,
         provider="test-provider",
         max_context_tokens=8_000,
-        max_output_tokens=2_000,
-        cost_per_1k_input=0.001,
-        cost_per_1k_output=0.002,
         supports_tools=True,
         supports_vision=False,
     )

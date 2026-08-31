@@ -408,11 +408,9 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
     ) -> ModelCapabilities:
         """Build ``ModelCapabilities`` from config + LiteLLM info.
 
-        Queries LiteLLM's model registry for metadata (tool support,
-        vision, max output tokens).  Falls back to
-        :class:`ProviderModelDefaults.fallback_max_output_tokens` when
-        LiteLLM has no data.  The final ``max_output_tokens`` is
-        capped at the model's configured ``max_context``.
+        Queries LiteLLM's model registry for capability metadata (tool
+        support, vision, reasoning, ...), falling back per field to the
+        persisted config-layer metadata when LiteLLM has no data.
 
         Returns:
             A ``ModelCapabilities`` built from the static preset config
@@ -485,9 +483,6 @@ class LiteLLMDriver(ImageGenerationMixin, BaseCompletionProvider):
             model_config,
             routing_key=self._routing_key,
             provider_name=self._provider_name,
-            fallback_max_output_tokens=(
-                self._config.defaults.fallback_max_output_tokens
-            ),
         )
 
     # ── Model resolution ─────────────────────────────────────────

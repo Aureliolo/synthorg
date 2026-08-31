@@ -40,11 +40,6 @@ deployment that never resolves the setting still gets timeouts.
 """
 
 
-def is_timeout_enforcement_enabled() -> bool:
-    """Return the current cached flag value."""
-    return _enforcement_enabled
-
-
 def set_timeout_enforcement_enabled(*, value: bool) -> None:
     """Set the process-wide enforcement flag.
 

@@ -197,6 +197,7 @@ def _enrich_unknown_via_litellm(
             litellm_provider=litellm_provider,
             model_id=model.id,
             parser=parser,
+            base=model.metadata,
         )
         update: dict[str, object] = {"metadata": metadata}
         # Back-fill pricing from LiteLLM only when the operator has not already

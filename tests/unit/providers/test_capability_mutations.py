@@ -326,6 +326,343 @@ class TestModelMutations:
 
 
 @pytest.mark.unit
+class TestUpdateModelCapabilityOverrides:
+    async def test_partial_update_merges_onto_existing_overrides(
+        self,
+        service: ProviderManagementService,
+        actor: ProviderAuditActor,
+    ) -> None:
+        from synthorg.api.dto_provider_capabilities import (
+            CapabilityOverridesUpdateRequest,
+        )
+        from synthorg.config.schema import ModelCapabilityOverrides
+
+        model = ProviderModelConfig(
+            id="example-expert-001",
+            capability_overrides=ModelCapabilityOverrides(supports_vision=True),
+        )
+        config = _make_provider_config(models=(model,))
+        service._config_resolver.get_provider_configs = AsyncMock(  # type: ignore[method-assign]
+            return_value={"cloud-test": config},
+        )
+
+        updated = await service.update_model_capability_overrides(
+            "cloud-test",
+            "example-expert-001",
+            CapabilityOverridesUpdateRequest(supports_prompt_caching=True),
+        )
+
+        assert updated.capability_overrides is not None
+        assert updated.capability_overrides.supports_vision is True
+        assert updated.capability_overrides.supports_prompt_caching is True
+
+    async def test_audits_under_its_own_distinct_event_type(
+        self,
+        service: ProviderManagementService,
+        audit_repo: _FakeAuditRepo,
+        actor: ProviderAuditActor,
+    ) -> None:
+        """Not the shared ``model_config_updated`` local-params event type."""
+        from synthorg.api.dto_provider_capabilities import (
+            CapabilityOverridesUpdateRequest,
+        )
+
+        model = ProviderModelConfig(id="example-expert-001")
+        config = _make_provider_config(models=(model,))
+        service._config_resolver.get_provider_configs = AsyncMock(  # type: ignore[method-assign]
+            return_value={"cloud-test": config},
+        )
+
+        await service.update_model_capability_overrides(
+            "cloud-test",
+            "example-expert-001",
+            CapabilityOverridesUpdateRequest(supports_prompt_caching=True),
+        )
+
+        assert len(audit_repo.records) == 1
+        assert audit_repo.records[0].event_type == "model_capability_overrides_updated"
+
+    async def test_explicit_null_clears_a_field(
+        self,
+        service: ProviderManagementService,
+        actor: ProviderAuditActor,
+    ) -> None:
+        from synthorg.api.dto_provider_capabilities import (
+            CapabilityOverridesUpdateRequest,
+        )
+        from synthorg.config.schema import ModelCapabilityOverrides
+
+        model = ProviderModelConfig(
+            id="example-expert-001",
+            capability_overrides=ModelCapabilityOverrides(supports_vision=True),
+        )
+        config = _make_provider_config(models=(model,))
+        service._config_resolver.get_provider_configs = AsyncMock(  # type: ignore[method-assign]
+            return_value={"cloud-test": config},
+        )
+
+        updated = await service.update_model_capability_overrides(
+            "cloud-test",
+            "example-expert-001",
+            CapabilityOverridesUpdateRequest(supports_vision=None),
+        )
+
+        assert updated.capability_overrides is not None
+        assert updated.capability_overrides.supports_vision is None
+
+    async def test_unknown_model_raises(
+        self,
+        service: ProviderManagementService,
+        actor: ProviderAuditActor,
+    ) -> None:
+        from synthorg.api.dto_provider_capabilities import (
+            CapabilityOverridesUpdateRequest,
+        )
+        from synthorg.providers.errors import ProviderModelNotFoundError
+
+        with pytest.raises(ProviderModelNotFoundError):
+            await service.update_model_capability_overrides(
+                "cloud-test",
+                "missing-model",
+                CapabilityOverridesUpdateRequest(supports_tools=True),
+            )
+
+    async def test_unknown_provider_raises(
+        self,
+        service: ProviderManagementService,
+        actor: ProviderAuditActor,
+    ) -> None:
+        from synthorg.api.dto_provider_capabilities import (
+            CapabilityOverridesUpdateRequest,
+        )
+        from synthorg.providers.errors import ProviderNotFoundError
+
+        with pytest.raises(ProviderNotFoundError):
+            await service.update_model_capability_overrides(
+                "unknown-provider",
+                "example-expert-001",
+                CapabilityOverridesUpdateRequest(supports_tools=True),
+            )
+
+    async def test_empty_patch_is_rejected_at_the_dto(self) -> None:
+        from pydantic import ValidationError
+
+        from synthorg.api.dto_provider_capabilities import (
+            CapabilityOverridesUpdateRequest,
+        )
+
+        with pytest.raises(ValidationError):
+            CapabilityOverridesUpdateRequest()
+
+    def test_unknown_field_is_rejected_not_silently_attached(self) -> None:
+        """``model_copy(update=...)`` never validates, even on a frozen,
+
+        extra="forbid" model, so the merge must round-trip through
+        model_validate instead: an unrecognised key must raise rather than
+        attach as a live but unvalidated attribute.
+        """
+        from pydantic import ValidationError
+
+        from synthorg.providers.management._capability_helpers import (
+            resolve_capability_override_update,
+        )
+
+        model = ProviderModelConfig(id="example-expert-001")
+        config = _make_provider_config(models=(model,))
+
+        with pytest.raises(ValidationError):
+            resolve_capability_override_update(
+                config,
+                provider_name="cloud-test",
+                model_id="example-expert-001",
+                explicit={"not_a_real_field": True},
+            )
+
+    async def test_tools_override_cannot_undo_a_runtime_proven_incapable_model(
+        self,
+        service: ProviderManagementService,
+        actor: ProviderAuditActor,
+    ) -> None:
+        """An override cannot re-enable tool calling the runtime disproved.
+
+        Only ``mark_tool_calls_verified`` may clear a
+        ``tool_calls_verified=False`` runtime finding; a capability
+        override is a static declaration and must not be able to silently
+        undo an observed, authoritative failure.
+        """
+        from synthorg.api.dto_provider_capabilities import (
+            CapabilityOverridesUpdateRequest,
+        )
+        from synthorg.config.model_metadata import ModelMetadata
+
+        model = ProviderModelConfig(
+            id="example-expert-001",
+            metadata=ModelMetadata(tool_calls_verified=False),
+        )
+        config = _make_provider_config(models=(model,))
+        service._config_resolver.get_provider_configs = AsyncMock(  # type: ignore[method-assign]
+            return_value={"cloud-test": config},
+        )
+
+        with pytest.raises(ProviderValidationError, match="tool_calls_verified"):
+            await service.update_model_capability_overrides(
+                "cloud-test",
+                "example-expert-001",
+                CapabilityOverridesUpdateRequest(supports_tools=True),
+            )
+
+    async def test_tools_override_false_is_unaffected_by_the_guard(
+        self,
+        service: ProviderManagementService,
+        actor: ProviderAuditActor,
+    ) -> None:
+        """The guard blocks re-enabling, never forcing tools off."""
+        from synthorg.api.dto_provider_capabilities import (
+            CapabilityOverridesUpdateRequest,
+        )
+        from synthorg.config.model_metadata import ModelMetadata
+
+        model = ProviderModelConfig(
+            id="example-expert-001",
+            metadata=ModelMetadata(tool_calls_verified=False),
+        )
+        config = _make_provider_config(models=(model,))
+        service._config_resolver.get_provider_configs = AsyncMock(  # type: ignore[method-assign]
+            return_value={"cloud-test": config},
+        )
+
+        updated = await service.update_model_capability_overrides(
+            "cloud-test",
+            "example-expert-001",
+            CapabilityOverridesUpdateRequest(supports_tools=False),
+        )
+        assert updated.capability_overrides is not None
+        assert updated.capability_overrides.supports_tools is False
+
+    async def test_vision_override_on_the_verify_gate_model_requires_governance(
+        self,
+        service: ProviderManagementService,
+        actor: ProviderAuditActor,
+    ) -> None:
+        """Forcing vision onto the vision-verify-gate model is governed.
+
+        Without confirm+reason the write is rejected: it could make the
+        vision-verify fail-closed check silently pass a model that cannot
+        actually see.
+        """
+        from synthorg.api.dto_provider_capabilities import (
+            CapabilityOverridesUpdateRequest,
+        )
+        from synthorg.settings.errors import SecurityToggleConfirmationRequiredError
+
+        model = ProviderModelConfig(id="example-expert-001")
+        config = _make_provider_config(models=(model,))
+        service._config_resolver.get_provider_configs = AsyncMock(  # type: ignore[method-assign]
+            return_value={"cloud-test": config},
+        )
+        service._config_resolver.get_str = AsyncMock(  # type: ignore[method-assign]
+            return_value='{"provider": "cloud-test", "model_id": "example-expert-001"}',
+        )
+
+        with pytest.raises(SecurityToggleConfirmationRequiredError):
+            await service.update_model_capability_overrides(
+                "cloud-test",
+                "example-expert-001",
+                CapabilityOverridesUpdateRequest(supports_vision=True),
+            )
+
+    async def test_vision_override_on_the_verify_gate_model_succeeds_when_confirmed(
+        self,
+        service: ProviderManagementService,
+        actor: ProviderAuditActor,
+    ) -> None:
+        from synthorg.api.dto_provider_capabilities import (
+            CapabilityOverridesUpdateRequest,
+        )
+
+        model = ProviderModelConfig(id="example-expert-001")
+        config = _make_provider_config(models=(model,))
+        service._config_resolver.get_provider_configs = AsyncMock(  # type: ignore[method-assign]
+            return_value={"cloud-test": config},
+        )
+        service._config_resolver.get_str = AsyncMock(  # type: ignore[method-assign]
+            return_value='{"provider": "cloud-test", "model_id": "example-expert-001"}',
+        )
+
+        updated = await service.update_model_capability_overrides(
+            "cloud-test",
+            "example-expert-001",
+            CapabilityOverridesUpdateRequest(
+                supports_vision=True,
+                confirm=True,
+                reason="operator confirmed this model can see",
+            ),
+        )
+        assert updated.capability_overrides is not None
+        assert updated.capability_overrides.supports_vision is True
+
+    async def test_vision_override_on_an_unrelated_model_is_unguarded(
+        self,
+        service: ProviderManagementService,
+        actor: ProviderAuditActor,
+    ) -> None:
+        """The vision-verify-gate binding names a different model, so this
+        write is a plain unguarded capability declaration."""
+        from synthorg.api.dto_provider_capabilities import (
+            CapabilityOverridesUpdateRequest,
+        )
+
+        model = ProviderModelConfig(id="example-expert-001")
+        config = _make_provider_config(models=(model,))
+        service._config_resolver.get_provider_configs = AsyncMock(  # type: ignore[method-assign]
+            return_value={"cloud-test": config},
+        )
+        service._config_resolver.get_str = AsyncMock(  # type: ignore[method-assign]
+            return_value='{"provider": "cloud-test", "model_id": "some-other-model"}',
+        )
+
+        updated = await service.update_model_capability_overrides(
+            "cloud-test",
+            "example-expert-001",
+            CapabilityOverridesUpdateRequest(supports_vision=True),
+        )
+        assert updated.capability_overrides is not None
+        assert updated.capability_overrides.supports_vision is True
+
+    async def test_vision_override_confirming_an_already_true_claim_is_a_noop(
+        self,
+        service: ProviderManagementService,
+        actor: ProviderAuditActor,
+    ) -> None:
+        """Re-declaring a capability the model's own metadata already claims
+        is never a weakening transition, so it needs no governance."""
+        from synthorg.api.dto_provider_capabilities import (
+            CapabilityOverridesUpdateRequest,
+        )
+        from synthorg.config.model_metadata import ModelMetadata
+
+        model = ProviderModelConfig(
+            id="example-expert-001",
+            metadata=ModelMetadata(supports_vision=True),
+        )
+        config = _make_provider_config(models=(model,))
+        service._config_resolver.get_provider_configs = AsyncMock(  # type: ignore[method-assign]
+            return_value={"cloud-test": config},
+        )
+        service._config_resolver.get_str = AsyncMock(  # type: ignore[method-assign]
+            return_value='{"provider": "cloud-test", "model_id": "example-expert-001"}',
+        )
+
+        updated = await service.update_model_capability_overrides(
+            "cloud-test",
+            "example-expert-001",
+            CapabilityOverridesUpdateRequest(supports_vision=True),
+        )
+        assert updated.capability_overrides is not None
+        assert updated.capability_overrides.supports_vision is True
+
+
+@pytest.mark.unit
 class TestCredentialsRotation:
     async def test_rotate_api_key(
         self,

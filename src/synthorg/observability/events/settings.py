@@ -75,3 +75,18 @@ SETTINGS_OBSERVABILITY_REBUILD_FAILED: Final[str] = (
 SETTINGS_OBSERVABILITY_VALIDATION_FAILED: Final[str] = (
     "settings.observability.validation_failed"
 )
+
+# ── Capability-policy ladder reconciliation ───────────────────────
+
+SETTINGS_REASONING_LADDER_REPAIRED: Final[str] = "settings.reasoning_ladder.repaired"
+"""A resolved reasoning-effort tier outranked the tier above it; capped down.
+
+``enforce_engine_ladders`` refuses this at WRITE time, so it can only reach
+here when a registered default moves past a value an operator explicitly
+wrote for a higher-stakes tier before the change (a deployment with an
+explicit ``engine.reasoning_effort_normal`` below a newly-raised
+``engine.reasoning_effort_low`` default, for instance). Capping the
+lower-stakes tier down is always safe: it only ever asks for LESS reasoning
+than before, never a value the model might reject, and the operator's own
+higher-stakes choice is never touched. Fires every boot the inversion
+persists; the operator's own write (of either tier) is what clears it."""

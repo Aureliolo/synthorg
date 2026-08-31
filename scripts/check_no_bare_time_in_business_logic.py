@@ -27,9 +27,6 @@ layer, and the sanctioned plain-callable modules documented in
 
 * ``src/synthorg/core/clock.py``
 * anything under ``src/synthorg/observability/``
-* ``communication/loop_prevention/circuit_breaker.py``
-* ``communication/loop_prevention/dedup.py``
-* ``communication/loop_prevention/rate_limit.py``
 
 Per-line opt-out: append ``# lint-allow: clock-seam -- <reason>`` to
 the offending line (or one of the two preceding lines for a decorator
@@ -63,9 +60,6 @@ _REPO_REL_SRC: Final[str] = "src/synthorg"
 _WHITELIST_FILES: Final[frozenset[str]] = frozenset(
     {
         "src/synthorg/core/clock.py",
-        "src/synthorg/communication/loop_prevention/circuit_breaker.py",
-        "src/synthorg/communication/loop_prevention/dedup.py",
-        "src/synthorg/communication/loop_prevention/rate_limit.py",
         # Browser executor is a standalone Python script staged into
         # the DockerSandbox container; it imports nothing from synthorg
         # and so cannot reach the Clock seam. Issue #1992 / EPIC #1987.

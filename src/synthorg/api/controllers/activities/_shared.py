@@ -1,16 +1,15 @@
 """Data-source fetchers and timeline assembly for the activity feed.
 
 Pure helper module backing ``ActivityController``: the concurrent
-cost/tool/delegation fetchers (each with graceful per-source
-degradation), the performance-tracker and currency resolvers, the
-exception-group spine walkers used to surface a real cause from a
-``TaskGroup`` failure, and ``_build_timeline`` which merges every
-source into a single chronological timeline. The controller imports
-these as ``from synthorg.api.controllers.activities._shared import ...``.
+cost/tool fetchers (each with graceful per-source degradation), the
+performance-tracker and currency resolvers, the exception-group spine
+walkers used to surface a real cause from a ``TaskGroup`` failure, and
+``_build_timeline`` which merges every source into a single
+chronological timeline. The controller imports these as
+``from synthorg.api.controllers.activities._shared import ...``.
 """
 
 import asyncio
-from collections.abc import Awaitable
 from datetime import datetime
 
 from synthorg.api.state import AppState
@@ -18,9 +17,7 @@ from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.tracker_protocol import collect_all_records
-from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.collections import dedupe_preserving_order
-from synthorg.core.delegation_types import DelegationRecord
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.hr.activity import (
     ActivityEvent,
@@ -48,7 +45,6 @@ logger = get_logger(__name__)
 _SRC_PERFORMANCE_TRACKER = "performance_tracker"
 _SRC_COST_TRACKER = "cost_tracker"
 _SRC_TOOL_INVOCATION_TRACKER = "tool_invocation_tracker"
-_SRC_DELEGATION_RECORD_STORE = "delegation_record_store"
 _SRC_BUDGET_CONFIG = "budget_config"
 
 
@@ -117,10 +113,8 @@ async def _run_async_fetchers(
 ) -> tuple[
     tuple[CostRecord, ...],
     tuple[ToolInvocationRecord, ...],
-    tuple[DelegationRecord, ...],
-    tuple[DelegationRecord, ...],
 ]:
-    """Run cost, tool, and delegation fetchers concurrently.
+    """Run cost and tool fetchers concurrently.
 
     Completed tasks have their results extracted; failed or cancelled
     tasks are individually marked as degraded rather than blanket-marking
@@ -134,7 +128,7 @@ async def _run_async_fetchers(
         degraded: Mutable list to append degraded source names to.
 
     Returns:
-        ``(cost_records, tool_invocations, sent, received)`` tuples.
+        ``(cost_records, tool_invocations)`` tuples.
 
     Raises:
         fatal_exc: Raised on the corresponding failure path.
@@ -142,12 +136,6 @@ async def _run_async_fetchers(
     """
     cost_task: asyncio.Task[tuple[tuple[CostRecord, ...], bool]] | None = None
     tool_task: asyncio.Task[tuple[tuple[ToolInvocationRecord, ...], bool]] | None = None
-    del_task: (
-        asyncio.Task[
-            tuple[tuple[DelegationRecord, ...], tuple[DelegationRecord, ...], bool]
-        ]
-        | None
-    ) = None
     try:
         async with asyncio.TaskGroup() as tg:
             cost_task = tg.create_task(
@@ -155,9 +143,6 @@ async def _run_async_fetchers(
             )
             tool_task = tg.create_task(
                 _fetch_tool_invocations(app_state, agent_id, since, now),
-            )
-            del_task = tg.create_task(
-                _fetch_delegation_records(app_state, agent_id, since, now),
             )
     except* (MemoryError, RecursionError) as fatal_eg:
         fatal_exc = _first_leaf_exception(fatal_eg)
@@ -187,7 +172,6 @@ async def _run_async_fetchers(
             for src, task in [
                 (_SRC_COST_TRACKER, cost_task),
                 (_SRC_TOOL_INVOCATION_TRACKER, tool_task),
-                (_SRC_DELEGATION_RECORD_STORE, del_task),
             ]
             if task is None or task.cancelled() or task.exception() is not None
         ]
@@ -209,21 +193,7 @@ async def _run_async_fetchers(
         degraded,
     )
 
-    if (
-        del_task is not None
-        and not del_task.cancelled()
-        and del_task.exception() is None
-    ):
-        del_result = del_task.result()
-        sent, received, del_deg = del_result[0], del_result[1], del_result[2]
-        if del_deg:
-            degraded.append(_SRC_DELEGATION_RECORD_STORE)
-    else:
-        if del_task is not None:
-            degraded.append(_SRC_DELEGATION_RECORD_STORE)
-        sent, received = (), ()
-
-    return cost_records, tool_invocations, sent, received
+    return cost_records, tool_invocations
 
 
 async def _resolve_currency(
@@ -301,7 +271,7 @@ async def _build_timeline(
     if tm_degraded:
         degraded.append(_SRC_PERFORMANCE_TRACKER)
 
-    cost_records, tool_invocations, sent, received = await _run_async_fetchers(
+    cost_records, tool_invocations = await _run_async_fetchers(
         app_state,
         agent_id,
         since,
@@ -316,8 +286,6 @@ async def _build_timeline(
         task_metrics=task_metrics,
         cost_records=cost_records,
         tool_invocations=tool_invocations,
-        delegation_records_sent=sent,
-        delegation_records_received=received,
         currency=currency,
     )
     return timeline, list(dedupe_preserving_order(degraded))
@@ -475,90 +443,3 @@ async def _fetch_tool_invocations(
             error="tool_invocation_tracker_unavailable",
         )
         return (), True
-
-
-async def _safe_delegation_query(
-    coro: Awaitable[tuple[DelegationRecord, ...]],
-    error_label: str,
-) -> tuple[tuple[DelegationRecord, ...], bool]:
-    """Run a delegation store query with graceful degradation.
-
-    Returns:
-        ``(records, is_degraded)`` tuple.
-
-    Raises:
-        MemoryError: Raised on the corresponding failure path.
-        RecursionError: Raised on the corresponding failure path.
-        ServiceUnavailableError: Raised on the corresponding failure path.
-    """
-    try:
-        return (await coro), False
-    except MemoryError, RecursionError:
-        logger.error(
-            API_REQUEST_ERROR,
-            endpoint="activities",
-            source=error_label,
-            detail="fatal error",
-        )
-        raise
-    except ServiceUnavailableError:
-        logger.warning(
-            API_REQUEST_ERROR,
-            endpoint="activities",
-            source=error_label,
-            detail="service unavailable",
-        )
-        raise
-    except Exception:  # noqa: BLE001 -- best-effort: log and skip
-        logger.warning(
-            API_REQUEST_ERROR,
-            endpoint="activities",
-            error=error_label,
-        )
-        return (), True
-
-
-async def _fetch_delegation_records(
-    app_state: AppState,
-    agent_id: str | None,
-    since: datetime,
-    now: datetime,
-) -> tuple[
-    tuple[DelegationRecord, ...],
-    tuple[DelegationRecord, ...],
-    bool,
-]:
-    """Fetch delegation records (sent + received), falling back to empty.
-
-    Returns:
-        ``(sent, received, is_degraded)`` tuple.
-    """
-    store = app_state.slice(CommunicationStateSlice).delegation_record_store
-    if store is None:
-        return (), (), False
-    if agent_id is None:
-        # Org-wide: each record generates both perspectives.
-        all_records, degraded = await _safe_delegation_query(
-            store.get_all_records(start=since, end=now),
-            "delegation_record_store_unavailable",
-        )
-        return all_records, all_records, degraded
-
-    # Agent-specific: fetch each perspective concurrently so a
-    # failure in one does not discard the other.
-    async with asyncio.TaskGroup() as tg:
-        sent_task = tg.create_task(
-            _safe_delegation_query(
-                store.get_records_as_delegator(agent_id, start=since, end=now),
-                "delegation_delegator_query_failed",
-            ),
-        )
-        recv_task = tg.create_task(
-            _safe_delegation_query(
-                store.get_records_as_delegatee(agent_id, start=since, end=now),
-                "delegation_delegatee_query_failed",
-            ),
-        )
-    sent, sent_deg = sent_task.result()
-    received, recv_deg = recv_task.result()
-    return sent, received, sent_deg or recv_deg

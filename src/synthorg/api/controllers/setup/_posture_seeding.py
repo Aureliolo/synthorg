@@ -8,17 +8,24 @@ rendered ``RootConfig`` by the template renderer; this module writes the
 settings-resident flags that the boot wiring and the live capability
 gates read.
 
-A bundle only ever turns a flag on, and every flag names the settings
-writes it stands for, so a flag the posture leaves off stays at its
-registered default. The toolsmith is intentionally not posture driven:
-enabling it needs an explicit, deployment-specific capability allowlist,
-so it stays an operator opt-in.
+Every flag names the settings writes it stands for, so a flag the posture
+leaves off stays at its registered default. A flag is declared here only
+when its write actually differs from that default: steering, propose,
+routing and group-chat all default on already, so a posture "enabling"
+them has nothing left to write, and those flags carry no dispatch row.
+``agent_invite`` and ``direct_mcp`` default off, so writing them is a real
+opt-in; ``economical_reasoning`` is the one flag that lowers a value,
+dropping the reasoning-effort ceiling at the two stakes levels that still
+have room to give one up. The toolsmith is intentionally not posture
+driven: enabling it needs an explicit, deployment-specific capability
+allowlist, so it stays an operator opt-in.
 """
 
 import asyncio
+from typing import Final
 
 from synthorg.config.posture_config import PostureConfig
-from synthorg.core.completion_enums import REASONING_UNSET, ReasoningEffort
+from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import SETUP_POSTURE_SEEDED
 from synthorg.settings.service import SettingsService
@@ -30,26 +37,26 @@ from synthorg.templates.schema import CompanyTemplate
 logger = get_logger(__name__)
 
 #: One notch down the reasoning ladder where there is a notch to give up:
-#: low and normal already sit unset, so only high and critical move. That is
-#: what the cost-disciplined posture buys, thinking budget rather than the
-#: capability floor, so the rung a task must run on is unchanged.
-_ECONOMICAL_REASONING: tuple[tuple[str, str, str], ...] = (
-    ("engine", "reasoning_effort_low", REASONING_UNSET),
-    ("engine", "reasoning_effort_normal", REASONING_UNSET),
+#: low and normal already sit at the registered floor ("low"), so only high
+#: and critical have room to move. That is what the cost-disciplined posture
+#: buys, thinking budget rather than the capability floor, so the rung a
+#: task must run on is unchanged.
+_ECONOMICAL_REASONING: Final[tuple[tuple[str, str, str], ...]] = (
     ("engine", "reasoning_effort_high", ReasoningEffort.LOW.value),
     ("engine", "reasoning_effort_critical", ReasoningEffort.MEDIUM.value),
 )
 
-# Posture flag -> the settings writes it stands for. Conversational +
-# steering capabilities are on by default, so a write there is a
-# redundant-but-faithful record of the template's intent; the agent-invite /
-# direct-MCP knobs default off, so the write is the meaningful opt-in.
-_POSTURE_FLAG_SETTINGS: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
-    ("steering", (("cockpit", "steering_proposer_enabled", "true"),)),
+# Posture flag -> the settings writes it stands for. A flag names a write
+# only when the write actually changes something: steering, propose,
+# routing and group-chat all default on already, so a bundle that "turned
+# them on" would write a value equal to the registered default, pinning
+# that row against a future default change with no matching test failure
+# to catch it. The agent-invite / direct-MCP knobs default off, so those
+# writes are the meaningful opt-in.
+_POSTURE_FLAG_SETTINGS: Final[
+    tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...]
+] = (
     ("economical_reasoning", _ECONOMICAL_REASONING),
-    ("chat_propose", (("chief_of_staff", "propose_enabled", "true"),)),
-    ("chat_routing", (("chief_of_staff", "routing_enabled", "true"),)),
-    ("group_chat", (("chief_of_staff", "group_chat_enabled", "true"),)),
     ("agent_invite", (("chief_of_staff", "invite_enabled", "true"),)),
     # Both halves, because either alone is a feature that cannot materialise:
     # the actor's gate refuses without the bridge, and the bridge without the

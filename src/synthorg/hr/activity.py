@@ -1,8 +1,7 @@
 """Activity timeline models and pure functions for building agent timelines.
 
-Merges lifecycle events, task metrics, cost records, tool invocations,
-and delegation records into a unified chronological timeline, and
-filters career-relevant events.
+Merges lifecycle events, task metrics, cost records, and tool invocations
+into a unified chronological timeline, and filters career-relevant events.
 """
 
 import copy
@@ -13,7 +12,6 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY, format_cost_detail
-from synthorg.core.delegation_types import DelegationRecord
 from synthorg.core.run_outcome import RunOutcome
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.enums import ActivityEventType, LifecycleEventType
@@ -293,52 +291,6 @@ def _tool_invocation_to_activity(
     )
 
 
-def _delegation_to_sent_activity(
-    record: DelegationRecord,
-) -> ActivityEvent:
-    """Convert a delegation record to a delegation_sent activity event.
-
-    Returns:
-        Result of type ``ActivityEvent``.
-    """
-    return ActivityEvent(
-        event_type=ActivityEventType.DELEGATION_SENT,
-        timestamp=record.timestamp,
-        # Both parties and both tasks are in ``related_ids``, which is what the
-        # surface links through; naming them here would print their keys.
-        description="Delegated a task",
-        related_ids={
-            "agent_id": str(record.delegator_id),
-            "delegation_id": str(record.delegation_id),
-            "delegatee_id": str(record.delegatee_id),
-            "original_task_id": str(record.original_task_id),
-            "delegated_task_id": str(record.delegated_task_id),
-        },
-    )
-
-
-def _delegation_to_received_activity(
-    record: DelegationRecord,
-) -> ActivityEvent:
-    """Convert a delegation record to a delegation_received activity event.
-
-    Returns:
-        Result of type ``ActivityEvent``.
-    """
-    return ActivityEvent(
-        event_type=ActivityEventType.DELEGATION_RECEIVED,
-        timestamp=record.timestamp,
-        description="Received a delegated task",
-        related_ids={
-            "agent_id": str(record.delegatee_id),
-            "delegation_id": str(record.delegation_id),
-            "delegator_id": str(record.delegator_id),
-            "original_task_id": str(record.original_task_id),
-            "delegated_task_id": str(record.delegated_task_id),
-        },
-    )
-
-
 # ── Cost event redaction ────────────────────────────────────────
 
 # Coupled to the format string in _cost_record_to_activity -- update
@@ -420,8 +372,6 @@ def merge_activity_timeline(
     *,
     cost_records: tuple[CostRecord, ...] = (),
     tool_invocations: tuple[ToolInvocationRecord, ...] = (),
-    delegation_records_sent: tuple[DelegationRecord, ...] = (),
-    delegation_records_received: tuple[DelegationRecord, ...] = (),
     currency: str = DEFAULT_CURRENCY,
 ) -> tuple[ActivityEvent, ...]:
     """Merge multiple event sources into a chronological activity timeline.
@@ -433,8 +383,6 @@ def merge_activity_timeline(
         task_metrics: Task completion metric records.
         cost_records: Per-API-call cost records.
         tool_invocations: Tool invocation records.
-        delegation_records_sent: Delegation records (delegator perspective).
-        delegation_records_received: Delegation records (delegatee perspective).
         currency: ISO 4217 currency code for cost formatting.
 
     Returns:
@@ -455,10 +403,6 @@ def merge_activity_timeline(
         _cost_record_to_activity(r, currency=currency) for r in cost_records
     )
     activities.extend(_tool_invocation_to_activity(r) for r in tool_invocations)
-    activities.extend(_delegation_to_sent_activity(r) for r in delegation_records_sent)
-    activities.extend(
-        _delegation_to_received_activity(r) for r in delegation_records_received
-    )
     activities.sort(key=lambda a: a.timestamp, reverse=True)
     return tuple(activities)
 

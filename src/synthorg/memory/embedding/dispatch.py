@@ -23,6 +23,10 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
+from synthorg.observability.events.budget import (
+    BUDGET_EMBEDDING_COST_RECORDED,
+    BUDGET_EMBEDDING_MODEL_UNPRICED,
+)
 from synthorg.observability.events.memory import (
     MEMORY_EMBEDDING_COST_RECORD_FAILED,
     MEMORY_EMBEDDING_RETRIED,
@@ -272,7 +276,14 @@ async def record_embedding_cost(
         return
     usage = getattr(response, "usage", None)
     prompt_tokens = getattr(usage, "prompt_tokens", 0) if usage else 0
-    cost = getattr(response, "_hidden_params", {}).get("response_cost") or 0.0
+    raw_cost = getattr(response, "_hidden_params", {}).get("response_cost")
+    if raw_cost is None:
+        logger.warning(
+            BUDGET_EMBEDDING_MODEL_UNPRICED,
+            model=format_model_ref(provider, model),
+            setting="cost_per_1k_input/cost_per_1k_output",
+        )
+    cost = raw_cost or 0.0
     try:
         await cost_tracker.record(
             CostRecord(
@@ -299,6 +310,12 @@ async def record_embedding_cost(
             model=format_model_ref(provider, model),
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
+        )
+    else:
+        logger.debug(
+            BUDGET_EMBEDDING_COST_RECORDED,
+            model=format_model_ref(provider, model),
+            cost=cost,
         )
 
 

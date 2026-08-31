@@ -3,8 +3,13 @@
 Separated from :mod:`synthorg.config.provider_schema` so the provider
 schema module stays under its size budget.  ``ModelMetadata`` is the
 *config-layer* record persisted alongside each model; it is distinct
-from the routing-layer :class:`synthorg.providers.capabilities.ModelCapabilities`,
-which is built transiently per request and carries routing-only invariants.
+from :class:`synthorg.providers.capabilities.ModelCapabilities`, which
+is built transiently per request from this record (plus a live LiteLLM
+lookup) and read by capability-gated call sites -- prompt caching,
+reasoning effort, vision verification, image generation, the engine's
+budget-gauge context-window lookup -- never by routing, which resolves
+its own ``ResolvedModel`` from
+:class:`~synthorg.config.provider_schema.ProviderModelConfig` directly.
 """
 
 from datetime import date

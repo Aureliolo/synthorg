@@ -292,21 +292,11 @@ class TestListModelsBatchCapabilities:
         )
         caps_lookup = {
             "m1": ModelCapabilities(
-                model_id="m1",
-                provider="test-provider",
-                max_context_tokens=1024,
-                max_output_tokens=512,
-                cost_per_1k_input=0.001,
-                cost_per_1k_output=0.002,
+                model_id="m1", provider="test-provider", max_context_tokens=1024
             ),
             "m2": None,
             "m3": ModelCapabilities(
-                model_id="m3",
-                provider="test-provider",
-                max_context_tokens=2048,
-                max_output_tokens=1024,
-                cost_per_1k_input=0.003,
-                cost_per_1k_output=0.004,
+                model_id="m3", provider="test-provider", max_context_tokens=2048
             ),
         }
 
@@ -892,6 +882,75 @@ class TestProviderControllerErrorPropagation:
         detail = _select_message(boom, 422)
         assert "sk-supersecret-token" not in detail
         assert "***" in detail
+
+
+@pytest.mark.unit
+class TestUpdateModelCapabilityOverrides:
+    """PATCH /providers/{name}/models/{model_id}/capabilities."""
+
+    async def test_success_returns_the_updated_model_response(self) -> None:
+        from synthorg.api.dto_provider_capabilities import (
+            CapabilityOverridesUpdateRequest,
+        )
+        from synthorg.core.types import NotBlankStr
+
+        state, mgmt = _make_provider_state_and_mgmt()
+        updated_model = ProviderModelConfig(id=NotBlankStr("test-basic-001"))
+        mgmt.update_model_capability_overrides.return_value = updated_model
+
+        ctrl = _provider_controller()
+        result = await ctrl.update_model_capability_overrides.fn(
+            ctrl,
+            state=state,
+            name="test-provider",
+            model_id="test-basic-001",
+            data=CapabilityOverridesUpdateRequest(supports_prompt_caching=True),
+        )
+        assert result.data.id == "test-basic-001"
+        mgmt.update_model_capability_overrides.assert_awaited_once()
+
+    async def test_model_not_found_propagates(self) -> None:
+        from synthorg.api.dto_provider_capabilities import (
+            CapabilityOverridesUpdateRequest,
+        )
+        from synthorg.providers.errors import ProviderModelNotFoundError
+
+        state, mgmt = _make_provider_state_and_mgmt()
+        boom = ProviderModelNotFoundError("Model 'missing' not found")
+        mgmt.update_model_capability_overrides.side_effect = boom
+
+        ctrl = _provider_controller()
+        with pytest.raises(ProviderModelNotFoundError) as info:
+            await ctrl.update_model_capability_overrides.fn(
+                ctrl,
+                state=state,
+                name="test-provider",
+                model_id="missing",
+                data=CapabilityOverridesUpdateRequest(supports_prompt_caching=True),
+            )
+        assert info.value is boom
+        assert info.value.error_code is ErrorCode.MODEL_NOT_FOUND
+
+    async def test_validation_error_propagates(self) -> None:
+        from synthorg.api.dto_provider_capabilities import (
+            CapabilityOverridesUpdateRequest,
+        )
+        from synthorg.providers.errors import ProviderValidationError
+
+        state, mgmt = _make_provider_state_and_mgmt()
+        boom = ProviderValidationError("boom")
+        mgmt.update_model_capability_overrides.side_effect = boom
+
+        ctrl = _provider_controller()
+        with pytest.raises(ProviderValidationError) as info:
+            await ctrl.update_model_capability_overrides.fn(
+                ctrl,
+                state=state,
+                name="test-provider",
+                model_id="test-basic-001",
+                data=CapabilityOverridesUpdateRequest(supports_tools=False),
+            )
+        assert info.value is boom
 
 
 @pytest.mark.unit

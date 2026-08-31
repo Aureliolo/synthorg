@@ -28,6 +28,7 @@ from synthorg.api.controllers.approvals.decisions import ApprovalsDecisionsContr
 from synthorg.api.controllers.approvals.query import ApprovalsQueryController
 from synthorg.api.controllers.artifacts import ArtifactController
 from synthorg.api.controllers.audit import AuditController
+from synthorg.api.controllers.audit_chain import AuditChainController
 from synthorg.api.controllers.autonomy import AutonomyController
 from synthorg.api.controllers.backup import BackupController
 from synthorg.api.controllers.board import BoardController
@@ -260,6 +261,7 @@ BASE_CONTROLLERS: tuple[type[Controller], ...] = (
     EventStreamController,
     InterruptController,
     AuditController,
+    AuditChainController,
     CompletionOracleReportController,
     RedTeamReportController,
     CoordinationMetricsController,

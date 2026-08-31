@@ -24,9 +24,6 @@ from synthorg.meta.rules.custom import CustomRuleDefinition
 from synthorg.persistence._generics import DEFAULT_PAGE_SIZE
 from synthorg.persistence._shared import normalize_utc
 from synthorg.persistence._shared.pagination import validate_pagination_args
-from synthorg.persistence.circuit_breaker_protocol import (
-    CircuitBreakerStateRecord,
-)
 from synthorg.persistence.config import PostgresConfig, SQLiteConfig
 from synthorg.persistence.custom_rule_protocol import CustomRuleFilterSpec
 from synthorg.persistence.integration_inmemory import (
@@ -237,44 +234,6 @@ class FakeSsrfViolationRepository:
             },
         )
         return True
-
-
-class FakeCircuitBreakerStateRepository:
-    """In-memory circuit breaker state repository for tests."""
-
-    def __init__(self) -> None:
-
-        self._store: dict[tuple[str, str], CircuitBreakerStateRecord] = {}
-
-    async def save(self, entity: CircuitBreakerStateRecord) -> None:
-        self._store[(entity.pair_key_a, entity.pair_key_b)] = entity
-
-    async def get(self, entity_id: tuple[str, str]) -> CircuitBreakerStateRecord | None:
-        return self._store.get(entity_id)
-
-    async def list_items(
-        self,
-        *,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> tuple[CircuitBreakerStateRecord, ...]:
-        ordered = sorted(self._store.items(), key=lambda kv: kv[0])
-        return tuple(v for _, v in ordered[offset : offset + limit])
-
-    async def load_all(
-        self,
-        *,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> tuple[CircuitBreakerStateRecord, ...]:
-        ordered = sorted(self._store.items(), key=lambda kv: kv[0])
-        return tuple(v for _, v in ordered[offset : offset + limit])
-
-    async def delete(self, entity_id: tuple[str, str]) -> bool:
-        if entity_id in self._store:
-            del self._store[entity_id]
-            return True
-        return False
 
 
 class FakeModelToolCallSignalRepository:
@@ -786,7 +745,6 @@ class FakePersistenceBackend(PersistenceBackend):
         self._role_versions: FakeVersionRepository[Role] = FakeVersionRepository()
         self._risk_overrides = FakeRiskOverrideRepository()
         self._ssrf_violations = FakeSsrfViolationRepository()
-        self._circuit_breaker_state = FakeCircuitBreakerStateRepository()
         self._model_tool_call_signals = FakeModelToolCallSignalRepository()
         self._model_capability_scores = FakeModelCapabilityScoreRepository()
         self._capability_source_statuses = FakeCapabilitySourceStatusRepository()
@@ -1178,11 +1136,6 @@ class FakePersistenceBackend(PersistenceBackend):
     @override
     def ssrf_violations(self) -> FakeSsrfViolationRepository:
         return self._ssrf_violations
-
-    @property
-    @override
-    def circuit_breaker_state(self) -> FakeCircuitBreakerStateRepository:
-        return self._circuit_breaker_state
 
     @property
     @override

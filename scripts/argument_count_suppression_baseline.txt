@@ -130,8 +130,8 @@ tests/conformance/persistence/test_cost_forecast_repository.py::_make_forecast::
 tests/conformance/persistence/test_custom_rule_repository.py::_make_rule::10
 tests/conformance/persistence/test_sprint_repository.py::_make_sprint::11
 tests/unit/api/auth/test_session_store.py::_make_session::9
-tests/unit/api/conftest.py::_reset_services::12
-tests/unit/api/conftest.py::_shared_app::18
+tests/unit/api/conftest.py::_reset_services::11
+tests/unit/api/conftest.py::_shared_app::17
 tests/unit/api/conftest.py::make_approval::9
 tests/unit/api/controllers/test_agent_identity_versions.py::TestDiff.test_diff_validation::6
 tests/unit/api/controllers/test_agent_identity_versions.py::TestReadEndpointsOwnership.test_cross_entity_snapshot_rejected::7

@@ -8,6 +8,7 @@ from unittest.mock import patch
 import numpy as np
 import numpy.typing as npt
 import pytest
+import structlog.testing
 
 from synthorg.memory.embedding import fine_tune as fine_tune_module
 from synthorg.memory.embedding.cancellation import CancellationToken
@@ -577,6 +578,21 @@ class TestContrastiveFineTuneHappyPath:
         assert checkpoint == tmp_path / "run" / "checkpoint"
         assert checkpoint.is_dir()
         assert recorded["saved_to"] == checkpoint
+
+    async def test_a_successful_save_is_logged(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        with structlog.testing.capture_logs() as logs:
+            checkpoint, _ = await self._run(tmp_path, monkeypatch)
+
+        matches = [
+            log
+            for log in logs
+            if log.get("event") == "memory.fine_tune.checkpoint_saved"
+        ]
+        assert len(matches) == 1
+        assert matches[0]["log_level"] == "info"
+        assert matches[0]["checkpoint_dir"] == str(checkpoint)
 
     async def test_the_trained_model_is_the_one_saved(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

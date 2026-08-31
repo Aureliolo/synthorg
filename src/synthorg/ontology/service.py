@@ -10,7 +10,9 @@ from synthorg.observability.events.ontology import (
     ONTOLOGY_BOOTSTRAP_COMPLETED,
     ONTOLOGY_BOOTSTRAP_ENTITY_SKIPPED,
     ONTOLOGY_CONFIG_LOADED,
+    ONTOLOGY_ENTITY_DELETED,
     ONTOLOGY_ENTITY_NOT_FOUND,
+    ONTOLOGY_ENTITY_UPDATED,
     ONTOLOGY_VERSION_SNAPSHOT,
 )
 from synthorg.ontology.config import EntitiesConfig, OntologyConfig
@@ -179,6 +181,7 @@ class OntologyService:
         """
         await self._backend.update(entity)
         await self._snapshot(entity)
+        logger.info(ONTOLOGY_ENTITY_UPDATED, entity_name=entity.name)
 
     async def delete(self, name: str) -> None:
         """Delete an entity definition.
@@ -190,6 +193,7 @@ class OntologyService:
             OntologyNotFoundError: If the entity does not exist.
         """
         await self._backend.delete(name)
+        logger.info(ONTOLOGY_ENTITY_DELETED, entity_name=name)
 
     async def get(self, name: str) -> EntityDefinition:
         """Retrieve an entity definition by name.

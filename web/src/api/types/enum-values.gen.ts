@@ -18,8 +18,6 @@ export const ACTIVITY_EVENT_TYPE_VALUES = [
     'task_empty',
     'cost_incurred',
     'tool_used',
-    'delegation_sent',
-    'delegation_received',
 ] as const
 export type ActivityEventType = (typeof ACTIVITY_EVENT_TYPE_VALUES)[number]
 

@@ -165,9 +165,7 @@ _HAPPY_CASES: tuple[
             ("communication", "bus_bridge_max_consecutive_errors"): "30",
             ("communication", "nats_history_batch_size"): "100",
             ("communication", "nats_history_fetch_timeout_seconds"): "0.5",
-            ("communication", "delegation_record_store_max_size"): "10000",
             ("communication", "event_stream_max_queue_size"): "256",
-            ("communication", "loop_prevention_window_seconds"): "60.0",
         },
         {
             "bus_bridge_poll_timeout_seconds": 1.0,

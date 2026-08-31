@@ -7,6 +7,7 @@ import { DEFAULT_CURRENCY } from '@/utils/currencies'
 const baseModel: ProviderModelResponse = {
   id: 'test-local-7b',
   alias: 'local-7b',
+  capability_overrides: null,
   cost_per_1k_input: 0,
   cost_per_1k_output: 0,
   cost_per_image: null,
@@ -21,6 +22,7 @@ const baseModel: ProviderModelResponse = {
   supports_embeddings: false,
   supports_reasoning: false,
   supports_image_generation: false,
+  supports_prompt_caching: false,
   family: null,
   metadata_source: 'unknown',
   stale: null,
@@ -45,11 +47,13 @@ const meta = {
   args: {
     providerName: 'test-provider',
     onClose: () => {},
+    supportsLocalParams: true,
   },
   decorators: [
     (Story) => {
       useProvidersStore.setState({
         updateModelConfig: () => Promise.resolve(true),
+        updateModelCapabilityOverrides: () => Promise.resolve(true),
       })
       return <Story />
     },
@@ -85,4 +89,30 @@ export const WithExistingParams: Story = {
 
 export const Closed: Story = {
   args: { model: baseModel, open: false },
+}
+
+export const WithCapabilityOverrides: Story = {
+  args: {
+    model: {
+      ...baseModel,
+      supports_tools: true,
+      capability_overrides: {
+        supports_tools: true,
+        supports_vision: null,
+        supports_streaming: null,
+        supports_embeddings: null,
+        supports_image_generation: null,
+        supports_reasoning: null,
+        supports_prompt_caching: false,
+      },
+    },
+    open: true,
+  },
+}
+
+export const NoLocalParamsSupport: Story = {
+  // A cloud provider has no local runtime to tune, but capability overrides
+  // still apply: the local-params section is hidden, the overrides section
+  // is not.
+  args: { model: baseModel, open: true, supportsLocalParams: false },
 }

@@ -1,23 +1,7 @@
-"""Trajectory scoring for best-of-K candidate selection.
+"""Structural erosion metrics for quality degradation detection.
 
-Provides self-consistency filtering, verbalized confidence scoring,
-trace length scoring, and budget-guarded K-candidate sampling.
+Structural erosion detection is this package's one module with a
+production caller (``synthorg.engine.stagnation.quality_erosion_detector``),
+which imports directly from ``structural_erosion`` rather than a
+re-export from here.
 """
-
-from synthorg.engine.trajectory.budget_guard import (
-    check_trajectory_budget,
-)
-from synthorg.engine.trajectory.models import (
-    CandidateResult,
-    TrajectoryConfig,
-    TrajectoryScore,
-)
-from synthorg.engine.trajectory.scorer import TrajectoryScorer
-
-__all__ = [
-    "CandidateResult",
-    "TrajectoryConfig",
-    "TrajectoryScore",
-    "TrajectoryScorer",
-    "check_trajectory_budget",
-]

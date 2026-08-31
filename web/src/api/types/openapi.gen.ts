@@ -2985,6 +2985,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/observability/audit-chain/verify": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Verify */
+        readonly post: operations["ApiV1ObservabilityAuditChainVerifyVerify"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/ontology/admin/derive": {
         readonly parameters: {
             readonly query?: never;
@@ -3793,6 +3810,23 @@ export type paths = {
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/providers/{name}/models/{model_id}/capabilities": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        /** UpdateModelCapabilityOverrides */
+        readonly patch: operations["ApiV1ProvidersNameModelsModelIdCapabilitiesUpdateModelCapabilityOverrides"];
         readonly trace?: never;
     };
     readonly "/api/v1/providers/{name}/models/{model_id}/config": {
@@ -6044,11 +6078,10 @@ export type components = {
          * @description Event types produced by the activity feed timeline.
          *
          *     Superset of ``LifecycleEventType`` plus operational event types
-         *     generated from task metrics, cost records, tool invocations,
-         *     and delegation records.
+         *     generated from task metrics, cost records, and tool invocations.
          * @enum {string}
          */
-        readonly ActivityEventType: "hired" | "onboarded" | "fired" | "offboarded" | "status_changed" | "promoted" | "demoted" | "task_started" | "task_completed" | "task_failed" | "task_empty" | "cost_incurred" | "tool_used" | "delegation_sent" | "delegation_received";
+        readonly ActivityEventType: "hired" | "onboarded" | "fired" | "offboarded" | "status_changed" | "promoted" | "demoted" | "task_started" | "task_completed" | "task_failed" | "task_empty" | "cost_incurred" | "tool_used";
         /**
          * ActivityWindowHours
          * @description Time window (24, 48, or 168 hours)
@@ -6622,6 +6655,14 @@ export type components = {
         /** ApiResponse[ArtifactRow] */
         readonly ApiResponse_ArtifactRow_: {
             readonly data: components["schemas"]["ArtifactRow"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
+        /** ApiResponse[AuditChainVerificationResponse] */
+        readonly ApiResponse_AuditChainVerificationResponse_: {
+            readonly data: components["schemas"]["AuditChainVerificationResponse"] | null;
             readonly error: string | null;
             readonly error_detail: components["schemas"]["ErrorDetail"] | null;
             /** @description Whether the request succeeded (derived from ``error``). */
@@ -8140,6 +8181,12 @@ export type components = {
             readonly participant_role: string;
             readonly sequence: number;
         };
+        /** AuditChainVerificationResponse */
+        readonly AuditChainVerificationResponse: {
+            readonly entries_checked: number;
+            readonly first_break_position: number | null;
+            readonly valid: boolean;
+        };
         /** AuditEntryRow */
         readonly AuditEntryRow: {
             readonly action_type: string;
@@ -8837,6 +8884,20 @@ export type components = {
              * @default operator override
              */
             readonly reason: string;
+        };
+        /** CapabilityOverridesUpdateRequest */
+        readonly CapabilityOverridesUpdateRequest: {
+            /** @default false */
+            readonly confirm: boolean;
+            /** @default  */
+            readonly reason: string;
+            readonly supports_embeddings?: boolean | null;
+            readonly supports_image_generation?: boolean | null;
+            readonly supports_prompt_caching?: boolean | null;
+            readonly supports_reasoning?: boolean | null;
+            readonly supports_streaming?: boolean | null;
+            readonly supports_tools?: boolean | null;
+            readonly supports_vision?: boolean | null;
         };
         /** CapabilityRecommendationDTO */
         readonly CapabilityRecommendationDTO: {
@@ -12545,6 +12606,16 @@ export type components = {
             readonly agent: components["schemas"]["AgentMiddlewareConfig"];
             readonly coordination: components["schemas"]["CoordinationMiddlewareConfig"];
         };
+        /** ModelCapabilityOverrides */
+        readonly ModelCapabilityOverrides: {
+            readonly supports_embeddings: boolean | null;
+            readonly supports_image_generation: boolean | null;
+            readonly supports_prompt_caching: boolean | null;
+            readonly supports_reasoning: boolean | null;
+            readonly supports_streaming: boolean | null;
+            readonly supports_tools: boolean | null;
+            readonly supports_vision: boolean | null;
+        };
         /**
          * ModelConfig
          * @description LLM model configuration
@@ -14992,7 +15063,7 @@ export type components = {
              * @description Mutation category
              * @enum {string}
              */
-            readonly event_type: "provider_created" | "provider_updated" | "provider_deleted" | "provider_credentials_rotated" | "provider_rate_limits_updated" | "preset_override_updated" | "model_added" | "model_removed" | "model_config_updated" | "model_pulled" | "models_synced" | "model_flagged_stale";
+            readonly event_type: "provider_created" | "provider_updated" | "provider_deleted" | "provider_credentials_rotated" | "provider_rate_limits_updated" | "preset_override_updated" | "model_added" | "model_removed" | "model_config_updated" | "model_capability_overrides_updated" | "model_pulled" | "models_synced" | "model_flagged_stale";
             /** @description Repo-assigned row id */
             readonly id: number | null;
             /**
@@ -15137,6 +15208,8 @@ export type components = {
         readonly ProviderModelConfig: {
             /** @description Short alias for routing rules */
             readonly alias: string | null;
+            /** @description Operator-declared capability overrides applied on top of the resolved metadata; None means no override on any field. */
+            readonly capability_overrides: components["schemas"]["ModelCapabilityOverrides"] | null;
             /**
              * @description Cost per 1k input tokens (base currency)
              * @default 0
@@ -15168,6 +15241,8 @@ export type components = {
         readonly ProviderModelResponse: {
             /** @description Short alias for routing rules */
             readonly alias: string | null;
+            /** @description Operator-declared capability overrides, if any */
+            readonly capability_overrides: components["schemas"]["ModelCapabilityOverrides"] | null;
             /**
              * @description Cost per 1k input tokens
              * @default 0
@@ -15216,6 +15291,11 @@ export type components = {
              * @default false
              */
             readonly supports_image_generation: boolean;
+            /**
+             * @description Supports prompt-prefix caching at a discount
+             * @default false
+             */
+            readonly supports_prompt_caching: boolean;
             /**
              * @description Exposes extended reasoning (thinking/o1-style models)
              * @default false
@@ -19171,7 +19251,7 @@ export interface operations {
                 /** @description Page size (default 50, max 200) */
                 readonly limit?: number;
                 /** @description Filter by event_type */
-                readonly type?: "hired" | "onboarded" | "fired" | "offboarded" | "status_changed" | "promoted" | "demoted" | "task_started" | "task_completed" | "task_failed" | "task_empty" | "cost_incurred" | "tool_used" | "delegation_sent" | "delegation_received" | null;
+                readonly type?: "hired" | "onboarded" | "fired" | "offboarded" | "status_changed" | "promoted" | "demoted" | "task_started" | "task_completed" | "task_failed" | "task_empty" | "cost_incurred" | "tool_used" | null;
             };
             readonly header?: never;
             readonly path?: never;
@@ -25352,6 +25432,33 @@ export interface operations {
             readonly 503: components["responses"]["ServiceUnavailable"];
         };
     };
+    readonly ApiV1ObservabilityAuditChainVerifyVerify: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_AuditChainVerificationResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     readonly ApiV1OntologyAdminDeriveAdminDerive: {
         readonly parameters: {
             readonly query?: never;
@@ -27233,6 +27340,43 @@ export interface operations {
             readonly 401: components["responses"]["Unauthorized"];
             readonly 403: components["responses"]["Forbidden"];
             readonly 404: components["responses"]["NotFound"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ProvidersNameModelsModelIdCapabilitiesUpdateModelCapabilityOverrides: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                /** @description Model whose capability overrides to update. */
+                readonly model_id: string;
+                /** @description Resource name */
+                readonly name: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CapabilityOverridesUpdateRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Request fulfilled, document follows */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_ProviderModelResponse_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 404: components["responses"]["NotFound"];
+            readonly 409: components["responses"]["Conflict"];
             readonly 429: components["responses"]["TooManyRequests"];
             readonly 500: components["responses"]["InternalError"];
             readonly 503: components["responses"]["ServiceUnavailable"];

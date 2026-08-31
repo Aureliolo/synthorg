@@ -30,7 +30,6 @@ from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.risk_tracker import RiskTracker
 from synthorg.client.models import ClientRequest
 from synthorg.client.simulation_state import ClientSimulationState
-from synthorg.communication.delegation.record_store import DelegationRecordStore
 from synthorg.communication.event_stream.interrupt import InterruptStore
 from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.config.schema import RootConfig
@@ -88,7 +87,6 @@ class ConstructionDeps:
     coordination_metrics_store: CoordinationMetricsStore | None = None
     performance_tracker: PerformanceTracker | None = None
     agent_registry: AgentRegistryService | None = None
-    delegation_record_store: DelegationRecordStore | None = None
     tool_invocation_tracker: ToolInvocationTracker | None = None
     artifact_storage: ArtifactStorageBackend | None = None
     coordinator: MultiAgentCoordinator | None = None

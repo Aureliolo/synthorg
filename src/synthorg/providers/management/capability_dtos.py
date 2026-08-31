@@ -14,6 +14,10 @@ Carved out of ``dto_providers.py`` to keep both modules under the
 * bulk model sync (:class:`SyncModelsRequest`,
   :class:`SyncModelsResponse`).
 
+:class:`CapabilityOverridesUpdateRequest` (the model-capability-override
+patch) is re-exported here from ``capability_override_dtos.py``, its own
+module, so every existing import of this module keeps working.
+
 These DTOs are surfaced via the controller routes added in the same
 PR; the existing CRUD DTOs (create / update / delete provider, pull
 model, ...) stay in ``dto_providers.py``.
@@ -44,6 +48,9 @@ from synthorg.providers.management._freeze import (
     _recursively_freeze,
     _recursively_thaw,
 )
+from synthorg.providers.management.capability_override_dtos import (
+    CapabilityOverridesUpdateRequest,
+)
 
 # ── Provider audit log ────────────────────────────────────────────────
 
@@ -62,6 +69,7 @@ ProviderAuditEventType = Literal[
     "model_added",
     "model_removed",
     "model_config_updated",
+    "model_capability_overrides_updated",
     "model_pulled",
     "models_synced",
     "model_flagged_stale",
@@ -595,6 +603,7 @@ class SyncModelsResponse(BaseModel):
 
 __all__ = [
     "AddModelRequest",
+    "CapabilityOverridesUpdateRequest",
     "CredentialsRotateRequest",
     "PresetOverride",
     "PresetOverrideUpdateRequest",

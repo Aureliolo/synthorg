@@ -19,7 +19,12 @@ from typing import Final, Protocol
 import httpx
 
 from synthorg.core.normalization import normalize_base_url
-from synthorg.integrations.chat_api.inbound.decode import decode_frame
+from synthorg.integrations.chat_api.inbound.decode import (
+    FRAME_DISCONNECT,
+    FRAME_HELLO,
+    ROUTINE_DROP_REASONS,
+    decode_frame,
+)
 from synthorg.integrations.chat_api.inbound.models import InboundChatEvent
 from synthorg.integrations.errors import (
     ChatApiAuthError,
@@ -30,6 +35,8 @@ from synthorg.observability.events.integrations import (
     CHAT_API_ENVELOPE_FAILED,
     CHAT_API_REQUEST_FAILED,
     CHAT_INBOUND_CONNECTED,
+    CHAT_INBOUND_DECODE_FAILED,
+    CHAT_INBOUND_EVENT_RECEIVED,
 )
 
 logger = get_logger(__name__)
@@ -109,11 +116,31 @@ class SlackSocketModeClient:
         logger.info(CHAT_INBOUND_CONNECTED)
         async with self._connector(url) as session:
             async for frame in session:
+                # hello/disconnect are protocol control frames, not
+                # Slack-originated activity; counting them here would let a
+                # quiet channel's keepalive traffic read as event volume.
+                if frame.get("type") not in {FRAME_HELLO, FRAME_DISCONNECT}:
+                    logger.debug(CHAT_INBOUND_EVENT_RECEIVED)
                 decoded = decode_frame(frame)
                 if decoded.disconnect:
                     if decoded.envelope_id:
                         await session.ack(decoded.envelope_id)
                     return
+                if decoded.drop_reason is not None:
+                    # Routine reasons are ordinary Slack chatter (a bot echo, an
+                    # edit/join subtype, an unhandled event type) that any
+                    # channel member triggers just by using Slack; logging them
+                    # at `warning` would let normal traffic bury a genuinely
+                    # lost or malformed event -- the reason this split exists.
+                    level = (
+                        logger.info
+                        if decoded.drop_reason in ROUTINE_DROP_REASONS
+                        else logger.warning
+                    )
+                    level(
+                        CHAT_INBOUND_DECODE_FAILED,
+                        reason=decoded.drop_reason.value,
+                    )
                 if decoded.event is not None:
                     await on_event(decoded.event)
                 if decoded.envelope_id:

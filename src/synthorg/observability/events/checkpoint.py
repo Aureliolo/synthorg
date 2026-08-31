@@ -14,7 +14,6 @@ CHECKPOINT_SKIPPED: Final[str] = "checkpoint.skipped"
 # Heartbeat lifecycle
 HEARTBEAT_UPDATED: Final[str] = "heartbeat.updated"
 HEARTBEAT_UPDATE_FAILED: Final[str] = "heartbeat.update_failed"
-HEARTBEAT_STALE_DETECTED: Final[str] = "heartbeat.stale_detected"
 HEARTBEAT_DELETED: Final[str] = "heartbeat.deleted"
 HEARTBEAT_DELETE_FAILED: Final[str] = "heartbeat.delete_failed"
 

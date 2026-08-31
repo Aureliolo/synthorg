@@ -8,9 +8,11 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import structlog.testing
 
 from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.schema import ProviderModelConfig
+from synthorg.observability.events.budget import BUDGET_IMAGE_MODEL_UNPRICED
 from synthorg.providers.drivers.litellm_driver import LiteLLMDriver
 from synthorg.providers.drivers.litellm_image import map_image_response
 from synthorg.providers.errors import (
@@ -114,10 +116,30 @@ async def test_driver_generate_image_maps_response() -> None:
 
 async def test_driver_generate_image_none_cost_is_free() -> None:
     driver = _driver(cost_per_image=None)
-    with patch(_PATCH_IMAGE, new_callable=AsyncMock) as mock_call:
+    with (
+        patch(_PATCH_IMAGE, new_callable=AsyncMock) as mock_call,
+        structlog.testing.capture_logs() as logs,
+    ):
         mock_call.return_value = _fake_image_response("QUJD")
         result = await driver.generate_image("a cat", "img")
     assert result.usage.cost == 0.0
+    matches = [log for log in logs if log["event"] == BUDGET_IMAGE_MODEL_UNPRICED]
+    assert len(matches) == 1
+    assert matches[0]["provider"] == "example-provider"
+    assert matches[0]["model"] == "example-image-001"
+    assert matches[0]["setting"] == "cost_per_image"
+
+
+async def test_driver_generate_image_priced_model_does_not_warn() -> None:
+    driver = _driver(cost_per_image=0.04)
+    with (
+        patch(_PATCH_IMAGE, new_callable=AsyncMock) as mock_call,
+        structlog.testing.capture_logs() as logs,
+    ):
+        mock_call.return_value = _fake_image_response("QUJD")
+        await driver.generate_image("a cat", "img")
+    events = [log["event"] for log in logs]
+    assert BUDGET_IMAGE_MODEL_UNPRICED not in events
 
 
 async def test_driver_maps_litellm_auth_error() -> None:

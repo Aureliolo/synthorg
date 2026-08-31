@@ -16,11 +16,6 @@ from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.cost_tiers import CostTierDefinition, CostTiersConfig
 from synthorg.budget.currency import DEFAULT_CURRENCY, CurrencyCode
 from synthorg.budget.enums import BudgetAlertLevel
-from synthorg.budget.hierarchy import (
-    BudgetHierarchy,
-    DepartmentBudget,
-    TeamBudget,
-)
 from synthorg.budget.optimizer import CostOptimizer
 from synthorg.budget.optimizer_models import CostOptimizerConfig
 from synthorg.budget.quota import (
@@ -87,22 +82,6 @@ class BudgetConfigFactory(ModelFactory[BudgetConfig]):
     # LOCAL monthly_cost invariant.
     subscriptions: ClassVar[dict[str, SubscriptionConfig]] = {}
     call_analytics = CallAnalyticsConfig()
-
-
-class TeamBudgetFactory(ModelFactory[TeamBudget]):
-    __model__ = TeamBudget
-    budget_percent = 10.0
-
-
-class DepartmentBudgetFactory(ModelFactory[DepartmentBudget]):
-    __model__ = DepartmentBudget
-    budget_percent = 25.0
-    teams = ()
-
-
-class BudgetHierarchyFactory(ModelFactory[BudgetHierarchy]):
-    __model__ = BudgetHierarchy
-    departments = ()
 
 
 class CostRecordFactory(ModelFactory[CostRecord]):
@@ -228,31 +207,6 @@ def sample_cost_record() -> CostRecord:
         cost=0.0315,
         currency=DEFAULT_CURRENCY,
         timestamp=datetime(2026, 2, 27, 10, 30, 0, tzinfo=UTC),
-    )
-
-
-@pytest.fixture
-def sample_budget_hierarchy() -> BudgetHierarchy:
-    return BudgetHierarchy(
-        total_monthly=100.0,
-        departments=(
-            DepartmentBudget(
-                department_name="Engineering",
-                budget_percent=50.0,
-                teams=(
-                    TeamBudget(team_name="Backend", budget_percent=40.0),
-                    TeamBudget(team_name="Frontend", budget_percent=30.0),
-                ),
-            ),
-            DepartmentBudget(
-                department_name="Product",
-                budget_percent=30.0,
-                teams=(
-                    TeamBudget(team_name="Design", budget_percent=50.0),
-                    TeamBudget(team_name="Research", budget_percent=50.0),
-                ),
-            ),
-        ),
     )
 
 

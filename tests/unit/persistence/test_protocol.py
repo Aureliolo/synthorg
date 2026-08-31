@@ -685,12 +685,6 @@ class _FakeHeartbeatRepository:
     async def get(self, execution_id: str) -> Heartbeat | None:
         return None
 
-    async def get_stale(
-        self,
-        threshold: AwareDatetime,
-    ) -> tuple[Heartbeat, ...]:
-        return ()
-
     async def delete(self, execution_id: str) -> bool:
         return False
 
@@ -1766,10 +1760,6 @@ class _FakeBackend:
 
     @property
     def role_versions(self) -> object:
-        return object()
-
-    @property
-    def circuit_breaker_state(self) -> object:
         return object()
 
     @property

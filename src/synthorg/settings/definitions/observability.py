@@ -169,6 +169,27 @@ _r.register(
     )
 )
 
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.OBSERVABILITY,
+        key="audit_chain_verify_interval_seconds",
+        type=SettingType.FLOAT,
+        default="3600.0",
+        description=(
+            "Cadence for the periodic full audit-chain re-verification"
+            " (hash continuity plus every entry's signature). Re-resolved"
+            " every cycle, so a change applies without a restart. The"
+            " chain is also fully verified once at boot, right after"
+            " hydration; this is what catches a row rewritten out of band"
+            " while the process keeps running."
+        ),
+        group="Audit Chain",
+        level=SettingLevel.ADVANCED,
+        min_value=60.0,
+        max_value=86_400.0,
+    )
+)
+
 # ── Multi-surface settings ─────────────────────────────────────
 
 _r.register(

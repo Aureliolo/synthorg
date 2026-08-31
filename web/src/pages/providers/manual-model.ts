@@ -50,6 +50,8 @@ function buildManualModel(v: ParsedModelValues): ProviderModelConfig {
   return {
     id: v.idTrimmed,
     alias: v.alias.trim() || null,
+    // No override yet: an operator can declare one after the model exists.
+    capability_overrides: null,
     cost_per_1k_input: v.inCost ?? 0,
     cost_per_1k_output: v.outCost ?? 0,
     cost_per_image: v.imageCost,

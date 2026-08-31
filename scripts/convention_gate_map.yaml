@@ -280,6 +280,21 @@ mandatory_rules:
     header: Dependency-Gated Waves
     gate: scripts/check_wave_dispatch_gated.py
 
+  - id: claude-md::declared-events-are-emitted
+    file: CLAUDE.md
+    header: Declared Events Are Emitted
+    gate: scripts/check_declared_event_is_emitted.py
+
+  - id: claude-md::capability-fields-have-readers
+    file: CLAUDE.md
+    header: Capability Fields Have Readers
+    gate: scripts/check_capability_field_has_reader.py
+
+  - id: claude-md::posture-writes-agree-with-defaults
+    file: CLAUDE.md
+    header: Posture Writes Agree With Defaults
+    gate: scripts/check_posture_write_agrees_with_default.py
+
   - id: claude-md::journalled-recordings
     file: CLAUDE.md
     header: Journalled Recordings

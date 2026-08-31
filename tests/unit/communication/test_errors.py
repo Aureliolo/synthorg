@@ -6,14 +6,6 @@ from synthorg.communication.errors import (
     ChannelAlreadyExistsError,
     ChannelNotFoundError,
     CommunicationError,
-    DelegationAncestryError,
-    DelegationAuthorityError,
-    DelegationCircuitOpenError,
-    DelegationDepthError,
-    DelegationDuplicateError,
-    DelegationError,
-    DelegationLoopError,
-    DelegationRateLimitError,
     HierarchyResolutionError,
     MessageBusAlreadyRunningError,
     MessageBusNotRunningError,
@@ -71,14 +63,6 @@ class TestSubclasses:
             (NotSubscribedError, CommunicationError),
             (MessageBusNotRunningError, CommunicationError),
             (MessageBusAlreadyRunningError, CommunicationError),
-            (DelegationError, CommunicationError),
-            (DelegationAuthorityError, DelegationError),
-            (DelegationLoopError, DelegationError),
-            (DelegationDepthError, DelegationLoopError),
-            (DelegationAncestryError, DelegationLoopError),
-            (DelegationRateLimitError, DelegationLoopError),
-            (DelegationCircuitOpenError, DelegationLoopError),
-            (DelegationDuplicateError, DelegationLoopError),
             (HierarchyResolutionError, CommunicationError),
         ],
     )
@@ -94,14 +78,6 @@ class TestSubclasses:
             NotSubscribedError,
             MessageBusNotRunningError,
             MessageBusAlreadyRunningError,
-            DelegationError,
-            DelegationAuthorityError,
-            DelegationLoopError,
-            DelegationDepthError,
-            DelegationAncestryError,
-            DelegationRateLimitError,
-            DelegationCircuitOpenError,
-            DelegationDuplicateError,
             HierarchyResolutionError,
         ],
     )
@@ -109,19 +85,3 @@ class TestSubclasses:
         err = cls("msg", context={"k": "v"})
         assert err.context["k"] == "v"
         assert isinstance(err, CommunicationError)
-
-
-@pytest.mark.unit
-class TestDelegationErrorHierarchy:
-    """Tests for delegation error inheritance chain."""
-
-    def test_depth_error_chain(self) -> None:
-        err = DelegationDepthError("too deep")
-        assert isinstance(err, DelegationLoopError)
-        assert isinstance(err, DelegationError)
-        assert isinstance(err, CommunicationError)
-
-    def test_hierarchy_error_is_communication_error(self) -> None:
-        err = HierarchyResolutionError("broken")
-        assert isinstance(err, CommunicationError)
-        assert not isinstance(err, DelegationError)

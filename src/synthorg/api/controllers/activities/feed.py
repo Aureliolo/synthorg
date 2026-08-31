@@ -81,10 +81,10 @@ class ActivityController(Controller):
     ) -> PaginatedResponse[ActivityEvent]:
         """Return a paginated org-wide activity feed.
 
-        Merges lifecycle events, task metrics, cost records, tool
-        invocations, and delegation records into a unified
-        chronological timeline, most recent first.  Non-lifecycle
-        data sources degrade gracefully when unavailable.
+        Merges lifecycle events, task metrics, cost records, and tool
+        invocations into a unified chronological timeline, most
+        recent first.  Non-lifecycle data sources degrade gracefully
+        when unavailable.
 
         Args:
             request: Incoming HTTP request (used for role-based redaction).

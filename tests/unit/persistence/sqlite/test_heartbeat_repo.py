@@ -91,88 +91,6 @@ class TestSQLiteHeartbeatRepository:
         assert result is not None
         assert result.last_heartbeat_at == later
 
-    async def test_get_stale_returns_old_heartbeats(
-        self, migrated_db: aiosqlite.Connection
-    ) -> None:
-        repo = SQLiteHeartbeatRepository(
-            migrated_db, write_context=make_private_write_context()
-        )
-        now = datetime.now(UTC)
-        old = now - timedelta(hours=1)
-        very_old = now - timedelta(hours=2)
-
-        hb_fresh = _make_heartbeat(
-            execution_id="exec-fresh",
-            last_heartbeat_at=now,
-        )
-        hb_stale = _make_heartbeat(
-            execution_id="exec-stale",
-            last_heartbeat_at=old,
-        )
-        hb_very_stale = _make_heartbeat(
-            execution_id="exec-very-stale",
-            last_heartbeat_at=very_old,
-        )
-        await repo.save(hb_fresh)
-        await repo.save(hb_stale)
-        await repo.save(hb_very_stale)
-
-        threshold = now - timedelta(minutes=30)
-        stale = await repo.get_stale(threshold)
-
-        stale_ids = {h.execution_id for h in stale}
-        assert "exec-stale" in stale_ids
-        assert "exec-very-stale" in stale_ids
-        assert "exec-fresh" not in stale_ids
-
-    async def test_get_stale_returns_empty_when_none_stale(
-        self, migrated_db: aiosqlite.Connection
-    ) -> None:
-        repo = SQLiteHeartbeatRepository(
-            migrated_db, write_context=make_private_write_context()
-        )
-        now = datetime.now(UTC)
-        hb = _make_heartbeat(
-            execution_id="exec-fresh",
-            last_heartbeat_at=now,
-        )
-        await repo.save(hb)
-
-        very_old_threshold = now - timedelta(hours=1)
-        stale = await repo.get_stale(very_old_threshold)
-
-        # The heartbeat is newer than the threshold, so not stale
-        assert len(stale) == 0
-
-    async def test_get_stale_ordered_by_timestamp(
-        self, migrated_db: aiosqlite.Connection
-    ) -> None:
-        repo = SQLiteHeartbeatRepository(
-            migrated_db, write_context=make_private_write_context()
-        )
-        now = datetime.now(UTC)
-        t1 = now - timedelta(hours=3)
-        t2 = now - timedelta(hours=2)
-
-        hb1 = _make_heartbeat(
-            execution_id="exec-oldest",
-            last_heartbeat_at=t1,
-        )
-        hb2 = _make_heartbeat(
-            execution_id="exec-older",
-            last_heartbeat_at=t2,
-        )
-        # Save in reverse order to verify DB ordering
-        await repo.save(hb2)
-        await repo.save(hb1)
-
-        threshold = now - timedelta(hours=1)
-        stale = await repo.get_stale(threshold)
-
-        assert len(stale) == 2
-        assert stale[0].execution_id == "exec-oldest"
-        assert stale[1].execution_id == "exec-older"
-
     async def test_delete_returns_true_when_found(
         self, migrated_db: aiosqlite.Connection
     ) -> None:
@@ -236,18 +154,6 @@ class TestSQLiteHeartbeatRepositoryErrors:
         )
         with pytest.raises(QueryError, match="Failed to query"):
             await repo.get("exec-001")
-
-    async def test_get_stale_raises_query_error_on_db_error(
-        self, memory_db: aiosqlite.Connection
-    ) -> None:
-        from synthorg.core.persistence_errors import QueryError
-
-        repo = SQLiteHeartbeatRepository(
-            memory_db, write_context=make_private_write_context()
-        )
-        threshold = datetime.now(UTC) - timedelta(minutes=5)
-        with pytest.raises(QueryError, match="Failed to query"):
-            await repo.get_stale(threshold)
 
     async def test_delete_raises_query_error_on_db_error(
         self, memory_db: aiosqlite.Connection

@@ -1,7 +1,7 @@
 """Communication namespace setting definitions.
 
-Covers bus/NATS transport, event stream, delegation record store,
-loop prevention, and bus bridges for API and engine workflow.
+Covers bus/NATS transport, event stream, and bus bridges for API and
+engine workflow.
 """
 
 from synthorg.observability import get_logger
@@ -137,27 +137,7 @@ _r.register(
     )
 )
 
-# ── Delegation + event stream + loop prevention ──────────────────
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.COMMUNICATION,
-        key="delegation_record_store_max_size",
-        type=SettingType.INTEGER,
-        default="10000",
-        description=(
-            "Maximum delegation records retained in the in-memory store before"
-            " FIFO eviction. Applies immediately: the buffer is rebuilt at the"
-            " new bound keeping the newest records, so raising it costs no"
-            " history and lowering it drops only what the next writes would"
-            " have evicted."
-        ),
-        group="Delegation",
-        level=SettingLevel.ADVANCED,
-        min_value=100,
-        max_value=1_000_000,
-    )
-)
+# ── Event stream ──────────────────────────────────────────────────
 
 _r.register(
     SettingDefinition(
@@ -258,22 +238,5 @@ _r.register(
         level=SettingLevel.ADVANCED,
         min_value=5.0,
         max_value=3600.0,
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.COMMUNICATION,
-        key="loop_prevention_window_seconds",
-        type=SettingType.FLOAT,
-        default="60.0",
-        description=(
-            "Window over which repeated inter-agent messages are tracked"
-            " for loop detection"
-        ),
-        group="Loop Prevention",
-        level=SettingLevel.ADVANCED,
-        min_value=5.0,
-        max_value=600.0,
     )
 )

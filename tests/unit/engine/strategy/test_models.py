@@ -5,11 +5,9 @@ from pydantic import ValidationError
 
 from synthorg.engine.strategy.models import (
     BlastRadius,
-    ConfidenceMetadata,
     ConstitutionalPrinciple,
     CostTierPreset,
     ImpactScore,
-    LensAttribution,
     PrinciplePack,
     ProgressiveThresholds,
     ProgressiveWeights,
@@ -221,48 +219,3 @@ class TestImpactScore:
                 composite=1.5,
                 tier=CostTierPreset.MODERATE,
             )
-
-
-class TestConfidenceMetadata:
-    """Tests for ConfidenceMetadata model."""
-
-    @pytest.mark.unit
-    def test_valid_range(self) -> None:
-        meta = ConfidenceMetadata(
-            level=0.7,
-            range_lower=0.5,
-            range_upper=0.9,
-        )
-        assert meta.level == 0.7
-
-    @pytest.mark.unit
-    def test_lower_exceeds_level_raises(self) -> None:
-        with pytest.raises(ValueError, match="range_lower"):
-            ConfidenceMetadata(
-                level=0.5,
-                range_lower=0.8,
-                range_upper=0.9,
-            )
-
-    @pytest.mark.unit
-    def test_level_exceeds_upper_raises(self) -> None:
-        with pytest.raises(ValueError, match="range_upper"):
-            ConfidenceMetadata(
-                level=0.9,
-                range_lower=0.5,
-                range_upper=0.7,
-            )
-
-
-class TestLensAttribution:
-    """Tests for LensAttribution model."""
-
-    @pytest.mark.unit
-    def test_creation(self) -> None:
-        attr = LensAttribution(
-            lens="contrarian",
-            insight="The opposite approach has merit",
-            weight=0.3,
-        )
-        assert attr.lens == "contrarian"
-        assert attr.weight == 0.3

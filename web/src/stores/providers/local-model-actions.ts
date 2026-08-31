@@ -2,12 +2,14 @@ import {
   pullModel as apiPullModel,
   deleteModel as apiDeleteModel,
   reenableToolCalling as apiReenableToolCalling,
+  updateModelCapabilityOverrides as apiUpdateModelCapabilityOverrides,
   updateModelConfig as apiUpdateModelConfig,
 } from '@/api/endpoints/providers'
-import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
-import { reenableKey } from '@/utils/providers'
+import { ErrorCode } from '@/api/types/errors'
+import { getCrudErrorTitle, getErrorCode, getErrorMessage } from '@/utils/errors'
+import { modelActionKey } from '@/utils/providers'
 import { createLogger } from '@/lib/logger'
-import type { LocalModelParams } from '@/api/types/providers'
+import type { CapabilityOverridesUpdateRequest, LocalModelParams } from '@/api/types/providers'
 import { useToastStore } from '@/stores/toast'
 import type { ProvidersSet, ProvidersGet } from './types'
 
@@ -141,13 +143,66 @@ async function updateModelConfigImpl(
   }
 }
 
+async function updateModelCapabilityOverridesImpl(
+  set: ProvidersSet,
+  get: ProvidersGet,
+  name: string,
+  modelId: string,
+  overrides: CapabilityOverridesUpdateRequest,
+): Promise<boolean> {
+  set({ updatingCapabilityOverrides: true })
+  try {
+    await apiUpdateModelCapabilityOverrides(name, modelId, overrides)
+    useToastStore.getState().add({
+      variant: 'success',
+      title: `Capability overrides updated for "${modelId}"`,
+    })
+    await refreshActiveDetail(get, name)
+    return true
+  } catch (err) {
+    // Forcing vision onto the model bound to security.vision_verify_model is
+    // not a failure to toast: stage it so the provider detail page can
+    // collect a reason and retry. A retry that is itself rejected (a stale
+    // "confirmed" patch, or the operator changed their mind) falls through
+    // to the normal error path below.
+    if (!overrides.confirm && getErrorCode(err) === ErrorCode.SECURITY_TOGGLE_CONFIRM_REQUIRED) {
+      set({ pendingCapabilityOverridesConfirm: { name, modelId, overrides } })
+      return false
+    }
+    log.error('Failed to update capability overrides:', getErrorMessage(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Failed to update capability overrides'),
+      description: getErrorMessage(err),
+    })
+    return false
+  } finally {
+    set({ updatingCapabilityOverrides: false })
+  }
+}
+
+async function confirmPendingCapabilityOverridesImpl(
+  set: ProvidersSet,
+  get: ProvidersGet,
+  reason: string,
+): Promise<boolean> {
+  const pending = get().pendingCapabilityOverridesConfirm
+  if (!pending) return false
+  set({ pendingCapabilityOverridesConfirm: null })
+  return updateModelCapabilityOverridesImpl(set, get, pending.name, pending.modelId, {
+    ...pending.overrides,
+    confirm: true,
+    reason: reason.trim() || 'Confirmed via the providers dashboard',
+  })
+}
+
 async function reenableToolCallingImpl(
   set: ProvidersSet,
   get: ProvidersGet,
   name: string,
   modelId: string,
 ): Promise<boolean> {
-  const pendingKey = reenableKey(name, modelId)
+  const pendingKey = modelActionKey(name, modelId)
   // Per-model concurrency: different models re-enable in parallel, but a second
   // click on a model already in flight is a no-op (its row is disabled, so this
   // only guards a double-invoke).
@@ -207,6 +262,16 @@ export function createLocalModelActions(
       modelId: string,
       params: LocalModelParams,
     ) => updateModelConfigImpl(set, get, name, modelId, params),
+    updateModelCapabilityOverrides: (
+      name: string,
+      modelId: string,
+      overrides: CapabilityOverridesUpdateRequest,
+    ) => updateModelCapabilityOverridesImpl(set, get, name, modelId, overrides),
+    confirmPendingCapabilityOverrides: (reason: string) =>
+      confirmPendingCapabilityOverridesImpl(set, get, reason),
+    dismissPendingCapabilityOverridesConfirm: () => {
+      set({ pendingCapabilityOverridesConfirm: null })
+    },
     reenableToolCalling: (name: string, modelId: string) =>
       reenableToolCallingImpl(set, get, name, modelId),
   }

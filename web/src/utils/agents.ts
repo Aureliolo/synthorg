@@ -8,8 +8,6 @@ import {
   CheckCircle2,
   CircleDollarSign,
   Play,
-  Send,
-  Inbox,
   UserPlus,
   UserMinus,
   Wrench,
@@ -383,8 +381,6 @@ const ACTIVITY_ICON_MAP: Partial<Record<ActivityEventType, LucideIcon>> = {
   task_started: Play,
   cost_incurred: CircleDollarSign,
   tool_used: Wrench,
-  delegation_sent: Send,
-  delegation_received: Inbox,
 }
 
 const FALLBACK_ICON: LucideIcon = Activity

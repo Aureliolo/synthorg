@@ -27,11 +27,6 @@ from synthorg.observability.events.api import API_READ_NAME_RESOLVE_FAILED
 
 logger = get_logger(__name__)
 
-#: Where an event's subject task is referenced, most specific first. A delegation
-#: names ``original_task_id`` and carries no ``task_id`` at all, so keying on one
-#: name alone left every delegation row with nothing to show for its subject.
-_TASK_ID_KEYS: tuple[str, ...] = ("task_id", "original_task_id")
-
 
 def _task_reference(event: ActivityEvent) -> str | None:
     """The task this event is about, or ``None`` when it names none.
@@ -39,11 +34,7 @@ def _task_reference(event: ActivityEvent) -> str | None:
     Returns:
         The task reference, or ``None``.
     """
-    for key in _TASK_ID_KEYS:
-        reference = event.related_ids.get(key)
-        if reference is not None:
-            return reference
-    return None
+    return event.related_ids.get("task_id")
 
 
 def _referenced_tasks(events: Iterable[ActivityEvent]) -> list[str]:

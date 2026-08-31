@@ -18,7 +18,6 @@ class TestPostureConfig:
     def test_default_is_all_off(self) -> None:
         bundle = PostureConfig()
         assert bundle.name is None
-        assert bundle.knowledge_substrate is False
         assert bundle.chat_propose is False
         assert bundle.group_chat is False
         assert bundle.steering is False
@@ -72,7 +71,6 @@ class TestNamedBundleStrategy:
     def test_autonomous_bundle(self) -> None:
         bundle = NamedBundlePostureStrategy().expand(PostureName.AUTONOMOUS)
         assert bundle.steering is True
-        assert bundle.knowledge_substrate is True
         assert bundle.group_chat is False
 
     def test_supervised_client_facing_bundle(self) -> None:
@@ -92,19 +90,16 @@ class TestNamedBundleStrategy:
     def test_cost_disciplined_bundle(self) -> None:
         bundle = NamedBundlePostureStrategy().expand(PostureName.COST_DISCIPLINED)
         assert bundle.economical_reasoning is True
-        assert bundle.knowledge_substrate is False
         assert bundle.chat_propose is False
 
     def test_knowledge_heavy_bundle(self) -> None:
         bundle = NamedBundlePostureStrategy().expand(PostureName.KNOWLEDGE_HEAVY)
-        assert bundle.knowledge_substrate is True
         assert bundle.chat_propose is True
         assert bundle.steering is True
         assert bundle.red_team is False
 
     def test_research_autonomous_bundle(self) -> None:
         bundle = NamedBundlePostureStrategy().expand(PostureName.RESEARCH_AUTONOMOUS)
-        assert bundle.knowledge_substrate is True
         assert bundle.chat_propose is True
         assert bundle.steering is True
 

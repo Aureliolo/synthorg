@@ -2,27 +2,71 @@ import { useMemo, useState } from 'react'
 import { SectionCard } from '@/components/ui/section-card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
+import { CapabilityPill } from '@/components/ui/capability-pill'
 import { ModelStalenessBadge } from '@/components/ui/model-staleness-badge'
 import { ToolCallingUnavailableBadge } from '@/components/ui/tool-calling-unavailable-badge'
 import { SearchInput } from '@/components/ui/search-input'
-import { cn } from '@/lib/utils'
 import { Boxes, RotateCcw, Settings2, Trash2 } from 'lucide-react'
-import type { ProviderModelResponse } from '@/api/types/providers'
-import { reenableKey } from '@/utils/providers'
+import type { ModelCapabilityOverrides, ProviderModelResponse } from '@/api/types/providers'
+import { modelActionKey } from '@/utils/providers'
 
 interface ProviderModelRowProps {
   model: ProviderModelResponse
   supportsDelete: boolean
-  supportsConfig: boolean
   hasActions: boolean
   onDelete?: ((modelId: string) => void) | undefined
+  // Opens the configure drawer. Always offered when provided: capability
+  // overrides apply to any provider, not just ones with local launch params
+  // (``supports_model_config``), which only gates whether the drawer's local
+  // params section renders.
   onConfigure?: ((model: ProviderModelResponse) => void) | undefined
   onReenableToolCalling?: ((modelId: string) => void) | undefined
-  // Provider-qualified pending-re-enable keys (see ``reenableKey``); model ids
-  // are not unique across providers, so the pending state is matched against
-  // ``reenableKey(providerName, model.id)`` rather than the bare id.
+  // Provider-qualified pending-re-enable keys (see ``modelActionKey``); model
+  // ids are not unique across providers, so the pending state is matched
+  // against ``modelActionKey(providerName, model.id)`` rather than the bare id.
   reenablingModelIds?: ReadonlySet<string> | undefined
   providerName?: string | undefined
+}
+
+interface CapabilitySpec {
+  field: keyof ModelCapabilityOverrides
+  label: string
+  className: string
+}
+
+// Every pill keeps its own distinct hue.
+const CAPABILITY_SPECS: readonly CapabilitySpec[] = [
+  { field: 'supports_reasoning', label: 'reasoning', className: 'bg-violet/15 text-violet' },
+  { field: 'supports_tools', label: 'tools', className: 'bg-success/15 text-success' },
+  { field: 'supports_vision', label: 'vision', className: 'bg-warning/15 text-warning' },
+  {
+    field: 'supports_image_generation',
+    label: 'image',
+    className: 'bg-accent/15 text-accent',
+  },
+  { field: 'supports_prompt_caching', label: 'cached', className: 'bg-info/15 text-info' },
+]
+
+const EMBEDDING_SPEC: CapabilitySpec = {
+  field: 'supports_embeddings',
+  label: 'embedding',
+  className: 'bg-danger/15 text-danger',
+}
+
+interface CapabilityBadge {
+  label: string
+  show: boolean
+  className: string
+  overridden: boolean
+}
+
+function badgeFor(model: ProviderModelResponse, spec: CapabilitySpec): CapabilityBadge {
+  return {
+    label: spec.label,
+    show: model[spec.field],
+    className: spec.className,
+    overridden: model.capability_overrides?.[spec.field] != null,
+  }
 }
 
 function CapabilityBadges({ model }: { model: ProviderModelResponse }) {
@@ -30,32 +74,10 @@ function CapabilityBadges({ model }: { model: ProviderModelResponse }) {
   // since chat/tools/reasoning/vision don't apply. For everything else the
   // absence of an embedding pill already implies a chat model, so chat earns
   // no pill -- only the extra capabilities show. Streaming is universal, so it
-  // earns no badge either. Every pill keeps its own distinct hue.
-  const badges: { label: string; show: boolean; className: string }[] =
-    model.supports_embeddings
-      ? [{ label: 'embedding', show: true, className: 'bg-danger/15 text-danger' }]
-      : [
-          {
-            label: 'reasoning',
-            show: model.supports_reasoning,
-            className: 'bg-violet/15 text-violet',
-          },
-          {
-            label: 'tools',
-            show: model.supports_tools,
-            className: 'bg-success/15 text-success',
-          },
-          {
-            label: 'vision',
-            show: model.supports_vision,
-            className: 'bg-warning/15 text-warning',
-          },
-          {
-            label: 'image',
-            show: model.supports_image_generation,
-            className: 'bg-accent/15 text-accent',
-          },
-        ]
+  // earns no badge either.
+  const badges = model.supports_embeddings
+    ? [badgeFor(model, EMBEDDING_SPEC)]
+    : CAPABILITY_SPECS.map((spec) => badgeFor(model, spec))
 
   const visible = badges.filter((b) => b.show)
   if (visible.length === 0) {
@@ -77,12 +99,12 @@ function CapabilityBadges({ model }: { model: ProviderModelResponse }) {
   return (
     <div className="flex flex-wrap gap-1">
       {visible.map((b) => (
-        <span
+        <CapabilityPill
           key={b.label}
-          className={cn('rounded px-1.5 py-0.5 text-micro font-medium leading-tight', b.className)}
-        >
-          {b.label}
-        </span>
+          label={b.label}
+          className={b.className}
+          overridden={b.overridden}
+        />
       ))}
     </div>
   )
@@ -92,13 +114,12 @@ function CapabilityBadges({ model }: { model: ProviderModelResponse }) {
 function rowHasActions(props: ProviderModelRowProps): boolean {
   const canReenable =
     props.onReenableToolCalling !== undefined && props.model.tool_calls_verified === false
-  return props.supportsDelete || props.supportsConfig || canReenable
+  return props.supportsDelete || props.onConfigure !== undefined || canReenable
 }
 
 function ModelRowActions({
   model,
   supportsDelete,
-  supportsConfig,
   onDelete,
   onConfigure,
   onReenableToolCalling,
@@ -110,7 +131,7 @@ function ModelRowActions({
   const isReenabling =
     providerName !== undefined &&
     reenablingModelIds !== undefined &&
-    reenablingModelIds.has(reenableKey(providerName, model.id))
+    reenablingModelIds.has(modelActionKey(providerName, model.id))
   return (
     <div className="flex items-center justify-end gap-1">
       {onReenableToolCalling !== undefined && model.tool_calls_verified === false && (
@@ -130,13 +151,13 @@ function ModelRowActions({
           <RotateCcw className="size-3.5" />
         </Button>
       )}
-      {supportsConfig && (
+      {onConfigure !== undefined && (
         /* lint-allow: id-in-ui -- the model identifier is the name. */
         <Button
           aria-label={`Configure ${model.id}`}
           variant="ghost"
           size="icon"
-          onClick={() => onConfigure?.(model)}
+          onClick={() => onConfigure(model)}
           title="Configure"
           className="size-7"
         >
@@ -199,7 +220,6 @@ function ProviderModelRow(props: ProviderModelRowProps) {
 interface ProviderModelListProps {
   models: readonly ProviderModelResponse[]
   supportsDelete?: boolean
-  supportsConfig?: boolean
   onDelete?: ((modelId: string) => void) | undefined
   onConfigure?: ((model: ProviderModelResponse) => void) | undefined
   onReenableToolCalling?: ((modelId: string) => void) | undefined
@@ -211,7 +231,6 @@ interface ModelTableProps extends ProviderModelListProps {
   models: readonly ProviderModelResponse[]
   hasActions: boolean
   supportsDelete: boolean
-  supportsConfig: boolean
 }
 
 function ModelTable({ models, hasActions, ...rest }: ModelTableProps) {
@@ -236,7 +255,6 @@ function ModelTable({ models, hasActions, ...rest }: ModelTableProps) {
               model={model}
               hasActions={hasActions}
               supportsDelete={rest.supportsDelete}
-              supportsConfig={rest.supportsConfig}
               onDelete={rest.onDelete}
               onConfigure={rest.onConfigure}
               onReenableToolCalling={rest.onReenableToolCalling}
@@ -257,19 +275,18 @@ const MODEL_SEARCH_THRESHOLD = 8
 function listHasActions(
   models: readonly ProviderModelResponse[],
   supportsDelete: boolean,
-  supportsConfig: boolean,
+  onConfigure: ((model: ProviderModelResponse) => void) | undefined,
   onReenableToolCalling: ((modelId: string) => void) | undefined,
 ): boolean {
   const canReenableAny =
     onReenableToolCalling !== undefined &&
     models.some((m) => m.tool_calls_verified === false)
-  return supportsDelete || supportsConfig || canReenableAny
+  return supportsDelete || onConfigure !== undefined || canReenableAny
 }
 
 export function ProviderModelList({
   models,
   supportsDelete = false,
-  supportsConfig = false,
   onDelete,
   onConfigure,
   onReenableToolCalling,
@@ -279,7 +296,7 @@ export function ProviderModelList({
   const hasActions = listHasActions(
     models,
     supportsDelete,
-    supportsConfig,
+    onConfigure,
     onReenableToolCalling,
   )
   const [query, setQuery] = useState('')
@@ -331,7 +348,6 @@ export function ProviderModelList({
           models={filtered}
           hasActions={hasActions}
           supportsDelete={supportsDelete}
-          supportsConfig={supportsConfig}
           onDelete={onDelete}
           onConfigure={onConfigure}
           onReenableToolCalling={onReenableToolCalling}

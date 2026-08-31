@@ -35,7 +35,6 @@ class PostureConfig(BaseModel):
 
     Attributes:
         name: Declared posture name (``None`` = no posture).
-        knowledge_substrate: Ground work in the shared knowledge base.
         chat_propose: Clarify-or-park proposal chat mode.
         chat_routing: Per-turn concern routing in front of proposals.
         group_chat: Multi-party group chat with stakeholders.
@@ -52,7 +51,6 @@ class PostureConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     name: NotBlankStr | None = Field(default=None)
-    knowledge_substrate: bool = Field(default=False)
     chat_propose: bool = Field(default=False)
     chat_routing: bool = Field(default=False)
     group_chat: bool = Field(default=False)
@@ -100,7 +98,6 @@ class PostureConfig(BaseModel):
         )
         return PostureConfig(
             name=self.name,
-            knowledge_substrate=self.knowledge_substrate or other.knowledge_substrate,
             chat_propose=self.chat_propose or other.chat_propose,
             chat_routing=self.chat_routing or other.chat_routing,
             group_chat=self.group_chat or other.group_chat,

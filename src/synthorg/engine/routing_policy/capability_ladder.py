@@ -12,17 +12,12 @@ from synthorg.core.task_enums import Complexity
 from synthorg.core.types import (
     CAPABILITY_LADDER,
     CapabilityLevel,
-    capability_meets,
     capability_rank,
 )
 
 # Weakest-first ladder. Re-exported for the routing modules that import it
 # from here; the definition lives in ``core.types``.
 LADDER = CAPABILITY_LADDER
-
-# The adequacy check lives in ``core.types`` (the single source shared with the
-# provider routing resolver); re-exported here under the routing name.
-meets_required = capability_meets
 
 
 def rank(capability: CapabilityLevel) -> int:
