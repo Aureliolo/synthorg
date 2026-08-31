@@ -199,6 +199,9 @@ jobs:
           CONTENT=$(printf '%s' "$BODY" | jq -r '.choices[0].message.content // empty')
           USAGE=$(printf '%s' "$BODY" | jq -r '.usage | "\(.prompt_tokens) in / \(.completion_tokens) out"')
           echo "usage=$USAGE" >> "$GITHUB_OUTPUT"
+          echo "::group::raw content (stdout debug)"
+          printf '%s\n' "$CONTENT"
+          echo "::endgroup::"
           # Randomised heredoc delimiter (see release-cut.yml rationale): model
           # output derives from untrusted commit prose.
           DELIM="HIGHLIGHTS_RESPONSE_$(openssl rand -hex 12)"
