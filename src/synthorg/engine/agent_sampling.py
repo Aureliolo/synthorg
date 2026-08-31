@@ -16,10 +16,10 @@ reasoning depth an operator bound. What the caller states wins field by field,
 and the binding answers for everything left open. One resolver over an ordered
 precedence, rather than two authorities racing.
 
-What a caller stated is read from Pydantic's own ``model_fields_set``, because
-two of these dials cannot be told apart from their defaults by value:
-``CompletionConfig.top_p`` defaults to ``1.0`` and is a legitimate thing to ask
-for explicitly.
+What a caller stated is read from Pydantic's own ``model_fields_set`` rather
+than by comparing against defaults, because a caller asking for exactly the
+value a field already defaults to has still asked for it, and a merge that
+inferred intent from the value would overwrite that request.
 """
 
 from synthorg.core.agent import AgentIdentity
@@ -32,14 +32,14 @@ def resolve_sampling(
 ) -> CompletionConfig:
     """Resolve the completion config *identity* should be dispatched with.
 
-    A dial the binding leaves unset is omitted rather than defaulted, so
-    :class:`CompletionConfig`'s own default stands instead of a copy of it that
-    a later change to that default would silently leave behind. That omission
-    is also what keeps ``model_copy`` safe here: ``top_p``, ``max_tokens`` and
-    ``reasoning_effort`` are optional on the binding and non-optional or
-    differently-bounded on the config, and every value that does pass through
-    carries the same bound on both sides (temperature 0-2, ``top_p`` 0-1,
-    ``max_tokens`` positive), so nothing needs revalidating.
+    A dial the binding leaves unset is omitted rather than defaulted, and the
+    config leaves it unset in turn, so it reaches the driver as a key that is
+    simply absent: an unstated threshold states nothing at the provider rather
+    than quietly asserting a value nobody chose. That omission is also what
+    keeps ``model_copy`` safe here: every value that does pass through carries
+    the same bound on both sides (temperature 0-2, ``top_p`` 0-1,
+    ``max_tokens`` positive), so nothing needs revalidating. A caller-supplied
+    value is a different matter and is validated where it enters.
 
     Args:
         identity: The agent being dispatched.

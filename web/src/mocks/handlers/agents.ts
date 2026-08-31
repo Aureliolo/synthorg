@@ -121,8 +121,12 @@ function buildAgentIdentity(
       model_id: 'example-capable-001',
       capability: 'capable',
       temperature: 0.7,
-      // What the API answers for an agent nobody pinned a ceiling on, which is
-      // every agent by default; the backend resolves it per dispatch instead.
+      // The three the API answers null for on an agent nobody pinned them on,
+      // which is every agent by default. Each resolves elsewhere per dispatch:
+      // the ceiling from settings, the nucleus threshold from the completion
+      // config, and the reasoning depth from the per-stakes ladder.
+      top_p: null,
+      reasoning_effort: null,
       max_tokens: null,
     },
     memory: {

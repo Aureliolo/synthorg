@@ -38,7 +38,7 @@ from synthorg.observability.events.multi_agent import (
 )
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage
+from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.registry import ProviderRegistry
 
 logger = get_logger(__name__)
@@ -135,8 +135,13 @@ def build_agent_caller(
         # when unset.
         own = identity.model.max_tokens
         effective_max_tokens = max_tokens if own is None else min(max_tokens, own)
-        config = resolve_sampling(identity).model_copy(
-            update={"max_tokens": effective_max_tokens}
+        # Re-validated rather than copied in: `model_copy(update=...)` skips
+        # validation by design, and this cap is computed from a caller-supplied
+        # budget while `CompletionConfig.max_tokens` is `gt=0`, so a copy would
+        # hand a non-positive ceiling straight to the provider.
+        config = CompletionConfig.model_validate(
+            resolve_sampling(identity).model_dump()
+            | {"max_tokens": effective_max_tokens}
         )
         try:
             async with cost_recording_scope(

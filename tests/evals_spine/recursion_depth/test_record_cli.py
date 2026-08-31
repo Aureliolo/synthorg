@@ -404,16 +404,29 @@ class TestPlanMode:
 class TestSamplingIsStatedBeforeAnythingIsSpent:
     """The treatment reaches the plan, and an override reaches the manifest.
 
-    A previous recording let every sampling dial default and could not
-    afterwards say what it had measured. The plan is the screen where the
-    spend decision is taken, so it is where these have to appear.
+    The plan is the screen where the spend decision is taken, so a dial that
+    is an input to the result has to be legible there: a recording that
+    cannot say what it sampled at cannot say what it measured.
     """
 
     def test_the_plan_states_what_each_pair_will_sample_at(self) -> None:
         plan = describe_plan(load_manifest(_MANIFEST), _spec())
 
-        assert "exec sampling" in plan
-        assert "revw sampling" in plan
+        # Both the label and a value it carries, so a renamed label fails here
+        # rather than silently leaving the operator a plan with no treatment
+        # on it, and so does a label that survives while its row empties.
+        assert "exec declared : temperature 0.7" in plan
+        assert "revw declared : temperature 0.6" in plan
+
+    def test_the_plan_names_a_dial_the_manifest_leaves_open(self) -> None:
+        """An unstated dial reads as unset rather than vanishing.
+
+        Omitting it would tell the operator the pair pins nothing there, when
+        three of the four resolve downstream to a value this system supplies.
+        """
+        plan = describe_plan(load_manifest(_MANIFEST), _spec())
+
+        assert "reasoning_effort unset" in plan
 
     def test_an_override_reaches_the_plan_not_just_the_run(self) -> None:
         # A value applied downstream of the plan prints the manifest's own
@@ -436,9 +449,31 @@ class TestSamplingIsStatedBeforeAnythingIsSpent:
         # The two pairs run on different dials, so a probe of one must not
         # silently move the other.
         shipped = load_manifest(_MANIFEST)
-        probed = narrow(shipped, None, None, None, executor_temperature=1.0)
+        probed = narrow(
+            shipped,
+            None,
+            None,
+            None,
+            executor_temperature=1.0,
+            executor_top_p=0.95,
+        )
 
         assert probed.reviewer == shipped.reviewer
+
+    def test_naming_one_dial_alone_is_refused(self) -> None:
+        """Half a vendor recommendation is worse than none, and this is paid.
+
+        Applying a temperature without its matching nucleus threshold samples
+        a distribution neither the manifest nor the vendor describes, so the
+        probe would measure something nobody chose.
+        """
+        shipped = load_manifest(_MANIFEST)
+
+        with pytest.raises(ValueError, match="probed together"):
+            narrow(shipped, None, None, None, executor_temperature=1.0)
+
+        with pytest.raises(ValueError, match="probed together"):
+            narrow(shipped, None, None, None, executor_top_p=0.95)
 
     def test_naming_no_dial_changes_nothing(self) -> None:
         shipped = load_manifest(_MANIFEST)

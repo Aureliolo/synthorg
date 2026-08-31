@@ -410,16 +410,18 @@ class CompletionConfig(BaseModel):
         default=(),
         description="Stop sequences",
     )
-    top_p: float = Field(
-        default=1.0,
+    top_p: float | None = Field(
+        default=None,
         ge=0.0,
         le=1.0,
         description=(
-            "Nucleus-sampling threshold. Defaults to 1.0 (full "
-            "distribution, no truncation) so every completion call "
-            "has an explicit deterministic value without each site "
-            "having to repeat it. Override when the prompt class "
-            "needs a custom value alongside ``temperature``."
+            "Nucleus-sampling threshold, or None to send none and leave "
+            "the provider's own. Unset rather than 1.0, because the driver "
+            "emits every non-None value: a numeric default here reaches the "
+            "wire on every call that never asked for one, which states a "
+            "truncation the caller did not choose and overrides whatever "
+            "the provider would otherwise apply. Set it wherever a prompt "
+            "class or a binding wants one alongside ``temperature``."
         ),
     )
     timeout: float | None = Field(

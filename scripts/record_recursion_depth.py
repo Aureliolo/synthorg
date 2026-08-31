@@ -1162,17 +1162,37 @@ def _resampled(
 ) -> dict[str, object]:
     """The executor-pair override a sampling probe asked for, if any.
 
+    The two dials move TOGETHER or not at all, which is the contract the
+    manifest and ``ModelConfig.top_p`` both state: a vendor publishes a
+    temperature and its matching nucleus threshold as one recommendation, so
+    naming one alone applies half of it against the other half of a different
+    one. That produces a distribution nobody tested, which is worse than
+    probing neither, and a probe is a paid run.
+
     Returns:
         A single-key override for the executor pair, or empty when neither
         dial was named.
+
+    Raises:
+        ValueError: Exactly one of the two was named.
     """
-    stated: dict[str, float] = {}
-    if temperature is not None:
-        stated["temperature"] = temperature
-    if top_p is not None:
-        stated["top_p"] = top_p
-    if not stated:
+    if (temperature is None) != (top_p is None):
+        named = (
+            "--executor-temperature" if temperature is not None else "--executor-top-p"
+        )
+        missing = (
+            "--executor-top-p" if temperature is not None else "--executor-temperature"
+        )
+        msg = (
+            f"{named} was given without {missing}. The two are one vendor "
+            f"recommendation and are probed together: naming one alone runs "
+            f"the paid cell at a distribution neither the manifest nor the "
+            f"vendor describes. Pass both, or neither."
+        )
+        raise ValueError(msg)
+    if temperature is None or top_p is None:
         return {}
+    stated: dict[str, float] = {"temperature": temperature, "top_p": top_p}
     return {"executor": manifest.executor.model_dump() | stated}
 
 

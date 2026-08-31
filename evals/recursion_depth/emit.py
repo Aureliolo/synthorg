@@ -274,14 +274,17 @@ def _provenance_lines(report: RecursionDepthReport) -> list[str]:
             f"reviewer `{provenance.reviewer.label}` "
             f"({provenance.independence.value})"
         ),
-        # The sampling and reasoning depth each pair was bound to. Published
-        # rather than left in the manifest because a reader holding the curve
-        # is the one who needs to know what was asked of the models that
-        # produced it. These are read off the dispatched binding, so `unset`
-        # means the binding stated nothing and per-call resolution answered
-        # for it, NOT that no value reached the provider.
-        f"- Executor binding: {provenance.executor.sampling_summary}",
-        f"- Reviewer binding: {provenance.reviewer.sampling_summary}",
+        # What the matrix DECLARED for each pair, which is what provenance can
+        # carry: it is stamped before the host boots, so the roster it would
+        # read a dispatched binding off does not exist yet, and stamping it
+        # later would leave `matrix_identity` uncomputable until after the
+        # first cell had already been paid for. What each unit actually
+        # dispatched on is recorded per unit instead (`ModelPair.of`), where a
+        # reviewer that silently came up on the executor's pair is visible.
+        # So `unset` here means the matrix pinned nothing and staffing or the
+        # completion config answered, NOT that no value reached the provider.
+        f"- Executor declared: {provenance.executor.sampling_summary}",
+        f"- Reviewer declared: {provenance.reviewer.sampling_summary}",
         *(
             [f"- Sandbox image `{provenance.sandbox_image}`"]
             if provenance.sandbox_image is not None

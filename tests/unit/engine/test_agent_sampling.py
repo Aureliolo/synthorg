@@ -49,14 +49,16 @@ class TestTheBindingAnswersWhenNobodyElseDid:
         assert config.reasoning_effort is ReasoningEffort.HIGH
         assert config.max_tokens == 131_072
 
-    def test_unset_top_p_leaves_the_completion_default_standing(self) -> None:
-        """An unstated threshold is not a threshold of this module's choosing.
+    def test_unset_top_p_reaches_the_request_unset(self) -> None:
+        """An unstated threshold stays unstated all the way to the driver.
 
-        Copying ``CompletionConfig``'s default here would silently diverge from
-        it the day that default moved, so the field is simply not set.
+        Inventing one here, or letting a numeric config default stand in for
+        it, would send a truncation the operator never chose and override
+        whatever the provider applies by default.
         """
         config = resolve_sampling(_identity_with())
-        assert config.top_p == pytest.approx(CompletionConfig().top_p)
+        assert config.top_p is None
+        assert CompletionConfig().top_p is None
 
     def test_unset_reasoning_effort_stays_unset(self) -> None:
         """Nothing is invented for an agent that asked for no depth.

@@ -49,19 +49,32 @@ class TestApplyCompletionConfig:
     def test_none_valued_fields_not_injected(self) -> None:
         """Fields left at ``None`` are absent (no spurious keys override defaults).
 
-        ``top_p`` is always present because ``CompletionConfig`` defaults it
-        to ``1.0`` (not ``None``); ``temperature`` / ``max_tokens`` /
-        ``timeout`` default to ``None`` and must not be injected.
+        ``top_p`` is among them: a numeric default would reach the wire on
+        every call that never asked for one, stating a truncation the caller
+        did not choose and overriding whatever the provider would apply.
         """
         result = _apply_completion_config(
             _base_kwargs(), CompletionConfig(temperature=0.7)
         )
 
         assert result["temperature"] == 0.7
-        assert result["top_p"] == 1.0
+        assert "top_p" not in result
         assert "max_tokens" not in result
         assert "timeout" not in result
         assert "stop" not in result
+
+    def test_a_stated_top_p_is_still_emitted(self) -> None:
+        """The complement: asking for one sends it.
+
+        Omitting an unset threshold is only correct while a stated one still
+        reaches the wire; dropping both would silently disable nucleus
+        sampling for every prompt class that pins it.
+        """
+        result = _apply_completion_config(
+            _base_kwargs(), CompletionConfig(temperature=0.7, top_p=0.95)
+        )
+
+        assert result.get("top_p") == pytest.approx(0.95)
 
     def test_reasoning_effort_emitted_when_set(self) -> None:
         """A set ``reasoning_effort`` maps to the litellm kwarg as its value."""
