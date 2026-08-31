@@ -385,6 +385,24 @@ class TestTheLedgerIsNeverAbsent:
         _, cells = read_recorded_cells(tmp_path)
         assert [unit.tokens for cell in cells for unit in cell.units] == [42]
 
+    def test_a_write_failure_mid_loop_still_frees_the_staging_handle(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The staging journal is never closed on this path when the loop
+        fails, so a leaked handle here would block ``rmtree`` on Windows and
+        leave the ``.adopt-*`` directory behind permanently."""
+        _recorded(tmp_path)
+        provenance, cells = read_recorded_cells(tmp_path)
+
+        def _boom(*_args: object, **_kwargs: object) -> None:
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr("evals.harness.journal.RunJournal.record", _boom)
+        with pytest.raises(OSError, match="No space left"):
+            adopt_repaired_spend(tmp_path, provenance=provenance, cells=cells)
+
+        assert not [p for p in tmp_path.iterdir() if p.name.startswith(".adopt-")]
+
 
 class TestReadingThePreviousReport:
     """Absent is ordinary; present and unreadable is not."""

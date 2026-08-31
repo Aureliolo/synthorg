@@ -35,6 +35,17 @@ class CompletionOracleReviewInput(BaseModel):
             nothing downstream could tell that apart from a deliberate one.
         estimated_complexity: The reviewed work's complexity, the second
             half of that requirement, required for the same reason.
+        max_turns: Optional override of the reviewer session's turn budget.
+            ``None`` (the default, and every ordinary production dispatch)
+            leaves the engine's own resolution in force. A caller that
+            already promised the review a specific turn budget elsewhere
+            (an eval harness measuring the gate under a declared budget,
+            for instance) passes it here so the session that actually runs
+            is bounded by the same number, rather than by whatever the
+            engine falls back to when none is given.
+        token_ceiling: The same override, counted in tokens, applied via the
+            transient review task's ``hard_token_ceiling``. ``None`` leaves
+            token enforcement to the engine's own wiring.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -47,3 +58,5 @@ class CompletionOracleReviewInput(BaseModel):
     stakes: Stakes
     estimated_complexity: Complexity
     project_id: NotBlankStr | None = None
+    max_turns: int | None = Field(default=None, ge=1)
+    token_ceiling: int | None = Field(default=None, ge=0)

@@ -44,12 +44,12 @@ from synthorg.budget.quota import (
 from synthorg.budget.quota_tracker import QuotaTracker
 from synthorg.budget.risk_enforcer import BudgetEnforcerRiskMixin
 from synthorg.budget.risk_tracker import RiskTracker
+from synthorg.budget.session_budget import SessionBudgetChecker
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.loop_protocol import BudgetChecker
 from synthorg.notifications.dispatcher import NotificationDispatcher
 from synthorg.observability import (
     get_logger,
@@ -677,7 +677,7 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
         *,
         project_id: NotBlankStr | None = None,
         project_budget: float = 0.0,
-    ) -> BudgetChecker | None:
+    ) -> SessionBudgetChecker | None:
         """Create a sync BudgetChecker with pre-computed baselines.
 
         Checks task limit, monthly total, agent daily limit, optional

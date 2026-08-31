@@ -160,7 +160,8 @@
         "SQLiteBenchmarkScoreRepository",
         "QuotaTracker",
         "RiskTracker",
-        "CallAnalyticsService"
+        "CallAnalyticsService",
+        "SessionBudgetChecker"
       ],
       "mcp_tool_names": [
         "synthorg_budget_get_config",
@@ -489,7 +490,8 @@
         "ManualDecompositionStrategy",
         "build_work_pipeline",
         "ForecastGate",
-        "ShipRetroCaptureService"
+        "ShipRetroCaptureService",
+        "make_context_indicator"
       ],
       "mcp_tool_names": [
         "synthorg_tasks_list",
@@ -1468,6 +1470,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-30T06:56:09.336543Z",
+  "generated_at": "2026-08-31T04:30:48.687636Z",
   "schema_version": 1
 }

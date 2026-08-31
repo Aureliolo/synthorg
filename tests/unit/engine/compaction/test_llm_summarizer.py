@@ -97,6 +97,28 @@ class TestLLMSummarizer:
         assert config.temperature == pytest.approx(0.7)
         assert config.max_tokens == 250
 
+    async def test_preserve_markers_true_adds_the_instruction(self) -> None:
+        """An agent's explicit request must reach the LLM path, not only the
+        text-only fallback: a summariser that succeeds is the path that
+        renders the summary, so an override honoured only by the fallback is
+        an override honoured nowhere."""
+        provider = _FakeProvider(content="summary")
+        await _summarizer(provider).summarize(
+            _archivable(), fallback_text=_FALLBACK, preserve_markers=True
+        )
+        messages, _, _ = provider.calls[0]
+        system_content = messages[0].content or ""
+        assert "epistemic markers" in system_content.lower()
+
+    async def test_preserve_markers_false_omits_the_instruction(self) -> None:
+        provider = _FakeProvider(content="summary")
+        await _summarizer(provider).summarize(
+            _archivable(), fallback_text=_FALLBACK, preserve_markers=False
+        )
+        messages, _, _ = provider.calls[0]
+        system_content = messages[0].content or ""
+        assert "epistemic markers" not in system_content.lower()
+
     def test_module_defaults_mirror_compaction_config(self) -> None:
         # The module Finals are duplicated from the domain config; guard the
         # duplication so a CompactionConfig default change cannot silently

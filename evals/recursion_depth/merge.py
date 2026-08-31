@@ -30,6 +30,7 @@ from typing import Final
 from evals.harness.workspace import CellWorkspace, drop_escaping_links
 from evals.recursion_depth.gate import MergeReview, MergeReviewer, MergeReviewRequest
 from evals.recursion_depth.manifest import ModelPair
+from evals.recursion_depth.models import reject_negative_deltas, sum_costs
 from evals.recursion_depth.session import (
     SessionLimits,
     SweepDeps,
@@ -39,6 +40,7 @@ from evals.recursion_depth.session import (
 from evals.recursion_depth.unit import (
     UnitDelivery,
     UnitFingerprint,
+    files_changed,
     probe_artifacts,
     produced_tree,
 )
@@ -116,7 +118,14 @@ class MergePlan:
         criteria: What the whole is judged against.
         execution_prefix: Stem for each session's execution id, which the
             attempt number is appended to so no two sessions share a ledger.
-        limits: The turn and spend bounds each session gets.
+        merge_limits: The turn and spend bounds each ASSEMBLING session gets.
+            Sized by fan-in: a merge with many pieces must read all of them
+            before it can write, which a flat leaf-sized budget cannot cover.
+        review_limits: The turn and spend bounds each REVIEW gets. A separate
+            field rather than a shared ``limits``, because the reviewer reads
+            the same pieces on a different schedule from the assembler and
+            handing it the merge's own bound by omission is how the gate
+            starved: the review is what actually decides the arm.
         attempts: How many merge attempts this node gets, in either arm.
     """
 
@@ -126,7 +135,8 @@ class MergePlan:
     pieces: tuple[MergePiece, ...]
     criteria: tuple[NotBlankStr, ...]
     execution_prefix: str
-    limits: SessionLimits
+    merge_limits: SessionLimits
+    review_limits: SessionLimits
     attempts: int
 
 
@@ -151,8 +161,13 @@ class MergeOutcome:
             are not observable through the gate's dispatch seam, which answers
             with the pair it ran on and nothing else; its SPEND is, and spend
             is what the equal-budget question is about.
-        cost: What the merge and its reviews spent together.
+        cost: What the merge and its reviews spent together, ``None`` once any
+            one session's own cost is: an assembling session on a priced
+            connection reviewed on an unpriced one has no honest total, only a
+            partial sum wearing the shape of one.
         tokens: What they spent in tokens.
+        input_tokens: The input half of ``tokens``.
+        output_tokens: The output half of ``tokens``.
         executor: The pair the assembling sessions ran on.
         reviewer: The pair that JUDGED, absent in the ungated arm. Recorded
             here rather than only in the sweep provenance because the gate is
@@ -160,7 +175,15 @@ class MergeOutcome:
             biases straight toward the null, and per-merge is the only place
             that is visible.
         verdict: The last verdict taken, absent in the ungated arm.
-        parked: Whether the gate escalated with nobody to escalate to.
+        parked: Whether the LAST attempt's review escalated with nobody to
+            escalate to. A merge parked on attempt 1 and approved on attempt
+            2 reads ``False`` here, correctly: it was judged in the end.
+        parked_attempts: How many repair ROUNDS parked (not sessions, unlike
+            ``attempts``). ``parked_attempts == len(terminations)`` (both
+            non-zero) means every round that ran asked for a verdict and got
+            none, which is the case ``emit.py`` excludes from the judged
+            curve: distinguishable from "asked and unanswered once" and from
+            the ungated arm, which never parks by construction.
         amendments: How many child-interface changes the agent recorded.
         missing_declared_paths: Declared paths ABSENT from the assembled tree.
             Recorded because a planner over-declaring is worth seeing; it does
@@ -174,23 +197,96 @@ class MergeOutcome:
             and "was stopped before it could" look identical in every other
             field, and telling them apart otherwise means reading the
             transcripts.
+        workspace_files_changed: The symmetric difference between the
+            assembled tree before the first attempt and after the last, so
+            "read every child for N turns and wrote nothing" is readable from
+            the record without a transcript. This is exactly the signal the
+            stopped depth-4 recording needed: four merges spent 167 tool calls
+            between them and left it at ``0``.
     """
 
     workspace: CellWorkspace
     delivered: bool
     attempts: int
     turns: int
-    cost: float
+    cost: float | None
     produced: bool = False
     tokens: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
     executor: ModelPair | None = None
     reviewer: ModelPair | None = None
     verdict: str | None = None
     parked: bool = False
+    parked_attempts: int = 0
     amendments: int = 0
     missing_declared_paths: tuple[str, ...] = ()
     detail: str = ""
     terminations: tuple[str, ...] = ()
+    workspace_files_changed: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _MergeSpend:
+    """Running spend across one merge's assembling and reviewing sessions.
+
+    Immutable and returned fresh from :meth:`plus`, on the same pattern as
+    ``execute.py``'s ``_Spend``: the loop below folds two different session
+    kinds per attempt, and a mutable accumulator here would be one more shape
+    for this repository's immutability convention to make an exception for.
+
+    Attributes:
+        sessions: How many sessions, assembling and reviewing both, have run.
+        turns: Turns taken by the ASSEMBLING sessions. A review's turns are
+            not observable through the gate's dispatch seam.
+        cost: Money booked across both kinds, folded with ``sum_costs`` so a
+            single unpriced session poisons the running total rather than
+            being silently skipped.
+        tokens: Tokens booked across both kinds.
+        input_tokens: The input half of ``tokens``.
+        output_tokens: The output half of ``tokens``.
+    """
+
+    sessions: int = 0
+    turns: int = 0
+    cost: float | None = 0.0
+    tokens: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+    def plus(
+        self,
+        *,
+        turns: int = 0,
+        cost: float | None,
+        tokens: int,
+        input_tokens: int,
+        output_tokens: int,
+    ) -> _MergeSpend:
+        """Add one further session's figures.
+
+        Returns:
+            The total including it.
+
+        Raises:
+            ValueError: Any of the deltas is negative.
+        """
+        reject_negative_deltas(
+            "merge",
+            cost=cost,
+            turns=turns,
+            tokens=tokens,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
+        return _MergeSpend(
+            sessions=self.sessions + 1,
+            turns=self.turns + turns,
+            cost=sum_costs((self.cost, cost)),
+            tokens=self.tokens + tokens,
+            input_tokens=self.input_tokens + input_tokens,
+            output_tokens=self.output_tokens + output_tokens,
+        )
 
 
 def piece_slug(title: str, *, index: int) -> str:
@@ -358,10 +454,8 @@ async def run_merge(
     assembled_before = await asyncio.to_thread(produced_tree, plan.workspace)
     findings: tuple[str, ...] = ()
     review = MergeReview(approved=None)
-    sessions = 0
-    turns = 0
-    cost = 0.0
-    tokens = 0
+    spend = _MergeSpend()
+    parked_attempts = 0
     terminations: tuple[str, ...] = ()
     for attempt in range(1, plan.attempts + 1):
         outcome = await run_session(
@@ -370,17 +464,23 @@ async def run_merge(
             task=_attempt_task(plan, findings),
             workspace=plan.workspace,
             execution_id=f"{plan.execution_prefix}-attempt{attempt}",
-            limits=plan.limits,
+            limits=plan.merge_limits,
         )
-        sessions += 1
-        turns += outcome.turns
-        cost += outcome.cost
-        tokens += outcome.tokens
+        spend = spend.plus(
+            turns=outcome.turns,
+            cost=outcome.cost,
+            tokens=outcome.tokens,
+            input_tokens=outcome.input_tokens,
+            output_tokens=outcome.output_tokens,
+        )
         terminations = (*terminations, outcome.termination)
         review = await reviewer.review(_review_request(plan, attempt))
-        sessions += 1
-        cost += review.cost
-        tokens += review.tokens
+        spend = spend.plus(
+            cost=review.cost,
+            tokens=review.tokens,
+            input_tokens=review.input_tokens,
+            output_tokens=review.output_tokens,
+        )
         logger.info(
             EVALS_RECURSION_MERGE_ATTEMPTED,
             task_id=str(plan.task.id),
@@ -389,10 +489,12 @@ async def run_merge(
             verdict=review.verdict,
             parked=review.parked,
         )
-        if review.approved is True or review.parked:
+        if review.parked:
+            parked_attempts += 1
+        if review.approved is True:
             break
         findings = _trim(review.findings)
-    delivery = await _delivery(deps, plan, turns=turns, baseline=assembled_before)
+    delivery = await _delivery(deps, plan, turns=spend.turns, baseline=assembled_before)
     amendments = await asyncio.to_thread(count_amendments, plan.workspace)
     final = await asyncio.to_thread(
         probe_artifacts, _attempt_task(plan, ()), plan.workspace
@@ -401,18 +503,22 @@ async def run_merge(
         workspace=plan.workspace,
         delivered=delivery.delivered,
         produced=delivery.produced,
-        attempts=sessions,
-        turns=turns,
-        cost=cost,
-        tokens=tokens,
+        attempts=spend.sessions,
+        turns=spend.turns,
+        cost=spend.cost,
+        tokens=spend.tokens,
+        input_tokens=spend.input_tokens,
+        output_tokens=spend.output_tokens,
         executor=ModelPair.of(plan.owner, deps.declared_pairs),
         reviewer=review.reviewer,
         verdict=review.verdict,
         parked=review.parked,
+        parked_attempts=parked_attempts,
         amendments=amendments,
         missing_declared_paths=final.missing,
         detail=delivery.reason,
         terminations=terminations,
+        workspace_files_changed=delivery.workspace_files_changed,
     )
 
 
@@ -470,7 +576,7 @@ def _review_request(plan: MergePlan, attempt: int) -> MergeReviewRequest:
         deliverable=_deliverable_summary(plan),
         criteria=plan.criteria,
         execution_id=f"{plan.execution_prefix}-review{attempt}",
-        limits=plan.limits,
+        limits=plan.review_limits,
     )
 
 
@@ -530,23 +636,29 @@ async def _delivery(
                 "no assembly attempt ran a single turn, so nothing was "
                 "assembled and this is not an assembly failure"
             ),
+            workspace_files_changed=0,
         )
-    if await asyncio.to_thread(produced_tree, plan.workspace) == baseline:
+    after = await asyncio.to_thread(produced_tree, plan.workspace)
+    if after == baseline:
         return UnitDelivery(
             produced=False,
             reason=(
                 "no assembly attempt changed the tree outside the pieces it was given"
             ),
+            workspace_files_changed=0,
         )
+    changed = files_changed(baseline, after)
     async with graded(
         deps, plan.workspace, owner=f"grade:{plan.execution_prefix}"
     ) as grader:
         passed, report = await grader.own_tests_pass(plan.workspace.project_dir)
     if not passed:
         return UnitDelivery(
-            produced=True, reason=f"the merged tree's own tests did not pass: {report}"
+            produced=True,
+            reason=f"the merged tree's own tests did not pass: {report}",
+            workspace_files_changed=changed,
         )
-    return UnitDelivery(produced=True, reason="")
+    return UnitDelivery(produced=True, reason="", workspace_files_changed=changed)
 
 
 def _trim(findings: tuple[str, ...]) -> tuple[str, ...]:

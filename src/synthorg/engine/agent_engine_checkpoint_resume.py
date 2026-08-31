@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
+from synthorg.engine._ceiling_publish import sync_ctx_ceilings
 from synthorg.engine.artifacts.baseline_scope import RunBaselineProbe
 from synthorg.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
@@ -26,11 +27,11 @@ from synthorg.engine.checkpoint.resume import (
 from synthorg.engine.context import AgentContext
 from synthorg.engine.cost_recording import record_execution_costs
 from synthorg.engine.errors import RecoveryCheckpointMissingError
+from synthorg.engine.loop_budget_signal import resolve_budget_signal_config
+from synthorg.engine.loop_empty_run import resolve_produce_early_percent
 from synthorg.engine.loop_protocol import (
-    BudgetChecker,
     ExecutionResult,
     TerminationReason,
-    make_budget_checker,
 )
 from synthorg.engine.recovery import RecoveryResult, RecoveryStrategy
 from synthorg.engine.task_sync import apply_post_execution_transitions
@@ -49,6 +50,7 @@ if TYPE_CHECKING:
     from synthorg.core.clock import Clock
     from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine._agent_engine_callables import (
+        BuildBudgetChecker,
         MakeLoopWithCallback,
         MakeToolInvoker,
         ResolveMemoryStrategy,
@@ -62,6 +64,7 @@ if TYPE_CHECKING:
         HeartbeatRepository,
     )
     from synthorg.persistence.project_protocol import ProjectRepository
+    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -97,7 +100,9 @@ class AgentEngineCheckpointResumeMixin:
     _recovery_strategy: RecoveryStrategy | None
     _project_repo: ProjectRepository | None
     _validate_project: ValidateProject
+    _build_budget_checker: BuildBudgetChecker
     _budget_enforcer: BudgetEnforcer | None
+    _config_resolver: ConfigResolver | None
     _loop: ExecutionLoop
     _make_loop_with_callback: MakeLoopWithCallback
     _provider: CompletionProvider
@@ -199,20 +204,32 @@ class AgentEngineCheckpointResumeMixin:
             The :class:`ExecutionResult` from running the engine's
             configured loop against the reconciled checkpoint context.
         """
-        budget_checker: BudgetChecker | None
-        if checkpoint_ctx.task_execution is None:
-            budget_checker = None
-        elif self._budget_enforcer:
-            budget_checker = await self._budget_enforcer.make_budget_checker(
+        budget_checker = (
+            await self._build_budget_checker(
                 checkpoint_ctx.task_execution.task,
                 agent_id,
                 project_id=project_id,
                 project_budget=project_budget,
             )
-        else:
-            budget_checker = make_budget_checker(
-                checkpoint_ctx.task_execution.task,
-            )
+            if checkpoint_ctx.task_execution is not None
+            else None
+        )
+        # The checkpoint carries whatever ceilings were in force when it was
+        # taken; the checker just built above is what actually enforces this
+        # resumed run and may disagree, e.g. Task.hard_token_ceiling unset
+        # and budget.run_hard_token_ceiling changed while the run was parked,
+        # or disabled entirely. Without this, check_budget_signal and
+        # nudge_unproductive_spend read a threshold the loop is not the one
+        # enforcing.
+        checkpoint_ctx = sync_ctx_ceilings(checkpoint_ctx, budget_checker)
+        # A checkpoint-resumed run is exactly the long, budget-bounded
+        # session these two exist to keep legible; without them a run
+        # surviving a restart loses its turn-boundary remainder report and
+        # its terminal warning for the rest of its life.
+        budget_signal_config = await resolve_budget_signal_config(self._config_resolver)
+        produce_early_percent = await resolve_produce_early_percent(
+            self._config_resolver
+        )
 
         loop = self._make_loop_with_callback(self._loop, agent_id, task_id)
         result: ExecutionResult = await loop.execute(
@@ -228,6 +245,8 @@ class AgentEngineCheckpointResumeMixin:
             budget_checker=budget_checker,
             shutdown_checker=self._shutdown_checker,
             completion_config=completion_config,
+            budget_signal_config=budget_signal_config,
+            produce_early_percent=produce_early_percent,
         )
         return result
 

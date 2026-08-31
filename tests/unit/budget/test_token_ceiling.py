@@ -82,7 +82,7 @@ class TestRunCeiling:
 
         assert checker is not None
         with pytest.raises(RunHardTokenCeilingExceededError) as caught:
-            checker(_Ctx(cost=0.0, tokens=1_000))  # type: ignore[arg-type]
+            checker(_Ctx(cost=0.0, tokens=1_000))
         assert caught.value.token_ceiling == 1_000
         assert caught.value.tokens_used == 1_000
 
@@ -104,7 +104,7 @@ class TestRunCeiling:
 
         assert checker is not None
         with pytest.raises(RunHardTokenCeilingExceededError) as caught:
-            checker(_Ctx(cost=0.0, tokens=1_000))  # type: ignore[arg-type]
+            checker(_Ctx(cost=0.0, tokens=1_000))
 
         exc = caught.value
         assert exc.error_code is ErrorCode.RUN_HARD_TOKEN_CEILING_EXCEEDED
@@ -128,7 +128,7 @@ class TestRunCeiling:
         checker = await enforcer.make_budget_checker(_task(), "agent-1")
 
         assert checker is not None
-        assert checker(_Ctx(cost=0.0, tokens=999)) is False  # type: ignore[arg-type]
+        assert checker(_Ctx(cost=0.0, tokens=999)) is False
 
     async def test_the_task_overrides_the_global(self) -> None:
         cfg = _config(token_ceiling=1_000_000)
@@ -142,7 +142,7 @@ class TestRunCeiling:
 
         assert checker is not None
         with pytest.raises(RunHardTokenCeilingExceededError):
-            checker(_Ctx(cost=0.0, tokens=10))  # type: ignore[arg-type]
+            checker(_Ctx(cost=0.0, tokens=10))
 
     async def test_zero_is_the_explicit_opt_out(self) -> None:
         cfg = _config(token_ceiling=0)

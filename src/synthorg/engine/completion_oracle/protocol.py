@@ -48,6 +48,10 @@ class ReviewerAgentRunner(Protocol):
         an argument rather than being bound once at construction: a gate that
         held one identity could only ever have one reviewer.
 
+        ``review_input.max_turns`` and ``.token_ceiling`` bound the session
+        actually dispatched when a caller set them; ``None`` (every ordinary
+        production review) leaves the engine's own resolution in force.
+
         The agent is expected to file exactly one verdict via the
         ``submit_completion_oracle_verdict`` tool. Returning without a filed
         verdict is a contract violation; the gate escalates to a human.

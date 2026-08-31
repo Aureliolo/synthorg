@@ -247,6 +247,15 @@ def _workspace(tmp_path: Path, name: str) -> CellWorkspace:
     return workspace
 
 
+def _limits() -> SessionLimits:
+    """Build the bounds a scripted merge test hands to both its sessions.
+
+    Returns:
+        The bounds.
+    """
+    return SessionLimits(max_turns=4, cost_ceiling=1.0, token_ceiling=1000)
+
+
 class TestTheLeafBrief:
     """One agent owns a unit end to end, and is never shown the oracle."""
 
@@ -391,7 +400,8 @@ class TestTheMergeBrief:
             ),
             criteria=(NotBlankStr("It runs end to end"),),
             execution_prefix="x",
-            limits=SessionLimits(max_turns=4, cost_ceiling=1.0, token_ceiling=1000),
+            merge_limits=_limits(),
+            review_limits=_limits(),
             attempts=2,
         )
 
@@ -567,7 +577,8 @@ class TestTheMergeLoop:
             pieces=(),
             criteria=(NotBlankStr("It runs"),),
             execution_prefix="cell-merge",
-            limits=SessionLimits(max_turns=4, cost_ceiling=1.0, token_ceiling=1000),
+            merge_limits=_limits(),
+            review_limits=_limits(),
             attempts=attempts,
         )
 
@@ -615,20 +626,77 @@ class TestTheMergeLoop:
         assert len(scripted_sessions) == 3
         assert outcome.attempts == 6
         assert outcome.verdict is None
+        # Never parks by construction: a park-exhaustion predicate keyed on
+        # verdict absence alone would misread the whole control arm as
+        # unjudged, erasing the line it exists to contrast against.
+        assert outcome.parked_attempts == 0
 
     async def test_an_escalation_stands_and_is_counted(
         self, tmp_path: Path, scripted_sessions: list[_Attempt]
     ) -> None:
         # There is no human in a sweep, so the merge stands and the count
-        # travels with the chart.
+        # travels with the chart. A park is not an approval: the loop keeps
+        # spending the arm's budget exactly as the ungated control does,
+        # rather than stopping on the first escalation.
         reviewer = _ScriptedReviewer(
             [MergeReview(approved=None, parked=True, verdict="escalate")]
         )
 
         outcome = await run_merge(_deps(), self._plan(tmp_path, attempts=3), reviewer)
 
-        assert len(scripted_sessions) == 1
+        assert len(scripted_sessions) == 3
         assert outcome.parked is True
+        assert outcome.parked_attempts == 3
+
+    async def test_a_park_does_not_take_the_approval_branch(
+        self, tmp_path: Path, scripted_sessions: list[_Attempt]
+    ) -> None:
+        """The defect, stated as a test: a park used to break the loop exactly
+        as an approval does, so a reviewer that starved on attempt 1 ended the
+        repair loop before attempt 2 ever ran."""
+        reviewer = _ScriptedReviewer(
+            [
+                MergeReview(approved=None, parked=True, verdict="escalate"),
+                MergeReview(approved=True, verdict="approve"),
+            ]
+        )
+
+        outcome = await run_merge(_deps(), self._plan(tmp_path, attempts=3), reviewer)
+
+        # Both attempts ran: the park on attempt 1 did not stop the loop.
+        assert len(scripted_sessions) == 2
+        # Judged in the end, so the LAST review's outcome stands.
+        assert outcome.parked is False
+        assert outcome.verdict == "approve"
+        assert outcome.parked_attempts == 1
+
+    async def test_a_merge_that_parks_every_attempt_is_never_judged(
+        self, tmp_path: Path, scripted_sessions: list[_Attempt]
+    ) -> None:
+        reviewer = _ScriptedReviewer(
+            [MergeReview(approved=None, parked=True, verdict="escalate")]
+        )
+
+        outcome = await run_merge(_deps(), self._plan(tmp_path, attempts=3), reviewer)
+
+        assert len(scripted_sessions) == 3
+        assert outcome.parked is True
+        assert outcome.parked_attempts == len(outcome.terminations) == 3
+        assert outcome.verdict != "approve"
+
+    async def test_workspace_files_changed_reaches_run_merge(
+        self, tmp_path: Path, scripted_sessions: list[_Attempt]
+    ) -> None:
+        """Wired end to end: the fixture's fingerprint differs before and
+        after by construction (one path, a new content key each call), so
+        this covers ``run_merge`` reaching ``files_changed`` rather than
+        ``files_changed`` itself, which is tested against real fingerprints
+        in test_merge_delivery.py."""
+        reviewer = _ScriptedReviewer([MergeReview(approved=True, verdict="approve")])
+
+        outcome = await run_merge(_deps(), self._plan(tmp_path, attempts=3), reviewer)
+
+        assert outcome.workspace_files_changed == 1
 
     async def test_every_attempt_gets_its_own_execution_id(
         self, tmp_path: Path, scripted_sessions: list[_Attempt]
@@ -858,6 +926,41 @@ class TestDeliveryIsAboutWorkNotTheDeclaration:
         # Still recorded, because a planner declaring what it does not need is
         # worth seeing. It just does not decide.
         assert outcome.missing_declared_paths == ("tests/__init__.py",)
+
+    async def test_wrote_nothing_is_distinguishable_from_scored_nothing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A run that took turns and changed nothing is a queryable fact.
+
+        Distinct from a failing grade: this is the signal the stopped depth-4
+        recording needed and did not have without opening a transcript.
+        """
+        task = self._task("src/inference.py")
+        workspace = _workspace(tmp_path, "leaf")
+
+        outcome = await self._leaf(task, workspace, monkeypatch, writes={})
+
+        assert not outcome.produced
+        assert outcome.workspace_files_changed == 0
+
+    async def test_each_written_file_counts_toward_the_delta(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        task = self._task("src/inference.py", "tests/test_inference.py")
+        workspace = _workspace(tmp_path, "leaf")
+
+        outcome = await self._leaf(
+            task,
+            workspace,
+            monkeypatch,
+            writes={
+                "src/inference.py": "real work",
+                "tests/test_inference.py": "real work",
+            },
+        )
+
+        assert outcome.delivered, outcome.detail
+        assert outcome.workspace_files_changed == 2
 
     async def test_the_baseline_is_taken_before_the_session_runs(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1581,6 +1684,18 @@ def _manifest(**overrides: object) -> RecursionDepthManifest:
         "planner_max_turns": 4,
         "unit_cost_ceiling": 1.0,
         "unit_token_ceiling": 1000,
+        "merge_token_base": 1000,
+        "merge_token_per_piece": 200,
+        "merge_token_cap": 5000,
+        "merge_max_turns_base": 4,
+        "merge_max_turns_per_piece": 1,
+        "merge_max_turns_cap": 20,
+        "review_token_base": 1000,
+        "review_token_per_piece": 200,
+        "review_token_cap": 5000,
+        "review_max_turns_base": 4,
+        "review_max_turns_per_piece": 1,
+        "review_max_turns_cap": 20,
         "max_sessions": 100,
         "projected_branching": 4,
         # Every cap the fixture's callers sweep, since a swept cap must be

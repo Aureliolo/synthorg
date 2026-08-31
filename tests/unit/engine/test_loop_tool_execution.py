@@ -203,3 +203,91 @@ class TestBackgroundJobWatchCapture:
         assert "<tool-result>" in wrapped_message.tool_result.content
         # ...yet the job id was still correctly parsed from the raw content.
         assert result.background_job_watch.get("xyz") is not None
+
+
+class _ScriptedCompactContextTool(BaseTool):
+    """A ``compact_context`` double, since the real tool's result isn't read."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="compact_context",
+            description="Test double",
+            category=ToolCategory.MEMORY,
+        )
+
+    @override
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
+        return ToolExecutionResult(content="ok", is_error=False)
+
+
+def _compact_context_response(
+    *, strategy: str = "summarize", reason: str = "fill is high", **extra: JsonValue
+) -> CompletionResponse:
+    arguments: dict[str, JsonValue] = {"strategy": strategy, "reason": reason, **extra}
+    return CompletionResponse(
+        content=None,
+        tool_calls=(ToolCall(id="tc-1", name="compact_context", arguments=arguments),),
+        finish_reason=FinishReason.TOOL_USE,
+        usage=_usage(),
+        model="test-model-001",
+    )
+
+
+class _FailingCompactContextTool(BaseTool):
+    """A ``compact_context`` double that always reports failure."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="compact_context",
+            description="Test double",
+            category=ToolCategory.MEMORY,
+        )
+
+    @override
+    async def execute(self, *, arguments: dict[str, object]) -> ToolExecutionResult:
+        return ToolExecutionResult(content="boom", is_error=True)
+
+
+class TestCompactContextDirectiveCapture:
+    """The loop records the directive from the CALL, not the tool's result."""
+
+    async def test_records_the_request_from_the_call_arguments(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        response = _compact_context_response(reason="context at 90 percent fill")
+        invoker = ToolInvoker(ToolRegistry([_ScriptedCompactContextTool()]))
+
+        result = await execute_tool_calls(ctx, invoker, response, 1, [])
+
+        assert isinstance(result, AgentContext)
+        request = result.compaction_request
+        assert request is not None
+        assert request.strategy == "summarize"
+        assert request.reason == "context at 90 percent fill"
+        assert request.preserve_markers is True
+
+    async def test_preserve_markers_false_is_captured(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        response = _compact_context_response(preserve_markers=False)
+        invoker = ToolInvoker(ToolRegistry([_ScriptedCompactContextTool()]))
+
+        result = await execute_tool_calls(ctx, invoker, response, 1, [])
+
+        assert isinstance(result, AgentContext)
+        assert result.compaction_request is not None
+        assert result.compaction_request.preserve_markers is False
+
+    async def test_a_failed_call_never_records_a_request(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        response = _compact_context_response()
+        invoker = ToolInvoker(ToolRegistry([_FailingCompactContextTool()]))
+
+        result = await execute_tool_calls(ctx, invoker, response, 1, [])
+
+        assert isinstance(result, AgentContext)
+        assert result.compaction_request is None

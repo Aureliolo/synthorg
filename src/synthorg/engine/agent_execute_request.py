@@ -13,6 +13,7 @@ stops being a place where order matters.
 
 from dataclasses import dataclass
 
+from synthorg.budget.session_budget import SessionBudgetChecker
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.core.task import Task
@@ -45,7 +46,7 @@ class AgentExecuteRequest:
     tool_invoker: ToolInvokerProtocol | None = None
     effective_autonomy: EffectiveAutonomy | None = None
     provider: CompletionProvider | None = None
-    project_budget: float = 0.0
+    budget_checker: SessionBudgetChecker | None = None
 
     def __post_init__(self) -> None:
         """Reject the identifiers a run cannot be attributed without.

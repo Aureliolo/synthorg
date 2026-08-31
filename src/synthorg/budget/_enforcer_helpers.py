@@ -5,7 +5,6 @@ module under the 800-line limit.  All functions here are module-level
 pure helpers (or closure builders) consumed only by ``BudgetEnforcer``.
 """
 
-from collections.abc import Callable
 from types import MappingProxyType
 from typing import NamedTuple, Protocol, runtime_checkable
 from uuid import UUID
@@ -18,6 +17,7 @@ from synthorg.budget._run_ceilings import (
 )
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.enums import BudgetAlertLevel
+from synthorg.budget.session_budget import SessionBudgetChecker, SessionCeilings
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import (
@@ -175,6 +175,29 @@ def _compute_thresholds(
 # ── Checker closure ──────────────────────────────────────────────
 
 
+def _published_ceilings(
+    *, task_limit: float, money_ceiling: MoneyCeiling, hard_token_ceiling: int
+) -> SessionCeilings:
+    """The per-run bound this closure enforces, for a gauge to render.
+
+    The tighter of the two per-run money bounds (the task's own limit and the
+    absolute hard ceiling), because that is the one that actually fires
+    first. The monthly, daily and project bounds are estate-level and
+    baselined against historical spend rather than this run's own budget, so
+    they are deliberately excluded: a gauge showing the monthly ceiling on a
+    task that will halt at its own $2 limit long before the estate does would
+    mislead in the direction that matters most.
+
+    Returns:
+        The published pair.
+    """
+    positive = [amount for amount in (task_limit, money_ceiling.amount) if amount > 0]
+    return SessionCeilings.of(
+        cost_ceiling=min(positive) if positive else 0.0,
+        token_ceiling=hard_token_ceiling,
+    )
+
+
 def _build_checker_closure(  # noqa: PLR0913
     *,
     task_limit: float,
@@ -191,7 +214,7 @@ def _build_checker_closure(  # noqa: PLR0913
     hard_token_ceiling: int = 0,
     task_id: str | None = None,
     forecast_id: UUID | None = None,
-) -> Callable[[_BudgetCheckContext], bool]:
+) -> SessionBudgetChecker:
     """Build the sync budget checker closure.
 
     Args:
@@ -284,7 +307,14 @@ def _build_checker_closure(  # noqa: PLR0913
             )
         )
 
-    return _check
+    return SessionBudgetChecker(
+        ceilings=_published_ceilings(
+            task_limit=task_limit,
+            money_ceiling=money_ceiling,
+            hard_token_ceiling=hard_token_ceiling,
+        ),
+        _predicate=_check,
+    )
 
 
 def _check_task_limit(

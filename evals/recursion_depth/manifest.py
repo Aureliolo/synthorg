@@ -91,6 +91,35 @@ class Arm(StrEnum):
     UNGATED = "ungated"
 
 
+class Role(StrEnum):
+    """Which kind of session a sizing question is being asked about.
+
+    A merge must read every child before it can write one line; a leaf reads
+    nothing. Sizing both off one flat ceiling is what starved the merge and,
+    downstream of it, the review that judges the merge's output: both scale
+    with how many pieces the session has to read, and neither is a leaf.
+
+    Members:
+        PLAN: The session that decomposes a node. Sized separately already
+            (``planner_max_turns``), because it writes a plan rather than
+            software; carried here so one function answers "what does this
+            role get" for every session the sweep runs.
+        LEAF: Builds one unit from nothing. Reads no sibling's tree, so it
+            takes no fan-in scaling: ``unit_token_ceiling`` and
+            ``unit_max_turns`` are its whole budget, unchanged.
+        MERGE: Assembles a node's children into one tree. Must read every
+            piece before it can write, so its budget grows with how many
+            pieces there are.
+        REVIEW: Judges one merge attempt. Reads the same pieces the merge
+            read, plus what the merge produced, so it scales the same way.
+    """
+
+    PLAN = "plan"
+    LEAF = "leaf"
+    MERGE = "merge"
+    REVIEW = "review"
+
+
 class Independence(StrEnum):
     """How far apart the reviewer's binding is from the executor's.
 
@@ -229,19 +258,62 @@ class RecursionDepthManifest(BaseModel):
             generous for the first is not necessarily enough for the second,
             and one value serving both means raising either raises both until
             the stricter limit refuses the pair.
-        unit_max_turns: The turn ceiling one unit's session gets. Bounded
-            loosely, because a unit is held by ``unit_token_ceiling`` in
-            practice: turns are a base budget that re-earns itself up to
-            ``engine.max_turn_extensions`` times, so they never stop a runaway.
+        unit_max_turns: The base turn budget one unit's session gets, which
+            re-earns itself up to ``engine.max_turn_extensions`` times and so
+            never stops a runaway on its own. Bounded loosely for that
+            reason: a unit is held by ``unit_token_ceiling`` in practice.
         unit_cost_ceiling: What one unit's session may spend before the
             gateway's own hard kill stops it. Money only, so it is half a
-            bound: see ``unit_token_ceiling``.
+            bound: see ``unit_token_ceiling``. Shared unscaled across every
+            role under :func:`session_limits_for` (leaf, planner, merge,
+            review): unlike the token axis there is no
+            ``merge_cost_base`` / ``review_cost_base`` pair, because a
+            flat-rate connection attributes 0.0 to every call and a
+            fan-in-scaled money ceiling would be sized against a bound that
+            never fires there.
         unit_token_ceiling: The same bound counted in tokens, and the only one
             of the two that binds everywhere. A flat-rate connection
             attributes 0.0 to every call, so the cost ceiling cannot fire
             there and a runaway unit would be held by nothing but its turn
             cap. Required rather than optional, because the connection a
-            manifest will be recorded against is not knowable here.
+            manifest will be recorded against is not knowable here. This is
+            also the LEAF's whole budget under :func:`session_limits_for`: a
+            leaf reads no sibling's tree, so it takes no fan-in scaling.
+        merge_token_base: What one merge session gets before any child is
+            counted, on the same footing as ``unit_token_ceiling``: a merge
+            with nothing to read still has to write an assembled tree.
+        merge_token_per_piece: Tokens added per child the merge must read
+            before it can write. A merge that mounts eight children and gets
+            a leaf's flat budget can read them and nothing is left to write
+            with, which is exactly what starved the stopped recording: four
+            merges made 167 tool calls between them, all of them
+            ``shell_command``, and wrote zero files.
+        merge_token_cap: The most one merge session may be sized to, however
+            wide its fan-in. Declared so a node with an unusually large number
+            of children cannot mint an unbounded session.
+        merge_max_turns_base: The base turn budget one merge session gets
+            before any child is counted, on ``unit_max_turns``'s own footing:
+            it re-earns itself up to ``engine.max_turn_extensions`` times and
+            so never stops a runaway alone, which is what
+            ``merge_token_cap`` is for.
+        merge_max_turns_per_piece: Turns added per child the merge must read.
+        merge_max_turns_cap: The most turns one merge session may be sized to.
+        review_token_base: What one review session gets before any child is
+            counted. A review reads the same pieces the merge read, plus what
+            the merge produced, so its reading burden is the merge's own: the
+            stopped recording's rep 1 review spent 1,058,678 tokens against a
+            flat 1,500,000 ceiling without reaching a verdict, which is the
+            starved reviewer that let a park stand for the escalation the
+            approval-branch bug then treated as a stop.
+        review_token_per_piece: Tokens added per child the review must read.
+        review_token_cap: The most one review session may be sized to.
+        review_max_turns_base: The base turn budget one review session gets
+            before any child is counted. Lower than ``merge_max_turns_base``:
+            a review writes a verdict and findings, not an assembled tree.
+        review_max_turns_per_piece: Turns added per child the review must
+            read.
+        review_max_turns_cap: The most turns one review session may be sized
+            to.
         max_sessions: The whole sweep's session ceiling. A depth sweep's
             session count is a product of branching factors nobody can predict
             from the manifest alone, and the cost of being wrong is spend.
@@ -284,6 +356,18 @@ class RecursionDepthManifest(BaseModel):
     unit_max_turns: int = Field(ge=1, le=_UNIT_TURN_CAP)
     unit_cost_ceiling: float = Field(gt=0.0)
     unit_token_ceiling: int = Field(gt=0)
+    merge_token_base: int = Field(gt=0)
+    merge_token_per_piece: int = Field(ge=0)
+    merge_token_cap: int = Field(gt=0)
+    merge_max_turns_base: int = Field(ge=1, le=_UNIT_TURN_CAP)
+    merge_max_turns_per_piece: int = Field(ge=0)
+    merge_max_turns_cap: int = Field(ge=1, le=_UNIT_TURN_CAP)
+    review_token_base: int = Field(gt=0)
+    review_token_per_piece: int = Field(ge=0)
+    review_token_cap: int = Field(gt=0)
+    review_max_turns_base: int = Field(ge=1, le=_UNIT_TURN_CAP)
+    review_max_turns_per_piece: int = Field(ge=0)
+    review_max_turns_cap: int = Field(ge=1, le=_UNIT_TURN_CAP)
     max_sessions: int = Field(ge=1)
     projected_branching: int = Field(ge=2, le=50)
     expected_sessions_per_cell: dict[int, int]
@@ -383,6 +467,7 @@ class RecursionDepthManifest(BaseModel):
         unpriced = [
             d for d in self.depths if self.expected_sessions_per_cell.get(d, 0) < 1
         ]
+        self._validate_sizing_bounds()
         if unpriced:
             msg = (
                 f"depths with no expected session cost: {unpriced}. A cap the "
@@ -443,6 +528,52 @@ class RecursionDepthManifest(BaseModel):
             )
             raise RecursionDepthJudgeNotIndependentError(msg)
 
+    def _validate_sizing_bounds(self) -> None:
+        """Check every role's cap can hold its own base.
+
+        A cap below its base means :func:`session_limits_for`'s
+        ``min(base, cap)`` silently sizes every session of that role to the
+        undersized cap instead, which nothing downstream would catch as a
+        manifest mistake: the session's own budget enforcer would refuse it
+        as an ordinary too-small ceiling at runtime, indistinguishable from
+        the matrix legitimately needing less. Catching it here, as a load-time
+        refusal of the manifest itself, says so before the sweep starts
+        spending rather than at the first merge or review the enforcer stops.
+
+        Raises:
+            ValueError: A role's base sizing exceeds its own cap.
+        """
+        bounds = (
+            (
+                "merge_token_base",
+                self.merge_token_base,
+                "merge_token_cap",
+                self.merge_token_cap,
+            ),
+            (
+                "merge_max_turns_base",
+                self.merge_max_turns_base,
+                "merge_max_turns_cap",
+                self.merge_max_turns_cap,
+            ),
+            (
+                "review_token_base",
+                self.review_token_base,
+                "review_token_cap",
+                self.review_token_cap,
+            ),
+            (
+                "review_max_turns_base",
+                self.review_max_turns_base,
+                "review_max_turns_cap",
+                self.review_max_turns_cap,
+            ),
+        )
+        for base_name, base, cap_name, cap in bounds:
+            if base > cap:
+                msg = f"{base_name} ({base}) exceeds {cap_name} ({cap})"
+                raise ValueError(msg)
+
     @property
     def planned_cells(self) -> int:
         """How many ``(depth, arm, repetition)`` cells the sweep records.
@@ -493,5 +624,6 @@ __all__ = [
     "Independence",
     "ModelPair",
     "RecursionDepthManifest",
+    "Role",
     "load_manifest",
 ]

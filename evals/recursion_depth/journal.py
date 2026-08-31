@@ -38,6 +38,7 @@ from evals.harness.journal import (
     JournalSpec,
     RecordedCells,
     ResumeState,
+    RunJournal,
     open_journal,
     read_journal,
 )
@@ -523,6 +524,7 @@ def adopt_repaired_spend(
     )
     staging = Path(mkdtemp(dir=out_dir, prefix=".adopt-"))
     swapped = False
+    journal: RunJournal[CellRecord] | None = None
     try:
         journal, _ = open_journal(
             staging, SPEC, identity=matrix_identity(stamped), resume=False
@@ -534,6 +536,12 @@ def adopt_repaired_spend(
         (staging / JOURNAL_NAME).replace(out_dir / JOURNAL_NAME)
         swapped = True
     finally:
+        # On a failure partway through the loop this is the only thing that
+        # closes the handle, and an open handle is what leaves ``rmtree``
+        # below silently unable to remove the staging directory on Windows.
+        # Harmless on the success path, where ``close()`` is idempotent.
+        if journal is not None:
+            journal.close()
         # The raw journal is the sentinel the guard above reads, so a copy that
         # outlives a swap that never happened says a repair completed when the
         # ledger is still the untouched one, and every later attempt is refused

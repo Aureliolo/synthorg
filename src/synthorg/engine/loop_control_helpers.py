@@ -20,6 +20,7 @@ from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.context_budget import (
     CONTEXT_BUDGET_COMPACTION_FAILED,
+    CONTEXT_BUDGET_COMPACTION_SKIPPED,
 )
 from synthorg.observability.events.execution import (
     EXECUTION_LOOP_BUDGET_EXHAUSTED,
@@ -283,12 +284,30 @@ def _handle_stagnation_verdict(
     return None
 
 
+def _without_compaction_request(ctx: AgentContext) -> AgentContext | None:
+    """Clear a pending compaction request, in the loop's own vocabulary.
+
+    Returns:
+        ``ctx`` with the request cleared when one was pending, else ``None``
+        -- the loop's "carry on with the context you have" answer.
+    """
+    if ctx.compaction_request is None:
+        return None
+    return ctx.model_copy(update={"compaction_request": None})
+
+
 async def invoke_compaction(
     ctx: AgentContext,
     compaction_callback: CompactionCallback | None,
     turn_number: int,
 ) -> AgentContext | None:
     """Invoke compaction callback if configured.
+
+    A pending ``ctx.compaction_request`` (the ``compact_context`` tool's
+    directive) forces the call and overrides ``preserve_markers`` for it;
+    the request is cleared afterward whether or not compaction actually ran,
+    because a request compaction declined (too few messages, nothing left to
+    archive) must not re-fire on every subsequent turn.
 
     Errors are logged but never propagated -- compaction must not
     interrupt execution. This includes provider failures such as
@@ -301,16 +320,36 @@ async def invoke_compaction(
         turn_number: Current turn number for logging.
 
     Returns:
-        Compacted context, or ``None`` if no compaction occurred.
+        The context to continue with when a request was pending (compacted,
+        or the original with the request cleared); the compacted context, or
+        ``None``, for the ordinary periodic call.
 
     Raises:
         MemoryError: Re-raised unconditionally.
         RecursionError: Re-raised unconditionally.
     """
+    requested = ctx.compaction_request
     if compaction_callback is None:
-        return None
+        # Nothing else reads the request, so leaving it on the context
+        # strands it there for the rest of the run, against a tool that
+        # promised the agent "it will run before your next turn."
+        return _without_compaction_request(ctx)
     try:
-        return await compaction_callback(ctx)
+        if requested is None:
+            return await compaction_callback(ctx)
+        compacted = await compaction_callback(
+            ctx, force=True, preserve_markers=requested.preserve_markers
+        )
+        if compacted is None:
+            logger.debug(
+                CONTEXT_BUDGET_COMPACTION_SKIPPED,
+                execution_id=ctx.execution_id,
+                turn=turn_number,
+                reason="agent_directed_request_declined",
+                forced=True,
+            )
+            return _without_compaction_request(ctx)
+        return compacted.model_copy(update={"compaction_request": None})
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- best-effort side channel
         reraise_critical(exc)
@@ -321,4 +360,4 @@ async def invoke_compaction(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return None
+        return _without_compaction_request(ctx)

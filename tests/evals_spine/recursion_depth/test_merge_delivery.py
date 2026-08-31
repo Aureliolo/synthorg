@@ -302,6 +302,7 @@ def _plan_with(piece: MergePiece) -> MergePlan:
         pieces=(piece,),
         criteria=(NotBlankStr("It runs"),),
         execution_prefix="d2-gated-r0-merge",
-        limits=SessionLimits(max_turns=4, cost_ceiling=1.0, token_ceiling=1000),
+        merge_limits=SessionLimits(max_turns=4, cost_ceiling=1.0, token_ceiling=1000),
+        review_limits=SessionLimits(max_turns=4, cost_ceiling=1.0, token_ceiling=1000),
         attempts=2,
     )

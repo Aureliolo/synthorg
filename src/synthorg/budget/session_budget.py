@@ -14,6 +14,7 @@ tuned number per session kind.
 """
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -86,6 +87,24 @@ class SessionCeilings(BaseModel):
         """Whether either bound is set."""
         return self.cost_ceiling > 0 or self.token_ceiling > 0
 
+    def as_optionals(self) -> tuple[float | None, int | None]:
+        """The inverse of :meth:`of`: a disabled bound read back as ``None``.
+
+        ``AgentContext`` spells "disabled" as ``None`` on its ``gt=0``
+        ``cost_ceiling`` / ``token_ceiling`` fields, the opposite convention
+        from this class's own ``0``. This is the one place the two
+        spellings are declared equivalent in this direction, so a caller
+        stamping ceilings onto an ``AgentContext`` has one place to ask
+        rather than re-deriving the translation.
+
+        Returns:
+            ``(cost_ceiling, token_ceiling)``, each ``None`` when disabled.
+        """
+        return (
+            self.cost_ceiling if self.cost_ceiling > 0 else None,
+            self.token_ceiling if self.token_ceiling > 0 else None,
+        )
+
 
 async def resolve_session_token_ceiling(
     resolver: ConfigResolverProtocol | None,
@@ -148,9 +167,49 @@ class _SessionContext(Protocol):
         ...
 
 
+@dataclass(frozen=True, slots=True)
+class SessionBudgetChecker:
+    """A budget predicate that publishes the ceilings it enforces.
+
+    A loop consumes this as a plain ``Callable[[ctx], bool]`` every turn; a
+    prompt or a turn-boundary signal consumes :attr:`ceilings` once, before
+    the loop starts, to render what the session's bound actually IS. Two
+    return values from two different builders is how a published ceiling and
+    an enforced one come apart; carrying both here means whoever renders the
+    gauge reads the exact pair the predicate below is closed over, not a
+    second resolution of it.
+
+    That guarantee is exact for the token axis, which has one check
+    (``hard_token_ceiling``) and it is what :attr:`ceilings` publishes. It is
+    looser for cost: :attr:`ceilings`'s ``cost_ceiling`` is only the tighter
+    of the task and per-run money bounds, and does not fold in an
+    estate-level bound (project, monthly, daily) that ``_check`` also
+    enforces and that may be the one actually tightest for a given run.
+    Nothing renders ``cost_ceiling`` to the agent today, so the gap is
+    dormant; it needs closing before a cost-based analogue of the token
+    budget signal is built on top of this.
+
+    Attributes:
+        ceilings: The bound this checker enforces. Exact for
+            ``token_ceiling``; may be looser than the true enforced stop for
+            ``cost_ceiling`` when an estate-level bound binds tighter.
+    """
+
+    ceilings: SessionCeilings
+    _predicate: Callable[[_SessionContext], bool]
+
+    def __call__(self, ctx: _SessionContext) -> bool:
+        """Whether *ctx* has exhausted :attr:`ceilings`.
+
+        Returns:
+            ``True`` once either bound in :attr:`ceilings` is reached.
+        """
+        return self._predicate(ctx)
+
+
 def build_session_budget_checker(
     ceilings: SessionCeilings,
-) -> Callable[[_SessionContext], bool] | None:
+) -> SessionBudgetChecker | None:
     """Build the halt predicate for a bounded helper session.
 
     Takes the pair rather than two scalars: a caller that has one bound in
@@ -165,9 +224,9 @@ def build_session_budget_checker(
             one that always applies.
 
     Returns:
-        A predicate that is ``True`` once either bound is reached, or
-        ``None`` when neither bound is set. ``None`` rather than a
-        never-true predicate so a caller can tell "no bound" from "a bound
+        A :class:`SessionBudgetChecker` that is ``True`` once either bound is
+        reached, or ``None`` when neither bound is set. ``None`` rather than
+        a never-true predicate so a caller can tell "no bound" from "a bound
         not yet reached".
     """
     if not ceilings.bounded:
@@ -181,4 +240,4 @@ def build_session_budget_checker(
             return True
         return money > 0 and usage.cost >= money
 
-    return _check
+    return SessionBudgetChecker(ceilings=ceilings, _predicate=_check)

@@ -188,7 +188,8 @@ class TestAMergeThatNeverRan:
             pieces=(),
             criteria=(NotBlankStr("It runs"),),
             attempts=2,
-            limits=_LIMITS,
+            merge_limits=_LIMITS,
+            review_limits=_LIMITS,
             execution_prefix="d1-gated-r0-merge",
         )
 

@@ -50,6 +50,7 @@ from evals.recursion_depth.models import (
     DepthPoint,
     DepthSpread,
     SurvivalPoint,
+    sum_costs,
 )
 
 #: Says which bucket a run belongs in, for both its fraction and its spend.
@@ -128,7 +129,10 @@ def _curve(
     required: dict[tuple[int, Arm], int] = defaultdict(int)
     satisfied: dict[tuple[int, Arm], int] = defaultdict(int)
     counted: dict[tuple[int, Arm], int] = defaultdict(int)
-    cost: dict[tuple[int, Arm], float] = defaultdict(float)
+    # Collected rather than folded in the loop: a bucket's cost is None the
+    # moment any one of its cells' totals is, and folding with `+=` cannot
+    # express that without special-casing the running total on every cell.
+    cost: dict[tuple[int, Arm], list[float | None]] = defaultdict(list)
     tokens: dict[tuple[int, Arm], int] = defaultdict(int)
     attempts: dict[tuple[int, Arm], int] = defaultdict(int)
     for cell in cells:
@@ -145,7 +149,7 @@ def _curve(
         # either inflates the fraction or trips the point's own subset check.
         satisfied[slot] += len(set(cell.merged_passing))
         counted[slot] += 1
-        cost[slot] += cell.total_cost
+        cost[slot].append(cell.total_cost)
         tokens[slot] += cell.total_tokens
         attempts[slot] += cell.total_attempts
     return tuple(
@@ -155,7 +159,7 @@ def _curve(
             required=required[(depth, arm)],
             satisfied=satisfied[(depth, arm)],
             cells=counted[(depth, arm)],
-            cost=cost[(depth, arm)],
+            cost=sum_costs(cost[(depth, arm)]),
             tokens=tokens[(depth, arm)],
             attempts=attempts[(depth, arm)],
         )
@@ -388,6 +392,29 @@ def achieved_depth_histogram(cells: Iterable[CellRecord]) -> dict[str, int]:
     return dict(sorted(counts.items()))
 
 
+def unjudged_by_achieved_depth(cells: Iterable[CellRecord]) -> dict[str, int]:
+    """How many measured cells asked for a verdict and never got one, per depth.
+
+    Structurally empty for a sweep with no gated arm, or one where the
+    reviewer never starved: a cell is unjudged only when a merge exhausted
+    every repair round on a park (see ``CellRecord.is_unjudged``), which is
+    impossible in the ungated control by construction.
+
+    Args:
+        cells: The measured runs (``achieved_depth`` is not ``None``).
+
+    Returns:
+        ``str(depth)`` mapped to the unjudged count at that depth, in
+        ascending depth order.
+    """
+    counts: dict[int, int] = defaultdict(int)
+    for cell in cells:
+        if cell.achieved_depth is None or not cell.is_unjudged:
+            continue
+        counts[cell.achieved_depth] += 1
+    return {str(depth): counts[depth] for depth in sorted(counts)}
+
+
 __all__ = [
     "achieved_depth_histogram",
     "curve_by_achieved_depth",
@@ -396,4 +423,5 @@ __all__ = [
     "spread_by_depth_cap",
     "survival_by_achieved_depth",
     "survival_by_depth_cap",
+    "unjudged_by_achieved_depth",
 ]

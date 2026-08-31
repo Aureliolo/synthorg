@@ -48,6 +48,16 @@ class ContextBudgetIndicator(BaseModel):
         ge=0,
         description="Archived compaction blocks",
     )
+    spend_tokens: int | None = Field(
+        default=None,
+        ge=0,
+        description="Accumulated tokens spent so far this run",
+    )
+    token_ceiling: int | None = Field(
+        default=None,
+        gt=0,
+        description="Per-run hard token ceiling; None when the run is unbounded",
+    )
 
     @computed_field(
         description="Context fill percentage",
@@ -59,29 +69,56 @@ class ContextBudgetIndicator(BaseModel):
             return None
         return (self.fill_tokens / self.capacity_tokens) * 100.0
 
+    @computed_field(
+        description="Token spend against the run's hard ceiling",
+    )
+    @property
+    def spend_percent(self) -> float | None:
+        """Spend percentage against :attr:`token_ceiling`.
+
+        ``None`` when the run carries no ceiling: reporting a share of
+        nothing would read as a bound that does not exist.
+        """
+        if self.token_ceiling is None or self.spend_tokens is None:
+            return None
+        return (self.spend_tokens / self.token_ceiling) * 100.0
+
     def format(self) -> str:
         """Format as a human-readable indicator string.
 
         Returns:
             Formatted indicator like
-            ``[Context: 12,450/16,000 tokens (78%) | 0 archived blocks]``.
+            ``[Context: 12,450/16,000 tokens (78%) | 0 archived blocks]``,
+            with a trailing ``| Budget: 340,000/1,500,000 tokens (23%)``
+            segment when the run carries a token ceiling.
         """
         if self.capacity_tokens is None:
-            return (
+            body = (
                 f"[Context: {self.fill_tokens:,} tokens "
                 f"(capacity unknown) | "
-                f"{self.archived_blocks} archived blocks]"
+                f"{self.archived_blocks} archived blocks"
             )
-        pct = self.fill_percent
+        else:
+            pct = self.fill_percent
+            body = (
+                f"[Context: {self.fill_tokens:,}/{self.capacity_tokens:,} "
+                f"tokens ({pct:.0f}%) | "
+                f"{self.archived_blocks} archived blocks"
+            )
+        if self.token_ceiling is None:
+            return body + "]"
+        spend = self.spend_tokens or 0
+        spend_pct = self.spend_percent or 0.0
         return (
-            f"[Context: {self.fill_tokens:,}/{self.capacity_tokens:,} "
-            f"tokens ({pct:.0f}%) | "
-            f"{self.archived_blocks} archived blocks]"
+            f"{body} | Budget: {spend:,}/{self.token_ceiling:,} "
+            f"tokens ({spend_pct:.0f}%)]"
         )
 
 
 def make_context_indicator(
     ctx: AgentContext,
+    *,
+    source: str = "prompt_declaration",
 ) -> ContextBudgetIndicator:
     """Create a ``ContextBudgetIndicator`` from an ``AgentContext``.
 
@@ -90,6 +127,12 @@ def make_context_indicator(
 
     Args:
         ctx: Agent context with fill and capacity data.
+        source: What is rendering this indicator: ``"prompt_declaration"``
+            (the default, once per run when the system prompt is built) or
+            ``"turn_signal"`` (a per-turn render at the turn-boundary budget
+            signal). Logged rather than inferred, since the two calls are
+            otherwise indistinguishable in the event stream despite meaning
+            different things.
 
     Returns:
         Frozen indicator model.
@@ -103,13 +146,26 @@ def make_context_indicator(
         fill_tokens=ctx.context_fill_tokens,
         capacity_tokens=ctx.context_capacity_tokens,
         archived_blocks=archived,
+        # Absent alongside a ``None`` ceiling rather than defaulting to 0:
+        # an unbounded run has no share to report, and 0/None would render
+        # as "0 spent" rather than "not applicable".
+        spend_tokens=(
+            ctx.accumulated_cost.total_tokens if ctx.token_ceiling is not None else None
+        ),
+        token_ceiling=ctx.token_ceiling,
     )
+    # DEBUG rather than INFO: a "turn_signal" render at the STEP boundary is
+    # bounded by the step-percent gate, but past the TERMINAL threshold
+    # check_budget_signal renders one every turn with no gate at all, so an
+    # INFO level here would grow with however many turns a run spends past
+    # its ceiling rather than with the fixed handful of step crossings.
     logger.debug(
         CONTEXT_BUDGET_INDICATOR_INJECTED,
         execution_id=ctx.execution_id,
         fill_tokens=indicator.fill_tokens,
         capacity_tokens=indicator.capacity_tokens,
         fill_percent=indicator.fill_percent,
+        source=source,
     )
     return indicator
 

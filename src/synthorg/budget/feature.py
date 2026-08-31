@@ -70,6 +70,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "QuotaTracker",
         "RiskTracker",
         "CallAnalyticsService",
+        "SessionBudgetChecker",
     ),
     depends_on=(),
 )
