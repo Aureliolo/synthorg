@@ -19,7 +19,10 @@ from typing import Final, Protocol
 import httpx
 
 from synthorg.core.normalization import normalize_base_url
-from synthorg.integrations.chat_api.inbound.decode import decode_frame
+from synthorg.integrations.chat_api.inbound.decode import (
+    ROUTINE_DROP_REASONS,
+    decode_frame,
+)
 from synthorg.integrations.chat_api.inbound.models import InboundChatEvent
 from synthorg.integrations.errors import (
     ChatApiAuthError,
@@ -118,7 +121,17 @@ class SlackSocketModeClient:
                         await session.ack(decoded.envelope_id)
                     return
                 if decoded.drop_reason is not None:
-                    logger.warning(
+                    # Routine reasons are ordinary Slack chatter (a bot echo, an
+                    # edit/join subtype, an unhandled event type) that any
+                    # channel member triggers just by using Slack; logging them
+                    # at `warning` would let normal traffic bury a genuinely
+                    # lost or malformed event -- the reason this split exists.
+                    level = (
+                        logger.info
+                        if decoded.drop_reason in ROUTINE_DROP_REASONS
+                        else logger.warning
+                    )
+                    level(
                         CHAT_INBOUND_DECODE_FAILED,
                         reason=decoded.drop_reason.value,
                     )

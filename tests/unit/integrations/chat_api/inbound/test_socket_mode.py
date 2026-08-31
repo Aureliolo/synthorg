@@ -147,6 +147,41 @@ class TestStream:
         assert failures[0]["log_level"] == "warning"
 
     @respx.mock
+    async def test_routine_drop_reason_logged_at_info_not_warning(self) -> None:
+        _open_ok()
+        session = _FakeWsSession(
+            [
+                {
+                    "type": "events_api",
+                    "envelope_id": "e1",
+                    "payload": {
+                        "event": {
+                            "type": "message",
+                            "user": "U1",
+                            "text": "echo",
+                            "ts": "1.0",
+                            "channel": "C1",
+                            "bot_id": "B1",
+                        }
+                    },
+                },
+                {"type": "disconnect"},
+            ]
+        )
+
+        with structlog.testing.capture_logs() as logs:
+            await _client(session).stream(on_event=self._noop)
+
+        failures = [
+            log
+            for log in logs
+            if log.get("event") == "integrations.chat_inbound.decode_failed"
+        ]
+        assert len(failures) == 1
+        assert failures[0]["reason"] == "bot_authored"
+        assert failures[0]["log_level"] == "info"
+
+    @respx.mock
     async def test_valid_frame_logs_no_decode_failure(self) -> None:
         _open_ok()
         session = _FakeWsSession(

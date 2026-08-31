@@ -135,19 +135,22 @@ authorisation model for a governed action.
 Every frame gets a signal, so a stuck consumer or a dropped human reply is
 visible without re-instrumenting the loop to find out. `CHAT_INBOUND_EVENT_RECEIVED`
 fires at `debug` on every frame (a volume signal), and `CHAT_INBOUND_DECODE_FAILED`
-fires at `warning`, carrying the `reason` value and never the payload, whenever
-`decode_frame` returns a `DecodeDropReason`:
+fires whenever `decode_frame` returns a `DecodeDropReason`, carrying the
+`reason` value and never the payload. Severity splits in two: a reason any
+channel member triggers just by using Slack normally (`ROUTINE_DROP_REASONS`
+in `decode.py`) logs at `info`, so ordinary chat traffic cannot bury the
+`warning` that means an event was genuinely lost or malformed:
 
-| Reason | Meaning |
-| --- | --- |
-| `no_envelope_id` | A fully-decoded, routable event (reaction included) arrived with no envelope id and cannot be acked or routed -- the sharpest case, because it drops a human reply that decoded successfully |
-| `malformed_payload` / `malformed_event` | The envelope's `payload` or `payload["event"]` was not the expected mapping shape |
-| `validation_failed` | The event failed `InboundChatEvent` validation |
-| `bot_authored` | Bot echo, dropped to prevent a feedback loop |
-| `message_subtype` | An edit/join/etc. subtype, not a human reply |
-| `unroutable_type` | An event type the router has no handler for |
-| `missing_attribution` | No user or channel on an otherwise-decodable event |
-| `malformed_reaction` | A `reaction_added` event with an unexpected shape |
+| Reason | Meaning | Level |
+| --- | --- | --- |
+| `no_envelope_id` | A fully-decoded, routable event (reaction included) arrived with no envelope id and cannot be acked or routed -- the sharpest case, because it drops a human reply that decoded successfully | `warning` |
+| `malformed_payload` / `malformed_event` | The envelope's `payload` or `payload["event"]` was not the expected mapping shape | `warning` |
+| `validation_failed` | The event failed `InboundChatEvent` validation | `warning` |
+| `bot_authored` | Bot echo, dropped to prevent a feedback loop | `info` |
+| `message_subtype` | An edit/join/etc. subtype, not a human reply | `info` |
+| `unroutable_type` | An event type the router has no handler for | `info` |
+| `missing_attribution` | No user or channel on an otherwise-decodable event | `warning` |
+| `malformed_reaction` | A `reaction_added` event with an unexpected shape | `warning` |
 
 `decode_frame` stays pure (it returns the reason; it does not log), so
 `socket_mode.py`'s receive loop is the one place that turns a drop into a log

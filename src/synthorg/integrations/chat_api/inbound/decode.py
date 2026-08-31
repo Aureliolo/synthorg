@@ -63,6 +63,23 @@ class DecodeDropReason(StrEnum):
     MALFORMED_REACTION = "malformed_reaction"
 
 
+#: Reasons any ordinary channel member (or an attacker with nothing more
+#: than channel access) triggers just by using Slack normally: a bot's own
+#: message echoing back, an edit/join/etc. subtype, or an event type this
+#: integration has no handler for. None of these represents a lost or
+#: malformed event, unlike every other reason, so flooding them at the same
+#: severity as a lost human reply would let routine chat traffic bury the
+#: one drop reason that actually matters. Logged at ``info``, not
+#: ``warning`` (see ``socket_mode.py``).
+ROUTINE_DROP_REASONS: Final[frozenset[DecodeDropReason]] = frozenset(
+    {
+        DecodeDropReason.BOT_AUTHORED,
+        DecodeDropReason.MESSAGE_SUBTYPE,
+        DecodeDropReason.UNROUTABLE_TYPE,
+    }
+)
+
+
 @dataclass(frozen=True)
 class DecodedFrame:
     """The outcome of decoding one Socket-Mode frame.
@@ -267,4 +284,9 @@ def _reaction_event(
     )
 
 
-__all__ = ["DecodeDropReason", "DecodedFrame", "decode_frame"]
+__all__ = [
+    "ROUTINE_DROP_REASONS",
+    "DecodeDropReason",
+    "DecodedFrame",
+    "decode_frame",
+]
