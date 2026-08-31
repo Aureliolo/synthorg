@@ -82,9 +82,14 @@ class TestSuccessfulRecordLogsRecorded:
 
 class TestNoCostTracker:
     async def test_absent_tracker_is_a_no_op(self) -> None:
-        await record_embedding_cost(
-            _response(response_cost=None),
-            cost_tracker=None,
-            provider=_PROVIDER,
-            model=_MODEL,
-        )
+        """Returns before the unpriced-model check, so a None response_cost
+        that would otherwise warn is silent when there is no tracker to
+        record against."""
+        with structlog.testing.capture_logs() as logs:
+            await record_embedding_cost(
+                _response(response_cost=None),
+                cost_tracker=None,
+                provider=_PROVIDER,
+                model=_MODEL,
+            )
+        assert logs == []
