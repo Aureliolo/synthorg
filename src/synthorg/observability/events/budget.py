@@ -32,6 +32,7 @@ BUDGET_TASK_LIMIT_HIT: Final[str] = "budget.task_limit.hit"
 BUDGET_DAILY_LIMIT_HIT: Final[str] = "budget.daily_limit.hit"
 BUDGET_BASELINE_ERROR: Final[str] = "budget.baseline.error"
 BUDGET_PREFLIGHT_ERROR: Final[str] = "budget.preflight.error"
+BUDGET_ENFORCER_WRONG_TYPE: Final[str] = "budget.enforcer.wrong_type"
 
 BUDGET_TIER_RESOLVED: Final[str] = "budget.tier.resolved"
 BUDGET_TIER_CLASSIFY_MISS: Final[str] = "budget.tier.classify_miss"
