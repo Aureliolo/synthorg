@@ -65,17 +65,21 @@ runtime feature flags. The bundle threads into the company configuration: the
 config-resident knob (`security.red_team`) is set on the rendered `RootConfig`,
 and the settings-resident flags (conversational chat modes, mid-flight steering,
 per-stakes reasoning depth) are seeded into the settings service at setup so the
-failure-tolerant boot wiring enables them. Boot wiring degrades cleanly when a
-dependency (provider, persistence, memory backend) is absent.
+failure-tolerant boot wiring enables them, but only where the write actually
+changes something: conversational chat propose/routing, group chat, and
+steering all ship on by default, so no posture writes them, and the table below names
+only the writes that differ from a fresh deployment's defaults. Boot wiring
+degrades cleanly when a dependency (provider, persistence, memory backend) is
+absent.
 
 | Posture | Enables |
 |---------|---------|
-| `autonomous` | Knowledge substrate, mid-flight steering |
-| `supervised_client_facing` | Group chat, agent invite, clarify-or-park + routing proposals, steering |
-| `knowledge_heavy` | Knowledge substrate, clarify proposals, steering |
-| `cost_disciplined` | Economical reasoning (`engine.reasoning_effort_*` dialled one notch down at every stakes level) |
-| `security_hardened` | Red-team completion gate (knowledge-substrate grounding), knowledge substrate, steering |
-| `research_autonomous` | Knowledge substrate, clarify + routing proposals, steering |
+| `autonomous` | Knowledge substrate |
+| `supervised_client_facing` | Agent invite |
+| `knowledge_heavy` | Knowledge substrate |
+| `cost_disciplined` | Economical reasoning (`engine.reasoning_effort_{high,critical}` dialled one notch down; `low`/`normal` already sit at the registered floor) |
+| `security_hardened` | Red-team completion gate (knowledge-substrate grounding), knowledge substrate |
+| `research_autonomous` | *(nothing beyond the shipped defaults: propose, routing and steering are already on)* |
 
 `cost_disciplined` deliberately leaves the capability floors alone. Reasoning
 depth tunes how hard the bound model thinks, which is a spend lever; the floors

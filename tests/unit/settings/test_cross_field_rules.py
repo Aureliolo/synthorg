@@ -185,7 +185,7 @@ _LADDER_DEFAULTS = {
     ("engine", "capability_floor_normal"): "capable",
     ("engine", "capability_floor_high"): "expert",
     ("engine", "capability_floor_critical"): "expert",
-    ("engine", "reasoning_effort_low"): "none",
+    ("engine", "reasoning_effort_low"): "low",
     ("engine", "reasoning_effort_normal"): "low",
     ("engine", "reasoning_effort_high"): "medium",
     ("engine", "reasoning_effort_critical"): "high",

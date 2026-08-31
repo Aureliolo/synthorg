@@ -1654,7 +1654,7 @@ def _register_reasoning_effort(*, key: str, default: str, stakes: str) -> None:
     )
 
 
-_register_reasoning_effort(key="reasoning_effort_low", default="none", stakes="low")
+_register_reasoning_effort(key="reasoning_effort_low", default="low", stakes="low")
 _register_reasoning_effort(
     key="reasoning_effort_normal", default="low", stakes="normal"
 )
