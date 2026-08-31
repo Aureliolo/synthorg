@@ -16,6 +16,7 @@ dashboard renders it, and the next assignment reads the old floor.
 import asyncio
 from typing import Protocol, runtime_checkable
 
+from synthorg.core.completion_enums import ReasoningEffort, reasoning_effort_rank
 from synthorg.core.task_enums import Stakes
 from synthorg.engine.routing_policy.config import (
     CapabilityPolicyConfig,
@@ -23,7 +24,10 @@ from synthorg.engine.routing_policy.config import (
     StakesReasoning,
 )
 from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
+from synthorg.observability.events.settings import (
+    SETTINGS_FETCH_FAILED,
+    SETTINGS_REASONING_LADDER_REPAIRED,
+)
 from synthorg.settings._resolver_coercions import _parse_reasoning_effort
 
 logger = get_logger(__name__)
@@ -108,6 +112,12 @@ async def resolve_capability_policy_config(
         )
         raise first_failure from eg
 
+    reasoning = _repair_inverted_reasoning_ladder(
+        low=_parse_reasoning_effort(effort_low.result()),
+        normal=_parse_reasoning_effort(effort_normal.result()),
+        high=_parse_reasoning_effort(effort_high.result()),
+        critical=_parse_reasoning_effort(effort_critical.result()),
+    )
     return CapabilityPolicyConfig(
         capability_floors=StakesCapabilityFloor.model_validate(
             {
@@ -119,15 +129,78 @@ async def resolve_capability_policy_config(
         ),
         reasoning=StakesReasoning.model_validate(
             {
-                "low": _parse_reasoning_effort(effort_low.result()),
-                "normal": _parse_reasoning_effort(effort_normal.result()),
-                "high": _parse_reasoning_effort(effort_high.result()),
-                "critical": _parse_reasoning_effort(effort_critical.result()),
+                "low": reasoning[0],
+                "normal": reasoning[1],
+                "high": reasoning[2],
+                "critical": reasoning[3],
             }
         ),
         red_team_min_stakes=Stakes(red_team.result()),
         park_min_stakes=Stakes(park.result()),
     )
+
+
+def _rank(effort: ReasoningEffort | None) -> int:
+    """Rank a parsed reasoning effort, with unset ranking below every tier.
+
+    Returns:
+        The effort's rank, or ``-1`` for unset.
+    """
+    return -1 if effort is None else reasoning_effort_rank(effort)
+
+
+def _repair_inverted_reasoning_ladder(
+    *,
+    low: ReasoningEffort | None,
+    normal: ReasoningEffort | None,
+    high: ReasoningEffort | None,
+    critical: ReasoningEffort | None,
+) -> tuple[
+    ReasoningEffort | None,
+    ReasoningEffort | None,
+    ReasoningEffort | None,
+    ReasoningEffort | None,
+]:
+    """Cap each tier to the one above it so the resolved ladder never inverts.
+
+    ``enforce_engine_ladders`` refuses an inverted ladder at WRITE time, so
+    an inversion can only reach here when a REGISTERED DEFAULT moves past a
+    value an operator explicitly wrote for a higher-stakes tier before the
+    change (raising ``engine.reasoning_effort_low``'s default past an
+    existing, lower, explicit ``engine.reasoning_effort_normal`` is exactly
+    this). ``StakesReasoning``'s own validator would otherwise raise here,
+    which ``resolve_capability_policy_config`` cannot recover from: it is
+    called from boot wiring with nothing upstream to catch it.
+
+    Capping only ever LOWERS the lower-stakes side of an inverted pair, so
+    the repair never asks a model for reasoning depth it did not already
+    request (no risk of an unsupported-value rejection) and never overrides
+    an operator's higher-stakes choice. Logged once per call when a cap
+    actually fires; the operator's own write (raising the lower tier or
+    lowering the higher one) is what clears it on a later read.
+
+    Returns:
+        The four efforts, guaranteed non-decreasing in rank.
+    """
+    tiers: list[ReasoningEffort | None] = [low, normal, high, critical]
+    repaired = False
+    for i in range(len(tiers) - 2, -1, -1):
+        if _rank(tiers[i]) > _rank(tiers[i + 1]):
+            tiers[i] = tiers[i + 1]
+            repaired = True
+    if repaired:
+        logger.warning(
+            SETTINGS_REASONING_LADDER_REPAIRED,
+            resolved_low=str(low) if low else "none",
+            resolved_normal=str(normal) if normal else "none",
+            resolved_high=str(high) if high else "none",
+            resolved_critical=str(critical) if critical else "none",
+            repaired_low=str(tiers[0]) if tiers[0] else "none",
+            repaired_normal=str(tiers[1]) if tiers[1] else "none",
+            repaired_high=str(tiers[2]) if tiers[2] else "none",
+            repaired_critical=str(tiers[3]) if tiers[3] else "none",
+        )
+    return (tiers[0], tiers[1], tiers[2], tiers[3])
 
 
 __all__ = ["StringSettingReader", "resolve_capability_policy_config"]
