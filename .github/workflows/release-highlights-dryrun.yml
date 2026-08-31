@@ -192,7 +192,7 @@ jobs:
           MAX_TOKENS=4000
           case "$REASONING_EFFORT" in
             "" | none) ;;
-            *) MAX_TOKENS=12000 ;;
+            *) MAX_TOKENS=32000 ;;
           esac
           PAYLOAD=$(jq -n \
             --arg model "$MISTRAL_MODEL" \

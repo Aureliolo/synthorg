@@ -407,13 +407,18 @@ jobs:
           # calls with it. HIGHLIGHTS_MODEL must keep resolving to a model that
           # accepts this field; a future swap to one that rejects it fails
           # this step, which is best-effort and reported by the tracking job
-          # below. Keep max_tokens and reasoning_effort in sync with
-          # release-highlights-dryrun.yml's default if either changes here.
+          # below. max_tokens must leave headroom BEYOND the visible answer:
+          # thinking and the final text draw from the same budget, and a
+          # digest spanning many commits can let reasoning alone exhaust a
+          # tight budget, producing empty content that the guards below then
+          # correctly skip rather than publish truncated. Keep max_tokens
+          # and reasoning_effort in sync with release-highlights-dryrun.yml's
+          # default if either changes here.
           PAYLOAD=$(jq -n \
             --arg model "$MISTRAL_MODEL" \
             --rawfile sys .github/release-highlights-prompt.md \
             --rawfile digest changelog-digest.txt \
-            '{model: $model, temperature: 0.4, max_tokens: 12000,
+            '{model: $model, temperature: 0.4, max_tokens: 32000,
               reasoning_effort: "high",
               messages: [{role: "system", content: $sys},
                          {role: "user", content: $digest}]}')
