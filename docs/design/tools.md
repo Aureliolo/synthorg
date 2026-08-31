@@ -178,7 +178,11 @@ cost-recording path as chat completion. Per-image cost is billed through a
 `cost_per_image` model field under the `image_generation` call category: the
 tool invoker opens a `cost_recording_scope` around the `image_generator` tool
 (which declares that category), so a priced image model attributes spend to the
-agent/task exactly like a completion.
+agent/task exactly like a completion. An unpriced image model (`cost_per_image`
+unset) produces no cost record at all rather than a zero-valued one, since
+`is_zero_usage` short-circuits the build before it starts; `BUDGET_IMAGE_MODEL_UNPRICED`
+fires at `warning` naming the model and the setting that would price it, the
+same pattern the unpriced-embedder warning follows (`docs/design/memory.md`).
 
 The design `image_generator` tool routes through this layer via a
 `ProviderImageProvider` adapter that satisfies the `ImageProvider` seam. Two
