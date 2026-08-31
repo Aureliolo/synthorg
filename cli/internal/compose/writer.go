@@ -6,9 +6,17 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 )
+
+// staleAtomicTempAge is how old an atomicWriteRooted temp sibling must be
+// before sweepStaleAtomicTemps removes it. Must comfortably exceed how long
+// any single write can legitimately take (these are small YAML/conf files)
+// so an in-flight concurrent writer's own temp file -- the whole reason
+// uniqueTempName exists -- is never mistaken for an orphan.
+const staleAtomicTempAge = time.Hour
 
 // WriteComposeAndNATS keeps compose.yml and its bind-mounted nats.conf
 // side-file consistent across every caller that regenerates compose.
@@ -89,6 +97,15 @@ func WriteNATSConfig(busBackend, safeDir string) error {
 // nonce) keeps concurrent writers to the same target from clobbering
 // each other's temp files.
 func atomicWriteRooted(root *os.Root, dst string, data []byte) (err error) {
+	// Best-effort: a forced exit (cmd.forceExitOnSecondInterrupt's os.Exit)
+	// skips this function's own deferred cleanup on a temp file it was
+	// mid-write on, orphaning a *.tmp-<pid>-<rand> sibling that holds a full
+	// copy of dst's content -- including any secrets a compose.yml
+	// environment block carries. Nothing else in the tree sweeps these, so
+	// each write opportunistically clears out anything old enough to be an
+	// orphan rather than a live concurrent writer.
+	sweepStaleAtomicTemps(root, dst)
+
 	tmpName, err := uniqueTempName(dst)
 	if err != nil {
 		return fmt.Errorf("generating temp name for %s: %w", dst, err)
@@ -132,6 +149,36 @@ func atomicWriteRooted(root *os.Root, dst string, data []byte) (err error) {
 		_ = dir.Close()
 	}
 	return nil
+}
+
+// sweepStaleAtomicTemps best-effort removes *.tmp-<pid>-<rand> siblings of
+// dst that are older than staleAtomicTempAge -- the only way one of these
+// outlives its own write is a process killed between creation and rename
+// (a forced os.Exit skips atomicWriteRooted's own deferred cleanup). Errors
+// are swallowed throughout: this is opportunistic cleanup riding along on
+// every write, not a correctness requirement of the write it accompanies.
+func sweepStaleAtomicTemps(root *os.Root, dst string) {
+	dir, err := root.Open(".")
+	if err != nil {
+		return
+	}
+	defer func() { _ = dir.Close() }()
+	entries, err := dir.ReadDir(-1)
+	if err != nil {
+		return
+	}
+	prefix := dst + ".tmp-"
+	now := time.Now()
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), prefix) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || now.Sub(info.ModTime()) < staleAtomicTempAge {
+			continue
+		}
+		_ = root.Remove(entry.Name())
+	}
 }
 
 // uniqueTempName returns a sibling name alongside dst that is unlikely

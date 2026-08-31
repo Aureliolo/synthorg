@@ -431,15 +431,29 @@ func reportExecuteError(ctx context.Context, errOut io.Writer, err error) error 
 		// operator's own Ctrl+C plainly rather than whatever raw error the
 		// interrupted subprocess happened to return (e.g. "signal: killed"),
 		// which reads as a failure rather than the cancellation it is.
+		//
+		// Deliberately does not claim any specific outcome (e.g. "compose.yml
+		// was rolled back"): this handler runs for every command, has no
+		// knowledge of what the interrupted command was doing, and a command
+		// whose own rollback failed, was a no-op, or does not touch
+		// compose/config at all (e.g. `status --watch`) would make that claim
+		// false. A command with a durable side effect to report on interrupt
+		// (update's compose.yml rollback) does so from its own code, where it
+		// actually knows the outcome.
+		//
+		// WarnAlways, not Warn: this is the one line telling a --quiet/--json
+		// scripted invocation why it exited ExitInterrupted instead of
+		// completing, so it must survive --quiet the same way
+		// unsuppressibleWarner's callers do.
 		errUI := ui.NewUIWithOptions(errOut, globalUIOptions())
-		errUI.Warn("Interrupted; any in-flight compose/config change was rolled back.")
+		errUI.WarnAlways("Interrupted.")
 		return NewExitError(ExitInterrupted, err)
 	}
 	// ChildExitError / ExitError: main.go handles exit code propagation;
 	// their internal messages are not user-facing.
-	var ce *ChildExitError
-	var ee *ExitError
-	if errors.As(err, &ce) || errors.As(err, &ee) {
+	_, isChildExitErr := errors.AsType[*ChildExitError](err)
+	_, isExitErr := errors.AsType[*ExitError](err)
+	if isChildExitErr || isExitErr {
 		return err
 	}
 	_, _ = fmt.Fprintln(errOut, err)
@@ -455,6 +469,12 @@ func reportExecuteError(ctx context.Context, errOut io.Writer, err error) error 
 // SIGINT/SIGTERM after that point means the graceful shutdown itself is
 // stuck, so it exits immediately rather than leaving the operator with no
 // way out short of killing the process externally.
+//
+// Assumes Execute is called at most once per process (true today: only
+// main.go calls it). A second concurrent Execute call would leave this
+// goroutine and its signal.Notify registration running for the life of the
+// process past the first call's own return, since nothing here ever calls
+// signal.Stop on the second listener.
 func forceExitOnSecondInterrupt(ctx context.Context) {
 	<-ctx.Done()
 	c := make(chan os.Signal, 1)

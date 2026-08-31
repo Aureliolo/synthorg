@@ -1040,8 +1040,51 @@ func Save(s State) error {
 	// no privilege boundary -- the only actor who can influence the path is
 	// the user writing to their own install directory -- so no filesystem
 	// containment is enforced.
-	if err := os.WriteFile(StatePath(safeDir), data, 0o600); err != nil {
+	if err := writeFileAtomic(StatePath(safeDir), data, 0o600); err != nil {
 		return fmt.Errorf("writing config file: %w", err)
 	}
+	return nil
+}
+
+// writeFileAtomic writes data to path via a temp sibling + rename, so a
+// crash or forced process exit mid-write (a second Ctrl+C during
+// `synthorg update`, see cmd.forceExitOnSecondInterrupt) cannot leave path
+// truncated or partially written. config.json is the CLI's only copy of
+// master_key/settings_key/cursor_secret/postgres_password; a truncated file
+// fails Load with a hard parse error rather than degrading gracefully, so
+// this must never observe a partial write.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("creating temp file: %w", err)
+	}
+	tmpName := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpName)
+		}
+	}()
+
+	if chmodErr := tmp.Chmod(perm); chmodErr != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("setting temp file permissions: %w", chmodErr)
+	}
+	if _, werr := tmp.Write(data); werr != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("writing temp file: %w", werr)
+	}
+	if serr := tmp.Sync(); serr != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("syncing temp file: %w", serr)
+	}
+	if cerr := tmp.Close(); cerr != nil {
+		return fmt.Errorf("closing temp file: %w", cerr)
+	}
+	if rerr := os.Rename(tmpName, path); rerr != nil {
+		return fmt.Errorf("renaming temp file to %s: %w", path, rerr)
+	}
+	cleanup = false // rename succeeded; temp is gone
 	return nil
 }

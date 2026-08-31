@@ -347,23 +347,61 @@ var standaloneImageEnvPattern = regexp.MustCompile(
 // (SANDBOX/SIDECAR/FINE_TUNE) to the image name FormatImageRef and
 // digestPins key on. FINE_TUNE resolves through the configured variant so a
 // CPU deployment patches fine-tune-cpu rather than always assuming
-// fine-tune-gpu.
-func standaloneImageName(kind string, state config.State) string {
+// fine-tune-gpu. Returns ok=false for a kind the regex should never
+// capture: standaloneImageEnvPattern's alternation only ever produces
+// these three literals, so an unrecognised kind means the regex changed
+// without this switch changing to match -- failing to patch (via the
+// caller's ok check) rather than silently defaulting to fine-tune is what
+// surfaces that as a loud "not found" from requireComposeImageRefsPatched
+// instead of a mis-patched image.
+func standaloneImageName(kind string, state config.State) (name string, ok bool) {
 	switch kind {
 	case "SANDBOX":
-		return "sandbox"
+		return "sandbox", true
 	case "SIDECAR":
-		return "sidecar"
-	default: // "FINE_TUNE"
-		return verify.FineTuneServiceName(state.FineTuneVariantOrDefault())
+		return "sidecar", true
+	case "FINE_TUNE":
+		return verify.FineTuneServiceName(state.FineTuneVariantOrDefault()), true
+	default:
+		return "", false
 	}
+}
+
+// patchServiceImageRefs updates the backend/web compose `image:` lines (see
+// imageLinePattern) and reports which service names it found. The sibling
+// of patchStandaloneImageEnvRefs: same find-submatch-track-what-was-found
+// shape, over the other half of compose.yml's image references.
+func patchServiceImageRefs(existing string, state config.State, digestPins map[string]string) (patched string, found map[string]bool) {
+	found = make(map[string]bool)
+	pattern := imageLinePattern()
+	patched = pattern.ReplaceAllStringFunc(existing, func(match string) string {
+		sub := pattern.FindStringSubmatch(match)
+		if len(sub) < 4 {
+			return match
+		}
+		prefix := sub[1]  // e.g. "    image: "
+		name := sub[2]    // e.g. "backend"
+		trailer := sub[3] // e.g. "" or "  # comment"
+		repo := images.RepoPrefix() + name
+		found[name] = true
+
+		if d, ok := digestPins[name]; ok && d != "" {
+			return prefix + repo + "@" + d + trailer
+		}
+		return prefix + repo + ":" + state.ImageTag + trailer
+	})
+	return patched, found
 }
 
 // patchStandaloneImageEnvRefs updates the sandbox/sidecar/fine-tune image
 // references carried in backend's environment block (see
 // standaloneImageEnvPattern) and reports which kinds it found, so the
 // caller's completeness check can tell a missing line from one that was
-// never expected.
+// never expected. Quotes the replacement value through compose.YAMLStr,
+// the same escaping compose.yml.tmpl itself uses to render these lines, so
+// a registry_host/image_repo_prefix override containing a `$` cannot embed
+// live, unescaped Compose variable-interpolation syntax via this
+// hand-patched path when a full regen would have escaped it.
 func patchStandaloneImageEnvRefs(existing string, state config.State, digestPins map[string]string) (patched string, found map[string]bool) {
 	found = make(map[string]bool)
 	patched = standaloneImageEnvPattern.ReplaceAllStringFunc(existing, func(match string) string {
@@ -374,11 +412,14 @@ func patchStandaloneImageEnvRefs(existing string, state config.State, digestPins
 		prefix := sub[1]  // e.g. "      SYNTHORG_SANDBOX_IMAGE: "
 		kind := sub[2]    // "SANDBOX", "SIDECAR", or "FINE_TUNE"
 		trailer := sub[3] // e.g. "" or "  # comment"
-		found[kind] = true
 
-		name := standaloneImageName(kind, state)
+		name, ok := standaloneImageName(kind, state)
+		if !ok {
+			return match
+		}
+		found[kind] = true
 		ref := verify.FormatImageRef(name, state.ImageTag, digestPins[name])
-		return prefix + `"` + ref + `"` + trailer
+		return prefix + compose.YAMLStr(ref) + trailer
 	})
 	return patched, found
 }
@@ -398,25 +439,7 @@ func patchComposeImageRefs(state config.State, digestPins map[string]string, saf
 		return fmt.Errorf("reading compose for image patching: %w", err)
 	}
 
-	replaced := make(map[string]bool)
-	pattern := imageLinePattern()
-	patched := pattern.ReplaceAllStringFunc(string(existing), func(match string) string {
-		sub := pattern.FindStringSubmatch(match)
-		if len(sub) < 4 {
-			return match
-		}
-		prefix := sub[1]  // e.g. "    image: "
-		name := sub[2]    // e.g. "backend"
-		trailer := sub[3] // e.g. "" or "  # comment"
-		repo := images.RepoPrefix() + name
-		replaced[name] = true
-
-		if d, ok := digestPins[name]; ok && d != "" {
-			return prefix + repo + "@" + d + trailer
-		}
-		return prefix + repo + ":" + state.ImageTag + trailer
-	})
-
+	patched, replaced := patchServiceImageRefs(string(existing), state, digestPins)
 	var standaloneFound map[string]bool
 	patched, standaloneFound = patchStandaloneImageEnvRefs(patched, state, digestPins)
 

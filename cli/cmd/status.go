@@ -133,7 +133,12 @@ func runStatusWatch(cmd *cobra.Command, state config.State, opts *GlobalOpts, in
 
 		select {
 		case <-ctx.Done():
-			return nil
+			// Matches pull.go/start_diagnose.go's own watch loops: return
+			// ctx.Err() rather than nil so a signal-cancelled ctx (see
+			// cmd.Execute) is reported through reportExecuteError's
+			// interrupted branch like every other command, instead of this
+			// loop alone exiting 0 with no "Interrupted" notice.
+			return ctx.Err()
 		case <-ticker.C:
 		}
 	}
