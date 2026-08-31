@@ -26,11 +26,11 @@ logger = get_logger(__name__)
 def _extract_cache_hit(usage_obj: object) -> bool | None:
     """Whether the call reused a cached prompt prefix, when reported.
 
-    Reads ``prompt_tokens_details.cached_tokens`` (the OpenAI-compatible
-    shape LiteLLM normalises most providers into), falling back to
-    Anthropic's flat ``cache_read_input_tokens``. Absent from both is a
-    provider that reported no cache data at all, not a miss, so it
-    returns ``None`` rather than ``False``.
+    Reads ``prompt_tokens_details.cached_tokens`` (the nested shape
+    LiteLLM normalises most providers into), falling back to a flat
+    ``cache_read_input_tokens`` some providers report instead. Absent
+    from both is a provider that reported no cache data at all, not a
+    miss, so it returns ``None`` rather than ``False``.
 
     Returns:
         ``True``/``False`` when a cached-token count was reported,
