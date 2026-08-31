@@ -252,7 +252,10 @@ def _declared_constants(
         end line (the whole statement's span, for suppression-marker lookup).
 
     Raises:
-        GateSourceError: If a source file cannot be read or parsed.
+        GateSourceError: If a source file cannot be read or parsed, or if the
+            same name is declared twice: a silent last-write-wins collision
+            in this dict would drop one declaration's suppression marker and
+            location from every report without either declarer noticing.
     """
     declared: dict[str, tuple[str, int, int]] = {}
     for path, rel in _git_tracked_python_files(events_root, project_root):
@@ -275,6 +278,15 @@ def _declared_constants(
             if target is None or not _is_string_constant(value):
                 continue
             end_lineno = node.end_lineno if node.end_lineno is not None else node.lineno
+            if target.id in declared:
+                prev_rel, prev_lineno, _ = declared[target.id]
+                msg = (
+                    f"{rel}:{node.lineno}: {target.id} is already declared at "
+                    f"{prev_rel}:{prev_lineno}; a duplicate name would "
+                    "silently collide into whichever declaration is scanned "
+                    "last."
+                )
+                raise GateSourceError(msg)
             declared[target.id] = (rel, node.lineno, end_lineno)
     return declared
 

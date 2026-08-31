@@ -305,6 +305,22 @@ def test_lint_allow_marker_without_reason_does_not_suppress(tmp_path: Path) -> N
     assert "SAMPLE_NO_REASON" in names
 
 
+def test_duplicate_declaration_across_files_fails_closed(tmp_path: Path) -> None:
+    """Two modules declaring the same name would otherwise silently collide
+    into whichever is scanned last, with no diagnostic either way."""
+    root = _init_repo(tmp_path)
+    _write(
+        root / "src" / "synthorg" / "observability" / "events" / "one.py",
+        'from typing import Final\n\nSAMPLE_DUP: Final[str] = "sample.dup"\n',
+    )
+    _write(
+        root / "src" / "synthorg" / "observability" / "events" / "two.py",
+        'from typing import Final\n\nSAMPLE_DUP: Final[str] = "sample.dup"\n',
+    )
+    _commit(root)
+    assert _MODULE.main(["--repo-root", str(root)]) == 2
+
+
 def test_all_list_is_not_a_declared_constant(tmp_path: Path) -> None:
     root = _init_repo(tmp_path)
     _write(
