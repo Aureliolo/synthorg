@@ -148,7 +148,7 @@ The #1864 KEEP verdict for `ImpactScorer` and `ConfidenceFormatter` was correct 
 
 `ConfidenceMetadata` and `LensAttribution` (`engine/strategy/models.py`) were deleted with them (zero construction sites anywhere). `ConfidenceFormat`, `ConfidenceConfig`, `CostTierPreset`, `ImpactDimension`, `ImpactScore`, `ProgressiveConfig`, and `StrategicContext` were left in place: each is still reachable from `StrategyConfig`, which `RootConfig` still validates, even though `cost_tier`, `confidence.format`, and `progressive` now select nothing. See [strategy.md](../design/strategy.md#confidence-calibration).
 
-#2888 also removed the durable circuit-breaker state table (migration `20260831000000_drop_circuit_breaker_state_and_repair_reasoning_effort`) and an unwired heartbeat query, taking one whole protocol and one bespoke method with them:
+The same audit also removed the durable circuit-breaker state table (migration `20260831000000_drop_circuit_breaker_state_and_repair_reasoning_effort`) and an unwired heartbeat query, taking one whole protocol and one bespoke method with them:
 
 | Path | Line | Name | Outcome |
 |---|---|---|---|
