@@ -321,8 +321,7 @@
         "message_bus",
         "message_service",
         "event_stream_hub",
-        "interrupt_store",
-        "delegation_record_store"
+        "interrupt_store"
       ]
     },
     {
@@ -995,7 +994,8 @@
     },
     {
       "controllers": [
-        "MetricsController"
+        "MetricsController",
+        "AuditChainController"
       ],
       "depends_on": [],
       "directory": "src/synthorg/observability",
@@ -1008,7 +1008,8 @@
       "settings_namespace": "observability",
       "state_slice_fields": [
         "prometheus_collector",
-        "trace_handler"
+        "trace_handler",
+        "audit_chain_verify_scheduler"
       ]
     },
     {
@@ -1468,6 +1469,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-30T06:56:09.336543Z",
+  "generated_at": "2026-08-31T06:58:50.659959Z",
   "schema_version": 1
 }

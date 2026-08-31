@@ -614,7 +614,7 @@ describe('getActivityEventIcon', () => {
     const knownTypes = [
       'hired', 'fired', 'promoted', 'demoted', 'onboarded',
       'task_completed', 'task_started', 'cost_incurred',
-      'tool_used', 'delegation_sent', 'delegation_received',
+      'tool_used',
     ]
     for (const t of knownTypes) {
       const icon = getActivityEventIcon(t)

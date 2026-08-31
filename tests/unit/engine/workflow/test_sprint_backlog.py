@@ -8,10 +8,7 @@ rehearsal of it would assert nothing about the thing that runs.
 
 import pytest
 
-from synthorg.engine.workflow.sprint_backlog import (
-    add_task_to_sprint,
-    remove_task_from_sprint,
-)
+from synthorg.engine.workflow.sprint_backlog import add_task_to_sprint
 from synthorg.engine.workflow.sprint_lifecycle import Sprint, SprintStatus
 
 
@@ -93,71 +90,3 @@ class TestAddTaskToSprint:
         sprint = _planning_sprint()
         result = add_task_to_sprint(sprint, "t-1", story_points=0.0)
         assert "t-1" in result.task_ids
-
-
-# ── remove_task_from_sprint ────────────────────────────────────
-
-
-class TestRemoveTaskFromSprint:
-    """remove_task_from_sprint removes tasks (not from COMPLETED)."""
-
-    @pytest.mark.unit
-    def test_remove_from_planning(self) -> None:
-        sprint = _planning_sprint(task_ids=("t-1", "t-2"))
-        result = remove_task_from_sprint(sprint, "t-1")
-        assert result.task_ids == ("t-2",)
-
-    @pytest.mark.unit
-    def test_remove_from_active(self) -> None:
-        sprint = _active_sprint()
-        result = remove_task_from_sprint(sprint, "t-2")
-        assert "t-2" not in result.task_ids
-
-    @pytest.mark.unit
-    def test_removes_from_completed_task_ids_too(self) -> None:
-        sprint = _active_sprint(
-            completed_task_ids=("t-1",),
-            story_points_committed=13.0,
-            story_points_completed=5.0,
-        )
-        result = remove_task_from_sprint(sprint, "t-1")
-        assert "t-1" not in result.completed_task_ids
-        assert "t-1" not in result.task_ids
-        assert "t-1" not in result.task_points
-
-    @pytest.mark.unit
-    def test_reclaims_points_on_removal(self) -> None:
-        sprint = _active_sprint(
-            completed_task_ids=("t-1",),
-            story_points_committed=13.0,
-            story_points_completed=5.0,
-        )
-        result = remove_task_from_sprint(sprint, "t-1")
-        assert result.story_points_committed == 8.0
-        assert result.story_points_completed == 0.0
-
-    @pytest.mark.unit
-    def test_reject_from_completed_sprint(self) -> None:
-        sprint = Sprint(
-            id="sprint-1",
-            name="Sprint 1",
-            sprint_number=1,
-            status=SprintStatus.COMPLETED,
-            start_date="2026-04-01",
-            end_date="2026-04-14",
-            task_ids=("t-1",),
-        )
-        with pytest.raises(ValueError, match="completed sprint"):
-            remove_task_from_sprint(sprint, "t-1")
-
-    @pytest.mark.unit
-    def test_reject_unknown_task(self) -> None:
-        sprint = _active_sprint()
-        with pytest.raises(ValueError, match="not in sprint"):
-            remove_task_from_sprint(sprint, "nonexistent")
-
-    @pytest.mark.unit
-    def test_original_unchanged(self) -> None:
-        sprint = _active_sprint()
-        remove_task_from_sprint(sprint, "t-1")
-        assert "t-1" in sprint.task_ids

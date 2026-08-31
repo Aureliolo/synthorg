@@ -125,14 +125,11 @@ class HeartbeatRepository(Protocol):
     """CRUD interface for heartbeat persistence.
 
     Heartbeats are a "singleton per execution" (one row per
-    ``execution_id``) but the dominant access pattern is
-    :meth:`get_stale` (range query over ``last_heartbeat_at``), which
-    is not expressible in the generic categories. The save/get/delete
-    surface looks superficially like :class:`IdKeyedRepository`, but
-    composing that protocol would require ``list_items`` pagination
-    that no caller needs while still leaving ``get_stale`` outside the
-    generic surface. A fully bespoke protocol is simpler than splitting
-    awareness across two surfaces.
+    ``execution_id``). The save/get/delete surface looks superficially
+    like :class:`IdKeyedRepository`, but composing that protocol would
+    require ``list_items`` pagination that no caller needs. A fully
+    bespoke protocol is simpler than a generic one built for a caller
+    that does not exist.
     """
 
     async def save(self, heartbeat: Heartbeat, /) -> None:
@@ -154,33 +151,6 @@ class HeartbeatRepository(Protocol):
 
         Returns:
             The heartbeat, or ``None`` if not found.
-
-        Raises:
-            PersistenceError: If the operation fails.
-        """
-        ...
-
-    async def get_stale(
-        self,
-        threshold: datetime,
-        *,
-        limit: int = DEFAULT_PAGE_SIZE,
-        offset: int = 0,
-    ) -> tuple[Heartbeat, ...]:
-        """Retrieve a bounded page of heartbeats older than the threshold.
-
-        Args:
-            threshold: Heartbeats with ``last_heartbeat_at`` before
-                this timestamp are considered stale.
-            limit: Maximum rows to return.
-            offset: Rows to skip from the head of the ordering.
-
-        Returns:
-            A page of stale heartbeats ordered by ``last_heartbeat_at``
-            then ``execution_id`` (stable secondary key for
-            deterministic paging). Callers needing every stale
-            heartbeat drain via
-            :func:`synthorg.persistence._shared.collect_all`.
 
         Raises:
             PersistenceError: If the operation fails.

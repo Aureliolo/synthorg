@@ -10,7 +10,7 @@ Covers the core models, config, and prompt integration documented on this page.
 
 ## Background
 
-Industry research shows LLMs systematically recommend trendy, context-insensitive strategies across 7 core business tensions. Prompt-level fixes produce only marginal bias reduction. SynthOrg mitigates this structurally through constitutional principles, multi-lens analysis, confidence calibration, and output mode control.
+Industry research shows LLMs systematically recommend trendy, context-insensitive strategies across 7 core business tensions. Prompt-level fixes produce only marginal bias reduction. SynthOrg mitigates this structurally through constitutional principles, multi-lens analysis, a confidence-calibration prompt instruction, and output mode control.
 
 ## Strategic Output Modes
 
@@ -77,41 +77,18 @@ User packs: `~/.synthorg/strategy-packs/<name>.yaml` (override builtins by name)
 
 ## Confidence Calibration
 
-Strategic agents must provide calibrated confidence with every recommendation:
-
-| Format | Output |
-|--------|--------|
-| `structured` | Labelled fields (confidence, range, assumptions, uncertainty) |
-| `narrative` | Prose paragraph |
-| `both` | Structured block + narrative |
-| `probability` | Calibrated probability ranges with conditions |
-
-## Impact Scoring
-
-7-dimension weighted scoring determines the appropriate level of strategic analysis:
-
-| Dimension | Default Weight | Source |
-|-----------|---------------|--------|
-| `budget_impact` | 0.20 | RiskCard / explicit |
-| `authority_level` | 0.15 | Static default (0.5) |
-| `decision_type` | 0.15 | RiskCard |
-| `reversibility` | 0.20 | RiskCard |
-| `blast_radius` | 0.10 | RiskCard |
-| `time_horizon` | 0.10 | RiskCard |
-| `strategic_alignment` | 0.10 | Context |
-
-Weights must sum to 1.0. Composite score maps to cost tiers via thresholds.
-
-## Cost Tier Resolution
-
-| Tier | Composite Score | Analysis Depth |
-|------|----------------|----------------|
-| `minimal` | < 0.4 | Basic lens evaluation |
-| `moderate` | 0.4 <= score < 0.7 | Full lens + constitutional review |
-| `generous` | >= 0.7 | Full lens + constitutional + impact scoring |
-
-Resolution: `impact.py::_resolve_risk_tier`, reading the band thresholds from
-`ProgressiveConfig.thresholds`.
+`prompt_injection.py` injects a fixed instruction asking strategic agents to
+state, in their own recommendation text, a confidence level, an upside/downside
+range, key assumptions, and what would change the recommendation. This is the
+whole mechanism: it does not vary with `StrategyConfig.confidence.format` (the
+`structured` / `narrative` / `both` / `probability` enum), and nothing parses
+the agent's stated confidence back into a structured record. `impact.py` and
+`confidence.py` -- the scorer and formatter that would have turned a
+recommendation's risk profile and stated confidence into `ImpactScore` /
+`ConfidenceMetadata` and attached them to a `DecisionRecord` -- had no
+production caller and were removed. `StrategyConfig.cost_tier`,
+`StrategyConfig.confidence.format`, and `StrategyConfig.progressive` are
+consequently unconsumed: they parse and validate but select nothing.
 
 ## Prompt Injection
 
@@ -125,7 +102,7 @@ Strategic sections are injected into the system prompt after autonomy instructio
 1. **Strategic Analysis Framework**: maturity stage, industry, competitive position
 2. **Constitutional Principles**: anti-trendslop rules from active pack
 3. **Contrarian Analysis**: forced opposite-case consideration
-4. **Confidence Calibration**: output format requirements
+4. **Confidence Calibration**: fixed instruction to state confidence, range, and assumptions
 5. **Assumption Surfacing**: explicit assumption listing
 6. **Output Requirements**: mode-specific output instructions
 
@@ -170,52 +147,27 @@ strategy:
 
 ## Decision Records
 
-`DecisionRecord` includes three optional strategy metadata fields.
-All are nullable and default to `None` (or `()` for tuples); they
-are only populated when the strategy module is active during the
-session that produces the decision.
-
-### RiskCard
-
-Per-decision risk metadata:
-
-- `decision_type`: Type of decision
-- `reversibility`: easily_reversible / moderate / locked_in
-- `blast_radius`: individual / team / department / company_wide
-- `time_horizon`: immediate / short_term / medium_term / long_term
-
-### ConfidenceMetadata
-
-Calibrated confidence for a recommendation:
-
-- `level`: Point estimate (0.0-1.0)
-- `range_lower`, `range_upper`: Confidence range
-- `assumptions`: Key assumptions
-- `uncertainty_factors`: Uncertainty sources
-
-### LensAttribution
-
-Which lens produced which insight (tuple, one per participant):
-
-- `lens`: Lens name
-- `insight`: Lens-specific insight
-- `weight`: Influence on final recommendation
+`DecisionRecord.risk_card` is an optional `RiskCard` field (decision type,
+reversibility, blast radius, time horizon). It is nullable and defaults to
+`None`; no production path constructs a `DecisionRecord` with it populated
+today. `ConfidenceMetadata` and `LensAttribution` -- the structured capture of
+a recommendation's stated confidence and per-lens attribution -- had no
+production caller and were removed along with `impact.py` / `confidence.py`.
 
 ## Architecture
 
 ### Protocol Pattern
 
-All major components are pluggable behind `@runtime_checkable Protocol`:
+The surviving major component is pluggable behind `@runtime_checkable Protocol`:
 
 | Protocol | Implementations |
 |----------|----------------|
 | `StrategicContextProvider` | ConfigContextProvider, MemoryContextProvider, CompositeContextProvider |
-| `ImpactScorer` | CompositeImpactScorer, ExplicitImpactScorer, HybridImpactScorer |
-| `ConfidenceFormatter` | StructuredFormatter, NarrativeFormatter, BothFormatter, ProbabilityFormatter |
 
-Risk tier resolution is not a pluggable seam: `impact.py::_resolve_risk_tier` maps a
-composite score onto its tier directly, so the tier and the score it derives
-from have one owner.
+`ImpactScorer` (CompositeImpactScorer, ExplicitImpactScorer,
+HybridImpactScorer) and `ConfidenceFormatter` (StructuredFormatter,
+NarrativeFormatter, BothFormatter, ProbabilityFormatter) had no production
+caller and were removed with `impact.py` / `confidence.py`.
 
 ### Module Layout
 
@@ -232,8 +184,6 @@ engine/strategy/
   strategic_context_provider.py  -- Context provider protocol
   adapter.py                     -- Strategy adapter for the engine
   scoping.py                     -- Scope resolution
-  impact.py                      -- Impact scorers + risk tier resolution
-  confidence.py                  -- Confidence formatters
   output.py                      -- Output mode handler
   prompt_injection.py            -- Prompt section builder
   packs/                         -- Built-in YAML principle packs

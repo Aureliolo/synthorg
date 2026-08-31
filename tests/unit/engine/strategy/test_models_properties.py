@@ -6,7 +6,6 @@ from hypothesis import strategies as st
 from pydantic import ValidationError
 
 from synthorg.engine.strategy.models import (
-    ConfidenceMetadata,
     CostTierPreset,
     ImpactScore,
     ProgressiveThresholds,
@@ -81,44 +80,6 @@ class TestProgressiveThresholdsProperties:
         else:
             t = ProgressiveThresholds(moderate=moderate, generous=generous)
             assert t.moderate < t.generous
-
-
-class TestConfidenceMetadataProperties:
-    """Property tests for ConfidenceMetadata."""
-
-    @pytest.mark.unit
-    @given(
-        lower=st.floats(
-            min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False
-        ),
-        level=st.floats(
-            min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False
-        ),
-        upper=st.floats(
-            min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False
-        ),
-    )
-    def test_range_ordering_invariant(
-        self,
-        lower: float,
-        level: float,
-        upper: float,
-    ) -> None:
-        """Valid metadata always has lower <= level <= upper."""
-        if lower > level or level > upper:
-            with pytest.raises(ValidationError):
-                ConfidenceMetadata(
-                    level=level,
-                    range_lower=lower,
-                    range_upper=upper,
-                )
-        else:
-            meta = ConfidenceMetadata(
-                level=level,
-                range_lower=lower,
-                range_upper=upper,
-            )
-            assert meta.range_lower <= meta.level <= meta.range_upper
 
 
 class TestImpactScoreProperties:

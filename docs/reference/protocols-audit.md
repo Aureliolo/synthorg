@@ -119,9 +119,7 @@ The meeting / ceremony / conflict-resolution stack this section originally audit
 | engine/evolution/guards/shadow_protocol.py | 108 | `ShadowAgentRunner` | 0 | 0 | 0 | KEEP | #1864: vendor-agnostic surface; production wires to `AgentEngine.run` via a caller-supplied adapter. |
 | engine/quality/classifier.py | 44 | `StepQualityClassifier` | 1 | 1 | 1 | KEEP | #1864/#2503: `RuleBasedStepClassifier` default-impl, wired at boot + injected into every execution loop. |
 | engine/review/protocol.py | 15 | `ReviewStage` | 1 | 2 | 0 | KEEP | #1864: `ClientReviewStage` + `InternalReviewStage` walked by `ReviewPipeline`. |
-| engine/strategy/confidence.py | 23 | `ConfidenceFormatter` | 1 | 4 | 0 | KEEP | #1864: 4 impls + `_FORMATTERS` factory in the same file. |
 | engine/strategy/context.py | 74 | `StrategicContextProvider` | 1 | 2 | 0 | KEEP | #1864: 2 impls (Config/Memory) composed via fallback. |
-| engine/strategy/impact.py | 57 | `ImpactScorer` | 1 | 3 | 0 | KEEP | #1864: 3 impls (Composite/Explicit/Hybrid). |
 | engine/coordination/dispatcher_types.py | 60 | `TopologyDispatcher` | 1 | 0 | 3 | KEEP | Plug-in `Dispatcher`. |
 | engine/assignment/pool_filter_protocol.py | 78 | `CandidatePoolFilter` | 1 | 0 | 4 | KEEP | Plug-in `Filter`. |
 | engine/assignment/protocol.py | 16 | `TaskAssignmentStrategy` | 1 | 0 | 7 | KEEP | Plug-in `Strategy`. |

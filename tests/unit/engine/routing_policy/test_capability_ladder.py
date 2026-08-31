@@ -6,29 +6,8 @@ from synthorg.core.types import CapabilityLevel
 from synthorg.engine.routing_policy.capability_ladder import (
     LADDER,
     bump_one,
-    meets_required,
     rank,
 )
-
-
-@pytest.mark.unit
-class TestMeetsRequired:
-    """A candidate meets a requirement when it is at least as strong."""
-
-    @pytest.mark.parametrize(
-        ("candidate", "required", "expected"),
-        [
-            ("basic", "basic", True),
-            ("expert", "basic", True),
-            ("capable", "expert", False),
-            ("basic", "capable", False),
-            ("expert", "expert", True),
-        ],
-    )
-    def test_meets(
-        self, candidate: CapabilityLevel, required: CapabilityLevel, expected: bool
-    ) -> None:
-        assert meets_required(candidate, required) is expected
 
 
 @pytest.mark.unit

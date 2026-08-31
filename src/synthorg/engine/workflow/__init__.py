@@ -19,10 +19,7 @@ from synthorg.engine.workflow.kanban_columns import (
     resolve_task_transitions,
     validate_column_transition,
 )
-from synthorg.engine.workflow.sprint_backlog import (
-    add_task_to_sprint,
-    remove_task_from_sprint,
-)
+from synthorg.engine.workflow.sprint_backlog import add_task_to_sprint
 from synthorg.engine.workflow.sprint_config import SprintConfig
 from synthorg.engine.workflow.sprint_lifecycle import (
     VALID_SPRINT_TRANSITIONS,
@@ -30,11 +27,7 @@ from synthorg.engine.workflow.sprint_lifecycle import (
     SprintStatus,
     validate_sprint_transition,
 )
-from synthorg.engine.workflow.sprint_velocity import (
-    VelocityRecord,
-    calculate_average_velocity,
-    record_velocity,
-)
+from synthorg.engine.workflow.sprint_velocity import VelocityRecord
 
 __all__ = [
     "COLUMN_TO_STATUSES",
@@ -51,10 +44,7 @@ __all__ = [
     "WipCheckResult",
     "WorkflowConfig",
     "add_task_to_sprint",
-    "calculate_average_velocity",
     "check_wip_limit",
-    "record_velocity",
-    "remove_task_from_sprint",
     "resolve_task_transitions",
     "validate_column_transition",
     "validate_sprint_transition",

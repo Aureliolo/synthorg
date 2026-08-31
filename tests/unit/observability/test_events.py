@@ -27,23 +27,15 @@ from synthorg.observability.events.communication import (
     COMM_BUS_ALREADY_RUNNING,
     COMM_BUS_NOT_RUNNING,
     COMM_BUS_STARTED,
-    COMM_DISPATCH_NO_DISPATCHER,
     COMM_HANDLER_DEREGISTER_MISS,
+    COMM_HIERARCHY_BUILT,
+    COMM_HIERARCHY_CYCLE,
     COMM_MESSAGE_PUBLISHED,
 )
 from synthorg.observability.events.config import (
     CONFIG_LOADED,
     CONFIG_PARSE_FAILED,
     CONFIG_VALIDATION_FAILED,
-)
-from synthorg.observability.events.delegation import (
-    DELEGATION_CREATED,
-    DELEGATION_HIERARCHY_BUILT,
-    DELEGATION_HIERARCHY_CYCLE,
-    DELEGATION_LOOP_BLOCKED,
-    DELEGATION_LOOP_ESCALATED,
-    DELEGATION_REQUESTED,
-    DELEGATION_RESULT_SENT,
 )
 from synthorg.observability.events.execution import EXECUTION_TASK_CREATED
 from synthorg.observability.events.git import (
@@ -238,7 +230,6 @@ class TestEventConstants:
             "cross_deployment",
             "decomposition",
             "degradation",
-            "delegation",
             "design",
             "docker",
             "docs",
@@ -294,7 +285,6 @@ class TestEventConstants:
             "ontology",
             "settings",
             "setup",
-            "shipping",
             "skill_evolver",
             "procedural_memory",
             "pipeline",
@@ -310,7 +300,6 @@ class TestEventConstants:
             "quality",
             "health",
             "integrations",
-            "trajectory",
             "call_classification",
             "coordination_metrics",
             "database",
@@ -536,16 +525,8 @@ class TestEventConstants:
         assert COMM_BUS_NOT_RUNNING == "communication.bus.not_running"
         assert COMM_MESSAGE_PUBLISHED == "communication.message.published"
         assert COMM_HANDLER_DEREGISTER_MISS == "communication.handler.deregister_miss"
-        assert COMM_DISPATCH_NO_DISPATCHER == "communication.dispatch.no_dispatcher"
-
-    def test_delegation_events_exist(self) -> None:
-        assert DELEGATION_REQUESTED == "delegation.requested"
-        assert DELEGATION_CREATED == "delegation.created"
-        assert DELEGATION_RESULT_SENT == "delegation.result_sent"
-        assert DELEGATION_LOOP_BLOCKED == "delegation.loop.blocked"
-        assert DELEGATION_LOOP_ESCALATED == "delegation.loop.escalated"
-        assert DELEGATION_HIERARCHY_BUILT == "delegation.hierarchy.built"
-        assert DELEGATION_HIERARCHY_CYCLE == "delegation.hierarchy.cycle"
+        assert COMM_HIERARCHY_BUILT == "communication.hierarchy.built"
+        assert COMM_HIERARCHY_CYCLE == "communication.hierarchy.cycle"
 
     def test_client_events_exist(self) -> None:
         from synthorg.observability.events.client import (
@@ -969,33 +950,6 @@ class TestEventConstants:
             ONTOLOGY_ENTITY_DECORATOR_REGISTERED
             == "ontology.entity.decorator_registered"
         )
-
-    def test_shipping_events_exist(self) -> None:
-        from synthorg.observability.events.shipping import (
-            SHIPPING_COMPRESSION_COMPLETED,
-            SHIPPING_COMPRESSION_FAILED,
-            SHIPPING_HTTP_BATCH_FAILED,
-            SHIPPING_HTTP_BATCH_SENT,
-            SHIPPING_HTTP_DROPPED,
-            SHIPPING_HTTP_FLUSHER_STARTED,
-            SHIPPING_HTTP_FLUSHER_STOPPED,
-            SHIPPING_HTTP_RETRY,
-            SHIPPING_SYSLOG_CONNECTED,
-            SHIPPING_SYSLOG_RECONNECTED,
-            SHIPPING_SYSLOG_SEND_FAILED,
-        )
-
-        assert SHIPPING_SYSLOG_CONNECTED == "shipping.syslog.connected"
-        assert SHIPPING_SYSLOG_SEND_FAILED == "shipping.syslog.send_failed"
-        assert SHIPPING_SYSLOG_RECONNECTED == "shipping.syslog.reconnected"
-        assert SHIPPING_HTTP_BATCH_SENT == "shipping.http.batch_sent"
-        assert SHIPPING_HTTP_BATCH_FAILED == "shipping.http.batch_failed"
-        assert SHIPPING_HTTP_RETRY == "shipping.http.retry"
-        assert SHIPPING_HTTP_DROPPED == "shipping.http.dropped"
-        assert SHIPPING_HTTP_FLUSHER_STARTED == "shipping.http.flusher_started"
-        assert SHIPPING_HTTP_FLUSHER_STOPPED == "shipping.http.flusher_stopped"
-        assert SHIPPING_COMPRESSION_COMPLETED == "shipping.compression.completed"
-        assert SHIPPING_COMPRESSION_FAILED == "shipping.compression.failed"
 
     def test_no_event_constant_contains_vendor_name(self) -> None:
         """No event constant value may contain real vendor names.

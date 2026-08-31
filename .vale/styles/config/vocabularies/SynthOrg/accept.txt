@@ -543,6 +543,7 @@ gzipped
 hackathon
 hardcode
 hardcoded
+hardcodes
 hardcoding
 head_sha
 health_prober

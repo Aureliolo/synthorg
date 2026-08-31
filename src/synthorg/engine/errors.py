@@ -58,15 +58,6 @@ class MaxTurnsExceededError(EngineError):
     """
 
 
-class LoopExecutionError(EngineError):
-    """Non-recoverable execution loop error for the engine layer.
-
-    The execution loop returns ``TerminationReason.ERROR`` internally.
-    This exception is available for the engine layer above the loop to
-    convert that result into a raised error when appropriate.
-    """
-
-
 class ParallelExecutionError(EngineError):
     """Raised when a parallel execution group encounters a fatal error."""
 
@@ -239,10 +230,6 @@ class PlanReviewCategoryGuidanceError(PlanReviewError):
     """
 
 
-class TaskRoutingError(EngineError):
-    """Raised when task routing to an agent fails."""
-
-
 class TaskAssignmentError(EngineError):
     """Raised when task assignment fails."""
 
@@ -357,24 +344,6 @@ class WorkspacePushError(WorkspaceError):
 
 class ProjectWorkspaceError(EngineError):
     """Base exception for persistent project-workspace failures."""
-
-
-class ProjectWorkspaceNotProvisionedError(ProjectWorkspaceError):
-    """Raised when a project workspace is required but not yet provisioned.
-
-    The wire message stays generic to avoid leaking identifiers; the
-    ``project_id`` attribute is for structured logs only and must NOT be
-    surfaced to clients.
-    """
-
-    status_code: ClassVar[int] = 409
-    error_code: ClassVar[ErrorCode] = ErrorCode.PROJECT_WORKSPACE_NOT_PROVISIONED
-    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
-    default_message: ClassVar[str] = "Project workspace not provisioned"
-
-    def __init__(self, *, project_id: NotBlankStr) -> None:
-        super().__init__("Project workspace not provisioned")
-        self.project_id: NotBlankStr = project_id
 
 
 class GitBackendError(EngineError):
@@ -756,26 +725,6 @@ class SubworkflowNotFoundError(WorkflowExecutionError):
         super().__init__(message)
         self.subworkflow_id: NotBlankStr = subworkflow_id
         self.version: NotBlankStr = version
-
-
-class SubworkflowCycleError(WorkflowExecutionError):
-    """Raised when the subworkflow reference graph contains a cycle.
-
-    Attributes:
-        cycle_path: Ordered ``(subworkflow_id, version)`` tuples that
-            participate in the cycle.
-    """
-
-    error_code: ClassVar[ErrorCode] = ErrorCode.SUBWORKFLOW_CYCLE_ERROR
-
-    def __init__(
-        self,
-        message: str,
-        *,
-        cycle_path: tuple[tuple[str, str], ...],
-    ) -> None:
-        super().__init__(message)
-        self.cycle_path: tuple[tuple[str, str], ...] = cycle_path
 
 
 class SubworkflowDepthExceededError(WorkflowExecutionError):

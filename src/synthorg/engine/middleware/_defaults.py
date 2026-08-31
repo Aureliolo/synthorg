@@ -1,12 +1,14 @@
 """Default middleware registration.
 
-Registers all built-in, S1, and coordination middleware factories so
+Registers the built-in, S1, and coordination middleware factories so
 that ``build_agent_middleware_chain`` and
 ``build_coordination_middleware_chain`` can resolve the default
-chain names.
-
-Call ``register_default_middleware()`` once at application startup
-(e.g. from ``AgentEngine.__init__`` or the app entrypoint).
+chain names. Split into ``register_agent_defaults()`` and
+``register_coordination_defaults()`` because the engine assembly and
+the coordinator assembly each wire only their own half: the
+coordination middleware pipeline is the sole registry consumer wired
+in production, so it registers just the coordination factories rather
+than pulling the agent-side ones too.
 """
 
 from synthorg.engine.middleware.behavior_tagger import (
@@ -39,14 +41,6 @@ from synthorg.engine.middleware.s1_constraints import (
     DelegationChainHashMiddleware,
 )
 from synthorg.engine.middleware.semantic_drift import SemanticDriftDetector
-from synthorg.observability import get_logger
-from synthorg.observability.events.middleware import (
-    MIDDLEWARE_DEFAULTS_REGISTERED,
-)
-
-logger = get_logger(__name__)
-
-_registered = False
 
 # ── Default middleware tables ─────────────────────────────────────
 
@@ -80,33 +74,6 @@ _COORDINATION_DEFAULTS: tuple[tuple[str, CoordinationMiddlewareFactory], ...] = 
         AuthorityDeferenceCoordinationMiddleware,
     ),
 )
-
-
-def register_default_middleware() -> None:
-    """Register all built-in middleware factories.
-
-    Idempotent: safe to call multiple times (subsequent calls are
-    no-ops due to the registry's idempotency semantics).
-    """
-    global _registered  # noqa: PLW0603
-    if _registered:
-        return
-
-    for name, factory in _AGENT_DEFAULTS:
-        register_agent_middleware(name, factory)
-
-    for name, factory in _AGENT_OPT_IN:
-        register_agent_middleware(name, factory)
-
-    for name, coord_factory in _COORDINATION_DEFAULTS:
-        register_coordination_middleware(name, coord_factory)
-
-    _registered = True
-    logger.debug(
-        MIDDLEWARE_DEFAULTS_REGISTERED,
-        agent_count=len(_AGENT_DEFAULTS) + len(_AGENT_OPT_IN),
-        coordination_count=len(_COORDINATION_DEFAULTS),
-    )
 
 
 def register_coordination_defaults() -> None:

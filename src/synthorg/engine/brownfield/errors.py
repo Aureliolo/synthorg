@@ -52,9 +52,3 @@ class BrownfieldSourceUnavailableError(BrownfieldError):
     error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
     error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
     default_message: ClassVar[str] = "Import source is unavailable"
-
-
-class BrownfieldScanError(BrownfieldError):
-    """Raised when the structure-map scan fails over the imported tree."""
-
-    default_message: ClassVar[str] = "Codebase structure scan failed"

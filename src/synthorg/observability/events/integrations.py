@@ -122,15 +122,12 @@ HEALTH_CHECK_FAILED: Final[str] = "integrations.health.check_failed"
 HEALTH_PROBER_STARTED: Final[str] = "integrations.health.prober_started"
 HEALTH_PROBER_STOPPED: Final[str] = "integrations.health.prober_stopped"
 HEALTH_PROBER_CONFIG_INVALID: Final[str] = "integrations.health.prober_config_invalid"
-HEALTH_STATUS_CHANGED: Final[str] = "integrations.health.status_changed"
 HEALTH_STATUS_TRANSITIONED: Final[str] = "integrations.health.status_transitioned"
 
 # -- Tool-side rate limiting ---------------------------------------------
 
 TOOL_RATE_LIMIT_ACQUIRED: Final[str] = "integrations.rate_limit.acquired"
 TOOL_RATE_LIMIT_HIT: Final[str] = "integrations.rate_limit.hit"
-TOOL_RATE_LIMIT_WAIT: Final[str] = "integrations.rate_limit.wait"
-TOOL_RATE_LIMIT_BACKOFF: Final[str] = "integrations.rate_limit.backoff"
 
 # -- MCP catalog ---------------------------------------------------------
 

@@ -68,4 +68,3 @@ class TestToL1Summaries:
         (defn,) = registry.to_definitions()
         assert defn.l1_metadata is not None
         assert defn.l1_metadata.name == "tool_a"
-        assert defn.l2_body is not None

@@ -428,6 +428,15 @@ readiness ignores. Truncating automatically would be sound only for a Matryoshka
 model, and knowing which models those are is the shipped-table approach this
 section replaced.
 
+**An unpriced embedding model still runs; it just costs nothing on paper.**
+`record_embedding_cost` (`memory/embedding/dispatch.py`) reads the provider's
+own reported `response_cost`; when the connection carries no price (no
+`cost_per_1k_input` / `cost_per_1k_output` on the bound model), that value is
+`None` and the recorded cost falls back to `0.0` rather than failing the call.
+`BUDGET_EMBEDDING_MODEL_UNPRICED` fires at `warning` naming the model and the
+setting that would price it, so the gap shows up in the logs even though every
+budget aggregate reads the embedder as free.
+
 This binding is the only embedding model the product serves retrieval from,
 and nothing else is selectable. A second locally-loaded embedder selected from
 somewhere else would be a second surface for the same decision.
@@ -548,7 +557,11 @@ all. Progress is read from the trainer's own step counters, which makes the
 stage's NDCG@10 A/B, and a missing measurement counts as no win.
 
 A promoted checkpoint is recorded active, and a snapshot of the embedder
-settings is taken so a rollback has something to restore. `deploy_checkpoint`
+settings is taken so a rollback has something to restore. Both durable
+checkpoint operations log on success: `MEMORY_FINE_TUNE_CHECKPOINT_SAVED`
+after training writes one to disk, and `MEMORY_FINE_TUNE_CHECKPOINT_DELETED`
+after an operator deletes one, matching the level of the failure paths either
+side of them. `deploy_checkpoint`
 deliberately does **not** repoint `memory.embedder_model` at the checkpoint:
 that setting is a provider-bound model reference, so a filesystem path
 written into it would reach the boot path as a model name to dispatch on.

@@ -47,10 +47,6 @@ def _caps(*, supports_streaming: bool) -> ModelCapabilities:
     return ModelCapabilities(
         model_id=_MODEL_ID,
         provider="example-provider",
-        max_context_tokens=200_000,
-        max_output_tokens=8192,
-        cost_per_1k_input=0.001,
-        cost_per_1k_output=0.002,
         supports_streaming=supports_streaming,
     )
 

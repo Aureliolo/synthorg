@@ -34,7 +34,7 @@ def _make_state(*, config_resolver: ConfigResolver) -> AppState:
 @pytest.fixture(autouse=True)
 def _restore_enforcement_flag() -> object:
     """Restore the process-global flag after each test."""
-    original = timeout_enforcement.is_timeout_enforcement_enabled()
+    original = timeout_enforcement._enforcement_enabled
     yield
     timeout_enforcement.set_timeout_enforcement_enabled(value=original)
 
@@ -54,7 +54,7 @@ class TestApplyTimeoutEnforcement:
             "engine",
             "timeout_enforcement_enabled",
         )
-        assert timeout_enforcement.is_timeout_enforcement_enabled() is False
+        assert timeout_enforcement._enforcement_enabled is False
 
     async def test_enabled_value_flips_cache_on(self) -> None:
         timeout_enforcement.set_timeout_enforcement_enabled(value=False)
@@ -64,7 +64,7 @@ class TestApplyTimeoutEnforcement:
 
         await _apply_timeout_enforcement(state)
 
-        assert timeout_enforcement.is_timeout_enforcement_enabled() is True
+        assert timeout_enforcement._enforcement_enabled is True
 
     async def test_resolver_outage_forces_enforcement_on(self) -> None:
         # A resolver that had already served ``False`` on a prior request
@@ -76,4 +76,4 @@ class TestApplyTimeoutEnforcement:
 
         await _apply_timeout_enforcement(state)
 
-        assert timeout_enforcement.is_timeout_enforcement_enabled() is True
+        assert timeout_enforcement._enforcement_enabled is True

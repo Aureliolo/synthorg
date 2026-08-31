@@ -5,13 +5,7 @@ from datetime import date
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
-from synthorg.engine.strategy.models import (
-    ConfidenceMetadata,
-    ProgressiveConfig,
-    RiskCard,
-    StrategicContext,
-    StrategyConfig,
-)
+from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.hr.strategy_mode import StrategicOutputMode
 
 
@@ -19,40 +13,6 @@ from synthorg.hr.strategy_mode import StrategicOutputMode
 def default_strategy_config() -> StrategyConfig:
     """Default strategy config with all defaults."""
     return StrategyConfig()
-
-
-@pytest.fixture
-def strategic_context() -> StrategicContext:
-    """Sample strategic context."""
-    return StrategicContext(
-        maturity_stage="growth",
-        industry="technology",
-        competitive_position="challenger",
-    )
-
-
-@pytest.fixture
-def risk_card() -> RiskCard:
-    """Sample risk card."""
-    return RiskCard(decision_type="product_launch")
-
-
-@pytest.fixture
-def progressive_config() -> ProgressiveConfig:
-    """Default progressive config."""
-    return ProgressiveConfig()
-
-
-@pytest.fixture
-def confidence_metadata() -> ConfidenceMetadata:
-    """Sample confidence metadata."""
-    return ConfidenceMetadata(
-        level=0.75,
-        range_lower=0.6,
-        range_upper=0.9,
-        assumptions=("Market conditions remain stable",),
-        uncertainty_factors=("Competitor response unknown",),
-    )
 
 
 def make_agent(

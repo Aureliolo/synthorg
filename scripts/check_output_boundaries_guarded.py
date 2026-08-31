@@ -90,11 +90,6 @@ _BOUNDARIES: Final[dict[str, _Boundary]] = {
         _ENFORCING,
         frozenset({"enforce_output_policy"}),
     ),
-    "src/synthorg/communication/messenger.py": _Boundary(
-        "inter-agent message send",
-        _ENFORCING,
-        frozenset({"guard_message_output"}),
-    ),
     "src/synthorg/communication/messages/service.py": _Boundary(
         "MCP message send",
         _ENFORCING,

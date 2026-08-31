@@ -201,24 +201,6 @@ class TestToDefinitionDisclosure:
         assert defn.l1_metadata.name == "my_tool"
         assert defn.l1_metadata.short_description == "My tool desc"
 
-    def test_populates_l2_body(self) -> None:
-        schema: dict[str, JsonValue] = {"type": "object"}
-        tool = _DisclosureTool(parameters_schema=schema)
-        defn = tool.to_definition()
-        assert defn.l2_body is not None
-        assert defn.l2_body.parameter_schema == schema
-
-    def test_populates_l3_resources(self) -> None:
-        tool = _CustomDisclosureTool()
-        defn = tool.to_definition()
-        assert len(defn.l3_resources) == 1
-        assert defn.l3_resources[0].resource_id == "guide"
-
-    def test_default_l3_empty(self) -> None:
-        tool = _DisclosureTool()
-        defn = tool.to_definition()
-        assert defn.l3_resources == ()
-
     def test_flat_fields_still_populated(self) -> None:
         tool = _DisclosureTool(
             name="my_tool",

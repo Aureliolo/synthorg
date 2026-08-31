@@ -85,9 +85,6 @@ MIDDLEWARE_REGISTRATION_CONFLICT: str = "middleware.registry.conflict"
 MIDDLEWARE_UNKNOWN: str = "middleware.registry.unknown"
 """Unknown middleware name requested from registry."""
 
-MIDDLEWARE_DEFAULTS_REGISTERED: str = "middleware.defaults.registered"
-"""Default middleware factories registered."""
-
 MIDDLEWARE_DUPLICATE_CHAIN: str = "middleware.chain.duplicate"
 """Duplicate middleware names detected during chain construction."""
 

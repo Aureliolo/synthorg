@@ -374,20 +374,25 @@ class StrategyConfig(BaseModel):
     """Top-level strategy and trendslop mitigation configuration.
 
     Aggregates the strategy policy an agent's turn is shaped by into a
-    single frozen model: some of it reaches the prompt (lenses,
-    principles, confidence, context), and some decides how the turn is
-    run at all (``cost_tier`` and ``progressive`` select an analysis
-    depth).  Added to :class:`~synthorg.config.schema.RootConfig` as the
-    ``strategy`` field.
+    single frozen model.  ``output_mode``, ``default_lenses``,
+    ``constitutional_principles``, and ``context`` reach the prompt via
+    ``adapter.py``.  ``cost_tier``, ``confidence.format``, and
+    ``progressive`` have no reader: they were consumed by the impact
+    scorer and confidence formatter (``impact.py``, ``confidence.py``),
+    which had no production caller and were removed.  Added to
+    :class:`~synthorg.config.schema.RootConfig` as the ``strategy``
+    field.
 
     Attributes:
         output_mode: Default strategic output mode for agents.
-        cost_tier: Default cost tier preset.
+        cost_tier: Cost tier preset; currently unconsumed (see above).
         default_lenses: Strategic lenses to apply by default.
         constitutional_principles: Principle pack configuration.
-        confidence: Confidence calibration output configuration.
+        confidence: Confidence calibration output configuration;
+            ``format`` is currently unconsumed (see above).
         context: Strategic context configuration.
-        progressive: Progressive cost tier resolution configuration.
+        progressive: Progressive cost tier thresholds; currently
+            unconsumed (see above).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -626,84 +631,3 @@ class ImpactScore(BaseModel):
             MappingProxyType(copy.deepcopy(self.dimensions)),
         )
         return self
-
-
-class ConfidenceMetadata(BaseModel):
-    """Calibrated confidence information for a recommendation.
-
-    Attributes:
-        level: Point confidence estimate (0.0-1.0).
-        range_lower: Lower bound of confidence range.
-        range_upper: Upper bound of confidence range.
-        assumptions: Key assumptions underlying the recommendation.
-        uncertainty_factors: Factors contributing to uncertainty.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    level: float = Field(
-        ge=0.0,
-        le=1.0,
-        description="Point confidence estimate",
-    )
-    range_lower: float = Field(
-        ge=0.0,
-        le=1.0,
-        description="Lower bound of confidence range",
-    )
-    range_upper: float = Field(
-        ge=0.0,
-        le=1.0,
-        description="Upper bound of confidence range",
-    )
-    assumptions: tuple[str, ...] = Field(
-        default=(),
-        description="Key assumptions",
-    )
-    uncertainty_factors: tuple[str, ...] = Field(
-        default=(),
-        description="Uncertainty factors",
-    )
-
-    @model_validator(mode="after")
-    def _validate_range_ordering(self) -> Self:
-        """Ensure range_lower <= level <= range_upper.
-
-        Returns:
-            The unmodified ``self``.
-
-        Raises:
-            ValueError: If ``range_lower > level`` or
-                ``level > range_upper``.
-        """
-        if self.range_lower > self.level:
-            msg = (
-                f"range_lower ({self.range_lower}) must not exceed level ({self.level})"
-            )
-            raise ValueError(msg)
-        if self.level > self.range_upper:
-            msg = (
-                f"level ({self.level}) must not exceed range_upper ({self.range_upper})"
-            )
-            raise ValueError(msg)
-        return self
-
-
-class LensAttribution(BaseModel):
-    """Attribution of an insight to a specific strategic lens.
-
-    Attributes:
-        lens: Name of the strategic lens that produced this insight.
-        insight: The insight or recommendation from this lens.
-        weight: How much this lens influenced the final recommendation.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    lens: NotBlankStr = Field(description="Strategic lens name")
-    insight: NotBlankStr = Field(description="Insight from this lens")
-    weight: float = Field(
-        ge=0.0,
-        le=1.0,
-        description="Influence weight in final recommendation",
-    )

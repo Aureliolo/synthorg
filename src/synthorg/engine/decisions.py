@@ -25,11 +25,7 @@ from pydantic import (
 
 from synthorg.core.immutable import deep_copy_mapping, freeze_recursive
 from synthorg.core.types import NotBlankStr, validate_unique_strings
-from synthorg.engine.strategy.models import (
-    ConfidenceMetadata,
-    LensAttribution,
-    RiskCard,
-)
+from synthorg.engine.strategy.models import RiskCard
 from synthorg.ontology.decorator import ontology_entity
 
 
@@ -119,14 +115,6 @@ class DecisionRecord(BaseModel):
     risk_card: RiskCard | None = Field(
         default=None,
         description="Risk assessment for the decision (if available)",
-    )
-    confidence_metadata: ConfidenceMetadata | None = Field(
-        default=None,
-        description="Confidence calibration from strategic analysis (if available)",
-    )
-    lens_attribution: tuple[LensAttribution, ...] = Field(
-        default=(),
-        description="Strategic lens attributions used in analysis",
     )
 
     @field_validator("reason", mode="before")

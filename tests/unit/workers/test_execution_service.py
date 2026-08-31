@@ -20,7 +20,6 @@ from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.context import AgentContext
-from synthorg.engine.errors import ProjectWorkspaceNotProvisionedError
 from synthorg.engine.health.pipeline import HealthMonitoringPipeline
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.pipeline.models import WorkItem, WorkSource
@@ -329,11 +328,7 @@ class TestAgentEngineExecutionService:
         engine_run = AsyncMock(return_value=_run_result())
         task_engine = mock_of[TaskEngine](get_task=AsyncMock(return_value=task))
         workspace_service = mock_of[ProjectWorkspaceService](
-            get_or_provision=AsyncMock(
-                side_effect=ProjectWorkspaceNotProvisionedError(
-                    project_id=NotBlankStr("proj-e2e")
-                )
-            )
+            get_or_provision=AsyncMock(side_effect=QueryError("workspace db down"))
         )
         service = AgentEngineExecutionService(
             engine=mock_of[AgentEngine](run=engine_run),
@@ -346,7 +341,7 @@ class TestAgentEngineExecutionService:
             project_workspace_service=workspace_service,
         )
 
-        with capture_logs() as logs, pytest.raises(ProjectWorkspaceNotProvisionedError):
+        with capture_logs() as logs, pytest.raises(QueryError):
             await service.execute_once(
                 task_id=str(task.id),
                 previous_status="assigned",

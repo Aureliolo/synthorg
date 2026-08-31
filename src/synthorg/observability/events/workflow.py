@@ -77,9 +77,6 @@ SPRINT_LIFECYCLE_TRANSITION_CONFIG_ERROR: str = (
 SPRINT_TASK_ADDED: str = "workflow.sprint.task_added"
 """Task added to sprint backlog."""
 
-SPRINT_TASK_REMOVED: str = "workflow.sprint.task_removed"
-"""Task removed from sprint backlog."""
-
 SPRINT_TASK_COMPLETED: str = "workflow.sprint.task_completed"
 """Task marked completed within a sprint."""
 
@@ -154,9 +151,3 @@ SPRINT_TAIL_SCHEDULER_FAILED: str = "workflow.sprint.tail_scheduler_failed"
 
 SPRINT_BACKLOG_INVALID: str = "workflow.sprint.backlog_invalid"
 """Invalid sprint backlog operation attempted."""
-
-SPRINT_VELOCITY_INVALID: str = "workflow.sprint.velocity_invalid"
-"""Invalid velocity operation attempted."""
-
-SPRINT_VELOCITY_RECORDED: str = "workflow.sprint.velocity_recorded"
-"""Velocity record created from a completed sprint."""

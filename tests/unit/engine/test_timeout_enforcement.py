@@ -17,12 +17,12 @@ def _reset_enforcement() -> Iterator[None]:
 
 
 def test_default_is_enabled() -> None:
-    assert timeout_enforcement.is_timeout_enforcement_enabled() is True
+    assert timeout_enforcement._enforcement_enabled is True
 
 
 def test_setter_disables_enforcement() -> None:
     timeout_enforcement.set_timeout_enforcement_enabled(value=False)
-    assert timeout_enforcement.is_timeout_enforcement_enabled() is False
+    assert timeout_enforcement._enforcement_enabled is False
 
 
 async def test_engine_timeout_enforces_when_enabled() -> None:
