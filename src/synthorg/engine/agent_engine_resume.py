@@ -314,9 +314,9 @@ class AgentEngineResumeMixin:
         try:
             # Rebuilt rather than restored: a checker is a live predicate
             # closure, not persisted state, so every dispatch of a context
-            # (fresh or resumed) builds its own. The ceilings it publishes
-            # already match what the restored context carries, since both
-            # derive from the same task.
+            # (fresh or resumed) builds its own. A ceiling changed while the
+            # run sat parked awaiting approval is picked up here but not by
+            # the restored context, so ctx is synced to match below.
             project_budget = 0.0
             if self._project_repo is not None:
                 project_budget = await self._validate_project(
@@ -328,6 +328,14 @@ class AgentEngineResumeMixin:
                 project_id=task.project,
                 project_budget=project_budget,
             )
+            if budget_checker is not None:
+                cost_ceiling, token_ceiling = budget_checker.ceilings.as_optionals()
+                ctx = ctx.model_copy(
+                    update={
+                        "cost_ceiling": cost_ceiling,
+                        "token_ceiling": token_ceiling,
+                    }
+                )
             # A resumed run continues prior work: exempt it from the
             # empty-run (zero-tool-call) fail-loud, whose per-segment proxy
             # would otherwise discard a task that already produced artifacts

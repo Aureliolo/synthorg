@@ -288,6 +288,34 @@ class TestApprovalResumeAlsoGetsAChecker:
         )
 
 
+class TestApprovalResumeSyncsAChangedCeiling:
+    """A ceiling changed while the run sat parked awaiting approval applies
+    to the resumed dispatch, not the stale number the park was taken under
+    -- the approval-resume sibling of ``TestCheckpointResumeSyncsAChangedCeiling``.
+    """
+
+    async def test_ctx_ceiling_follows_the_rebuilt_checker(
+        self,
+        sample_agent: AgentIdentity,
+        mock_provider_factory: type,
+    ) -> None:
+        task = _task(sample_agent, hard_token_ceiling=750_000)
+        provider = mock_provider_factory([make_completion_response()])
+        engine = AgentEngine(provider=provider)
+        parked_ctx = AgentContext.from_identity(
+            sample_agent, task=task, token_ceiling=500_000
+        )
+
+        result = await engine.resume_parked_run(
+            parked_context=parked_ctx,
+            approval_id="appr-3",
+            decision_message="Approved, continue.",
+            approved=True,
+        )
+
+        assert result.execution_result.context.token_ceiling == 750_000
+
+
 class TestCheckpointResumeAlsoGetsTheTurnBoundarySignals:
     """A checkpoint-resumed run must not lose the budget signal or the
     produce-early nudge -- carrying a real ``ctx.token_ceiling`` is only half
