@@ -166,7 +166,7 @@ it unreviewed compounds rather than saves.
 - [ ] Plan accepted before the gate was written
 - [ ] Gate exits `2` when it cannot trust its own scan
 - [ ] Wired to `_GATES` or to its own pre-commit entry, not both
-- [ ] `convention_gate_map.yaml` entry present
+- [ ] `convention_gate_map.yaml` entry present (only if the gate backs a `(MANDATORY)` paragraph)
 - [ ] Inventory table row plus count-macro bump
 - [ ] Tests cover clean, violating, opt-out, bare-opt-out, and unreadable input
 - [ ] Whole-tree run is clean, or the baseline decision was the user's
