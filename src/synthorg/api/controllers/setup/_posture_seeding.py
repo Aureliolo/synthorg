@@ -22,6 +22,7 @@ allowlist, so it stays an operator opt-in.
 """
 
 import asyncio
+from typing import Final
 
 from synthorg.config.posture_config import PostureConfig
 from synthorg.core.completion_enums import ReasoningEffort
@@ -40,7 +41,7 @@ logger = get_logger(__name__)
 #: and critical have room to move. That is what the cost-disciplined posture
 #: buys, thinking budget rather than the capability floor, so the rung a
 #: task must run on is unchanged.
-_ECONOMICAL_REASONING: tuple[tuple[str, str, str], ...] = (
+_ECONOMICAL_REASONING: Final[tuple[tuple[str, str, str], ...]] = (
     ("engine", "reasoning_effort_high", ReasoningEffort.LOW.value),
     ("engine", "reasoning_effort_critical", ReasoningEffort.MEDIUM.value),
 )
@@ -52,7 +53,9 @@ _ECONOMICAL_REASONING: tuple[tuple[str, str, str], ...] = (
 # that row against a future default change with no matching test failure
 # to catch it. The agent-invite / direct-MCP knobs default off, so those
 # writes are the meaningful opt-in.
-_POSTURE_FLAG_SETTINGS: tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...] = (
+_POSTURE_FLAG_SETTINGS: Final[
+    tuple[tuple[str, tuple[tuple[str, str, str], ...]], ...]
+] = (
     ("economical_reasoning", _ECONOMICAL_REASONING),
     ("agent_invite", (("chief_of_staff", "invite_enabled", "true"),)),
     # Both halves, because either alone is a feature that cannot materialise:
