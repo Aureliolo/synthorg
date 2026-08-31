@@ -99,10 +99,12 @@ func stripHighlightsHeader(content string) string {
 // stripAttribution removes every AI-attribution blockquote line from the
 // highlights content, which the walk view does not show.
 //
-// The line is matched wherever it sits rather than at a fixed position: a
-// tagline precedes it whenever the model supplies one, so it is not reliably
-// the first line, and a position-bound match silently stops stripping the
-// moment the block's layout moves.
+// The line is matched wherever it sits rather than at a fixed position:
+// the attribution leads the block in a freshly-cut release, but a release
+// cut before that render order held trails the tagline instead, and the
+// update walk spans every release between (installed, target], so both
+// shapes remain live input. A position-bound match would silently stop
+// stripping the moment either release's layout differs from the other.
 //
 // Removing the line also closes the paragraph gap it occupied. Dropping the
 // line alone leaves the blank lines that surrounded it back to back, and the

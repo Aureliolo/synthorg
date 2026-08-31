@@ -397,11 +397,24 @@ jobs:
 
           # The prompt lives in a file both this workflow and the dry-run
           # read, so there is exactly one place to keep it correct.
+          #
+          # reasoning_effort gives the model a real scratchpad to count
+          # entries, form clusters and check them against the prompt's band
+          # before writing anything: without it, "work internally" has
+          # nowhere to happen, since a plain completion emits its answer in
+          # one pass. Measured (dry-run, this exact prompt): 6-79 bullets
+          # across four calls without reasoning; 12, 12 and 11 across three
+          # calls with it. HIGHLIGHTS_MODEL must keep resolving to a model that
+          # accepts this field; a future swap to one that rejects it fails
+          # this step, which is best-effort and reported by the tracking job
+          # below. Keep max_tokens and reasoning_effort in sync with
+          # release-highlights-dryrun.yml's default if either changes here.
           PAYLOAD=$(jq -n \
             --arg model "$MISTRAL_MODEL" \
             --rawfile sys .github/release-highlights-prompt.md \
             --rawfile digest changelog-digest.txt \
-            '{model: $model, temperature: 0.4, max_tokens: 4000,
+            '{model: $model, temperature: 0.4, max_tokens: 12000,
+              reasoning_effort: "high",
               messages: [{role: "system", content: $sys},
                          {role: "user", content: $digest}]}')
 
@@ -444,10 +457,34 @@ jobs:
             exit 0
           fi
 
-          CONTENT=$(printf '%s' "$BODY" | jq -r '.choices[0].message.content // empty')
+          # reasoning_effort makes message.content a list of {type, ...}
+          # chunks (thinking + text) instead of a plain string; keep only
+          # the text chunks, which is what carries the TAGLINE/bullets
+          # this step actually publishes.
+          CONTENT=$(printf '%s' "$BODY" | jq -r '
+            .choices[0].message.content as $c
+            | if ($c | type) == "array"
+              then [$c[] | select(.type == "text") | .text] | join("")
+              else ($c // empty)
+              end')
           if [ -z "$CONTENT" ]; then
             echo "::warning::Mistral returned empty content; skipping best-effort Highlights."
             echo "status=empty completion" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # A thinking chunk competes with the visible answer for the same
+          # max_tokens budget, so a response that ran out of room mid-answer
+          # is no longer just a theoretical edge case. finish_reason "length"
+          # names that outcome explicitly; the emptiness check above cannot
+          # catch it, since a truncated answer is non-empty. Publishing a cut-
+          # off summary is worse than skipping it, and letting it carry
+          # status=ok would tell close-highlights-tracker (further down this
+          # workflow) that generation recovered when it did not.
+          FINISH_REASON=$(printf '%s' "$BODY" | jq -r '.choices[0].finish_reason // empty')
+          if [ "$FINISH_REASON" = "length" ]; then
+            echo "::warning::Mistral response truncated at max_tokens; skipping best-effort Highlights."
+            echo "status=truncated at max_tokens" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -538,17 +575,19 @@ jobs:
           # tagline and the disclaimer onto one line, where the CLI's
           # line-anchored strip could no longer see the disclaimer at all.
           #
-          # Attribution sits above the bullets so every reader sees the
-          # section is generated before they read it. The model name is read
-          # from the same variable the request used, so the two cannot drift.
+          # Attribution sits above EVERY generated line, tagline included, so
+          # a reader is told the whole block is AI-generated before reading
+          # any of it rather than after the tagline has already landed the
+          # joke. The model name is read from the same variable the request
+          # used, so the two cannot drift.
           TRIMMED_BULLETS=$(printf '%s' "$BULLETS" | sed -e 's/^[[:space:]]*$//' -e '/./,$!d')
           {
             printf '<!-- HIGHLIGHTS_START -->\n## Highlights\n\n'
+            # shellcheck disable=SC2016  # backticks in the printf format are literal markdown code spans
+            printf '> _AI-generated summary (model: `%s` via Mistral). Commit-based changelog below._\n\n' "$MISTRAL_MODEL"
             if [ -n "${TAGLINE//[[:space:]]/}" ]; then
               printf '_%s_\n\n' "$TAGLINE"
             fi
-            # shellcheck disable=SC2016  # backticks in the printf format are literal markdown code spans
-            printf '> _AI-generated summary (model: `%s` via Mistral). Commit-based changelog below._\n\n' "$MISTRAL_MODEL"
             printf '%s\n\n' "$TRIMMED_BULLETS"
             printf '<!-- HIGHLIGHTS_END -->'
           } > highlights-block.md

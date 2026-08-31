@@ -89,8 +89,9 @@ is the most common failure and it is not a tagline, it is a bullet that escaped.
 
 It must still be SPECIFIC: name or clearly allude to something that actually
 happened here. A tagline that would fit any release of any project has failed.
-Maximum 20 words. Never open with a feature restatement of the form
-"X now does Y".
+One sentence, or two short ones, still on that single output line (no line
+break). Maximum 40 words total. Never open with a feature restatement of the
+form "X now does Y".
 
   BAD:  "Another solid release with lots of improvements!"
   BAD:  "This release adds background shell commands and fixes exec timeouts."
@@ -119,8 +120,9 @@ much as the others, and that is the section where it goes wrong.
   GOOD: "- Agents can search the live web, through whichever of three
          providers you hold a key for"
 
-LENGTH. Aim for a TOTAL across both sections, scaled to how much the
-release contains. Count the entries in the fence and use the matching band:
+LENGTH. The TOTAL across both sections is a HARD CEILING, scaled to how much
+the release contains. Count the entries in the fence and use the matching
+band:
 
   under 10 entries    ->  1-3 bullets
   10-30 entries       ->  3-5 bullets
@@ -128,15 +130,18 @@ release contains. Count the entries in the fence and use the matching band:
   60-120 entries      ->  6-9 bullets
   over 120 entries    ->  8-12 bullets
 
-These are the shape of a good answer, not a quota to fill. Landing one or two
-outside the band is fine when the release genuinely warrants it. Being far
-outside it means something went wrong: well under, and you have dropped work a
-user would have wanted to hear about; well over, and you have stopped selecting
-and started classifying, which produces a second copy of the changelog printed
-directly below.
+The upper end of the band is a MAXIMUM, not a target: landing under it is
+fine, landing one over it is a mistake, landing three or more over it means
+step 4's merge instruction was skipped. If your cluster list still exceeds the
+band's upper bound after step 4, that is not evidence the release needs more
+bullets: merge the smallest or most related clusters into their nearest
+neighbour, repeatedly, until the count fits, and only then start writing.
+Never count first and write second; the merging happens before a single
+bullet is drafted, or the drafted bullets anchor you to keeping them all.
 
-Never pad to reach a number, and never drop something genuinely user-visible to
-hit one.
+Never pad to reach the LOWER end of the band, and never drop something
+genuinely user-visible to fit under the ceiling: merge it into whichever
+cluster it is closest to instead of cutting it.
 
 Each bullet is ONE line, maximum 20 words. No emoji, no marketing language, no
 version numbers, no commit hashes, no code blocks, no HTML comments. Do not

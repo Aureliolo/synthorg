@@ -408,10 +408,6 @@ _EXCLUDED: Final[dict[str, str]] = {
         " action polls the Pages API with internal retry; laddering is"
         " complicated by its page_url output dependency"
     ),
-    "actions/ai-inference": (
-        "cosmetic feature-advisory (AI-generated release-notes Highlights);"
-        " already continue-on-error, a failure drops a nicety, not infra"
-    ),
     "github/codeql-action/upload-sarif": (
         "best-effort security telemetry guarded by if: always(); the CodeQL"
         " action retries the upload internally, and laddering 6+ call sites"

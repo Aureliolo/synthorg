@@ -11,7 +11,9 @@ name: Release - Highlights (dry-run)
 #
 # The prompt and the digest builder are the SAME files release-cut.yml uses
 # (`.github/release-highlights-prompt.md`, `scripts/build_release_digest.py`),
-# so this is a rehearsal rather than a lookalike. Only the model is a knob.
+# and `reasoning_effort` / `max_tokens` default to what release-cut.yml
+# actually sends, so a bare dispatch is a rehearsal rather than a lookalike.
+# The model is the one knob meant to be touched on every run.
 #
 # Scope discipline:
 #   - workflow_dispatch only (no schedule, no push, no PR trigger).
@@ -56,6 +58,17 @@ on:
         type: string
         required: false
         default: ""
+      reasoning_effort:
+        description: >-
+          Mistral reasoning_effort ("none", "low", "medium", "high").
+          Defaults to "high" to match what release-cut.yml sends. Clear it
+          (blank) for a no-reasoning control run, or when probing a
+          candidate model: check the model list in the step summary first,
+          since a model that does not support this field rejects any
+          non-blank value with HTTP 422.
+        type: string
+        required: false
+        default: "high"
 
 permissions: {}
 
@@ -167,16 +180,36 @@ jobs:
         env:
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           MISTRAL_MODEL: ${{ inputs.model }}
+          REASONING_EFFORT: ${{ inputs.reasoning_effort }}
         run: |
           set -euo pipefail
+          # A thinking chunk eats into max_tokens before the final answer is
+          # written, so a reasoning call needs more headroom than a plain
+          # one or the answer can be truncated away entirely. "none" and
+          # blank both mean no reasoning happens, so both stay at the lower
+          # budget; keep this pairing in sync with release-cut.yml's own
+          # max_tokens if either changes.
+          MAX_TOKENS=4000
+          case "$REASONING_EFFORT" in
+            "" | none) ;;
+            *) MAX_TOKENS=12000 ;;
+          esac
           PAYLOAD=$(jq -n \
             --arg model "$MISTRAL_MODEL" \
+            --arg reasoning "$REASONING_EFFORT" \
+            --argjson max_tokens "$MAX_TOKENS" \
             --rawfile sys .github/release-highlights-prompt.md \
             --rawfile digest changelog-digest.txt \
-            '{model: $model, temperature: 0.4, max_tokens: 4000,
+            '{model: $model, temperature: 0.4, max_tokens: $max_tokens,
               messages: [{role: "system", content: $sys},
-                         {role: "user", content: $digest}]}')
+                         {role: "user", content: $digest}]}
+             + (if $reasoning != "" then {reasoning_effort: $reasoning} else {} end)')
 
+          # rc capture (missing here previously): a thinking chunk can push
+          # generation past --max-time, and under `pipefail` an uncaught
+          # curl failure kills the step with no diagnostic in the one tool
+          # meant to diagnose exactly this.
+          rc=0
           RESP=$(printf '%s' "$PAYLOAD" | curl -sS \
             --retry 3 --retry-delay 3 --retry-all-errors \
             --connect-timeout 15 --max-time 180 \
@@ -184,7 +217,11 @@ jobs:
             -X POST https://api.mistral.ai/v1/chat/completions \
             -H "Authorization: Bearer $MISTRAL_API_KEY" \
             -H 'Content-Type: application/json' \
-            --data-binary @-)
+            --data-binary @-) || rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::Mistral request failed (transport, curl exit ${rc})"
+            exit 1
+          fi
           CODE=$(printf '%s' "$RESP" | tail -n1)
           BODY=$(printf '%s' "$RESP" | sed '$d')
           if [ "$CODE" != "200" ]; then
@@ -196,12 +233,47 @@ jobs:
             echo "::error::Mistral returned HTTP ${CODE}: ${DETAIL:-no parsable error fields}"
             exit 1
           fi
-          CONTENT=$(printf '%s' "$BODY" | jq -r '.choices[0].message.content // empty')
+          # reasoning_effort makes message.content a list of {type, ...}
+          # chunks (thinking + text) instead of a plain string; without
+          # reasoning it stays a plain string. Handle both.
+          CONTENT=$(printf '%s' "$BODY" | jq -r '
+            .choices[0].message.content as $c
+            | if ($c | type) == "array"
+              then [$c[] | select(.type == "text") | .text] | join("")
+              else ($c // empty)
+              end')
+          THINKING_CHARS=$(printf '%s' "$BODY" | jq -r '
+            [.choices[0].message.content // [] | .[]?
+             | select(.type == "thinking") | .thinking[]? | .text // empty]
+            | join("") | length')
+          echo "thinking_chars=$THINKING_CHARS" >> "$GITHUB_OUTPUT"
           USAGE=$(printf '%s' "$BODY" | jq -r '.usage | "\(.prompt_tokens) in / \(.completion_tokens) out"')
           echo "usage=$USAGE" >> "$GITHUB_OUTPUT"
-          # Randomised heredoc delimiter (see release-cut.yml rationale): model
-          # output derives from untrusted commit prose.
+          # A thinking chunk competes with the visible answer for max_tokens,
+          # so this is the same truncation release-cut.yml treats as a
+          # failure rather than publishing it. The dry-run's whole purpose is
+          # rehearsing production faithfully, so it surfaces the same signal
+          # instead of printing a silently cut-off answer as if it were
+          # complete.
+          FINISH_REASON=$(printf '%s' "$BODY" | jq -r '.choices[0].finish_reason // empty')
+          echo "finish_reason=$FINISH_REASON" >> "$GITHUB_OUTPUT"
+          # Randomised token (see release-cut.yml rationale): model output
+          # derives from untrusted commit prose, so a fixed marker could be
+          # smuggled in to truncate the heredoc value below, and the same
+          # content could forge an `::error::`/`::warning::`/`::add-mask::`
+          # workflow command in this public log. `::stop-commands::` before
+          # the print and the matching `::<token>::` after close both; the
+          # step summary renders client-side and cannot be fetched through
+          # the API or a raw log dump, so this echo is deliberately the only
+          # way to recover the raw content programmatically
+          # (`gh run view --log`), which matters for comparing runs against
+          # each other, not just reading one.
           DELIM="HIGHLIGHTS_RESPONSE_$(openssl rand -hex 12)"
+          echo "::group::raw content"
+          echo "::stop-commands::${DELIM}"
+          printf '%s\n' "$CONTENT"
+          echo "::${DELIM}::"
+          echo "::endgroup::"
           {
             printf 'response<<%s\n' "$DELIM"
             printf '%s\n' "$CONTENT"
@@ -213,13 +285,25 @@ jobs:
           RESPONSE: ${{ steps.highlights.outputs.response }}
           USAGE: ${{ steps.highlights.outputs.usage }}
           MISTRAL_MODEL: ${{ inputs.model }}
+          REASONING_EFFORT: ${{ inputs.reasoning_effort }}
+          THINKING_CHARS: ${{ steps.highlights.outputs.thinking_chars }}
+          FINISH_REASON: ${{ steps.highlights.outputs.finish_reason }}
         run: |
           set -euo pipefail
           {
             echo "## Highlights dry-run"
             echo ""
             echo "**Model**: \`${MISTRAL_MODEL}\` via Mistral"
+            echo "**Reasoning effort**: \`${REASONING_EFFORT:-<none>}\`"
             echo "**Tokens**: ${USAGE}"
+            echo "**Thinking chars**: ${THINKING_CHARS:-0}"
+            if [ "$FINISH_REASON" = "length" ]; then
+              echo ""
+              echo "> [!WARNING]"
+              echo "> Truncated at max_tokens. release-cut.yml would skip"
+              echo "> publishing this response (\`status=truncated at"
+              echo "> max_tokens\`) rather than show it as complete."
+            fi
             echo ""
             # Every kind of whitespace, not just spaces: a reply of newlines
             # or tabs passes a space-only test, and the `grep` below then
@@ -260,12 +344,11 @@ jobs:
             if [ "$HAS_MARKER" -eq 1 ]; then
               BODY=$(printf '%s\n' "$RESPONSE" | sed "${TAGLINE_LINE}d")
             fi
-            if [ -n "${TAGLINE//[[:space:]]/}" ]; then
-              printf '_%s_\n\n' "$TAGLINE"
-            fi
             echo "> _AI-generated summary (model: \`${MISTRAL_MODEL}\` via Mistral). Commit-based changelog below._"
             echo ""
-            if [ -z "${TAGLINE//[[:space:]]/}" ]; then
+            if [ -n "${TAGLINE//[[:space:]]/}" ]; then
+              printf '_%s_\n\n' "$TAGLINE"
+            else
               echo "_Model emitted no TAGLINE line._"
               echo ""
             fi
