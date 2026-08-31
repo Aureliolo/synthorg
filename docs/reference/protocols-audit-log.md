@@ -148,6 +148,13 @@ The #1864 KEEP verdict for `ImpactScorer` and `ConfidenceFormatter` was correct 
 
 `ConfidenceMetadata` and `LensAttribution` (`engine/strategy/models.py`) were deleted with them (zero construction sites anywhere). `ConfidenceFormat`, `ConfidenceConfig`, `CostTierPreset`, `ImpactDimension`, `ImpactScore`, `ProgressiveConfig`, and `StrategicContext` were left in place: each is still reachable from `StrategyConfig`, which `RootConfig` still validates, even though `cost_tier`, `confidence.format`, and `progressive` now select nothing. See [strategy.md](../design/strategy.md#confidence-calibration).
 
+#2888 also removed the durable circuit-breaker state table (migration `20260831000000_drop_circuit_breaker_state_and_repair_reasoning_effort`) and an unwired heartbeat query, taking one whole protocol and one bespoke method with them:
+
+| Path | Line | Name | Outcome |
+|---|---|---|---|
+| persistence/circuit_breaker_protocol.py | 33 | `CircuitBreakerStateRepository` | Deleted, file removed. The `circuit_breaker_state` table it backed was dropped; zero references outside its own module. |
+| persistence/checkpoint_protocol.py | 72 | `HeartbeatRepository.get_stale` | Method removed; the protocol's CRUD surface (`save`/`get`/`delete`) stays. Zero callers found by the same call-graph trace that found the rest of this issue's dead symbols. |
+
 ## Superseded by the meeting/ceremony/conflict-resolution removal
 
 The entries above that name `ParticipantResolver` (`meeting/participant.py`), the `ConflictDetector` fold (`meeting/conflict_detection.py` into `meeting/protocol.py`), and `communication/meeting/factory.py::build_conflict_detector` are history: they record decisions made while that stack existed. `communication/meeting/`, `communication/conflict_resolution/`, and `communication/event_stream/consumer.py` have since been deleted in full, tables and all (migration `20260824000000_drop_meeting_ceremony_conflict_stack`), taking every protocol named in those entries with them. See the `src/synthorg/communication/` table in [Protocols Audit](protocols-audit.md) for the current classification.

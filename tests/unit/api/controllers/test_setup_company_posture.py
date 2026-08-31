@@ -75,8 +75,8 @@ class TestSeedPostureSettings:
         assert result == "security_hardened"
         calls = _set_calls(svc)
         # Steering defaults on already, so this posture's only settings-
-        # resident flag has nothing left to write; knowledge_substrate +
-        # red_team are config-resident (rendered config).
+        # resident flag has nothing left to write; red_team is
+        # config-resident (rendered config).
         assert calls == {}
 
     async def test_supervised_client_facing_enables_invite(self) -> None:

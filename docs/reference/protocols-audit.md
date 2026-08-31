@@ -264,7 +264,6 @@ All 46 persistence protocols are listed; every one is a plug-in `Repository` / `
 | persistence/auth_protocol.py | 142 | `RefreshTokenRepository` | 1 | 0 | 4 | KEEP |
 | persistence/checkpoint_protocol.py | 19 | `CheckpointRepository` | 1 | 0 | 7 | KEEP |
 | persistence/checkpoint_protocol.py | 72 | `HeartbeatRepository` | 1 | 0 | 5 | KEEP |
-| persistence/circuit_breaker_protocol.py | 33 | `CircuitBreakerStateRepository` | 0 | 0 | 1 | KEEP (promote `@runtime_checkable` candidate) |
 | persistence/connection_protocol.py | 20 | `ConnectionRepository` | 1 | 0 | 7 | KEEP |
 | persistence/connection_protocol.py | 69 | `ConnectionSecretRepository` | 1 | 0 | 0 | KEEP (review usage; testuse=0 unusual for persistence) |
 | persistence/connection_protocol.py | 95 | `OAuthStateRepository` | 1 | 0 | 14 | KEEP |

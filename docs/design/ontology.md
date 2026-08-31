@@ -119,8 +119,6 @@ ontology:
     strategy: "passive"                # passive | active | none
     check_interval: 300
     threshold: 0.3
-  delegation_guard:
-    guard_mode: "stamp"                # none | stamp | validate | enforce
   memory:
     wrapper_enabled: true
     auto_tag: true

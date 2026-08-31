@@ -139,7 +139,7 @@ compose any generic category and are documented at the end as "bespoke per D7".
 | 7 | AuditRepository | persistence/ | AppendOnly | `purge_before` | Retention sweep (exception to append-only rule) |
 | 8 | WorkflowDefinitionRepository | persistence/ | IdKeyed + FilteredQuery | `create_if_absent`, `update_if_exists` | CAS variants for distinct audit semantics |
 | 9 | CheckpointRepository | persistence/ | AppendOnly | `get_latest`, `delete_by_execution` | Domain: newest by turn_number; cleanup by execution |
-| 10 | HeartbeatRepository | persistence/ | Singleton (per execution) | `get_stale` | Domain: stale-timeout queries for cleanup |
+| 10 | HeartbeatRepository | persistence/ | Singleton (per execution) | -- | `get_stale` since removed as an unwired dead symbol; the protocol's CRUD surface stays |
 | 11 | OrgFactRepository | persistence/ | bespoke (D7) | -- | Standalone `Protocol`, not `MVCCRepository`: composite key + author tracking on `retract`, `snapshot_at()` returns an `OperationLogSnapshot` that does not fit the `MVCCRepository[T, ...]` signature, and org-memory domain optimisations (see `persistence/memory_protocol.py`) |
 | 12 | FineTuneRunRepository | persistence/ | Stateful | `get_active_run`, `mark_interrupted` | Domain: active-run singleton per manager |
 | 13 | SettingsRepository | persistence/ | IdKeyed (composite) | `get_namespace`, `delete_namespace` | Namespace-level bulk operations |
@@ -163,7 +163,7 @@ compose any generic category and are documented at the end as "bespoke per D7".
 | 31 | ParkedContextRepository | persistence/ | Singleton (per agent) | `get_by_approval`, `get_by_agent` | Domain: lookup by approval or agent |
 | 32 | PrincipleOverrideRepository | persistence/ | IdKeyed + FilteredQuery | -- | Standard CRUD with filters |
 | 33 | RiskOverrideRepository | persistence/ | IdKeyed + FilteredQuery | `revoke` | Domain: mark inactive without delete |
-| 34 | CircuitBreakerStateRepository | persistence/ | IdKeyed (composite) | `load_all` | Perf: bulk cache warmth at startup |
+| 34 | CircuitBreakerStateRepository | persistence/ | IdKeyed (composite) | `load_all` | Perf: bulk cache warmth at startup. Since removed with the circuit-breaker feature. |
 | 35 | DecisionRepository | persistence/ | Stateful | -- | State machine: draft, pending, decided |
 | 36 | SsrfViolationRepository | persistence/ | IdKeyed + FilteredQuery | `update_status` | Domain: transition finding status |
 | 37 | SessionRepository (auth) | persistence/auth_protocol.py | Stateful | -- | Session lifecycle: active, revoked |

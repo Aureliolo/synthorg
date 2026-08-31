@@ -74,11 +74,11 @@ absent.
 
 | Posture | Enables |
 |---------|---------|
-| `autonomous` | Knowledge substrate |
+| `autonomous` | *(nothing beyond the shipped defaults: steering is already on)* |
 | `supervised_client_facing` | Agent invite |
-| `knowledge_heavy` | Knowledge substrate |
+| `knowledge_heavy` | *(nothing beyond the shipped defaults: propose and steering are already on)* |
 | `cost_disciplined` | Economical reasoning (`engine.reasoning_effort_{high,critical}` dialled one notch down; `low`/`normal` already sit at the registered floor) |
-| `security_hardened` | Red-team completion gate (knowledge-substrate grounding), knowledge substrate |
+| `security_hardened` | Red-team completion gate (knowledge-substrate grounding) |
 | `research_autonomous` | *(nothing beyond the shipped defaults: propose, routing and steering are already on)* |
 
 `cost_disciplined` deliberately leaves the capability floors alone. Reasoning

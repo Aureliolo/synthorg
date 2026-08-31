@@ -79,7 +79,6 @@ class TestResolveTemplatePosture:
         assert result.economical_reasoning is True
         # Child wins outright: the parent's flags are NOT inherited.
         assert result.steering is False
-        assert result.knowledge_substrate is False
 
     def test_pack_posture_unions_into_host(self) -> None:
         security_pack = _template(posture=PostureName.SECURITY_HARDENED)
@@ -120,7 +119,6 @@ class TestResolveTemplatePosture:
         # Host name inherited from parent; pack folds red_team on top.
         assert result.name == "autonomous"
         assert result.steering is True
-        assert result.knowledge_substrate is True
         assert result.red_team is True
 
     def test_multiple_packs_union_their_flags(self) -> None:
