@@ -133,7 +133,7 @@ async def test_closure_propagates_task_forecast_id() -> None:
 
 
 async def test_configured_ceiling_logs_its_provenance_from_task() -> None:
-    """A task-set hard ceiling is logged with source='task'."""
+    """A task-set hard ceiling is logged with hard_ceiling_source='task'."""
     tracker = CostTracker()
     enforcer = BudgetEnforcer(budget_config=_config(), cost_tracker=tracker)
     task = _task(hard_ceiling=1.50)
@@ -145,13 +145,14 @@ async def test_configured_ceiling_logs_its_provenance_from_task() -> None:
     ]
     assert len(configured) == 1
     assert configured[0]["hard_ceiling"] == pytest.approx(1.50)
-    assert configured[0]["source"] == "task"
+    assert configured[0]["hard_ceiling_source"] == "task"
+    assert configured[0]["hard_token_ceiling_source"] == "setting"
     assert configured[0]["currency"] == "USD"
     assert configured[0]["task_id"] == sid("task-1")
 
 
 async def test_configured_ceiling_logs_its_provenance_from_setting() -> None:
-    """A ceiling inherited from the setting is logged with source='setting'."""
+    """A ceiling from the setting is logged with hard_ceiling_source='setting'."""
     tracker = CostTracker()
     enforcer = BudgetEnforcer(
         budget_config=_config(run_hard_ceiling=2.00),
@@ -165,7 +166,29 @@ async def test_configured_ceiling_logs_its_provenance_from_setting() -> None:
     ]
     assert len(configured) == 1
     assert configured[0]["hard_ceiling"] == pytest.approx(2.00)
-    assert configured[0]["source"] == "setting"
+    assert configured[0]["hard_ceiling_source"] == "setting"
+
+
+async def test_dollar_and_token_ceilings_are_attributed_independently() -> None:
+    """A task setting only a token ceiling must not misattribute the dollar
+    ceiling (inherited from the setting) as task-sourced, and vice versa --
+    the exact defect a single shared `source` field produced."""
+    tracker = CostTracker()
+    enforcer = BudgetEnforcer(
+        budget_config=_config(run_hard_ceiling=2.00),
+        cost_tracker=tracker,
+    )
+    task = _task().model_copy(update={"hard_token_ceiling": 5000})
+    with structlog.testing.capture_logs() as logs:
+        checker = await enforcer.make_budget_checker(task, "agent-1")
+    assert checker is not None
+    configured = [
+        log for log in logs if log["event"] == "budget.hard_ceiling.configured"
+    ]
+    assert len(configured) == 1
+    assert configured[0]["hard_ceiling_source"] == "setting"
+    assert configured[0]["hard_token_ceiling_source"] == "task"
+    assert configured[0]["hard_token_ceiling"] == 5000
 
 
 async def test_no_ceiling_configured_does_not_log_provenance() -> None:

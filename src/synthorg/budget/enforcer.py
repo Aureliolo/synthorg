@@ -709,13 +709,22 @@ class BudgetEnforcer(BudgetEnforcerRiskMixin):
             else cfg.run_hard_token_ceiling
         )
         if hard_ceiling > 0 or hard_token_ceiling > 0:
+            # Each ceiling has its own origin: a task can set one without the
+            # other (or neither, falling back to the run-wide setting), so a
+            # single shared `source` would misattribute whichever ceiling it
+            # was not actually derived from.
             logger.info(
                 BUDGET_HARD_CEILING_CONFIGURED,
                 task_id=str(task.id),
                 hard_ceiling=hard_ceiling,
                 hard_token_ceiling=hard_token_ceiling,
                 currency=cfg.currency,
-                source="task" if task.hard_ceiling is not None else "setting",
+                hard_ceiling_source="task"
+                if task.hard_ceiling is not None
+                else "setting",
+                hard_token_ceiling_source=(
+                    "task" if task.hard_token_ceiling is not None else "setting"
+                ),
             )
 
         # All enforcement disabled. Logged rather than returned in silence:
