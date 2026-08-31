@@ -25,7 +25,7 @@ It is provider-agnostic (<!--RS:providers_via_litellm-->95+<!--/RS--> LLM provid
 
 > **Project status (read this).** SynthOrg is **pre-alpha**, and not yet fully working. The honest headline is the loop, not the platform: driven live against a real deployment, it has never reached the assembly stage, and no run has produced an assembled deliverable. The failure modes so far are open in the issue tracker.
 >
-> The platform underneath is built and tested (<!--RS:tests-->46,000+<!--/RS--> tests, 80%+ coverage): API, dashboard, CLI, dual-backend persistence, the provider layer, the agent runtime, the multi-agent coordinator, the work pipeline spine, the intake engine, sandbox lifecycle dispatch, and the distributed-path consumers are all wired and exercised by deterministic e2e harnesses with a scripted provider (no real LLM spend). Use it for research and contribution, not for production workloads. Progress is tracked openly on the [roadmap](https://synthorg.io/docs/roadmap/) and the [issue tracker](https://github.com/Aureliolo/synthorg/issues).
+> The platform underneath is built and tested (<!--RS:tests-->47,000+<!--/RS--> tests, 80%+ coverage): API, dashboard, CLI, dual-backend persistence, the provider layer, the agent runtime, the multi-agent coordinator, the work pipeline spine, the intake engine, sandbox lifecycle dispatch, and the distributed-path consumers are all wired and exercised by deterministic e2e harnesses with a scripted provider (no real LLM spend). Use it for research and contribution, not for production workloads. Progress is tracked openly on the [roadmap](https://synthorg.io/docs/roadmap/) and the [issue tracker](https://github.com/Aureliolo/synthorg/issues).
 
 ## How it works
 

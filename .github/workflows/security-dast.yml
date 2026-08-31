@@ -9,7 +9,7 @@ permissions: {}
 
 concurrency:
   group: ${{ github.workflow }}
-  cancel-in-progress: false  # Serialize: only one DAST scan at a time
+  cancel-in-progress: false  # Serialise: only one DAST scan at a time
 
 env:
   # renovate: datasource=github-releases depName=aquasecurity/trivy

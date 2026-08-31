@@ -7,7 +7,7 @@ on:
 
 permissions: {}
 
-# Serialize runs against the shared `ci/apko-lock-update` branch.
+# Serialise runs against the shared `ci/apko-lock-update` branch.
 # A concurrent cron + manual dispatch (or two back-to-back manual
 # dispatches) would race on the delete + recreate sequence in
 # update-lockfiles, producing 422 "Reference already exists" or

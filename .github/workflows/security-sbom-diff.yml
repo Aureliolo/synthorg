@@ -203,15 +203,37 @@ jobs:
           EOF
           )
 
-          # Sticky comment via the hidden marker at the top of the body.
+          # Sticky comment, selected by AUTHOR as well as by the hidden
+          # marker. The release PR is public and open for days, so a marker
+          # match alone lets any account post a comment that this workflow
+          # then adopts as its slot and updates: the body it writes is always
+          # ours, but the commenter keeps edit rights over a comment they
+          # authored, so forged dependency and licence rows could stand under
+          # this tool's own marker until the next run. We post via
+          # `github.token`, so `github-actions[bot]` is the only legitimate
+          # author and is a login no third party can take.
+          #
           # `--slurp` then a SEPARATE jq: `--paginate --jq` runs the filter
-          # once per page, so `.[0]` means first-of-page and a PR long enough
-          # to paginate emits one id per matching page, which reaches the
-          # PATCH below as a multi-line URL segment. gh also refuses `--slurp`
-          # beside `--jq`, so the selection cannot live in the same call.
-          # `flatten(1)` folds the one-array-per-page shape.
+          # once per page, so `.[0]` means first-of-page. Once the marker
+          # matches on two or more pages at once (duplicate stickies already
+          # split across a page boundary), that emits one id per matching
+          # page, which reaches the PATCH below as a multi-line URL segment.
+          # gh also refuses `--slurp` beside `--jq`, so the selection cannot
+          # live in the same call. `flatten(1)` folds the per-page shape.
+          # rc is captured rather than left to `set -e` so the annotation
+          # names WHICH part failed. Bare, the step aborts with only a red X
+          # on an advisory, non-required check, and a persistent break reads
+          # the same as a transient one to anybody scanning the PR's checks.
+          rc=0
           EXISTING=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate --slurp \
-            | jq -r 'flatten(1) | map(select(.body | startswith("<!-- sbom-diff:backend -->"))) | .[0].id // empty')
+            | jq -r 'flatten(1)
+                | map(select(.user.login == "github-actions[bot]"
+                    and (.body | startswith("<!-- sbom-diff:backend -->"))))
+                | .[0].id // empty') || rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::could not read the PR's comments to locate the SBOM-diff sticky (exit ${rc}); no comment posted"
+            exit 1
+          fi
           if [ -n "$EXISTING" ]; then
             gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$EXISTING" \
               -f body="$COMMENT" >/dev/null

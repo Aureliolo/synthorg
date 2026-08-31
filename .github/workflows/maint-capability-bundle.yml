@@ -9,7 +9,7 @@ on:
 
 permissions: {}
 
-# Serialize runs against the shared `ci/capability-bundle-update` branch.
+# Serialise runs against the shared `ci/capability-bundle-update` branch.
 # A concurrent cron + manual dispatch would race on the delete + recreate
 # sequence in update-bundle, producing 422 "Reference already exists" or
 # 404 "Reference does not exist" depending on interleaving.

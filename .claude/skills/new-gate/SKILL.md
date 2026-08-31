@@ -101,15 +101,21 @@ push-only gate ids, so a `_GATES` entry inherits CI coverage automatically.
 
 ## Phase 4: Inventory rows (the meta-gate checks these)
 
-Three edits, all required:
+Two edits are always required; the third applies only to a gate that backs a
+MANDATORY paragraph:
 
-1. `scripts/convention_gate_map.yaml`: an entry keyed to the MANDATORY paragraph,
+1. `docs/reference/convention-gates.md`: a row in the gate-inventory table
+   recording stages, scope, full-vs-changed, baseline-driven, and verdict.
+2. The `<!--RS:convention_gates-->` count macro in that same page, regenerated
+   with `generate_runtime_stats.py` then `inject_runtime_stats.py` rather than
+   edited by hand.
+3. `scripts/convention_gate_map.yaml`: an entry keyed to the MANDATORY paragraph,
    carrying either `gate: scripts/check_<name>.py` or `exempt: { reason: ... }`.
    `check_convention_gate_inventory.py` fails the push if a MANDATORY paragraph in
-   the canonical doc set has neither.
-2. `docs/reference/convention-gates.md`: a row in the gate-inventory table
-   recording stages, scope, full-vs-changed, baseline-driven, and verdict.
-3. The `<!--RS:convention_gates-->` count macro in that same page.
+   the canonical doc set has neither. Add this ONLY when such a paragraph exists:
+   entries are keyed by `(file, header)`, and an entry matching no paragraph is
+   rejected as stale, so a narrow gate with no MANDATORY behind it takes the
+   table row alone.
 
 The macro counts `check_*.py` scripts. A helper named anything else (`run_*.py`,
 `_*_lib.py`) is deliberately not counted and needs no map entry, which is the

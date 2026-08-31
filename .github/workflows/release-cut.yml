@@ -28,7 +28,7 @@ env:
   # a no-op on an already-flat array, so it is correct either way.
   STICKY_SELECT: 'flatten(1) | map(select(.user.login == "github-actions[bot]" and (.body | contains("<!-- HIGHLIGHTS_STICKY -->"))))'
 
-# Serialize: every main push updates the SAME sticky release-please PR
+# Serialise: every main push updates the SAME sticky release-please PR
 # branch. Two overlapping runs racing the BSL Change Date Contents-API
 # commit on that branch produced HTTP 409 "does not match" conflicts.
 # Queue rather than cancel so an in-flight run always finishes creating
@@ -318,10 +318,25 @@ jobs:
           # itself lives, so there is no second store to fall out of step.
           # Author-filtered and read with `first`, matching the write side: a
           # forged comment must not be able to feed the arithmetic below.
+          # rc is captured rather than swallowed with `|| STATE=""`, which
+          # cannot tell "no sticky comment yet" (the legitimate first run,
+          # where jq and sed both exit 0 and STATE is correctly empty) from
+          # "the read failed". Both degrade to a regeneration, which is the
+          # harmless direction, but only one of them is worth knowing about:
+          # a persistent failure silently pays the full model cost and
+          # rerolls the tagline on every push, for as long as it lasts.
+          # Matches the BASE and COMPARE reads above, whose status output the
+          # tracker already reads.
+          rc=0
           STATE=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
             --paginate --slurp \
             | jq -r "$STICKY_SELECT | first | .body // empty" \
-            | sed -n 's/.*HIGHLIGHTS_STATE base=\([^ ]*\) commits=\([0-9]*\).*/\1 \2/p') || STATE=""
+            | sed -n 's/.*HIGHLIGHTS_STATE base=\([^ ]*\) commits=\([0-9]*\).*/\1 \2/p') || rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning::could not read prior Highlights state (exit ${rc}); forcing regeneration."
+            echo "status=sticky-state read failed (exit ${rc})" >> "$GITHUB_OUTPUT"
+            STATE=""
+          fi
           PREV_BASE=$(printf '%s' "$STATE" | cut -d' ' -f1)
           PREV_COUNT=$(printf '%s' "$STATE" | cut -d' ' -f2)
 
@@ -610,9 +625,19 @@ jobs:
           PR_NUMBER: ${{ steps.release.outputs.pr && fromJSON(steps.release.outputs.pr).number || '' }}
         run: |
           set -euo pipefail
+          # Being convenience-only buys this step a `continue-on-error`, not
+          # silence: without an rc capture a real failure leaves nothing but a
+          # red X inside an otherwise-green job, while the legitimate
+          # no-comment-yet path below logs. Every other degrade branch in this
+          # file annotates, and a reader cannot tell the two apart otherwise.
+          rc=0
           COMMENT=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
             --paginate --slurp \
-            | jq -r "$STICKY_SELECT | first | .body // empty")
+            | jq -r "$STICKY_SELECT | first | .body // empty") || rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning::could not read the sticky comment to mirror (exit ${rc}); PR body left as-is."
+            exit 0
+          fi
           if [ -z "$COMMENT" ]; then
             echo "No Highlights sticky comment yet; nothing to mirror."
             exit 0
