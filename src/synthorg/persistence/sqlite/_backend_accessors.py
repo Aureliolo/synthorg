@@ -52,9 +52,6 @@ from synthorg.persistence.checkpoint_protocol import (
     CheckpointRepository,
     HeartbeatRepository,
 )
-from synthorg.persistence.circuit_breaker_protocol import (
-    CircuitBreakerStateRepository,
-)
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionRecordRepository,
 )
@@ -235,7 +232,6 @@ class _BackendRepositoryAccessors:
     _role_versions: VersionRepository[Role] | None
     _risk_overrides: RiskOverrideRepository | None
     _ssrf_violations: SsrfViolationRepository | None
-    _circuit_breaker_state: CircuitBreakerStateRepository | None
     _model_tool_call_signals: ModelToolCallSignalRepository | None
     _model_capability_scores: ModelCapabilityScoreRepository | None
     _capability_source_statuses: CapabilitySourceStatusRepository | None
@@ -628,14 +624,6 @@ class _BackendRepositoryAccessors:
         return self._require_connected(
             self._ssrf_violations,
             "ssrf_violations",
-        )
-
-    @property
-    def circuit_breaker_state(self) -> CircuitBreakerStateRepository:
-        """Repository for circuit breaker state persistence."""
-        return self._require_connected(
-            self._circuit_breaker_state,
-            "circuit_breaker_state",
         )
 
     @property

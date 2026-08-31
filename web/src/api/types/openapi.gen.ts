@@ -6078,11 +6078,10 @@ export type components = {
          * @description Event types produced by the activity feed timeline.
          *
          *     Superset of ``LifecycleEventType`` plus operational event types
-         *     generated from task metrics, cost records, tool invocations,
-         *     and delegation records.
+         *     generated from task metrics, cost records, and tool invocations.
          * @enum {string}
          */
-        readonly ActivityEventType: "hired" | "onboarded" | "fired" | "offboarded" | "status_changed" | "promoted" | "demoted" | "task_started" | "task_completed" | "task_failed" | "task_empty" | "cost_incurred" | "tool_used" | "delegation_sent" | "delegation_received";
+        readonly ActivityEventType: "hired" | "onboarded" | "fired" | "offboarded" | "status_changed" | "promoted" | "demoted" | "task_started" | "task_completed" | "task_failed" | "task_empty" | "cost_incurred" | "tool_used";
         /**
          * ActivityWindowHours
          * @description Time window (24, 48, or 168 hours)
@@ -19248,7 +19247,7 @@ export interface operations {
                 /** @description Page size (default 50, max 200) */
                 readonly limit?: number;
                 /** @description Filter by event_type */
-                readonly type?: "hired" | "onboarded" | "fired" | "offboarded" | "status_changed" | "promoted" | "demoted" | "task_started" | "task_completed" | "task_failed" | "task_empty" | "cost_incurred" | "tool_used" | "delegation_sent" | "delegation_received" | null;
+                readonly type?: "hired" | "onboarded" | "fired" | "offboarded" | "status_changed" | "promoted" | "demoted" | "task_started" | "task_completed" | "task_failed" | "task_empty" | "cost_incurred" | "tool_used" | null;
             };
             readonly header?: never;
             readonly path?: never;

@@ -6,7 +6,6 @@ import pytest
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import DEFAULT_CURRENCY
-from synthorg.core.delegation_types import DelegationRecord
 from synthorg.core.run_outcome import RunOutcome
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.hr.activity import (
@@ -114,27 +113,6 @@ def _make_tool_invocation(
         is_success=is_success,
         timestamp=timestamp,
         error_message=error_message,
-    )
-
-
-def _make_delegation_record(
-    *,
-    delegation_id: str = "del-001",
-    delegator_id: str = "agent-manager",
-    delegatee_id: str = "agent-worker",
-    original_task_id: str = "task-parent",
-    delegated_task_id: str = "del-abc123",
-    timestamp: datetime = _NOW,
-    refinement: str = "",
-) -> DelegationRecord:
-    return DelegationRecord(
-        delegation_id=delegation_id,
-        delegator_id=delegator_id,
-        delegatee_id=delegatee_id,
-        original_task_id=original_task_id,
-        delegated_task_id=delegated_task_id,
-        timestamp=timestamp,
-        refinement=refinement,
     )
 
 
@@ -591,78 +569,8 @@ class TestToolUsedEvents:
         assert timeline[1].event_type == "tool_used"
 
 
-# ── delegation_sent / delegation_received tests ──────────────────
-
-
 @pytest.mark.unit
-class TestDelegationEvents:
-    def test_delegation_sent_event(self) -> None:
-        record = _make_delegation_record(
-            delegator_id="agent-manager",
-            delegatee_id="agent-worker",
-            original_task_id="task-parent",
-            timestamp=_NOW,
-        )
-
-        timeline = merge_activity_timeline(
-            (),
-            (),
-            delegation_records_sent=(record,),
-        )
-
-        assert len(timeline) == 1
-        evt = timeline[0]
-        assert evt.event_type == "delegation_sent"
-        assert evt.timestamp == _NOW
-        # The references belong in related_ids, which is what the surface links
-        # and resolves through; in the description they printed as raw keys.
-        assert "task-parent" not in evt.description
-        assert "agent-worker" not in evt.description
-        assert evt.related_ids["agent_id"] == "agent-manager"
-        assert evt.related_ids["delegatee_id"] == "agent-worker"
-        assert evt.related_ids["delegation_id"] == "del-001"
-        assert evt.related_ids["original_task_id"] == "task-parent"
-        assert evt.related_ids["delegated_task_id"] == "del-abc123"
-
-    def test_delegation_received_event(self) -> None:
-        record = _make_delegation_record(
-            delegator_id="agent-manager",
-            delegatee_id="agent-worker",
-            original_task_id="task-parent",
-            timestamp=_NOW,
-        )
-
-        timeline = merge_activity_timeline(
-            (),
-            (),
-            delegation_records_received=(record,),
-        )
-
-        assert len(timeline) == 1
-        evt = timeline[0]
-        assert evt.event_type == "delegation_received"
-        assert evt.timestamp == _NOW
-        assert "task-parent" not in evt.description
-        assert "agent-manager" not in evt.description
-        assert evt.related_ids["agent_id"] == "agent-worker"
-        assert evt.related_ids["delegator_id"] == "agent-manager"
-        assert evt.related_ids["delegation_id"] == "del-001"
-        assert evt.related_ids["delegated_task_id"] == "del-abc123"
-
-    def test_delegation_dual_perspective(self) -> None:
-        """Same record produces both sent and received events."""
-        record = _make_delegation_record(timestamp=_NOW)
-
-        timeline = merge_activity_timeline(
-            (),
-            (),
-            delegation_records_sent=(record,),
-            delegation_records_received=(record,),
-        )
-
-        types = {e.event_type for e in timeline}
-        assert types == {"delegation_sent", "delegation_received"}
-
+class TestMergeAllEventTypes:
     def test_merge_all_event_types(self) -> None:
         """Verify all event types merge and sort correctly."""
         hired = _make_lifecycle_event(
@@ -678,21 +586,16 @@ class TestDelegationEvents:
         tool = _make_tool_invocation(
             timestamp=_NOW - timedelta(hours=2),
         )
-        delegation = _make_delegation_record(
-            timestamp=_NOW - timedelta(hours=1),
-        )
 
         timeline = merge_activity_timeline(
             (hired,),
             (task,),
             cost_records=(cost,),
             tool_invocations=(tool,),
-            delegation_records_sent=(delegation,),
-            delegation_records_received=(delegation,),
         )
 
-        # 1 hired + 1 task_completed + 1 task_started + 1 cost + 1 tool + 2 delegation
-        assert len(timeline) == 7
+        # 1 hired + 1 task_completed + 1 task_started + 1 cost + 1 tool
+        assert len(timeline) == 5
         # Verify desc order by timestamp
         for i in range(len(timeline) - 1):
             assert timeline[i].timestamp >= timeline[i + 1].timestamp
@@ -949,9 +852,9 @@ class TestRedactCostEvents:
                 description="API call to test-model-2 (200+100 tokens, EUR0.02)",
             ),
             ActivityEvent(
-                event_type=ActivityEventType.DELEGATION_SENT,
+                event_type=ActivityEventType.STATUS_CHANGED,
                 timestamp=_NOW,
-                description="Delegated a task",
+                description="Agent status changed",
             ),
         )
         result = redact_cost_events(events)
@@ -960,4 +863,4 @@ class TestRedactCostEvents:
         assert result[1].description == "API call (100+50 tokens)"
         assert result[2].description == "Tool read_file executed successfully"
         assert result[3].description == "API call (200+100 tokens)"
-        assert result[4].description == "Delegated a task"
+        assert result[4].description == "Agent status changed"

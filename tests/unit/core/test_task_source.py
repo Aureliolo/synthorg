@@ -3,7 +3,6 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.communication.delegation.service import DelegationService
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskSource, TaskStatus, TaskType
 from tests._shared import as_uuid
@@ -88,10 +87,4 @@ class TestTaskSourceField:
     def test_rejected_allows_no_assignee(self) -> None:
         task = self._make_task()
         rejected = task.with_transition(TaskStatus.REJECTED)
-        assert rejected.assigned_to is None
-
-    def test_reject_delegated_task(self) -> None:
-        task = self._make_task()
-        rejected = DelegationService.reject_delegated_task(task)
-        assert rejected.status == TaskStatus.REJECTED
         assert rejected.assigned_to is None

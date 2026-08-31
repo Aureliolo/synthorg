@@ -14,10 +14,6 @@ from synthorg.budget.cost_record import CostRecord
 # wherever it moves.
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.tracker import CostTracker
-from synthorg.communication.delegation.record_store import (
-    DelegationRecordStore,
-)
-from synthorg.core.delegation_types import DelegationRecord
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.hr.enums import ActivityEventType, LifecycleEventType
 from synthorg.hr.models import AgentLifecycleEvent
@@ -350,55 +346,6 @@ class TestActivityFeed:
         body = resp.json()
         assert body["data"][0]["event_type"] == "tool_used"
 
-    async def test_feed_with_delegation_events(
-        self,
-        async_test_client: LoopAsyncClient,
-        delegation_record_store: DelegationRecordStore,
-    ) -> None:
-        record = DelegationRecord(
-            delegation_id="del-001",
-            delegator_id="agent-manager",
-            delegatee_id="agent-worker",
-            original_task_id="task-parent",
-            delegated_task_id="del-abc123",
-            timestamp=_NOW - timedelta(hours=1),
-        )
-        delegation_record_store.append(record)
-        resp = await async_test_client.get("/api/v1/activities")
-        assert resp.status_code == 200
-        body = resp.json()
-        # Org-wide: both sent and received
-        types = {d["event_type"] for d in body["data"]}
-        assert types == {"delegation_sent", "delegation_received"}
-
-    async def test_filter_delegation_by_agent(
-        self,
-        async_test_client: LoopAsyncClient,
-        delegation_record_store: DelegationRecordStore,
-    ) -> None:
-        record = DelegationRecord(
-            delegation_id="del-001",
-            delegator_id=_AGENT_ID,
-            delegatee_id="agent-worker",
-            original_task_id="task-parent",
-            delegated_task_id="del-abc123",
-            timestamp=_NOW - timedelta(hours=1),
-        )
-        delegation_record_store.append(record)
-        # Filter by delegator agent -- only sees delegation_sent
-        resp = await async_test_client.get(
-            "/api/v1/activities",
-            params={"agent_id": _AGENT_ID},
-        )
-        assert resp.status_code == 200
-        body = resp.json()
-        # Only lifecycle events for this agent + delegation_sent
-        delegation_events = [
-            d for d in body["data"] if d["event_type"].startswith("delegation")
-        ]
-        assert len(delegation_events) == 1
-        assert delegation_events[0]["event_type"] == "delegation_sent"
-
     async def test_graceful_degradation_broken_tool_tracker(
         self,
         async_test_client: LoopAsyncClient,
@@ -416,29 +363,6 @@ class TestActivityFeed:
             raise RuntimeError(msg)
 
         tool_invocation_tracker.get_records = _raise  # type: ignore[assignment]
-
-        resp = await async_test_client.get("/api/v1/activities")
-        assert resp.status_code == 200
-
-    async def test_graceful_degradation_broken_delegation_store(
-        self,
-        async_test_client: LoopAsyncClient,
-        fake_persistence: FakePersistenceBackend,
-        delegation_record_store: DelegationRecordStore,
-    ) -> None:
-        """Endpoint returns 200 when delegation store raises."""
-        await fake_persistence.lifecycle_events.save(
-            _make_lifecycle_event(timestamp=_NOW - timedelta(hours=1)),
-        )
-
-        # Monkey-patch methods to raise
-        async def _raise(*_a: object, **_kw: object) -> None:
-            msg = "simulated failure"
-            raise RuntimeError(msg)
-
-        delegation_record_store.get_all_records = _raise  # type: ignore[assignment]
-        delegation_record_store.get_records_as_delegator = _raise  # type: ignore[assignment]
-        delegation_record_store.get_records_as_delegatee = _raise  # type: ignore[assignment]
 
         resp = await async_test_client.get("/api/v1/activities")
         assert resp.status_code == 200
@@ -623,30 +547,6 @@ class TestDegradedSources:
         assert resp.status_code == 200
         body = resp.json()
         assert "tool_invocation_tracker" in body["degraded_sources"]
-
-    async def test_degraded_delegation_store(
-        self,
-        async_test_client: LoopAsyncClient,
-        fake_persistence: FakePersistenceBackend,
-        delegation_record_store: DelegationRecordStore,
-    ) -> None:
-        """Delegation store failure is reported in degraded_sources."""
-        await fake_persistence.lifecycle_events.save(
-            _make_lifecycle_event(timestamp=_NOW - timedelta(hours=1)),
-        )
-
-        async def _raise(*_a: object, **_kw: object) -> None:
-            msg = "simulated failure"
-            raise RuntimeError(msg)
-
-        delegation_record_store.get_all_records = _raise  # type: ignore[assignment]
-        delegation_record_store.get_records_as_delegator = _raise  # type: ignore[assignment]
-        delegation_record_store.get_records_as_delegatee = _raise  # type: ignore[assignment]
-
-        resp = await async_test_client.get("/api/v1/activities")
-        assert resp.status_code == 200
-        body = resp.json()
-        assert "delegation_record_store" in body["degraded_sources"]
 
     async def test_degraded_cost_tracker(
         self,

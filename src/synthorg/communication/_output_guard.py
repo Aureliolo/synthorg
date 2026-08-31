@@ -1,8 +1,7 @@
-"""Shared output-style enforcement for the inter-agent message boundaries.
+"""Shared output-style enforcement for the inter-agent message boundary.
 
-Both message-send paths (the per-agent :class:`AgentMessenger` and the MCP
-``MessageService``) publish agent-authored text on the ``MESSAGE`` channel, so
-they share one guard: it enforces the hard policy on every text part, applies an
+The MCP ``MessageService`` publishes agent-authored text on the ``MESSAGE``
+channel: this guard enforces the hard policy on every text part, applies an
 auto-rewrite back onto the part, and on a hard violation logs the sender context
 (which the interceptor cannot see) before re-raising. Deferred import of the
 engine subsystem breaks the engine/communication cold-import cycle.

@@ -1248,21 +1248,9 @@ ON role_versions (entity_id, saved_at DESC);
 CREATE INDEX idx_rv_content_hash
 ON role_versions (entity_id, content_hash);
 
--- ── Circuit breaker state ─────────────────────────────────────────
-
-CREATE TABLE circuit_breaker_state (
-    pair_key_a TEXT NOT NULL CHECK (LENGTH(pair_key_a) > 0),
-    pair_key_b TEXT NOT NULL CHECK (LENGTH(pair_key_b) > 0),
-    bounce_count INTEGER NOT NULL DEFAULT 0 CHECK (bounce_count >= 0),
-    trip_count INTEGER NOT NULL DEFAULT 0 CHECK (trip_count >= 0),
-    opened_at REAL,
-    PRIMARY KEY (pair_key_a, pair_key_b)
-);
-
 -- ── Runtime tool-call failure signals ─────────────────────────
 -- Time-decayed per-(provider, model) tool-call failure accumulator for
--- the runtime feedback loop. decayed_at is epoch seconds (the same
--- decay-arithmetic float representation as circuit_breaker_state.opened_at).
+-- the runtime feedback loop. decayed_at is epoch seconds.
 
 CREATE TABLE model_tool_call_signals (
     provider_name TEXT NOT NULL CHECK (LENGTH(provider_name) > 0),

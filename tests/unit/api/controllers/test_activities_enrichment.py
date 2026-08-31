@@ -132,23 +132,11 @@ class TestActivityFeedNaming:
         assert row["related_ids"]["agent_id"] == _AGENT_ID
 
 
-class TestTheSubjectTaskIsFoundUnderEitherName:
-    """A delegation names ``original_task_id`` and carries no ``task_id``.
-
-    Keying the lookup on one name alone left every delegation row with nothing
-    to show for its subject, so the fallback is the whole reason the key list
-    exists and is worth pinning directly.
-    """
-
-    @pytest.mark.parametrize(
-        "reference_key",
-        ["task_id", "original_task_id"],
-    )
+class TestTheSubjectTaskIsFoundByItsTaskId:
     async def test_the_title_resolves(
         self,
         async_test_client: LoopAsyncClient,
         fake_persistence: FakePersistenceBackend,
-        reference_key: str,
     ) -> None:
         await fake_persistence.tasks.save(
             Task(
@@ -161,10 +149,10 @@ class TestTheSubjectTaskIsFoundUnderEitherName:
             )
         )
         event = ActivityEvent(
-            event_type=ActivityEventType.DELEGATION_SENT,
+            event_type=ActivityEventType.TASK_COMPLETED,
             timestamp=_NOW,
-            description="Work handed on",
-            related_ids={reference_key: _TASK_ID},
+            description="Task succeeded",
+            related_ids={"task_id": _TASK_ID},
         )
 
         (enriched,) = await enrich_activity_names(
@@ -172,40 +160,6 @@ class TestTheSubjectTaskIsFoundUnderEitherName:
         )
 
         assert enriched.subject_title == "Wire the login page"
-
-    async def test_the_more_specific_key_wins_when_both_are_present(
-        self,
-        async_test_client: LoopAsyncClient,
-        fake_persistence: FakePersistenceBackend,
-    ) -> None:
-        """``task_id`` is what the row is about; the original is where it came
-        from."""
-        for label, title in ((_TASK_ID, "The delegated task"),):
-            await fake_persistence.tasks.save(
-                Task(
-                    id=UUID(label),
-                    title=title,
-                    description="d",
-                    type=TaskType.DEVELOPMENT,
-                    project="p",
-                    created_by="c",
-                )
-            )
-        event = ActivityEvent(
-            event_type=ActivityEventType.DELEGATION_SENT,
-            timestamp=_NOW,
-            description="Work handed on",
-            related_ids={
-                "task_id": _TASK_ID,
-                "original_task_id": sid("some-other-task"),
-            },
-        )
-
-        (enriched,) = await enrich_activity_names(
-            async_test_client.app.state.app_state, [event]
-        )
-
-        assert enriched.subject_title == "The delegated task"
 
     async def test_an_empty_page_reads_nothing_at_all(
         self,

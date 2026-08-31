@@ -62,7 +62,6 @@ from synthorg.budget.coordination_store import CoordinationMetricsStore
 from synthorg.budget.risk_tracker import RiskTracker
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.communication.bus_protocol import MessageBus
-from synthorg.communication.delegation.record_store import DelegationRecordStore
 from synthorg.communication.event_stream.interrupt import InterruptStore
 from synthorg.communication.event_stream.stream import EventStreamHub
 from synthorg.config.schema import RootConfig
@@ -363,16 +362,6 @@ def build_construction_services(
         coordination_metrics_store=coordination_metrics_store,
         performance_tracker=performance_tracker,
         agent_registry=agent_registry,
-        delegation_record_store=overrides.delegation_record_store
-        or DelegationRecordStore(
-            max_records=int(
-                resolve_init_value(
-                    SettingNamespace.COMMUNICATION,
-                    "delegation_record_store_max_size",
-                    parse=parse_int,
-                ).value
-            ),
-        ),
         tool_invocation_tracker=overrides.tool_invocation_tracker
         or ToolInvocationTracker(),
         artifact_storage=boot.artifact_storage,

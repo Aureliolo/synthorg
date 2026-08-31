@@ -12,12 +12,10 @@ import threading
 from typing import TYPE_CHECKING, Final
 
 from synthorg.ontology.config import (
-    DelegationGuardConfig,
     DriftDetectionConfig,
     DriftStrategy,
     EntitiesConfig,
     EntityEntry,
-    GuardMode,
     InjectionStrategy,
     OntologyConfig,
     OntologyInjectionConfig,
@@ -109,7 +107,6 @@ def __dir__() -> list[str]:
 
 __all__ = [
     "AgentDrift",
-    "DelegationGuardConfig",
     "DriftAction",
     "DriftDetectionConfig",
     "DriftReport",
@@ -121,7 +118,6 @@ __all__ = [
     "EntityRelation",
     "EntitySource",
     "EntityTier",
-    "GuardMode",
     "InjectionStrategy",
     "OntologyConfig",
     "OntologyConfigError",

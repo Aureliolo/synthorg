@@ -20,7 +20,6 @@ from synthorg._core.features import BaseFeatureStateSlice
 from synthorg.api.state import AppState
 from synthorg.budget.baseline_store import BaselineStore
 from synthorg.budget.coordination_store import CoordinationMetricsStore
-from synthorg.communication.delegation.record_store import DelegationRecordStore
 from synthorg.config.rate_limits import LiveRateLimits
 from synthorg.config.schema import RootConfig
 from synthorg.coordination.state import CoordinationStateSlice
@@ -126,16 +125,13 @@ def _bound_of(store: object) -> int | None:
 
 
 class TestInMemoryBounds:
-    """The four in-memory bounds rebound the live buffer, keeping records."""
+    """The three in-memory bounds rebound the live buffer, keeping records."""
 
     @staticmethod
-    def _stores() -> tuple[
-        CoordinationMetricsStore, BaselineStore, DelegationRecordStore, MagicMock
-    ]:
+    def _stores() -> tuple[CoordinationMetricsStore, BaselineStore, MagicMock]:
         return (
             CoordinationMetricsStore(max_entries=5),
             BaselineStore(window_size=5),
-            DelegationRecordStore(max_records=5),
             mock_of[TaskEngine](),
         )
 
@@ -146,14 +142,12 @@ class TestInMemoryBounds:
         InMemoryBoundsSettingsSubscriber,
         CoordinationMetricsStore,
         BaselineStore,
-        DelegationRecordStore,
         MagicMock,
     ]:
-        metrics, baseline, delegation, engine = cls._stores()
+        metrics, baseline, engine = cls._stores()
         state = _app_state(
             settings,
             resolver=resolver,
-            delegation_record_store=delegation,
             task_engine=engine,
             slices={
                 CoordinationStateSlice: {
@@ -166,7 +160,6 @@ class TestInMemoryBounds:
             InMemoryBoundsSettingsSubscriber(state, settings),
             metrics,
             baseline,
-            delegation,
             engine,
         )
 
@@ -197,23 +190,10 @@ class TestInMemoryBounds:
 
         assert _bound_of(baseline) == 12
 
-    async def test_delegation_bound_is_applied_live(
-        self, settings: SettingsService
-    ) -> None:
-        sub, _metrics, _baseline, delegation, _engine = self._wired(settings)
-        # The definition floors this at 100, so the change has to clear it.
-        await settings.set("communication", "delegation_record_store_max_size", "150")
-
-        await sub.on_settings_changed(
-            [("communication", "delegation_record_store_max_size")]
-        )
-
-        assert _bound_of(delegation) == 150
-
     async def test_task_engine_cap_is_applied_live(
         self, settings: SettingsService
     ) -> None:
-        sub, _metrics, _baseline, _delegation, engine = self._wired(settings)
+        sub, _metrics, _baseline, engine = self._wired(settings)
         await settings.set("engine", "task_engine_max_queue_size", "42")
 
         await sub.on_settings_changed([("engine", "task_engine_max_queue_size")])

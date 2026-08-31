@@ -26,7 +26,6 @@ if TYPE_CHECKING:
     from synthorg.client.models import ClientRequest
     from synthorg.client.simulation_state import ClientSimulationState
     from synthorg.communication.bus_protocol import MessageBus
-    from synthorg.communication.delegation.record_store import DelegationRecordStore
     from synthorg.communication.event_stream.interrupt import InterruptStore
     from synthorg.communication.event_stream.stream import EventStreamHub
     from synthorg.engine.coordination.service import MultiAgentCoordinator
@@ -70,7 +69,6 @@ class AppOverrides:
     provider_registry: ProviderRegistry | None = None
     provider_health_tracker: ProviderHealthTracker | None = None
     tool_invocation_tracker: ToolInvocationTracker | None = None
-    delegation_record_store: DelegationRecordStore | None = None
     artifact_storage: ArtifactStorageBackend | None = None
     audit_log: AuditLog | None = None
     coordination_metrics_store: CoordinationMetricsStore | None = None

@@ -20,24 +20,6 @@ genuinely needs all three:
 
 ``SystemClock`` is the production implementation; tests inject the
 ``FakeClock`` from ``tests/_shared/fake_clock.py``.
-
-Coexisting plain-callable seam
-------------------------------
-
-A handful of communication-side modules accept a ``clock:
-Callable[[], float] = time.monotonic`` parameter rather than a full
-``Clock`` protocol value:
-
-- ``src/synthorg/communication/loop_prevention/circuit_breaker.py``
-- ``src/synthorg/communication/loop_prevention/dedup.py``
-- ``src/synthorg/communication/loop_prevention/rate_limit.py``
-
-Their time use is narrow (monotonic ticks only; no UTC wall-clock,
-no async sleep) so the protocol's three orthogonal sources buy
-them nothing. Tests inject deterministic callables directly; the
-``Clock`` protocol and the plain-callable parameter coexist as
-equivalent deterministic-time injection seams for their respective
-scopes.
 """
 
 import asyncio

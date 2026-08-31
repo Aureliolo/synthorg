@@ -8,8 +8,6 @@ import pytest
 
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
-from synthorg.communication.delegation.record_store import DelegationRecordStore
-from synthorg.core.delegation_types import DelegationRecord
 from synthorg.core.task_enums import Complexity, TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.hr import activity_service as activity_service_module
@@ -134,23 +132,6 @@ def _tool_record(
     )
 
 
-def _delegation(
-    offset_minutes: int = 0,
-    delegator_first: bool = True,
-    delegation_id: str = "del-1",
-) -> DelegationRecord:
-    delegator = _AGENT_ID if delegator_first else "other-agent"
-    delegatee = "other-agent" if delegator_first else _AGENT_ID
-    return DelegationRecord(
-        delegation_id=NotBlankStr(delegation_id),
-        delegator_id=NotBlankStr(delegator),
-        delegatee_id=NotBlankStr(delegatee),
-        original_task_id=NotBlankStr("task-original"),
-        delegated_task_id=NotBlankStr("task-delegated"),
-        timestamp=_NOW - timedelta(minutes=offset_minutes),
-    )
-
-
 def _lifecycle_repo(events: list[AgentLifecycleEvent]) -> LifecycleEventRepository:
     """Autospec ``LifecycleEventRepository`` filtering *events* by query."""
 
@@ -270,51 +251,6 @@ def _tool_tracker(records: list[ToolInvocationRecord]) -> ToolInvocationTracker:
     return tracker
 
 
-def _delegation_store(
-    *,
-    sent: list[DelegationRecord] | None = None,
-    received: list[DelegationRecord] | None = None,
-) -> DelegationRecordStore:
-    """Autospec ``DelegationRecordStore`` enforcing the per-agent query window.
-
-    Only records for *agent_id* (as delegator / delegatee) within
-    ``[start, end]`` are returned, so the fake catches bugs where
-    ``ActivityFeedService`` forwards the wrong identifier or window.
-    """
-    sent_records = sent or []
-    received_records = received or []
-
-    async def _as_delegator(
-        agent_id: str,
-        *,
-        start: datetime,
-        end: datetime,
-    ) -> tuple[DelegationRecord, ...]:
-        return tuple(
-            r
-            for r in sent_records
-            if str(r.delegator_id) == agent_id and start <= r.timestamp <= end
-        )
-
-    async def _as_delegatee(
-        agent_id: str,
-        *,
-        start: datetime,
-        end: datetime,
-    ) -> tuple[DelegationRecord, ...]:
-        return tuple(
-            r
-            for r in received_records
-            if str(r.delegatee_id) == agent_id and start <= r.timestamp <= end
-        )
-
-    store: DelegationRecordStore = mock_of[DelegationRecordStore](
-        get_records_as_delegator=AsyncMock(side_effect=_as_delegator),
-        get_records_as_delegatee=AsyncMock(side_effect=_as_delegatee),
-    )
-    return store
-
-
 class TestGetAgentActivity:
     """Merge + pagination + optional sources."""
 
@@ -345,15 +281,11 @@ class TestGetAgentActivity:
     async def test_includes_optional_sources_when_present(self) -> None:
         cost_fake = _cost_tracker([_cost_record(offset_minutes=10)])
         tool_fake = _tool_tracker([_tool_record(offset_minutes=20)])
-        del_fake = _delegation_store(
-            sent=[_delegation(offset_minutes=5, delegator_first=True)],
-        )
         service = ActivityFeedService(
             performance_tracker=_perf_tracker([]),
             lifecycle_repo=_lifecycle_repo([]),
             cost_tracker=cost_fake,
             tool_invocation_tracker=tool_fake,
-            delegation_store=del_fake,
         )
 
         page, total = await service.get_agent_activity(
@@ -363,10 +295,9 @@ class TestGetAgentActivity:
         )
 
         types = {e.event_type for e in page}
-        assert total == 3, f"total={total}, types={types}"
+        assert total == 2, f"total={total}, types={types}"
         assert ActivityEventType.COST_INCURRED in types
         assert ActivityEventType.TOOL_USED in types
-        assert ActivityEventType.DELEGATION_SENT in types
 
     async def test_paginates_newest_first(self) -> None:
         events = [

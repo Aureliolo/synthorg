@@ -36,8 +36,7 @@ WS_AUTH_TIMEOUT_MAX_SECONDS: Final[float] = 120.0
 class CommunicationBridgeConfig(BaseModel):
     """Operator-tunable values for the communication subsystem.
 
-    Covers bus bridges, NATS history replay, delegation-record storage,
-    event-stream backpressure, and loop-prevention window.
+    Covers bus bridges, NATS history replay, and event-stream backpressure.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -46,9 +45,7 @@ class CommunicationBridgeConfig(BaseModel):
     bus_bridge_max_consecutive_errors: int = Field(default=30, ge=5, le=100)
     nats_history_batch_size: int = Field(default=100, ge=10, le=1000)
     nats_history_fetch_timeout_seconds: float = Field(default=0.5, ge=0.1, le=5.0)
-    delegation_record_store_max_size: int = Field(default=10_000, ge=100, le=1_000_000)
     event_stream_max_queue_size: int = Field(default=256, ge=16, le=10_000)
-    loop_prevention_window_seconds: float = Field(default=60.0, ge=5.0, le=600.0)
 
 
 class A2ABridgeConfig(BaseModel):

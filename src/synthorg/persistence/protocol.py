@@ -55,9 +55,6 @@ from synthorg.persistence.checkpoint_protocol import (
     CheckpointRepository,
     HeartbeatRepository,
 )
-from synthorg.persistence.circuit_breaker_protocol import (
-    CircuitBreakerStateRepository,
-)
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionRecordRepository,
 )
@@ -269,8 +266,6 @@ class PersistenceBackend(Protocol):
             (auditable approval-gate decisions drop-box).
         risk_overrides: Repository for RiskTierOverride persistence.
         ssrf_violations: Repository for SsrfViolation persistence.
-        circuit_breaker_state: Repository for circuit breaker state
-            persistence.
         model_tool_call_signals: Repository for runtime tool-call failure
             signal persistence (decay accumulator).
         model_capability_scores: Repository for published per-axis capability
@@ -666,11 +661,6 @@ class PersistenceBackend(Protocol):
     @property
     def ssrf_violations(self) -> SsrfViolationRepository:
         """Repository for SSRF violation record persistence."""
-        ...
-
-    @property
-    def circuit_breaker_state(self) -> CircuitBreakerStateRepository:
-        """Repository for circuit breaker state persistence."""
         ...
 
     @property

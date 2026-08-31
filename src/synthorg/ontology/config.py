@@ -48,22 +48,6 @@ class DriftStrategy(StrEnum):
     NONE = "none"
 
 
-class GuardMode(StrEnum):
-    """Delegation guard enforcement level.
-
-    Attributes:
-        NONE: No entity validation on delegation.
-        STAMP: Attach canonical definitions to delegated tasks.
-        VALIDATE: Warn on entity misuse in delegated tasks.
-        ENFORCE: Reject delegations with entity misuse.
-    """
-
-    NONE = "none"
-    STAMP = "stamp"
-    VALIDATE = "validate"
-    ENFORCE = "enforce"
-
-
 # ── Sub-configs ─────────────────────────────────────────────────
 
 
@@ -118,21 +102,6 @@ class DriftDetectionConfig(BaseModel):
         ge=0.0,
         le=1.0,
         description="Divergence score threshold for flagging drift",
-    )
-
-
-class DelegationGuardConfig(BaseModel):
-    """Configuration for delegation entity validation.
-
-    Attributes:
-        guard_mode: Enforcement level for entity validation.
-    """
-
-    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
-
-    guard_mode: GuardMode = Field(
-        default=GuardMode.STAMP,
-        description="Delegation guard enforcement level",
     )
 
 
@@ -253,7 +222,6 @@ class OntologyConfig(BaseModel):
         backend: Backend selection (``"sqlite"`` initially).
         injection: Context injection configuration.
         drift_detection: Drift detection configuration.
-        delegation_guard: Delegation guard configuration.
         memory: Memory integration configuration.
         sync: Organizational memory sync configuration.
         entities: User-defined entity entries.
@@ -272,10 +240,6 @@ class OntologyConfig(BaseModel):
     drift_detection: DriftDetectionConfig = Field(
         default_factory=DriftDetectionConfig,
         description="Drift detection configuration",
-    )
-    delegation_guard: DelegationGuardConfig = Field(
-        default_factory=DelegationGuardConfig,
-        description="Delegation guard configuration",
     )
     memory: OntologyMemoryConfig = Field(
         default_factory=OntologyMemoryConfig,

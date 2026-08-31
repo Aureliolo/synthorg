@@ -22,7 +22,6 @@ from synthorg.communication.bus_protocol import MessageBus
 from synthorg.communication.enums import MessagePriority, MessageType
 from synthorg.communication.message import Message, TextPart
 from synthorg.communication.messages.service import MessageService
-from synthorg.communication.messenger import AgentMessenger
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.redteam_review_input import (
     DeliverableArtifact,
@@ -209,55 +208,7 @@ class TestMessageGuard:
 
 
 @pytest.mark.usefixtures("_wired_service")
-class TestMessengerBoundary:
-    @pytest.mark.unit
-    async def test_send_message_blocks_emdash(self) -> None:
-        bus = mock_of[MessageBus]()
-        messenger = AgentMessenger("agent-1", "Agent One", bus)
-        with pytest.raises(OutputPolicyViolationError):
-            await messenger.send_message(
-                to="team",
-                channel="#eng",
-                content=f"shipping the parser {_EM_DASH} done",
-                message_type=MessageType.STATUS_REPORT,
-            )
-        bus.publish.assert_not_awaited()
-
-    @pytest.mark.unit
-    async def test_send_direct_blocks_emdash(self) -> None:
-        bus = mock_of[MessageBus]()
-        messenger = AgentMessenger("agent-1", "Agent One", bus)
-        with pytest.raises(OutputPolicyViolationError):
-            await messenger.send_direct(
-                to="agent-2",
-                content=f"psst {_EM_DASH} secret",
-                message_type=MessageType.STATUS_REPORT,
-            )
-        bus.send_direct.assert_not_awaited()
-
-    @pytest.mark.unit
-    async def test_broadcast_blocks_emdash(self) -> None:
-        bus = mock_of[MessageBus]()
-        messenger = AgentMessenger("agent-1", "Agent One", bus)
-        with pytest.raises(OutputPolicyViolationError):
-            await messenger.broadcast(
-                content=f"all hands {_EM_DASH} update",
-                message_type=MessageType.ANNOUNCEMENT,
-            )
-        bus.publish.assert_not_awaited()
-
-    @pytest.mark.unit
-    async def test_clean_message_publishes(self) -> None:
-        bus = mock_of[MessageBus]()
-        messenger = AgentMessenger("agent-1", "Agent One", bus)
-        await messenger.send_message(
-            to="team",
-            channel="#eng",
-            content="shipping the parser: done",
-            message_type=MessageType.STATUS_REPORT,
-        )
-        bus.publish.assert_awaited_once()
-
+class TestMessageServiceBoundary:
     @pytest.mark.unit
     async def test_mcp_send_blocks_emdash(self) -> None:
         bus = mock_of[MessageBus]()
@@ -267,6 +218,15 @@ class TestMessengerBoundary:
                 message=_message(f"done {_EM_DASH} shipped"), actor_id="agent-1"
             )
         bus.publish.assert_not_awaited()
+
+    @pytest.mark.unit
+    async def test_clean_message_publishes(self) -> None:
+        bus = mock_of[MessageBus]()
+        service = MessageService(bus=bus, persistence=mock_of[PersistenceBackend]())
+        await service.send_message(
+            message=_message("shipping the parser: done"), actor_id="agent-1"
+        )
+        bus.publish.assert_awaited_once()
 
 
 class TestModesAtBoundary:
@@ -282,12 +242,9 @@ class TestModesAtBoundary:
             )
         )
         bus = mock_of[MessageBus]()
-        messenger = AgentMessenger("agent-1", "Agent One", bus)
-        await messenger.send_message(
-            to="team",
-            channel="#eng",
-            content="this has badword in it",
-            message_type=MessageType.STATUS_REPORT,
+        service = MessageService(bus=bus, persistence=mock_of[PersistenceBackend]())
+        await service.send_message(
+            message=_message("this has badword in it"), actor_id="agent-1"
         )
         bus.publish.assert_awaited_once()
 
@@ -304,12 +261,9 @@ class TestModesAtBoundary:
             )
         )
         bus = mock_of[MessageBus]()
-        messenger = AgentMessenger("agent-1", "Agent One", bus)
-        await messenger.send_message(
-            to="team",
-            channel="#eng",
-            content="this has badword in it",
-            message_type=MessageType.STATUS_REPORT,
+        service = MessageService(bus=bus, persistence=mock_of[PersistenceBackend]())
+        await service.send_message(
+            message=_message("this has badword in it"), actor_id="agent-1"
         )
         bus.publish.assert_awaited_once()
         published = bus.publish.await_args.args[0]

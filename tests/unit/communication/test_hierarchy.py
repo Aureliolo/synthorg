@@ -2,10 +2,8 @@
 
 import pytest
 
-from synthorg.communication.delegation.hierarchy import (
-    HierarchyResolver,
-)
 from synthorg.communication.errors import HierarchyResolutionError
+from synthorg.communication.hierarchy import HierarchyResolver
 from synthorg.core.company import Company, CompanyConfig
 from synthorg.core.company_departments import Department, ReportingLine, Team
 

@@ -5,7 +5,7 @@ search:
 
 # Communication
 
-Inter-agent messaging: bus, dispatcher, delegation, loop prevention, and the multi-agent conversation primitives.
+Inter-agent messaging: bus, dispatcher, hierarchy resolution, and the multi-agent conversation primitives.
 
 ## Conversation Enums
 
@@ -14,10 +14,6 @@ Inter-agent messaging: bus, dispatcher, delegation, loop prevention, and the mul
 ## Message
 
 ::: synthorg.communication.message
-
-## Messenger
-
-::: synthorg.communication.messenger
 
 ## Dispatcher
 
@@ -35,19 +31,11 @@ Inter-agent messaging: bus, dispatcher, delegation, loop prevention, and the mul
 
 ::: synthorg.communication.errors
 
-## Delegation
+## Hierarchy
 
 ::: synthorg.core.delegation_types
 
-::: synthorg.communication.delegation.service
-
-::: synthorg.communication.delegation.authority
-
-## Loop Prevention
-
-::: synthorg.communication.loop_prevention.guard
-
-::: synthorg.communication.loop_prevention.models
+::: synthorg.communication.hierarchy
 
 ## Multi-Agent Conversation
 

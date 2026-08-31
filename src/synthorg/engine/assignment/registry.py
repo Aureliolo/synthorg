@@ -44,9 +44,7 @@ from synthorg.observability.events.task_assignment import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.communication.delegation.hierarchy import (
-        HierarchyResolver,
-    )
+    from synthorg.communication.hierarchy import HierarchyResolver
 
 logger = get_logger(__name__)
 

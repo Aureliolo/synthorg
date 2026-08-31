@@ -2,8 +2,7 @@
 
 Rebounds the in-memory buffers an operator can size at runtime: the
 coordination-metrics store (``budget.coordination_metrics_max_entries``), the
-single-agent baseline window (``budget.baseline_window_size``), the delegation
-record store (``communication.delegation_record_store_max_size``) and the task
+single-agent baseline window (``budget.baseline_window_size``) and the task
 engine's mutation admission cap (``engine.task_engine_max_queue_size``).
 
 Nothing in flight is discarded: the ring buffers are rebuilt keeping their
@@ -16,7 +15,6 @@ dropping accepted mutations.
 from collections.abc import Sequence
 
 from synthorg.api.state import AppState
-from synthorg.communication.state import CommunicationStateSlice
 from synthorg.coordination.state import CoordinationStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.state import EngineStateSlice
@@ -36,10 +34,6 @@ _COORDINATION_METRICS = (
     "coordination_metrics_max_entries",
 )
 _BASELINE_WINDOW = (SettingNamespace.BUDGET.value, "baseline_window_size")
-_DELEGATION_RECORDS = (
-    SettingNamespace.COMMUNICATION.value,
-    "delegation_record_store_max_size",
-)
 _TASK_ENGINE_QUEUE = (
     SettingNamespace.ENGINE.value,
     "task_engine_max_queue_size",
@@ -48,7 +42,6 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
     {
         _COORDINATION_METRICS,
         _BASELINE_WINDOW,
-        _DELEGATION_RECORDS,
         _TASK_ENGINE_QUEUE,
     }
 )
@@ -112,8 +105,6 @@ class InMemoryBoundsSettingsSubscriber:
                 self._rebound_coordination_metrics(value)
             elif (namespace, key) == _BASELINE_WINDOW:
                 self._rebound_baseline_window(value)
-            elif (namespace, key) == _DELEGATION_RECORDS:
-                self._rebound_delegation_records(value)
             else:
                 self._rebound_task_engine_queue(value)
         except Exception as exc:
@@ -146,12 +137,6 @@ class InMemoryBoundsSettingsSubscriber:
         store = self._app_state.slice(CoordinationStateSlice).baseline_store
         if store is not None:
             store.set_window_size(value)
-
-    def _rebound_delegation_records(self, value: int) -> None:
-        """Rebound the delegation record store when it is wired."""
-        store = self._app_state.slice(CommunicationStateSlice).delegation_record_store
-        if store is not None:
-            store.set_max_records(value)
 
     def _rebound_task_engine_queue(self, value: int) -> None:
         """Rebound the task engine's mutation admission cap when it is wired."""

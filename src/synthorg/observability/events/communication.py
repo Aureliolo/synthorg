@@ -60,14 +60,12 @@ COMM_DUPLICATE_SUBSCRIPTION_DISCARDED: Final[str] = (
 # History
 COMM_HISTORY_QUERIED: Final[str] = "communication.history.queried"
 
+# Hierarchy
+COMM_HIERARCHY_BUILT: Final[str] = "communication.hierarchy.built"
+COMM_HIERARCHY_CYCLE: Final[str] = "communication.hierarchy.cycle"
+
 # Messenger
-COMM_MESSENGER_CREATED: Final[str] = "communication.messenger.created"
-COMM_MESSENGER_SUBSCRIBED: Final[str] = "communication.messenger.subscribed"
-COMM_MESSENGER_UNSUBSCRIBED: Final[str] = "communication.messenger.unsubscribed"
-COMM_MESSAGE_SENT: Final[str] = "communication.message.sent"
-COMM_MESSAGE_BROADCAST: Final[str] = "communication.message.broadcast"
 COMM_HANDLER_DEREGISTER_MISS: Final[str] = "communication.handler.deregister_miss"
-COMM_DISPATCH_NO_DISPATCHER: Final[str] = "communication.dispatch.no_dispatcher"
 
 # Dispatcher
 COMM_DISPATCH_START: Final[str] = "communication.dispatch.start"
@@ -87,7 +85,6 @@ COMM_RECEIVE_UNSUBSCRIBED: Final[str] = "communication.receive.unsubscribed"
 COMM_CHANNELS_IDLE_SUMMARY: Final[str] = "communication.channels.idle_summary"
 
 # Validation
-COMM_MESSENGER_INVALID_AGENT: Final[str] = "communication.messenger.invalid_agent"
 COMM_SEND_DIRECT_INVALID: Final[str] = "communication.message.send_direct_invalid"
 
 # Shutdown

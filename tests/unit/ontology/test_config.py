@@ -5,12 +5,10 @@ from pydantic import ValidationError
 
 from synthorg.ontology.config import (
     _DRIFT_SCORE_DEFAULT,
-    DelegationGuardConfig,
     DriftDetectionConfig,
     DriftStrategy,
     EntitiesConfig,
     EntityEntry,
-    GuardMode,
     InjectionStrategy,
     OntologyConfig,
     OntologyInjectionConfig,
@@ -41,17 +39,6 @@ class TestDriftStrategy:
         assert DriftStrategy.ACTIVE.value == "active"
         assert DriftStrategy.LAYERED.value == "layered"
         assert DriftStrategy.NONE.value == "none"
-
-
-# ── GuardMode ───────────────────────────────────────────────────
-
-
-class TestGuardMode:
-    def test_values(self) -> None:
-        assert GuardMode.NONE.value == "none"
-        assert GuardMode.STAMP.value == "stamp"
-        assert GuardMode.VALIDATE.value == "validate"
-        assert GuardMode.ENFORCE.value == "enforce"
 
 
 # ── OntologyInjectionConfig ─────────────────────────────────────
@@ -102,15 +89,6 @@ class TestDriftDetectionConfig:
     def test_interval_must_be_positive(self) -> None:
         with pytest.raises(ValidationError):
             DriftDetectionConfig(check_interval=0)
-
-
-# ── DelegationGuardConfig ───────────────────────────────────────
-
-
-class TestDelegationGuardConfig:
-    def test_defaults(self) -> None:
-        c = DelegationGuardConfig()
-        assert c.guard_mode == GuardMode.STAMP
 
 
 # ── OntologyMemoryConfig ────────────────────────────────────────
@@ -172,7 +150,6 @@ class TestOntologyConfig:
         assert c.backend == "sqlite"
         assert isinstance(c.injection, OntologyInjectionConfig)
         assert isinstance(c.drift_detection, DriftDetectionConfig)
-        assert isinstance(c.delegation_guard, DelegationGuardConfig)
         assert isinstance(c.memory, OntologyMemoryConfig)
         assert isinstance(c.sync, OntologySyncConfig)
         assert isinstance(c.entities, EntitiesConfig)

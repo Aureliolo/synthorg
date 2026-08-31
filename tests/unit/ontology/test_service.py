@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
+import structlog.testing
 
 from synthorg.ontology.config import EntitiesConfig, EntityEntry, OntologyConfig
 from synthorg.ontology.decorator import clear_entity_registry, ontology_entity
@@ -171,17 +172,25 @@ class TestCrudDelegation:
         mock_versioning: AsyncMock,
     ) -> None:
         entity = _make_entity()
-        await service.update(entity)
+        with structlog.testing.capture_logs() as logs:
+            await service.update(entity)
         mock_backend.update.assert_called_once_with(entity)
         mock_versioning.snapshot_if_changed.assert_called_once()
+        matches = [log for log in logs if log.get("event") == "ontology.entity.updated"]
+        assert len(matches) == 1
+        assert matches[0]["entity_name"] == entity.name
 
     async def test_delete_delegates(
         self,
         service: OntologyService,
         mock_backend: AsyncMock,
     ) -> None:
-        await service.delete("Task")
+        with structlog.testing.capture_logs() as logs:
+            await service.delete("Task")
         mock_backend.delete.assert_called_once_with("Task")
+        matches = [log for log in logs if log.get("event") == "ontology.entity.deleted"]
+        assert len(matches) == 1
+        assert matches[0]["entity_name"] == "Task"
 
     async def test_get_delegates(
         self,

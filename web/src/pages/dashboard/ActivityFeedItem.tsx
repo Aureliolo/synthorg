@@ -31,8 +31,6 @@ const ACTION_DOT_COLORS: Partial<Record<ActivityEventType | WsEventType, string>
   task_empty: 'bg-warning',
   cost_incurred: 'bg-warning',
   tool_used: 'bg-accent',
-  delegation_sent: 'bg-accent',
-  delegation_received: 'bg-accent',
   // WS event types
   'task.created': 'bg-accent',
   'task.updated': 'bg-accent',

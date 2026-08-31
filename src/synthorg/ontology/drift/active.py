@@ -1,7 +1,7 @@
 """Active drift validation strategy.
 
-Same logic as passive but intended to run at delegation time
-(triggered by ``EntityAlignmentGuard`` in validate/enforce mode).
+Same logic as passive but intended to run inline at write time rather
+than on a periodic sweep.
 """
 
 from typing import Final, override

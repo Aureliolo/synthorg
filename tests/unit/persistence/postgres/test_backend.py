@@ -360,7 +360,6 @@ class TestRepositoryPropertiesRaiseWhenDisconnected:
             "role_versions",
             "risk_overrides",
             "ssrf_violations",
-            "circuit_breaker_state",
         ],
     )
     def test_property_raises(

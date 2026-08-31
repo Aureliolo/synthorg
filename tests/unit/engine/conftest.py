@@ -275,10 +275,6 @@ class MockCompletionProvider:
             provider="test-provider",
             supports_tools=True,
             supports_streaming=False,
-            max_context_tokens=8192,
-            max_output_tokens=4096,
-            cost_per_1k_input=0.01,
-            cost_per_1k_output=0.03,
         )
 
     async def batch_get_capabilities(

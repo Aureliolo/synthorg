@@ -57,9 +57,6 @@ from synthorg.persistence.sqlite.capability_source_status_repo import (
 from synthorg.persistence.sqlite.checkpoint_repo import (
     SQLiteCheckpointRepository,
 )
-from synthorg.persistence.sqlite.circuit_breaker_repo import (
-    SQLiteCircuitBreakerStateRepository,
-)
 from synthorg.persistence.sqlite.code_execution_repo import (
     SQLiteCodeExecutionRecordRepository,
 )
@@ -317,7 +314,6 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
         self._decision_records = None
         self._risk_overrides = None
         self._ssrf_violations = None
-        self._circuit_breaker_state = None
         self._model_tool_call_signals = None
         self._model_capability_scores = None
         self._capability_source_statuses = None
@@ -557,10 +553,6 @@ class _SQLiteRepositoryWiring(_BackendRepositoryAccessors):
             write_context=self.write_context,
         )
         self._ssrf_violations = SQLiteSsrfViolationRepository(
-            self._db,
-            write_context=self.write_context,
-        )
-        self._circuit_breaker_state = SQLiteCircuitBreakerStateRepository(
             self._db,
             write_context=self.write_context,
         )

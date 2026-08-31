@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING
 
 from synthorg.communication.errors import HierarchyResolutionError
 from synthorg.observability import get_logger
-from synthorg.observability.events.delegation import (
-    DELEGATION_HIERARCHY_BUILT,
-    DELEGATION_HIERARCHY_CYCLE,
+from synthorg.observability.events.communication import (
+    COMM_HIERARCHY_BUILT,
+    COMM_HIERARCHY_CYCLE,
 )
 
 if TYPE_CHECKING:
@@ -98,7 +98,7 @@ class HierarchyResolver:
         )
 
         logger.debug(
-            DELEGATION_HIERARCHY_BUILT,
+            COMM_HIERARCHY_BUILT,
             agents=len(supervisor_of),
             supervisors=len(reports_of),
         )
@@ -126,7 +126,7 @@ class HierarchyResolver:
             while current is not None and current not in visited:
                 if current in in_stack:
                     logger.warning(
-                        DELEGATION_HIERARCHY_CYCLE,
+                        COMM_HIERARCHY_CYCLE,
                         agent=agent,
                         cycle_at=current,
                     )

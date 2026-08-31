@@ -23,6 +23,5 @@ def wire_construction(app_state: AppState, deps: ConstructionDeps) -> None:
             message_bus=deps.phase1.message_bus,
             event_stream_hub=deps.event_stream_hub,
             interrupt_store=deps.interrupt_store,
-            delegation_record_store=deps.delegation_record_store,
         )
     )

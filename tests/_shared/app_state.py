@@ -86,7 +86,6 @@ def make_app_state(  # type: ignore[explicit-any]  # heterogeneous service/confi
         "message_service": (CommunicationStateSlice, "message_service"),
         "event_stream_hub": (CommunicationStateSlice, "event_stream_hub"),
         "interrupt_store": (CommunicationStateSlice, "interrupt_store"),
-        "delegation_record_store": (CommunicationStateSlice, "delegation_record_store"),
         "cost_tracker": (BudgetStateSlice, "cost_tracker"),
         "cost_forecaster": (BudgetStateSlice, "cost_forecaster"),
         "cost_forecast_repo": (BudgetStateSlice, "cost_forecast_repo"),

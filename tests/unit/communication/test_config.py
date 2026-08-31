@@ -14,11 +14,6 @@ from synthorg.communication.enums import (
     CommunicationPattern,
     MessageBusBackend,
 )
-from synthorg.communication.loop_prevention.config import (
-    CircuitBreakerConfig,
-    LoopPreventionConfig,
-    RateLimitConfig,
-)
 
 _TEST_NATS_URL = "nats://localhost:4222"
 
@@ -145,169 +140,6 @@ class TestHierarchyConfig:
         assert isinstance(cfg, HierarchyConfig)
 
 
-# ── RateLimitConfig ─────────────────────────────────────────────
-
-
-@pytest.mark.unit
-class TestRateLimitConfig:
-    def test_defaults(self) -> None:
-        cfg = RateLimitConfig()
-        assert cfg.max_per_pair_per_minute == 10
-        assert cfg.burst_allowance == 3
-
-    def test_custom_values(self) -> None:
-        cfg = RateLimitConfig(max_per_pair_per_minute=20, burst_allowance=5)
-        assert cfg.max_per_pair_per_minute == 20
-        assert cfg.burst_allowance == 5
-
-    def test_zero_rate_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            RateLimitConfig(max_per_pair_per_minute=0)
-
-    def test_negative_rate_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            RateLimitConfig(max_per_pair_per_minute=-1)
-
-    def test_zero_burst_allowed(self) -> None:
-        cfg = RateLimitConfig(burst_allowance=0)
-        assert cfg.burst_allowance == 0
-
-    def test_negative_burst_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            RateLimitConfig(burst_allowance=-1)
-
-    def test_frozen(self) -> None:
-        cfg = RateLimitConfig()
-        with pytest.raises(ValidationError):
-            cfg.max_per_pair_per_minute = 20  # type: ignore[misc]
-
-    def test_json_roundtrip(self) -> None:
-        cfg = RateLimitConfig(max_per_pair_per_minute=15, burst_allowance=2)
-        restored = RateLimitConfig.model_validate_json(cfg.model_dump_json())
-        assert restored == cfg
-
-    def test_factory(self) -> None:
-        from tests.unit.communication.conftest import RateLimitConfigFactory
-
-        cfg = RateLimitConfigFactory.build()
-        assert isinstance(cfg, RateLimitConfig)
-
-
-# ── CircuitBreakerConfig ────────────────────────────────────────
-
-
-@pytest.mark.unit
-class TestCircuitBreakerConfig:
-    def test_defaults(self) -> None:
-        cfg = CircuitBreakerConfig()
-        assert cfg.bounce_threshold == 3
-        assert cfg.cooldown_seconds == 300
-
-    def test_custom_values(self) -> None:
-        cfg = CircuitBreakerConfig(bounce_threshold=5, cooldown_seconds=600)
-        assert cfg.bounce_threshold == 5
-        assert cfg.cooldown_seconds == 600
-
-    def test_zero_threshold_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            CircuitBreakerConfig(bounce_threshold=0)
-
-    def test_zero_cooldown_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            CircuitBreakerConfig(cooldown_seconds=0)
-
-    def test_frozen(self) -> None:
-        cfg = CircuitBreakerConfig()
-        with pytest.raises(ValidationError):
-            cfg.bounce_threshold = 5  # type: ignore[misc]
-
-    def test_json_roundtrip(self) -> None:
-        cfg = CircuitBreakerConfig(bounce_threshold=10, cooldown_seconds=120)
-        restored = CircuitBreakerConfig.model_validate_json(cfg.model_dump_json())
-        assert restored == cfg
-
-    def test_factory(self) -> None:
-        from tests.unit.communication.conftest import CircuitBreakerConfigFactory
-
-        cfg = CircuitBreakerConfigFactory.build()
-        assert isinstance(cfg, CircuitBreakerConfig)
-
-
-# ── LoopPreventionConfig ───────────────────────────────────────
-
-
-@pytest.mark.unit
-class TestLoopPreventionConfigDefaults:
-    def test_defaults(self) -> None:
-        cfg = LoopPreventionConfig()
-        assert cfg.max_delegation_depth == 5
-        assert isinstance(cfg.rate_limit, RateLimitConfig)
-        assert cfg.dedup_window_seconds == 60
-        assert isinstance(cfg.circuit_breaker, CircuitBreakerConfig)
-        assert cfg.ancestry_tracking is True
-
-    def test_custom_values(self) -> None:
-        cfg = LoopPreventionConfig(
-            max_delegation_depth=10,
-            rate_limit=RateLimitConfig(max_per_pair_per_minute=20),
-            dedup_window_seconds=120,
-            circuit_breaker=CircuitBreakerConfig(bounce_threshold=5),
-        )
-        assert cfg.max_delegation_depth == 10
-        assert cfg.rate_limit.max_per_pair_per_minute == 20
-        assert cfg.dedup_window_seconds == 120
-        assert cfg.circuit_breaker.bounce_threshold == 5
-
-
-@pytest.mark.unit
-class TestLoopPreventionConfigValidation:
-    def test_ancestry_tracking_false_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError,
-            match="Input should be True",
-        ):
-            LoopPreventionConfig(ancestry_tracking=False)  # type: ignore[arg-type]
-
-    def test_zero_delegation_depth_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            LoopPreventionConfig(max_delegation_depth=0)
-
-    def test_zero_dedup_window_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            LoopPreventionConfig(dedup_window_seconds=0)
-
-
-@pytest.mark.unit
-class TestLoopPreventionConfigImmutability:
-    def test_frozen(self) -> None:
-        cfg = LoopPreventionConfig()
-        with pytest.raises(ValidationError):
-            cfg.max_delegation_depth = 10  # type: ignore[misc]
-
-    def test_model_copy(self) -> None:
-        original = LoopPreventionConfig()
-        updated = original.model_copy(update={"max_delegation_depth": 10})
-        assert updated.max_delegation_depth == 10
-        assert original.max_delegation_depth == 5
-
-
-@pytest.mark.unit
-class TestLoopPreventionConfigSerialization:
-    def test_json_roundtrip(self) -> None:
-        cfg = LoopPreventionConfig(
-            max_delegation_depth=8,
-            dedup_window_seconds=90,
-        )
-        restored = LoopPreventionConfig.model_validate_json(cfg.model_dump_json())
-        assert restored == cfg
-
-    def test_factory(self) -> None:
-        from tests.unit.communication.conftest import LoopPreventionConfigFactory
-
-        cfg = LoopPreventionConfigFactory.build()
-        assert isinstance(cfg, LoopPreventionConfig)
-
-
 # ── CommunicationConfig ────────────────────────────────────────
 
 
@@ -318,7 +150,6 @@ class TestCommunicationConfigDefaults:
         assert cfg.default_pattern is CommunicationPattern.HYBRID
         assert isinstance(cfg.message_bus, MessageBusConfig)
         assert isinstance(cfg.hierarchy, HierarchyConfig)
-        assert isinstance(cfg.loop_prevention, LoopPreventionConfig)
 
     def test_custom_values(self) -> None:
         cfg = CommunicationConfig(
