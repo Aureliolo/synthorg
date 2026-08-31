@@ -173,4 +173,4 @@ The outbound client authenticates using the `a2a.auth.outbound` configuration (s
 depth or cycle check of its own (the
 [delegation depth and cycle guard](communication-coordination.md#delegation-depth-and-cycle-guard)
 applies to sub-agent delegation via `delegate_and_await`, a separate code path); no
-agent tool currently calls `A2AClient.send_message`, so outbound dispatch is unwired.
+agent tool calls `A2AClient.send_message`, so outbound dispatch is unwired.
