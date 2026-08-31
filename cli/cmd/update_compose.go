@@ -13,6 +13,7 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/images"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
+	"github.com/Aureliolo/synthorg/cli/internal/verify"
 	"github.com/spf13/cobra"
 )
 
@@ -298,7 +299,7 @@ func writeOrPatchCompose(state config.State, digestPins map[string]string, safeD
 	if !preserveCompose {
 		return writeDigestPinnedCompose(state, digestPins, safeDir)
 	}
-	return patchComposeImageRefs(state.ImageTag, digestPins, state.Sandbox, safeDir)
+	return patchComposeImageRefs(state, digestPins, safeDir)
 }
 
 // imageLinePattern returns the regex that matches Docker image references
@@ -307,6 +308,13 @@ func writeOrPatchCompose(state config.State, digestPins map[string]string, safeD
 // to ghcr.io/aureliolo/synthorg- so custom-registry deployments continue to
 // match the lines they generated. Rebuilding the regex per call keeps the
 // matcher in sync when tunables are reconfigured between invocations.
+//
+// Only backend and web are ever declared as their own compose service with
+// an `image:` line (compose.yml.tmpl): sandbox, sidecar, and fine-tune are
+// images the backend pulls and runs itself via aiodocker, so their
+// references travel to it as the SYNTHORG_{SANDBOX,SIDECAR,FINE_TUNE}_IMAGE
+// environment values on the backend service instead -- see
+// standaloneImageEnvPattern for those.
 //
 // Handles both digest-pinned (repo@sha256:...) and tag-based (repo:tag).
 // Anchors to the full compose line (with `(?m)^...$`) and captures the
@@ -320,18 +328,70 @@ func imageLinePattern() *regexp.Regexp {
 	return regexp.MustCompile(
 		`(?m)^([ \t]*image:\s+)` +
 			regexp.QuoteMeta(images.RepoPrefix()) +
-			`(backend|web|sandbox)(?:[:@]\S+)?([ \t]*(?:#[^\r\n]*)?)$`,
+			`(backend|web)(?:[:@]\S+)?([ \t]*(?:#[^\r\n]*)?)$`,
 	)
+}
+
+// standaloneImageEnvPattern matches the SYNTHORG_SANDBOX_IMAGE /
+// SYNTHORG_SIDECAR_IMAGE / SYNTHORG_FINE_TUNE_IMAGE environment lines
+// compose.yml.tmpl writes into the backend service. These three images are
+// never their own compose service (see imageLinePattern), so patching only
+// `image:` lines silently leaves them at their old digests -- and, when
+// sandbox mode requires them, patchComposeImageRefs must be able to find
+// them to satisfy its own completeness check.
+var standaloneImageEnvPattern = regexp.MustCompile(
+	`(?m)^([ \t]*SYNTHORG_(SANDBOX|SIDECAR|FINE_TUNE)_IMAGE:\s+)"[^"\r\n]*"([ \t]*(?:#[^\r\n]*)?)$`,
+)
+
+// standaloneImageName maps a standaloneImageEnvPattern kind capture
+// (SANDBOX/SIDECAR/FINE_TUNE) to the image name FormatImageRef and
+// digestPins key on. FINE_TUNE resolves through the configured variant so a
+// CPU deployment patches fine-tune-cpu rather than always assuming
+// fine-tune-gpu.
+func standaloneImageName(kind string, state config.State) string {
+	switch kind {
+	case "SANDBOX":
+		return "sandbox"
+	case "SIDECAR":
+		return "sidecar"
+	default: // "FINE_TUNE"
+		return verify.FineTuneServiceName(state.FineTuneVariantOrDefault())
+	}
+}
+
+// patchStandaloneImageEnvRefs updates the sandbox/sidecar/fine-tune image
+// references carried in backend's environment block (see
+// standaloneImageEnvPattern) and reports which kinds it found, so the
+// caller's completeness check can tell a missing line from one that was
+// never expected.
+func patchStandaloneImageEnvRefs(existing string, state config.State, digestPins map[string]string) (patched string, found map[string]bool) {
+	found = make(map[string]bool)
+	patched = standaloneImageEnvPattern.ReplaceAllStringFunc(existing, func(match string) string {
+		sub := standaloneImageEnvPattern.FindStringSubmatch(match)
+		if len(sub) < 4 {
+			return match
+		}
+		prefix := sub[1]  // e.g. "      SYNTHORG_SANDBOX_IMAGE: "
+		kind := sub[2]    // "SANDBOX", "SIDECAR", or "FINE_TUNE"
+		trailer := sub[3] // e.g. "" or "  # comment"
+		found[kind] = true
+
+		name := standaloneImageName(kind, state)
+		ref := verify.FormatImageRef(name, state.ImageTag, digestPins[name])
+		return prefix + `"` + ref + `"` + trailer
+	})
+	return patched, found
 }
 
 // patchComposeImageRefs updates only the image references in an existing
 // compose.yml without regenerating from the template. This preserves the
 // user's compose configuration while allowing image updates.
 //
-// Returns an error if no image references were found or if not all expected
-// services (backend, web, and optionally sandbox) were patched -- this
-// prevents config.Save from advancing state when compose is unpatched.
-func patchComposeImageRefs(tag string, digestPins map[string]string, sandboxEnabled bool, safeDir string) error {
+// Returns an error if no image references were found or if not every
+// expected reference (backend, web, and -- when enabled -- sandbox,
+// sidecar, fine-tune) was patched -- this prevents config.Save from
+// advancing state when compose is only partially updated.
+func patchComposeImageRefs(state config.State, digestPins map[string]string, safeDir string) error {
 	composePath := filepath.Join(safeDir, "compose.yml")
 	existing, err := os.ReadFile(composePath) //nolint:gosec // G304: composePath is <data-dir>/compose.yml under the SecurePath-cleaned data dir
 	if err != nil {
@@ -354,23 +414,45 @@ func patchComposeImageRefs(tag string, digestPins map[string]string, sandboxEnab
 		if d, ok := digestPins[name]; ok && d != "" {
 			return prefix + repo + "@" + d + trailer
 		}
-		return prefix + repo + ":" + tag + trailer
+		return prefix + repo + ":" + state.ImageTag + trailer
 	})
 
-	if len(replaced) == 0 {
+	var standaloneFound map[string]bool
+	patched, standaloneFound = patchStandaloneImageEnvRefs(patched, state, digestPins)
+
+	if len(replaced) == 0 && len(standaloneFound) == 0 {
 		return fmt.Errorf("no synthorg image references found in %s -- compose may be manually edited; run 'synthorg init' to regenerate", composePath)
 	}
 
-	// Backend and web are always required; sandbox only when enabled.
-	required := []string{"backend", "web"}
-	if sandboxEnabled {
-		required = append(required, "sandbox")
+	if err := requireComposeImageRefsPatched(state, replaced, standaloneFound, composePath); err != nil {
+		return err
 	}
-	for _, svc := range required {
+
+	return compose.AtomicWriteFile(safeDir, "compose.yml", []byte(patched))
+}
+
+// requireComposeImageRefsPatched fails loud when a reference the current
+// configuration expects was not found and patched, mirroring the shape of
+// compose.yml.tmpl's own conditionals: backend and web unconditionally,
+// sandbox and sidecar when sandbox mode is on, fine-tune only when sandbox
+// mode AND fine-tuning are both on (fine-tuning always runs inside a
+// sandbox container).
+func requireComposeImageRefsPatched(state config.State, replaced, standaloneFound map[string]bool, composePath string) error {
+	for _, svc := range []string{"backend", "web"} {
 		if !replaced[svc] {
 			return fmt.Errorf("image reference for %q not found in %s -- compose may be manually edited; run 'synthorg init' to regenerate", svc, composePath)
 		}
 	}
-
-	return compose.AtomicWriteFile(safeDir, "compose.yml", []byte(patched))
+	if !state.Sandbox {
+		return nil
+	}
+	for _, kind := range []string{"SANDBOX", "SIDECAR"} {
+		if !standaloneFound[kind] {
+			return fmt.Errorf("SYNTHORG_%s_IMAGE not found in %s -- compose may be manually edited; run 'synthorg init' to regenerate", kind, composePath)
+		}
+	}
+	if state.FineTuning && !standaloneFound["FINE_TUNE"] {
+		return fmt.Errorf("SYNTHORG_FINE_TUNE_IMAGE not found in %s -- compose may be manually edited; run 'synthorg init' to regenerate", composePath)
+	}
+	return nil
 }

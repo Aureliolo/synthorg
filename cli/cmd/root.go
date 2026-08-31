@@ -5,10 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/Aureliolo/synthorg/cli/internal/completion"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
@@ -375,12 +378,10 @@ func isTransportError(err error) bool {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return true
 	}
-	var netErr *net.OpError
-	if errors.As(err, &netErr) {
+	if _, ok := errors.AsType[*net.OpError](err); ok {
 		return true
 	}
-	var dnsErr *net.DNSError
-	if errors.As(err, &dnsErr) {
+	if _, ok := errors.AsType[*net.DNSError](err); ok {
 		return true
 	}
 	// Check for net.Error interface (covers timeout errors from HTTP clients).
@@ -391,11 +392,48 @@ func isTransportError(err error) bool {
 	return false
 }
 
-// Execute runs the root command.
+// Execute runs the root command under a context that a SIGINT/SIGTERM
+// cancels, so a long-running step already threading cmd.Context() through
+// (an image pull, a network verification call) unwinds through its own
+// error-handling path instead of the process dying mid-write.
+//
+// update's pullAndPersist depends on this: it writes compose.yml with the
+// new image pins before the pull runs (docker compose pull reads the image
+// refs it pulls from that file), and only persists config.json after the
+// pull succeeds -- rolling compose.yml back to its prior contents on any
+// error, cancellation included. Without a caught signal, Ctrl+C during a
+// pull killed the process before that rollback ever ran, leaving
+// compose.yml ahead of config.json; the next `update` then regenerated
+// compose from the stale config and proposed reverting the file it had
+// already correctly written.
+//
+// A second interrupt force-exits: if a step is wedged (a stuck Docker
+// daemon, a network call whose own timeout has not yet tripped), the
+// operator needs an escape that does not depend on that step unwinding.
 func Execute() error {
-	err := rootCmd.Execute()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go forceExitOnSecondInterrupt(ctx)
+
+	err := rootCmd.ExecuteContext(ctx)
+	return reportExecuteError(ctx, rootCmd.ErrOrStderr(), err)
+}
+
+// reportExecuteError turns rootCmd.ExecuteContext's result into what
+// Execute returns, split out from Execute so the ctx-cancelled branch is
+// testable without standing up a real signal delivery.
+func reportExecuteError(ctx context.Context, errOut io.Writer, err error) error {
 	if err == nil {
 		return nil
+	}
+	if ctx.Err() != nil {
+		// The command was cancelled by our own signal handler: report the
+		// operator's own Ctrl+C plainly rather than whatever raw error the
+		// interrupted subprocess happened to return (e.g. "signal: killed"),
+		// which reads as a failure rather than the cancellation it is.
+		errUI := ui.NewUIWithOptions(errOut, globalUIOptions())
+		errUI.Warn("Interrupted; any in-flight compose/config change was rolled back.")
+		return NewExitError(ExitInterrupted, err)
 	}
 	// ChildExitError / ExitError: main.go handles exit code propagation;
 	// their internal messages are not user-facing.
@@ -404,12 +442,25 @@ func Execute() error {
 	if errors.As(err, &ce) || errors.As(err, &ee) {
 		return err
 	}
-	_, _ = fmt.Fprintln(rootCmd.ErrOrStderr(), err)
+	_, _ = fmt.Fprintln(errOut, err)
 	if hint := errorHint(err); hint != "" {
-		errUI := ui.NewUIWithOptions(rootCmd.ErrOrStderr(), globalUIOptions())
+		errUI := ui.NewUIWithOptions(errOut, globalUIOptions())
 		errUI.HintError(hint)
 	}
 	return err
+}
+
+// forceExitOnSecondInterrupt waits for the first signal to cancel ctx (see
+// Execute), then arms a second, un-cancelled signal listener. A second
+// SIGINT/SIGTERM after that point means the graceful shutdown itself is
+// stuck, so it exits immediately rather than leaving the operator with no
+// way out short of killing the process externally.
+func forceExitOnSecondInterrupt(ctx context.Context) {
+	<-ctx.Done()
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	<-c
+	os.Exit(ExitInterrupted)
 }
 
 // printAllHelp recursively prints help for all available commands.

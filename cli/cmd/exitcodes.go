@@ -13,6 +13,9 @@ const (
 	ExitUnhealthy   = 3  // Backend or containers are unhealthy.
 	ExitUnreachable = 4  // Docker not available or containers not running.
 	ExitUpdateAvail = 10 // Updates available (used by --check).
+	// ExitInterrupted follows the shell convention (128+SIGINT) so scripts
+	// that check `$?` can tell a Ctrl+C apart from a genuine failure.
+	ExitInterrupted = 130
 )
 
 // ExitError wraps an error with a specific exit code.
@@ -55,9 +58,9 @@ func (e *ChildExitError) Error() string {
 // ChildExitCode extracts the exit code from err if it is a ChildExitError.
 // Returns (code, true) if found, (0, false) otherwise.
 func ChildExitCode(err error) (int, bool) {
-	var ce *ChildExitError
-	if errors.As(err, &ce) {
-		return ce.Code, true
+	ce, ok := errors.AsType[*ChildExitError](err)
+	if !ok {
+		return 0, false
 	}
-	return 0, false
+	return ce.Code, true
 }
