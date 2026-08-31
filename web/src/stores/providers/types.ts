@@ -26,6 +26,19 @@ import type {
 } from '@/api/types/providers'
 import type { ProviderWithName, ProviderSortKey } from '@/utils/providers'
 
+/**
+ * A capability-override write the backend rejected pending a confirm +
+ * reason (``SECURITY_TOGGLE_CONFIRM_REQUIRED``): forcing ``supports_vision``
+ * onto the model bound to ``security.vision_verify_model``. Staged so a
+ * dialog can collect the operator's reason and retry, instead of
+ * dead-ending on a generic error toast.
+ */
+export interface PendingCapabilityOverridesConfirm {
+  name: string
+  modelId: string
+  overrides: CapabilityOverridesUpdateRequest
+}
+
 export interface ProvidersState {
   // List view
   providers: readonly ProviderWithName[]
@@ -78,6 +91,13 @@ export interface ProvidersState {
    * model's overrides can be edited at a time (one drawer open at once).
    */
   updatingCapabilityOverrides: boolean
+  /**
+   * A capability-override write awaiting operator confirm + reason, or
+   * ``null``. Set when the backend returns
+   * ``SECURITY_TOGGLE_CONFIRM_REQUIRED``; the provider detail page renders a
+   * confirm dialog off this and clears it on confirm / dismiss.
+   */
+  pendingCapabilityOverridesConfirm: PendingCapabilityOverridesConfirm | null
   /**
    * Provider-qualified keys (see ``modelActionKey``) whose tool-calling
    * re-enable is in flight. A set rather than a single id so re-enables for
@@ -147,6 +167,14 @@ export interface ProvidersState {
     modelId: string,
     overrides: CapabilityOverridesUpdateRequest,
   ) => Promise<boolean>
+  /**
+   * Retry the staged :attr:`pendingCapabilityOverridesConfirm` write with
+   * ``confirm: true`` and the operator's *reason*. No-op returning ``false``
+   * when nothing is staged.
+   */
+  confirmPendingCapabilityOverrides: (reason: string) => Promise<boolean>
+  /** Discard the staged guarded capability-override write without applying it. */
+  dismissPendingCapabilityOverridesConfirm: () => void
   reenableToolCalling: (name: string, modelId: string) => Promise<boolean>
 
   // Audit log read actions

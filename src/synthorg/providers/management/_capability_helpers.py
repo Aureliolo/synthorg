@@ -23,6 +23,9 @@ from synthorg.observability.events.provider import (
     PROVIDER_MODEL_DELETE_FAILED,
     PROVIDER_VALIDATION_FAILED,
 )
+from synthorg.observability.events.settings import (
+    SETTINGS_SECURITY_GOVERNANCE_CONFIRMED,
+)
 from synthorg.providers.errors import (
     ProviderError,
     ProviderModelNotFoundError,
@@ -37,6 +40,9 @@ from synthorg.providers.management.capability_dtos import (
     _SubscriptionRotation,
 )
 from synthorg.providers.management.local_models import LocalModelManager
+from synthorg.settings.errors import SecurityToggleConfirmationRequiredError
+from synthorg.settings.model_ref import ModelRef
+from synthorg.settings.write_governance import SettingsWriteGovernance
 
 logger = get_logger(__name__)
 
@@ -207,12 +213,70 @@ def credentials_update_fields(
             assert_never(unreachable)
 
 
+def _guard_vision_override(
+    *,
+    provider_name: str,
+    model_id: str,
+    model: ProviderModelConfig,
+    new_overrides: ModelCapabilityOverrides,
+    vision_verify_ref: ModelRef | None,
+    governance: SettingsWriteGovernance | None,
+) -> None:
+    """Require confirm+reason+actor to force vision onto the verify-gate model.
+
+    A no-op (the model's own resolved metadata already claims vision
+    support) is never guarded: only the genuine weakening transition --
+    forcing a claim the model has not otherwise earned -- is.
+
+    Raises:
+        SecurityToggleConfirmationRequiredError: See
+            :func:`resolve_capability_override_update`'s ``Raises`` section.
+    """
+    if new_overrides.supports_vision is not True:
+        return
+    if model.metadata.supports_vision:
+        return
+    if vision_verify_ref is None or not vision_verify_ref.is_bound:
+        return
+    if (
+        vision_verify_ref.provider != provider_name
+        or vision_verify_ref.model_id != model_id
+    ):
+        return
+    if governance is not None and governance.is_satisfied:
+        logger.info(
+            SETTINGS_SECURITY_GOVERNANCE_CONFIRMED,
+            namespace="providers",
+            key="capability_overrides.supports_vision",
+            note="vision override on the vision-verify-gate model confirmed",
+            actor=governance.actor,
+            reason=governance.reason,
+        )
+        return
+    msg = (
+        f"Model {model_id!r} on provider {provider_name!r} backs "
+        "security.vision_verify_model; forcing supports_vision=True on it "
+        "can make the vision-verify fail-closed gate silently pass a model "
+        "that cannot actually see. This requires the deliberate confirm + "
+        "reason ceremony, the same as a security-weakening settings write."
+    )
+    logger.warning(
+        PROVIDER_VALIDATION_FAILED,
+        provider=provider_name,
+        model=model_id,
+        error=msg,
+    )
+    raise SecurityToggleConfirmationRequiredError(msg)
+
+
 def resolve_capability_override_update(
     existing: ProviderConfig,
     *,
     provider_name: str,
     model_id: str,
     explicit: Mapping[str, object],
+    vision_verify_ref: ModelRef | None = None,
+    governance: SettingsWriteGovernance | None = None,
 ) -> tuple[ProviderConfig, ProviderModelConfig]:
     """Merge a partial capability-override patch onto one model.
 
@@ -220,12 +284,48 @@ def resolve_capability_override_update(
     field survives; a field's value of ``None`` explicitly clears that
     field's override.
 
+    Args:
+        existing: The provider config to merge the patch onto.
+        provider_name: The provider *model_id* belongs to.
+        model_id: The model whose overrides are being patched.
+        explicit: The capability fields the patch sets, never including
+            the governance ``confirm`` / ``reason`` pair.
+        vision_verify_ref: The resolved ``security.vision_verify_model``
+            binding, or ``None`` when unset. Threaded in by the caller
+            (which has settings-resolver access) rather than resolved
+            here, so this function stays a pure merge over its arguments.
+        governance: The caller's deliberate-action context, consulted only
+            for the governed vision-weakening transition below.
+
     Returns:
         The ``(updated_provider_config, updated_model)`` pair.
 
     Raises:
         ProviderModelNotFoundError: If no model with *model_id* exists on
             *existing*.
+        pydantic.ValidationError: If *explicit* names an unrecognised
+            capability field. Every real caller's *explicit* already
+            passed through ``CapabilityOverridesUpdateRequest`` (itself
+            ``extra="forbid"``), so this is a defence-in-depth invariant
+            against a future caller bypassing that boundary, not a
+            reachable API error today.
+        ProviderValidationError: If *explicit* sets
+            ``supports_tools=True`` on a model the runtime has already
+            proven incapable of tool calling
+            (``metadata.tool_calls_verified is False``): an override
+            cannot re-enable automatic tool-bearing assignment for a
+            model that failed a live call; only
+            ``mark_tool_calls_verified`` can, by clearing the runtime
+            finding itself.
+        SecurityToggleConfirmationRequiredError: If *explicit* sets
+            ``supports_vision=True`` on the model bound to
+            ``security.vision_verify_model``, the model's own last-known
+            metadata does not already claim vision support, and
+            *governance* is not a satisfied confirm+reason+actor: forcing
+            vision support onto the model backing the vision-verify gate
+            can make that fail-closed check silently pass a model that
+            cannot actually see, so it is governed on the same terms as a
+            security-weakening settings write.
     """
     model_idx = next(
         (i for i, m in enumerate(existing.models) if m.id == model_id),
@@ -242,7 +342,39 @@ def resolve_capability_override_update(
         raise ProviderModelNotFoundError(msg)
     model = existing.models[model_idx]
     current_overrides = model.capability_overrides or ModelCapabilityOverrides()
-    new_overrides = current_overrides.model_copy(update=dict(explicit))
+    # ``model_copy(update=...)`` never validates, even on a frozen,
+    # extra="forbid" model: an unrecognised key in *explicit* would attach
+    # silently as a live but unvalidated attribute instead of raising.
+    # Round-tripping through model_validate makes an unknown key an error
+    # again, as extra="forbid" promises.
+    new_overrides = ModelCapabilityOverrides.model_validate(
+        {**current_overrides.model_dump(), **dict(explicit)}
+    )
+    if (
+        new_overrides.supports_tools is True
+        and model.metadata.tool_calls_verified is False
+    ):
+        msg = (
+            f"Model {model_id!r} on provider {provider_name!r} has "
+            "tool_calls_verified=False (runtime-proven incapable of tool "
+            "calling); a capability override cannot re-enable it. Use "
+            "mark_tool_calls_verified to clear the runtime finding first."
+        )
+        logger.warning(
+            PROVIDER_VALIDATION_FAILED,
+            provider=provider_name,
+            model=model_id,
+            error=msg,
+        )
+        raise ProviderValidationError(msg)
+    _guard_vision_override(
+        provider_name=provider_name,
+        model_id=model_id,
+        model=model,
+        new_overrides=new_overrides,
+        vision_verify_ref=vision_verify_ref,
+        governance=governance,
+    )
     updated_model = model.model_copy(update={"capability_overrides": new_overrides})
     new_models = (
         *existing.models[:model_idx],

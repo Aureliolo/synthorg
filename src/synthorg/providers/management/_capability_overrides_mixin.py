@@ -17,15 +17,19 @@ from synthorg.observability.events.provider import (
     PROVIDER_MODEL_CAPABILITY_OVERRIDES_UPDATED,
     PROVIDER_NOT_FOUND,
 )
+from synthorg.observability.events.vision_verify import VISION_MODEL_UNSET
 from synthorg.providers.errors import ProviderNotFoundError
 from synthorg.providers.management._capability_helpers import (
+    provider_actor_from_context,
     resolve_capability_override_update,
 )
 from synthorg.providers.management.capability_dtos import (
     CapabilityOverridesUpdateRequest,
     ProviderAuditEventType,
 )
+from synthorg.settings.bound_model import resolve_bound_model_live
 from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.write_governance import SettingsWriteGovernance
 
 logger = get_logger(__name__)
 
@@ -85,8 +89,23 @@ class ProviderCapabilityOverridesMixin:
             ProviderNotFoundError: If the named provider does not exist.
             ProviderModelNotFoundError: If the model does not exist on
                 the provider.
+            SecurityToggleConfirmationRequiredError: See
+                ``resolve_capability_override_update``'s ``Raises`` section.
         """
-        explicit = request.model_dump(exclude_unset=True)
+        explicit = request.capability_fields()
+        governance = SettingsWriteGovernance(
+            confirm=request.confirm,
+            reason=request.reason,
+            actor=provider_actor_from_context().id,
+        )
+        vision_verify_ref = None
+        if explicit.get("supports_vision") is True:
+            vision_verify_ref = await resolve_bound_model_live(
+                self._config_resolver,
+                namespace="security",
+                key="vision_verify_model",
+                unset_event=VISION_MODEL_UNSET,
+            )
         async with self._lock:
             providers = await self._config_resolver.get_provider_configs()
             existing = providers.get(name)
@@ -99,6 +118,8 @@ class ProviderCapabilityOverridesMixin:
                 provider_name=name,
                 model_id=model_id,
                 explicit=explicit,
+                vision_verify_ref=vision_verify_ref,
+                governance=governance,
             )
             new_providers = {**providers, name: updated}
             await self._validate_and_persist(new_providers)

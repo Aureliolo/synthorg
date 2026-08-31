@@ -8887,6 +8887,10 @@ export type components = {
         };
         /** CapabilityOverridesUpdateRequest */
         readonly CapabilityOverridesUpdateRequest: {
+            /** @default false */
+            readonly confirm: boolean;
+            /** @default  */
+            readonly reason: string;
             readonly supports_embeddings?: boolean | null;
             readonly supports_image_generation?: boolean | null;
             readonly supports_prompt_caching?: boolean | null;

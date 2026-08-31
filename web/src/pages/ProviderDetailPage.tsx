@@ -23,6 +23,7 @@ import { ProviderFormModal } from './providers/ProviderFormModal'
 import { TestConnectionResult } from './providers/TestConnectionResult'
 import { ModelPullDialog } from './providers/ModelPullDialog'
 import { ModelConfigDrawer } from './providers/ModelConfigDrawer'
+import { CapabilityOverridesConfirmDialog } from './providers/CapabilityOverridesConfirmDialog'
 import { AuditLogDrawer } from './providers/AuditLogDrawer'
 import { RateLimitsDrawer } from './providers/RateLimitsDrawer'
 import { CredentialsRotateDialog } from './providers/CredentialsRotateDialog'
@@ -349,6 +350,8 @@ function ProviderDetailDialogs({
         open={d.syncOpen}
         onClose={() => d.setSyncOpen(false)}
       />
+
+      <CapabilityOverridesConfirmDialog />
     </>
   )
 }

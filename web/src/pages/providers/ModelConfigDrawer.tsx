@@ -211,9 +211,14 @@ function initialOverrideSelections(
 function buildOverridesRequest(
   selections: Record<OverrideField, string>,
 ): CapabilityOverridesUpdateRequest {
-  return Object.fromEntries(
+  const capabilityFields = Object.fromEntries(
     OVERRIDE_FIELDS.map((spec) => [spec.field, selectValueToOverride(selections[spec.field])]),
   )
+  // ``confirm``/``reason`` are the deliberate-action ceremony for one governed
+  // transition (forcing vision onto the vision-verify-gate model); every other
+  // save is unguarded and the backend ignores them. A rejected save re-sends
+  // this same shape with both filled in via ``confirmPendingCapabilityOverrides``.
+  return { ...capabilityFields, confirm: false, reason: '' }
 }
 
 function CapabilityOverridesForm({

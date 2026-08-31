@@ -97,16 +97,17 @@ describe('ModelConfigDrawer', () => {
       http.patch(
         '/api/v1/providers/:name/models/*/capabilities',
         async ({ request }) => {
-          // The drawer always sends every field explicitly (never omits
-          // one), so the request body is safely a full ModelCapabilityOverrides.
-          const overrides = (await request.json()) as ModelCapabilityOverrides
+          const body = (await request.json()) as CapabilityOverridesUpdateRequest
           receivedUrl = request.url
-          receivedBody = overrides
+          receivedBody = body
+          // The drawer always sends every capability field explicitly (never
+          // omits one), so the body is safely a full ModelCapabilityOverrides
+          // once the governance pair (confirm/reason) is set aside.
           return HttpResponse.json(
             successFor<typeof updateModelCapabilityOverrides>({
               ...baseModel,
               supports_vision: true,
-              capability_overrides: overrides,
+              capability_overrides: body as unknown as ModelCapabilityOverrides,
             }),
           )
         },
@@ -136,6 +137,8 @@ describe('ModelConfigDrawer', () => {
       supports_image_generation: null,
       supports_reasoning: null,
       supports_prompt_caching: null,
+      confirm: false,
+      reason: '',
     })
   })
 })

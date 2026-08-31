@@ -5,7 +5,8 @@ import {
   updateModelCapabilityOverrides as apiUpdateModelCapabilityOverrides,
   updateModelConfig as apiUpdateModelConfig,
 } from '@/api/endpoints/providers'
-import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
+import { ErrorCode } from '@/api/types/errors'
+import { getCrudErrorTitle, getErrorCode, getErrorMessage } from '@/utils/errors'
 import { modelActionKey } from '@/utils/providers'
 import { createLogger } from '@/lib/logger'
 import type { CapabilityOverridesUpdateRequest, LocalModelParams } from '@/api/types/providers'
@@ -159,6 +160,15 @@ async function updateModelCapabilityOverridesImpl(
     await refreshActiveDetail(get, name)
     return true
   } catch (err) {
+    // Forcing vision onto the model bound to security.vision_verify_model is
+    // not a failure to toast: stage it so the provider detail page can
+    // collect a reason and retry. A retry that is itself rejected (a stale
+    // "confirmed" patch, or the operator changed their mind) falls through
+    // to the normal error path below.
+    if (!overrides.confirm && getErrorCode(err) === ErrorCode.SECURITY_TOGGLE_CONFIRM_REQUIRED) {
+      set({ pendingCapabilityOverridesConfirm: { name, modelId, overrides } })
+      return false
+    }
     log.error('Failed to update capability overrides:', getErrorMessage(err))
     useToastStore.getState().add({
       variant: 'error',
@@ -169,6 +179,21 @@ async function updateModelCapabilityOverridesImpl(
   } finally {
     set({ updatingCapabilityOverrides: false })
   }
+}
+
+async function confirmPendingCapabilityOverridesImpl(
+  set: ProvidersSet,
+  get: ProvidersGet,
+  reason: string,
+): Promise<boolean> {
+  const pending = get().pendingCapabilityOverridesConfirm
+  if (!pending) return false
+  set({ pendingCapabilityOverridesConfirm: null })
+  return updateModelCapabilityOverridesImpl(set, get, pending.name, pending.modelId, {
+    ...pending.overrides,
+    confirm: true,
+    reason: reason.trim() || 'Confirmed via the providers dashboard',
+  })
 }
 
 async function reenableToolCallingImpl(
@@ -242,6 +267,11 @@ export function createLocalModelActions(
       modelId: string,
       overrides: CapabilityOverridesUpdateRequest,
     ) => updateModelCapabilityOverridesImpl(set, get, name, modelId, overrides),
+    confirmPendingCapabilityOverrides: (reason: string) =>
+      confirmPendingCapabilityOverridesImpl(set, get, reason),
+    dismissPendingCapabilityOverridesConfirm: () => {
+      set({ pendingCapabilityOverridesConfirm: null })
+    },
     reenableToolCalling: (name: string, modelId: string) =>
       reenableToolCallingImpl(set, get, name, modelId),
   }
