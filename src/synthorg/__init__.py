@@ -3,4 +3,4 @@
 Each part is checked by something that did not write it.
 """
 
-__version__ = "0.9.3"  # x-release-please-version
+__version__ = "0.9.4"  # x-release-please-version
