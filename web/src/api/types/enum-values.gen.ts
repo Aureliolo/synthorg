@@ -781,6 +781,14 @@ export const READINESS_OUTCOME_VALUES = [
 ] as const
 export type ReadinessOutcome = (typeof READINESS_OUTCOME_VALUES)[number]
 
+export const REASONING_EFFORT_VALUES = [
+    'minimal',
+    'low',
+    'medium',
+    'high',
+] as const
+export type ReasoningEffort = (typeof REASONING_EFFORT_VALUES)[number]
+
 export const REBALANCE_MODE_VALUES = [
     'none',
     'scale_existing',

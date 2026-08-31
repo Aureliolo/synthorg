@@ -244,12 +244,47 @@ setting plus the model's streaming capability, not a `CompletionConfig` field:
 
 - **`reasoning_effort`** (`ReasoningEffort` enum: `minimal` / `low` / `medium` /
   `high`): mapped 1:1 to LiteLLM's `reasoning_effort` kwarg, emitted only when the
-  resolved model advertises `supports_reasoning`. Stakes routing drives it through
-  a per-stakes `StakesReasoning` policy (sibling to `StakesCapabilityFloor`): the
-  routing decision's effort is folded into the run's `CompletionConfig` while the
-  agent's `temperature` / `max_tokens` are preserved. The policy is validated
-  non-decreasing across the stakes ladder, so low-stakes work never requests deeper
-  reasoning than high-stakes work.
+  resolved model advertises `supports_reasoning`. Two authorities can state a
+  depth and they are an ordered precedence with one resolver
+  (`_fold_stakes_reasoning`), never two answers:
+
+    1. **The agent's own binding** (`ModelConfig.reasoning_effort`) wins when set,
+       because it describes the MODEL. Which of these dials a given model even
+       honours differs sharply by family: some expose graded effort and ignore
+       sampling entirely while thinking, others expose no effort parameter at
+       all, and an operator who bound a depth to a pair knew something the
+       stakes ladder cannot.
+    2. **Stakes routing** answers otherwise, through a per-stakes
+       `StakesReasoning` policy (sibling to `StakesCapabilityFloor`), because it
+       describes the WORK. That policy is validated non-decreasing across the
+       stakes ladder, so **within the ladder** low-stakes work never requests
+       deeper reasoning than high-stakes work. That holds of the ladder alone
+       rather than of every run in the deployment: an agent bound to a depth
+       carries it to whatever it is assigned, which is the point of binding
+       one.
+
+  The fold resolves through `engine/agent_sampling.py::resolve_sampling`, so the
+  binding is consulted field by field rather than only when the caller supplied
+  no config at all. Everything the caller did state survives untouched, and the
+  agent's `temperature`, `top_p` and `max_tokens` are preserved alongside the
+  reasoning dial.
+
+  Resolving a depth is not the same as sending one. LiteLLM validates request
+  parameters against its own view of the model before anything leaves the
+  process, so `route_reasoning_support` asks what that view actually contains
+  and reports the three states it has, never two: the route **publishes** the
+  parameter, the route knows the model and its list is **absent** of it, or
+  LiteLLM **cannot speak for** the model. Only the middle answer overrides our
+  capability metadata. The third is the common case for any provider reached
+  over a custom OpenAI-compatible `base_url`, because LiteLLM then answers with
+  the ROUTE's generic parameter list, which is identical for every unknown model
+  behind that route and names no reasoning parameter; reading that as the
+  model's own refusal removes the dial from every such deployment in silence.
+  There, our `supports_reasoning` is the only evidence there is, and the call
+  additionally declares `allowed_openai_params`, which is LiteLLM's own
+  mechanism for forwarding a parameter it cannot vouch for. Without that
+  declaration LiteLLM raises `UnsupportedParamsError` rather than letting the
+  endpoint answer, so keeping the dial and sending it are two separate steps.
 - **Prompt caching** (`providers.prompt_caching_enabled`, default on): when the
   model advertises `supports_prompt_caching`, `drivers/litellm_cache.py` rewrites
   the stable prefix (system block, tools block, and a rolling breakpoint before the
@@ -566,8 +601,10 @@ know.
 
 One thing the policy still tunes on the call itself, because it changes how the
 bound model works rather than which model runs: the per-stakes `reasoning_effort`
-dial (`engine.reasoning_effort_*`). It also answers whether a deliverable needs
-the red team (`engine.red_team_min_stakes`).
+dial (`engine.reasoning_effort_*`), which answers for any agent whose binding
+states no depth of its own (see [Completion controls](#completion-controls-reasoning-caching-streaming)
+for the precedence). It also answers whether a deliverable needs the red team
+(`engine.red_team_min_stakes`).
 
 The capability requirement is read from the work alone: its stakes, and its
 complexity. Nothing derived after assignment feeds back into it: multi-agent

@@ -28,6 +28,7 @@ from synthorg.core.domain_errors import NotFoundError
 from synthorg.core.error_taxonomy import ErrorCategory, ErrorCode
 from synthorg.core.types import NotBlankStr, require_not_blank
 from synthorg.engine.agent_persona import render_agent_system_prompt
+from synthorg.engine.agent_sampling import resolve_sampling
 from synthorg.hr.registry_protocol import AgentRegistryProtocol
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.multi_agent import (
@@ -134,9 +135,13 @@ def build_agent_caller(
         # when unset.
         own = identity.model.max_tokens
         effective_max_tokens = max_tokens if own is None else min(max_tokens, own)
-        config = CompletionConfig(
-            temperature=identity.model.temperature,
-            max_tokens=effective_max_tokens,
+        # Re-validated rather than copied in: `model_copy(update=...)` skips
+        # validation by design, and this cap is computed from a caller-supplied
+        # budget while `CompletionConfig.max_tokens` is `gt=0`, so a copy would
+        # hand a non-positive ceiling straight to the provider.
+        config = CompletionConfig.model_validate(
+            resolve_sampling(identity).model_dump()
+            | {"max_tokens": effective_max_tokens}
         )
         try:
             async with cost_recording_scope(

@@ -81,6 +81,33 @@ def _is_unmapped_model(exc: Exception) -> bool:
     return _UNMAPPED_MODEL_MARKER in str(exc)
 
 
+def litellm_knows_model(litellm_model: str) -> bool:
+    """Whether LiteLLM's static database carries an entry for *litellm_model*.
+
+    Separates "LiteLLM says this model lacks a feature" from "LiteLLM has never
+    heard of this model", which its own per-parameter query cannot: asked about
+    an unknown id it answers with the ROUTE's generic parameter list, and that
+    list is the same whatever the model is, so it carries no information about
+    the model at all.
+
+    Deliberately silent, unlike :func:`get_litellm_model_info`. A caller asking
+    this is deciding whether some other answer counts as evidence, not reporting
+    a miss, and the miss it would report is already logged once per call by the
+    metadata lookup on the same model.
+
+    Returns:
+        Whether LiteLLM returned a non-empty metadata entry for the model.
+    """
+    try:
+        return bool(_litellm.get_model_info(model=litellm_model))
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- every miss LiteLLM reports for an unknown
+        # model arrives as an exception, which is the answer rather than a
+        # fault, and this must never fail a call.
+        reraise_critical(exc)
+        return False
+
+
 #: LiteLLM prices per single token; provider config prices per 1,000 tokens.
 _TOKENS_PER_PRICE_UNIT: int = 1000
 #: Round back-filled per-1k costs to the budget precision (6 dp).

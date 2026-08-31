@@ -13,6 +13,7 @@ from synthorg.observability.events.provider import (
 from synthorg.providers.drivers.litellm_model_info import (
     extract_model_metadata,
     get_litellm_model_info,
+    litellm_knows_model,
 )
 from synthorg.providers.family_parser import RegexFamilyParser
 
@@ -63,6 +64,50 @@ class TestUnmappedModelIsNotAFault:
     def test_a_memory_error_is_never_swallowed(self) -> None:
         with patch(_LOOKUP, side_effect=MemoryError), pytest.raises(MemoryError):
             get_litellm_model_info("test-basic-001")
+
+
+@pytest.mark.unit
+class TestLitellmKnowsModel:
+    """Separates "lacks the feature" from "never heard of it".
+
+    Callers use this to decide whether LiteLLM's per-route parameter list is
+    evidence about a model at all: asked about an unknown id it answers with the
+    route's generic list, which is the same for every unknown model behind that
+    route.
+    """
+
+    def test_a_model_with_an_entry_is_known(self) -> None:
+        with patch(_LOOKUP, return_value={"max_tokens": 4096}):
+            assert litellm_knows_model("test-basic-001") is True
+
+    def test_an_unmapped_model_is_not_known(self) -> None:
+        boom = Exception("This model isn't mapped yet. Add it here")
+
+        with patch(_LOOKUP, side_effect=boom):
+            assert litellm_knows_model("test-basic-001") is False
+
+    def test_an_empty_entry_is_not_known(self) -> None:
+        """An empty mapping carries no more about the model than a miss does."""
+        with patch(_LOOKUP, return_value={}):
+            assert litellm_knows_model("test-basic-001") is False
+
+    def test_the_question_is_silent(self) -> None:
+        """The miss is already logged once per call by the metadata lookup.
+
+        Logging it again here would double every unknown-model line on a
+        deployment whose models are all unknown to LiteLLM, which is every
+        deployment behind a custom OpenAI-compatible endpoint.
+        """
+        boom = Exception("This model isn't mapped yet. Add it here")
+
+        with patch(_LOOKUP, side_effect=boom), structlog.testing.capture_logs() as logs:
+            litellm_knows_model("test-basic-001")
+
+        assert logs == []
+
+    def test_a_memory_error_is_never_swallowed(self) -> None:
+        with patch(_LOOKUP, side_effect=MemoryError), pytest.raises(MemoryError):
+            litellm_knows_model("test-basic-001")
 
 
 @pytest.mark.unit

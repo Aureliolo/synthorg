@@ -37,6 +37,7 @@ from evals.errors import (
     RecursionDepthJudgeNotIndependentError,
 )
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.types import CapabilityLevel, NotBlankStr
 
 #: The shallowest cap worth recording: one level of planning, every unit
@@ -156,6 +157,24 @@ class ModelPair(BaseModel):
             live identity, which carries no such field; the loader requires it
             wherever a manifest claims decorrelation, so it cannot be missing
             at the point it decides anything.
+        temperature: Sampling temperature this pair runs at. Declared PER PAIR
+            rather than once for the matrix because it is a property of the
+            model: the two pairs a sweep binds are published with different
+            values, so one number for both is guaranteed wrong for one of them.
+        top_p: Nucleus threshold, which moves with the temperature because a
+            vendor publishes the two together. Applying one without the other
+            produces a distribution nobody tested.
+        reasoning_effort: Reasoning depth to ask this pair for, or ``None`` to
+            send none. Which of this and ``temperature`` actually reaches a
+            given model is the model's business and they differ sharply: some
+            families expose graded effort and ignore sampling while thinking,
+            others expose no effort parameter at all. Declaring both per pair
+            is what lets one manifest describe both honestly.
+        max_tokens: Per-RESPONSE output ceiling, or ``None`` to defer. Declared
+            here for the same reason as the rest: a reasoning model spends this
+            budget on hidden reasoning BEFORE it can emit content, so the right
+            value depends on the depth that model reasons at, which is a
+            per-pair fact.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -164,6 +183,10 @@ class ModelPair(BaseModel):
     model_id: NotBlankStr
     capability: CapabilityLevel
     family: NotBlankStr | None = None
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    top_p: float | None = Field(default=None, ge=0.0, le=1.0)
+    reasoning_effort: ReasoningEffort | None = None
+    max_tokens: int | None = Field(default=None, gt=0)
 
     @property
     def label(self) -> str:
@@ -173,6 +196,30 @@ class ModelPair(BaseModel):
             ``provider/model_id``.
         """
         return f"{self.provider}/{self.model_id}"
+
+    @property
+    def sampling_summary(self) -> str:
+        """Render every dial this pair holds, stated or not.
+
+        An unset dial is named rather than omitted, because omission reads as
+        an assertion that nothing applied while each of these resolves
+        somewhere further down. What an absence MEANS differs by caller (a
+        planned pair resolves through staffing, a recorded one through the
+        completion config), so this states only what the pair holds and leaves
+        the meaning to the caller's own caption.
+
+        Returns:
+            All four dials, comma-separated, each with its value or ``unset``.
+        """
+        return ", ".join(
+            f"{name} {'unset' if value is None else value}"
+            for name, value in (
+                ("temperature", self.temperature),
+                ("top_p", self.top_p),
+                ("reasoning_effort", self.reasoning_effort),
+                ("max_tokens", self.max_tokens),
+            )
+        )
 
     @classmethod
     def of(
@@ -225,11 +272,24 @@ class ModelPair(BaseModel):
             for pair in declared
             if pair.family is not None
         }
+        # Sampling is read off the IDENTITY, unlike `family`, because an
+        # identity does carry it: this is the binding the roster resolved to,
+        # not what the manifest asked for, which is the distinction this whole
+        # method exists to preserve. It is the BINDING and not the request: a
+        # dial left unset here is one the binding does not state, and per-call
+        # resolution can still fill it downstream (an unset reasoning depth
+        # falls to the stakes ladder, an unset `top_p` to the completion
+        # config's own default), so an absence records what was bound rather
+        # than proving what no request carried.
         return cls(
             provider=provider,
             model_id=model_id,
             capability=identity.model.capability,
             family=families.get((provider, model_id)),
+            temperature=identity.model.temperature,
+            top_p=identity.model.top_p,
+            reasoning_effort=identity.model.reasoning_effort,
+            max_tokens=identity.model.max_tokens,
         )
 
 

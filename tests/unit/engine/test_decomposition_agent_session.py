@@ -8,6 +8,8 @@ import structlog.testing
 from pydantic import JsonValue, ValidationError
 
 from synthorg.budget.session_budget import SessionCeilings
+from synthorg.core.agent import AgentIdentity
+from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskType
 from synthorg.core.types import NotBlankStr
@@ -47,7 +49,7 @@ from synthorg.engine.output_style.provider import (
 from synthorg.observability.events.decomposition import (
     DECOMPOSITION_SESSION_DIGEST_FALLBACK,
 )
-from synthorg.providers.models import ToolCall
+from synthorg.providers.models import CompletionConfig, ToolCall
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.invoker import ToolInvoker
@@ -1176,6 +1178,76 @@ class TestTerminationClassification:
         # them would be the loop the bound exists to close; the outside stops
         # would fail again identically.
         assert stopped_short(reason) is False
+
+
+class TestPlanningSamplesFromTheOwnersBinding:
+    """The planning session is sampled by the owner's model, not the strategy.
+
+    Read off what the provider was actually handed rather than off the private
+    call site: a strategy config that regained a sampling field would still
+    satisfy an assertion about the source text while sampling the same bound
+    model differently from a work session, which is the whole defect.
+    """
+
+    async def _dispatched_config(self, owner: AgentIdentity) -> CompletionConfig | None:
+        """Run one planning session and return the config it dispatched with.
+
+        Args:
+            owner: The identity whose binding the session should read.
+
+        Returns:
+            The completion config the provider received on the first call.
+        """
+        provider = ScriptedProvider([make_text_response("still thinking")])
+        strategy = AgentSessionDecompositionStrategy(
+            provider_selector=lambda _identity: provider,
+            fallback=_SentinelFallback(),
+            deps=DecompositionStrategyDeps(
+                agent_session_config=AgentSessionDecompositionConfig(max_turns=1),
+            ),
+        )
+        # Submitting nothing is a planning failure; the config it was dispatched
+        # with is the subject here, so the refusal is expected and read past.
+        with pytest.raises(DecompositionError, match="without submitting a plan"):
+            await strategy.decompose(
+                _task(),
+                DecompositionContext(max_subtasks=5, owner_identity=owner),
+            )
+        assert provider.complete_calls, "the session never reached the provider"
+        return provider.complete_calls[0][3]
+
+    async def test_the_owners_dials_reach_the_provider(self) -> None:
+        owner = make_e2e_identity()
+        config = await self._dispatched_config(
+            owner.model_copy(
+                update={
+                    "model": owner.model.model_copy(
+                        update={
+                            "temperature": 0.9,
+                            "top_p": 0.95,
+                            "reasoning_effort": ReasoningEffort.HIGH,
+                        }
+                    )
+                }
+            )
+        )
+
+        assert config is not None
+        assert config.temperature == pytest.approx(0.9)
+        assert config.top_p == pytest.approx(0.95)
+        assert config.reasoning_effort is ReasoningEffort.HIGH
+
+    def test_the_strategy_config_declares_no_sampling(self) -> None:
+        """The second owner of one fact has not come back.
+
+        A field here could not hold a right answer: the value a vendor
+        publishes is a property of the model, and a strategy config does not
+        know which model is bound.
+        """
+        fields = AgentSessionDecompositionConfig.model_fields
+        assert "temperature" not in fields
+        assert "top_p" not in fields
+        assert "reasoning_effort" not in fields
 
 
 class TestAgentSessionConfig:

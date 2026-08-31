@@ -14,6 +14,7 @@ from synthorg.core.agent import (
     SkillSet,
     ToolPermissions,
 )
+from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.memory_enums import MemoryCategory, MemoryLevel
 from synthorg.core.role import Authority, Skill
 from synthorg.hr.enums import AgentStatus
@@ -128,10 +129,46 @@ class TestModelConfig:
         ``engine.agent_max_response_tokens`` answer for the first without
         overriding the second. A flat number here is nobody's choice and
         every agent's ceiling.
+
+        ``top_p`` and ``reasoning_effort`` defer on the same reasoning, so an
+        agent stating no preference inherits the ladder rather than a number
+        this class picked for it.
         """
         m = ModelConfig(provider="test", model_id="test-model")
         assert m.temperature == 0.7
         assert m.max_tokens is None
+        assert m.top_p is None
+        assert m.reasoning_effort is None
+
+    def test_top_p_accepted_within_range(self) -> None:
+        """A vendor's published nucleus threshold is bindable per agent.
+
+        Every vendor that publishes a temperature publishes ``top_p`` beside
+        it, so an agent able to carry one and not the other can only ever
+        apply half a recommendation.
+        """
+        m = ModelConfig(provider="test", model_id="m", top_p=0.95)
+        assert m.top_p == pytest.approx(0.95)
+
+    @pytest.mark.parametrize("value", [-0.1, 1.1])
+    def test_top_p_out_of_range_rejected(self, value: float) -> None:
+        """Reject a nucleus threshold outside the unit interval."""
+        with pytest.raises(ValidationError):
+            ModelConfig(provider="test", model_id="m", top_p=value)
+
+    def test_reasoning_effort_accepted(self) -> None:
+        """An agent may bind its own reasoning depth."""
+        m = ModelConfig(
+            provider="test", model_id="m", reasoning_effort=ReasoningEffort.HIGH
+        )
+        assert m.reasoning_effort is ReasoningEffort.HIGH
+
+    def test_reasoning_effort_rejects_unknown_depth(self) -> None:
+        """Reject a depth outside the provider-agnostic vocabulary."""
+        with pytest.raises(ValidationError):
+            ModelConfig.model_validate(
+                {"provider": "test", "model_id": "m", "reasoning_effort": "deepest"}
+            )
 
     def test_an_agent_has_no_spare_model(self) -> None:
         """A bare fallback model id names a model with no connection.

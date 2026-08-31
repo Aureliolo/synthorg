@@ -328,7 +328,10 @@ class TestCompletionConfig:
         assert cfg.temperature is None
         assert cfg.max_tokens is None
         assert cfg.stop_sequences == ()
-        assert cfg.top_p == 1.0
+        # Unset, not 1.0: the driver emits every non-None value, so a numeric
+        # default would send a truncation on every call that never asked for
+        # one and override whatever the provider would otherwise apply.
+        assert cfg.top_p is None
         assert cfg.timeout is None
 
     def test_temperature_range(self) -> None:

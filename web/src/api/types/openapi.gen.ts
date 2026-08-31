@@ -12633,10 +12633,17 @@ export type components = {
             /** @description LLM provider name */
             readonly provider: string;
             /**
+             * @description Reasoning depth this agent asks for; None defers to the stakes ladder
+             * @enum {string|null}
+             */
+            readonly reasoning_effort: "minimal" | "low" | "medium" | "high" | null;
+            /**
              * @description Sampling temperature
              * @default 0.7
              */
             readonly temperature: number;
+            /** @description Nucleus-sampling threshold; None leaves the provider's own. Moves with temperature, since vendors publish the two together */
+            readonly top_p: number | null;
         };
         /**
          * ModelMetadata
@@ -15507,6 +15514,23 @@ export type components = {
             /** @description Application version */
             readonly version: string;
         };
+        /**
+         * ReasoningEffort
+         * @description Provider-agnostic depth of extended reasoning ("thinking") to request.
+         *
+         *     Maps 1:1 to LiteLLM's ``reasoning_effort`` request parameter, which each
+         *     provider translates to its own dial (a thinking-token budget on one
+         *     provider family, a reasoning-effort tier on another). The values are
+         *     ordered from cheapest / shallowest to most thorough. A request only carries
+         *     this when the target model advertises reasoning support; otherwise it is
+         *     dropped so a non-reasoning model never receives an unsupported parameter.
+         *
+         *     ``StrEnum`` members compare lexicographically, which does NOT match the
+         *     intended cheapest-to-most-thorough order, so any ordinal comparison must go
+         *     through :func:`reasoning_effort_rank`, never ``<`` / ``>`` on the members.
+         * @enum {string}
+         */
+        readonly ReasoningEffort: "minimal" | "low" | "medium" | "high";
         /**
          * RebalanceMode
          * @description Strategy for adjusting department budgets on pack application.

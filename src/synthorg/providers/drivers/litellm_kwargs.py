@@ -50,6 +50,12 @@ class _AcompletionKwargs(_AcompletionRequiredKwargs, total=False):
     # Provider-agnostic reasoning depth; LiteLLM maps it to each backend's
     # own dial. Only set for a model that advertises reasoning support.
     reasoning_effort: ReasoningEffortKwarg
+    # Names the parameters LiteLLM should forward even though its own view of
+    # the route does not list them. Required alongside ``reasoning_effort`` for
+    # a model LiteLLM has no entry for: without it LiteLLM refuses the request
+    # client-side rather than letting the endpoint answer, and the endpoint is
+    # the only party that knows what it accepts.
+    allowed_openai_params: list[str]
     # Ollama-only: keeps a model loaded for the given duration after a call.
     keep_alive: str
 

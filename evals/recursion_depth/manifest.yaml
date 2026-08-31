@@ -51,11 +51,54 @@ repetitions:
   4: 2
 arms:
   - gated
+# Sampling and reasoning depth are declared PER PAIR, and they have to be:
+# the two models this matrix binds do not answer to the same dials, so one
+# figure for the matrix is guaranteed wrong for one of them. The reviewer's
+# family states that temperature and top_p have NO EFFECT while thinking is on,
+# which is its default state, and exposes graded reasoning effort as the dial
+# that does work; the executor's answers to temperature and top_p, which is the
+# axis the smoke cells sweep. Declaring both fields on both pairs is what lets
+# one manifest say that honestly instead of averaging it away.
+#
+# Every value here is stated rather than left to a default, because each is an
+# input to the result: a recording that cannot say what it sampled at cannot
+# say what it measured, and a default carries no reason anyone can check.
+#
+# `temperature` and `top_p` move TOGETHER because a vendor publishes them
+# together: applying one without the other produces a distribution nobody
+# tested, which is worse than leaving both alone.
 executor:
   provider: example-provider
   model_id: example-capable-001
   capability: capable
   family: example-family-a
+  # The smoke cells sweep this at three points before the matrix commits to
+  # one: the unstated baseline this model would otherwise run at, the vendor's
+  # own published figure, and the conservative floor its neighbours publish.
+  # The value here is the baseline, so one cell measures the axis from a known
+  # end rather than from three untried points.
+  temperature: 0.7
+  top_p: 1.0
+  # Deliberately unset while the smoke runs. Those cells sweep ONE axis,
+  # temperature with the top_p that moves alongside it, and a second dial
+  # changing underneath would leave the result attributable to neither. Whether
+  # this family grades reasoning at all is then read off the recorded request
+  # and response bodies rather than asserted here, and the matrix pins what that
+  # shows: a value stated on a vendor's word is a treatment nothing checked.
+  reasoning_effort: null
+  # Raised beyond reach for the smoke, then MEASURED and pinned from what the
+  # transcripts show a response actually uses. A reasoning model spends this
+  # budget on hidden reasoning before it can emit content, so a ceiling sized
+  # for a model that answers directly buys sessions that think until truncated
+  # and report finished work. That a cap costs nothing unused is measured, and
+  # measured once: see the probe recorded on `_RESPONSE_TOKEN_CEILING` in
+  # `staffing.py`, which this figure is chosen against.
+  # Bounded by the window rather than by taste, on the assumption that the
+  # connection an operator aliases this placeholder to carries at least 512K of
+  # context, which leaves roughly 380K for the prompt a deep merge needs. The
+  # manifest cannot check that (the ids here are placeholders); a smoke cell
+  # can, and a context overflow is what it would show.
+  max_tokens: 131072
 # The declared `family` travels with the placeholder, so the pair a company
 # config aliases these to must actually belong to the family named here: the
 # cross_family claim below is checked against these strings, and nothing
@@ -72,6 +115,35 @@ reviewer:
   model_id: example-expert-001
   capability: expert
   family: example-family-b
+  # Declared, and recorded as INERT. This model's family documents that
+  # temperature and top_p "will not trigger an error but will also have no
+  # effect" while thinking is on, which is its default state. Written down
+  # anyway, at the vendor's own published figures, so the artifact says what
+  # was asked rather than leaving a reader to assume nothing was; the smoke
+  # cells confirm from the response bodies whether thinking is in fact engaged,
+  # and if it is not these stop being inert and become the real dial.
+  temperature: 0.6
+  top_p: 0.95
+  # The dial that DOES work here, stated at the vendor's own default so the
+  # depth this pair reasons at is a recorded decision rather than an inherited
+  # one, and so a later vendor change to that default cannot move the
+  # treatment under a recording that already ran.
+  reasoning_effort: high
+  # This is the CEILING the connection enforces, not a figure chosen with room
+  # to spare, and it is the one value here measured against the endpoint rather
+  # than reasoned about: a request above it is refused outright, per model,
+  # before anything is generated, so a larger number would fail every review
+  # call and record a run with no verdicts at all.
+  #
+  # That matters beyond the number, because this model reasons at a declared
+  # depth and its vendor recommends far more output room at that depth than this
+  # grants. Reasoning is spent BEFORE content, so a verdict can be squeezed out
+  # entirely, which is a live candidate for the stopped recording's no-verdict
+  # failure (this matrix's own evidence, cited in full further down). Through
+  # this connection that collision cannot be relieved by raising the ceiling; it
+  # is a property of the deployment, and the smoke cells measure how close a
+  # real review comes to it.
+  max_tokens: 65536
 independence: cross_family
 # How many attempts one merge gets. Equal across arms by construction, which
 # matters whenever a matrix declares more than one: repair only in the gated arm

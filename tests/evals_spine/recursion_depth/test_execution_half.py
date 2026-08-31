@@ -113,16 +113,11 @@ from synthorg.engine.decomposition.models import (
 )
 from synthorg.engine.errors import DecompositionError, DecompositionTimeoutError
 from synthorg.engine.prompt_safety import TAG_TASK_DATA
-from synthorg.engine.routing_policy.capability_policy import (
-    CapabilityPolicy,
-    ResolvedAgentCapabilityReader,
-)
-from synthorg.engine.routing_policy.config import CapabilityPolicyConfig
 from synthorg.providers.errors import ProviderQuotaExceededError
-from synthorg.providers.routing.models import ResolvedModel
 from synthorg.tools.sandbox import SandboxBackend
 from synthorg.tools.sandbox.result import SandboxResult
 from tests._shared import as_uuid, mock_of, sid
+from tests.evals_spine.recursion_depth._doubles import ungraded_capability
 
 pytestmark = pytest.mark.unit
 
@@ -148,29 +143,7 @@ _CROSS_FAMILY_REVIEWER = ModelPair(
 )
 
 
-class _UngradedResolver:
-    """A catalogue that grades nothing, which is the placeholder pairs' case."""
-
-    def resolve_for_pair(self, provider_name: str, ref: str) -> ResolvedModel | None:
-        """Grade nothing.
-
-        Returns:
-            ``None``, so the roster's own claim is what selection reads.
-        """
-        del provider_name, ref
-        return None
-
-
-def _capability() -> CapabilityPolicy:
-    """Build the one capability policy a sweep judges with.
-
-    Returns:
-        The policy.
-    """
-    return CapabilityPolicy(
-        config=CapabilityPolicyConfig(),
-        reader=ResolvedAgentCapabilityReader(_UngradedResolver()),
-    )
+_capability = ungraded_capability
 
 
 def _spec() -> SpecBrief:

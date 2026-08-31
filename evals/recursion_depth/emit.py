@@ -274,6 +274,22 @@ def _provenance_lines(report: RecursionDepthReport) -> list[str]:
             f"reviewer `{provenance.reviewer.label}` "
             f"({provenance.independence.value})"
         ),
+        # What the matrix DECLARED for each pair, which is what provenance can
+        # carry: it is stamped before the host boots, so the roster it would
+        # read a dispatched binding off does not exist yet, and stamping it
+        # later would leave `matrix_identity` uncomputable until after the
+        # first cell had already been paid for. What each unit actually
+        # dispatched on is recorded per unit instead (`ModelPair.of`), where a
+        # reviewer that silently came up on the executor's pair is visible.
+        # So `unset` here means the matrix pinned nothing and staffing or the
+        # completion config answered, NOT that no value reached the provider.
+        f"- Executor declared: {provenance.executor.sampling_summary}",
+        f"- Reviewer declared: {provenance.reviewer.sampling_summary}",
+        *(
+            [f"- Sandbox image `{provenance.sandbox_image}`"]
+            if provenance.sandbox_image is not None
+            else []
+        ),
         (
             f"- Total spend: {_cost_cell(report.total_cost)} across "
             f"{report.total_tokens} tokens "

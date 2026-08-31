@@ -23,7 +23,6 @@ class PlanReviewPanelConfig(BaseModel):
             spine because every other bound on a review round already does,
             and this config is the thing the reconciler rebuilds when the
             operator moves one.
-        temperature: Sampling temperature for the review turns.
         ceilings: Both spend bounds on a panellist's session. One field, not
             two, so a wiring path that resolves the money bound cannot leave
             the token bound at its default without saying so: money measures
@@ -41,12 +40,6 @@ class PlanReviewPanelConfig(BaseModel):
         ge=0,
         le=5,
         description="Re-plan rounds a panel verdict may drive",
-    )
-    temperature: float = Field(
-        default=0.2,
-        ge=0.0,
-        le=2.0,
-        description="Sampling temperature",
     )
     ceilings: SessionCeilings = Field(
         default=_DEFAULT_CEILINGS,
