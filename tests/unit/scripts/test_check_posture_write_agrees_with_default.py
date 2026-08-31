@@ -95,29 +95,28 @@ class TestFlattenDispatch:
             ("flag_b", "ns", "key3", "medium"),
         ]
 
-    def test_non_tuple_dispatch_raises(self) -> None:
+    @pytest.mark.parametrize(
+        "dispatch",
+        [
+            ["not", "a", "tuple"],
+            (("flag_a", (("ns", "k", "v"),), "extra"),),
+            ((1, (("ns", "k", "v"),)),),
+            (("flag_a", [("ns", "k", "v")]),),
+            (("flag_a", (("ns", "k"),)),),
+            (("flag_a", (("ns", "k", 1),)),),
+        ],
+        ids=[
+            "non_tuple_dispatch",
+            "entry_not_a_pair",
+            "flag_not_a_string",
+            "writes_not_a_tuple",
+            "triple_not_three_strings",
+            "triple_with_non_string_member",
+        ],
+    )
+    def test_malformed_dispatch_raises(self, dispatch: object) -> None:
         with pytest.raises(_MODULE.PostureConfigError):
-            _MODULE._flatten_dispatch(["not", "a", "tuple"])
-
-    def test_entry_not_a_pair_raises(self) -> None:
-        with pytest.raises(_MODULE.PostureConfigError):
-            _MODULE._flatten_dispatch((("flag_a", (("ns", "k", "v"),), "extra"),))
-
-    def test_flag_not_a_string_raises(self) -> None:
-        with pytest.raises(_MODULE.PostureConfigError):
-            _MODULE._flatten_dispatch(((1, (("ns", "k", "v"),)),))
-
-    def test_writes_not_a_tuple_raises(self) -> None:
-        with pytest.raises(_MODULE.PostureConfigError):
-            _MODULE._flatten_dispatch((("flag_a", [("ns", "k", "v")]),))
-
-    def test_triple_not_three_strings_raises(self) -> None:
-        with pytest.raises(_MODULE.PostureConfigError):
-            _MODULE._flatten_dispatch((("flag_a", (("ns", "k"),)),))
-
-    def test_triple_with_non_string_member_raises(self) -> None:
-        with pytest.raises(_MODULE.PostureConfigError):
-            _MODULE._flatten_dispatch((("flag_a", (("ns", "k", 1),)),))
+            _MODULE._flatten_dispatch(dispatch)
 
     def test_empty_dispatch_flattens_to_no_writes(self) -> None:
         assert _MODULE._flatten_dispatch(()) == []

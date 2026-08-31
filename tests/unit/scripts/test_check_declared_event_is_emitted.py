@@ -179,59 +179,24 @@ def test_docstring_mention_does_not_count_as_a_reference(tmp_path: Path) -> None
     assert "SAMPLE_DEAD" in names
 
 
-def test_real_import_reference_clears_the_constant(tmp_path: Path) -> None:
+@pytest.mark.parametrize("consumer_root", ["src/synthorg", "evals", "scripts"])
+def test_a_consumer_root_reference_clears_the_constant(
+    tmp_path: Path, consumer_root: str
+) -> None:
     root = _init_repo(tmp_path)
     _write(
         root / "src" / "synthorg" / "observability" / "events" / "sample.py",
         'from typing import Final\n\nSAMPLE_LIVE: Final[str] = "sample.live"\n',
     )
     _write(
-        root / "src" / "synthorg" / "consumer.py",
+        root / consumer_root / "consumer.py",
         "from synthorg.observability.events.sample import SAMPLE_LIVE\n\n"
-        "def run() -> None:\n"
-        "    print(SAMPLE_LIVE)\n",
+        "print(SAMPLE_LIVE)\n",
     )
     _commit(root)
     hits = _MODULE._scan(root)
     names = {h.name for h in hits}
     assert "SAMPLE_LIVE" not in names
-
-
-def test_evals_reference_clears_the_constant(tmp_path: Path) -> None:
-    root = _init_repo(tmp_path)
-    _write(
-        root / "src" / "synthorg" / "observability" / "events" / "sample.py",
-        "from typing import Final\n\n"
-        'SAMPLE_EVAL_ONLY: Final[str] = "sample.eval_only"\n',
-    )
-    _write(
-        root / "evals" / "consumer.py",
-        "from synthorg.observability.events.sample import SAMPLE_EVAL_ONLY\n\n"
-        "def run() -> None:\n"
-        "    print(SAMPLE_EVAL_ONLY)\n",
-    )
-    _commit(root)
-    hits = _MODULE._scan(root)
-    names = {h.name for h in hits}
-    assert "SAMPLE_EVAL_ONLY" not in names
-
-
-def test_scripts_reference_clears_the_constant(tmp_path: Path) -> None:
-    root = _init_repo(tmp_path)
-    _write(
-        root / "src" / "synthorg" / "observability" / "events" / "sample.py",
-        "from typing import Final\n\n"
-        'SAMPLE_SCRIPT_ONLY: Final[str] = "sample.script_only"\n',
-    )
-    _write(
-        root / "scripts" / "consumer.py",
-        "from synthorg.observability.events.sample import SAMPLE_SCRIPT_ONLY\n\n"
-        "print(SAMPLE_SCRIPT_ONLY)\n",
-    )
-    _commit(root)
-    hits = _MODULE._scan(root)
-    names = {h.name for h in hits}
-    assert "SAMPLE_SCRIPT_ONLY" not in names
 
 
 def test_test_only_reference_does_not_clear_the_constant(tmp_path: Path) -> None:
