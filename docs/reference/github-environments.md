@@ -268,11 +268,11 @@ model is declared once as `HIGHLIGHTS_MODEL` in `release-cut.yml`; when
 it starts returning `403 tier_not_allowed`, dispatch
 `release-highlights-dryrun.yml`, which lists what the key can call and
 rehearses the real prompt and digest against any candidate (its
-`reasoning_effort` and `max_tokens` inputs default to match production, so a
-bare dispatch is a real rehearsal; clear `reasoning_effort` first when
-probing an unfamiliar candidate, since a model that does not accept that
-field rejects any non-blank value with its own HTTP 422, separate from the
-tier question being tested).
+`reasoning_effort` input defaults to `high` and drives `max_tokens` to match
+production, so a bare dispatch is a real rehearsal; clear `reasoning_effort`
+first when probing an unfamiliar candidate, since a model that does not
+accept that field rejects any non-blank value with its own HTTP 422,
+separate from the tier question being tested).
 
 ## Testing the `apko-lock` gate
 

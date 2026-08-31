@@ -403,8 +403,8 @@ jobs:
           # before writing anything: without it, "work internally" has
           # nowhere to happen, since a plain completion emits its answer in
           # one pass. Measured (dry-run, this exact prompt): 6-79 bullets
-          # across four calls without reasoning; 12 and 12 across two calls
-          # with it. HIGHLIGHTS_MODEL must keep resolving to a model that
+          # across four calls without reasoning; 12, 12 and 11 across three
+          # calls with it. HIGHLIGHTS_MODEL must keep resolving to a model that
           # accepts this field; a future swap to one that rejects it fails
           # this step, which is best-effort and reported by the tracking job
           # below. Keep max_tokens and reasoning_effort in sync with

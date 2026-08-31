@@ -249,6 +249,14 @@ jobs:
           echo "thinking_chars=$THINKING_CHARS" >> "$GITHUB_OUTPUT"
           USAGE=$(printf '%s' "$BODY" | jq -r '.usage | "\(.prompt_tokens) in / \(.completion_tokens) out"')
           echo "usage=$USAGE" >> "$GITHUB_OUTPUT"
+          # A thinking chunk competes with the visible answer for max_tokens,
+          # so this is the same truncation release-cut.yml treats as a
+          # failure rather than publishing it. The dry-run's whole purpose is
+          # rehearsing production faithfully, so it surfaces the same signal
+          # instead of printing a silently cut-off answer as if it were
+          # complete.
+          FINISH_REASON=$(printf '%s' "$BODY" | jq -r '.choices[0].finish_reason // empty')
+          echo "finish_reason=$FINISH_REASON" >> "$GITHUB_OUTPUT"
           # Randomised token (see release-cut.yml rationale): model output
           # derives from untrusted commit prose, so a fixed marker could be
           # smuggled in to truncate the heredoc value below, and the same
@@ -279,6 +287,7 @@ jobs:
           MISTRAL_MODEL: ${{ inputs.model }}
           REASONING_EFFORT: ${{ inputs.reasoning_effort }}
           THINKING_CHARS: ${{ steps.highlights.outputs.thinking_chars }}
+          FINISH_REASON: ${{ steps.highlights.outputs.finish_reason }}
         run: |
           set -euo pipefail
           {
@@ -288,6 +297,13 @@ jobs:
             echo "**Reasoning effort**: \`${REASONING_EFFORT:-<none>}\`"
             echo "**Tokens**: ${USAGE}"
             echo "**Thinking chars**: ${THINKING_CHARS:-0}"
+            if [ "$FINISH_REASON" = "length" ]; then
+              echo ""
+              echo "> [!WARNING]"
+              echo "> Truncated at max_tokens. release-cut.yml would skip"
+              echo "> publishing this response (\`status=truncated at"
+              echo "> max_tokens\`) rather than show it as complete."
+            fi
             echo ""
             # Every kind of whitespace, not just spaces: a reply of newlines
             # or tabs passes a space-only test, and the `grep` below then
