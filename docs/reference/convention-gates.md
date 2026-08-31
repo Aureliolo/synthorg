@@ -30,6 +30,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_backend_regional_defaults.py` | PostToolUse | backend region/currency edits | n/a | n/a | none | harden |
 | `check_baseline_growth.py` | commit+push | `scripts/*_baseline.{txt,json}` | staged | yes | guards baselines | keep |
 | `check_boundary_typed.py` | push | `src/synthorg/` | full | no | none | keep |
+| `check_capability_field_has_reader.py` | push | `providers/capabilities.py` + `src/synthorg/` | full | no | none | add |
 | `check_catalog_credential_fields.py` | push | `mcp_catalog/bundled.json` | full | no | none | add |
 | `check_charter_authorised_initiative.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_chat_inbound_fenced.py` | push | `integrations/chat_api/inbound/` | full | no | none | add |
@@ -43,6 +44,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_cost_scope_purpose.py` | push | `src/synthorg/` | full | no | `cost_scope_purpose_baseline.txt` | add |
 | `check_currency_aggregation_invariant.py` | push | `src/synthorg/` | full | no | none | keep |
 | `check_dead_api_endpoints.py` | push | `api/` + `web/src/` | full | no | `dead_api_endpoints_baseline.txt` | keep |
+| `check_declared_event_is_emitted.py` | push | `observability/events/` + `src/synthorg/` + `evals/` + `scripts/` | full | no | `declared_event_baseline.txt` | add |
 | `check_declared_failover_pairs.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_dependency_inversion.py` | push | `api`/`engine`/`communication`/`persistence` | full | no | none | keep |
 | `check_doc_drift_counts.py` | commit+push | design/research docs + `events/` | full | no | none | keep |
@@ -124,6 +126,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_persistence_boundary.py` | push | `src/synthorg/` + `tests/` | full | no | none | keep |
 | `check_persistence_protocol_return_types.py` | push | persistence protocols + backends | full | no | none | keep |
 | `check_pin_golden_fresh.py` | CI (`verify-backend.yml :: pin-drift-regression`) | live pins vs `llm/pin_validation/golden.json` | full | no | none | add |
+| `check_posture_write_agrees_with_default.py` | push | `_posture_seeding.py` + `settings/definitions/` (imported) | full | no | none (no opt-out) | add |
 | `check_prompt_class_metadata.py` | push | `src/synthorg/` | full | no | none | add |
 | `check_protocol_documented.py` | push | `src/synthorg/` | full | no | `_protocol_doc_baseline.txt` | harden |
 | `check_provider_complete_chokepoint.py` | push | `src/synthorg/` | full | no | none | keep |
