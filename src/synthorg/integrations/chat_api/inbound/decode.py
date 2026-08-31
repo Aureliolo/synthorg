@@ -114,12 +114,15 @@ class DecodedFrame:
         """Reject a self-contradicting frame shape.
 
         Raises:
-            ValueError: When ``disconnect`` carries an event, an event
-                arrives without its envelope id, or a drop reason
-                accompanies an actual event.
+            ValueError: When ``disconnect`` carries an event or a drop
+                reason, an event arrives without its envelope id, or a
+                drop reason accompanies an actual event.
         """
         if self.disconnect and self.event is not None:
             msg = "a disconnect frame cannot carry a routable event"
+            raise ValueError(msg)
+        if self.disconnect and self.drop_reason is not None:
+            msg = "a disconnect frame cannot carry a drop reason"
             raise ValueError(msg)
         if self.event is not None and not self.envelope_id:
             msg = "a routable event requires an envelope id to acknowledge"

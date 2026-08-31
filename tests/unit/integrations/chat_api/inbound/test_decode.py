@@ -269,3 +269,9 @@ class TestDecodedFrameShape:
         )
         with pytest.raises(ValueError, match="requires an envelope id"):
             DecodedFrame(event=event)
+
+    def test_disconnect_with_drop_reason_rejected(self) -> None:
+        with pytest.raises(ValueError, match="disconnect frame cannot carry a drop"):
+            DecodedFrame(
+                disconnect=True, drop_reason=DecodeDropReason.MALFORMED_PAYLOAD
+            )
