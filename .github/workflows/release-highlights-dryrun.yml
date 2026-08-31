@@ -169,14 +169,11 @@ jobs:
           MISTRAL_MODEL: ${{ inputs.model }}
         run: |
           set -euo pipefail
-          # temperature 0, unlike production's 0.4: a dry-run exists to let
-          # the repo owner compare prompt wordings, and comparing two
-          # wordings against a stochastic sampler is not a comparison.
           PAYLOAD=$(jq -n \
             --arg model "$MISTRAL_MODEL" \
             --rawfile sys .github/release-highlights-prompt.md \
             --rawfile digest changelog-digest.txt \
-            '{model: $model, temperature: 0, max_tokens: 4000,
+            '{model: $model, temperature: 0.4, max_tokens: 4000,
               messages: [{role: "system", content: $sys},
                          {role: "user", content: $digest}]}')
 
@@ -202,7 +199,12 @@ jobs:
           CONTENT=$(printf '%s' "$BODY" | jq -r '.choices[0].message.content // empty')
           USAGE=$(printf '%s' "$BODY" | jq -r '.usage | "\(.prompt_tokens) in / \(.completion_tokens) out"')
           echo "usage=$USAGE" >> "$GITHUB_OUTPUT"
-          echo "::group::raw content (stdout debug)"
+          # The step summary below is the primary output, but it renders
+          # client-side and cannot be fetched through the API or a raw log
+          # dump. This is deliberate: it is the only way to recover the raw
+          # content programmatically (`gh run view --log`), which matters
+          # for comparing runs against each other, not just reading one.
+          echo "::group::raw content"
           printf '%s\n' "$CONTENT"
           echo "::endgroup::"
           # Randomised heredoc delimiter (see release-cut.yml rationale): model
