@@ -133,3 +133,67 @@ class TestACallerStatingOneDialHasNotStatedTheRest:
 
         assert resolved.prompt_caching is True
         assert resolved.reasoning_effort is ReasoningEffort.LOW
+
+
+#: Built here, with the annotation supplying the element type, because a dict is
+#: invariant in its value type: unpacked inline, each entry infers as
+#: ``dict[str, ReasoningEffort]`` and is refused where ``dict[str, object]`` is
+#: expected.
+_REASONING_EFFORT_BINDINGS: tuple[dict[str, object], ...] = tuple(
+    {"reasoning_effort": effort} for effort in ReasoningEffort
+)
+
+
+@pytest.mark.unit
+class TestTheMergeCarriesNoValueTheTargetWouldRefuse:
+    """The resolver copies bound dials across without revalidating them.
+
+    ``model_copy(update=...)`` skips validation, so a value ``ModelConfig``
+    accepts and ``CompletionConfig`` would refuse becomes a request nobody
+    checked. What makes the copy safe is that every dial is bounded identically
+    on both sides, which is a claim about two classes that can quietly stop
+    being true when one is edited.
+
+    Asserted behaviourally rather than by comparing declared bounds: three of
+    the four dials carry numeric constraints, but ``reasoning_effort`` carries
+    none at all (its constraint is the enum type), so a metadata comparison
+    passes it by asserting that two empty mappings are equal and guards nothing.
+    """
+
+    #: Each dial at the edges of what a binding may hold, where a divergence
+    #: between the two classes would first show. Every reasoning depth is drawn
+    #: from the enum rather than listed, so a depth added later is covered
+    #: without anyone remembering to add it here.
+    _EXTREME_BINDINGS: tuple[dict[str, object], ...] = (
+        {"temperature": 0.0},
+        {"temperature": 2.0},
+        {"top_p": 0.0},
+        {"top_p": 1.0},
+        {"max_tokens": 1},
+        *_REASONING_EFFORT_BINDINGS,
+    )
+
+    @pytest.mark.parametrize("binding", _EXTREME_BINDINGS)
+    def test_a_resolved_config_still_validates(
+        self, binding: dict[str, object]
+    ) -> None:
+        """Re-validating the merge's output must not raise.
+
+        This is the invariant the resolver's unvalidated copy rests on, stated
+        as the question that matters: is what came out something the target
+        class would itself have accepted.
+        """
+        resolved = resolve_sampling(_identity_with(**binding))
+
+        assert CompletionConfig.model_validate(resolved.model_dump()) == resolved
+
+    @pytest.mark.parametrize("binding", _EXTREME_BINDINGS)
+    def test_a_resolved_config_still_validates_over_a_caller(
+        self, binding: dict[str, object]
+    ) -> None:
+        """The same holds on the merge path, which copies onto a caller."""
+        resolved = resolve_sampling(
+            _identity_with(**binding), CompletionConfig(prompt_caching=True)
+        )
+
+        assert CompletionConfig.model_validate(resolved.model_dump()) == resolved
