@@ -315,6 +315,31 @@ class TestApprovalResumeSyncsAChangedCeiling:
 
         assert result.execution_result.context.token_ceiling == 750_000
 
+    async def test_ctx_ceiling_clears_when_the_checker_is_disabled(
+        self,
+        sample_agent: AgentIdentity,
+        mock_provider_factory: type,
+    ) -> None:
+        """A ceiling disabled entirely while the run sat parked clears the
+        resumed context rather than leaving it reporting against the
+        parked run's stale threshold.
+        """
+        task = _task(sample_agent)  # no ceilings: _build_budget_checker -> None
+        provider = mock_provider_factory([make_completion_response()])
+        engine = AgentEngine(provider=provider)
+        parked_ctx = AgentContext.from_identity(
+            sample_agent, task=task, token_ceiling=500_000
+        )
+
+        result = await engine.resume_parked_run(
+            parked_context=parked_ctx,
+            approval_id="appr-4",
+            decision_message="Approved, continue.",
+            approved=True,
+        )
+
+        assert result.execution_result.context.token_ceiling is None
+
 
 class TestCheckpointResumeAlsoGetsTheTurnBoundarySignals:
     """A checkpoint-resumed run must not lose the budget signal or the
@@ -401,3 +426,41 @@ class TestCheckpointResumeSyncsAChangedCeiling:
         resumed_ctx = captured["context"]
         assert isinstance(resumed_ctx, AgentContext)
         assert resumed_ctx.token_ceiling == 750_000
+
+    async def test_context_ceiling_clears_when_the_checker_is_disabled(
+        self,
+        sample_agent: AgentIdentity,
+        mock_provider_factory: type,
+    ) -> None:
+        """A ceiling disabled entirely while the checkpoint sat parked
+        clears the resumed context -- the checkpoint-resume sibling of
+        ``TestApprovalResumeSyncsAChangedCeiling``'s disabled-ceiling case.
+        """
+        task = _task(sample_agent)  # no ceilings: _build_budget_checker -> None
+        provider = mock_provider_factory([])
+        engine = AgentEngine(provider=provider)
+        checkpoint_ctx = AgentContext.from_identity(
+            sample_agent, task=task, token_ceiling=500_000
+        )
+
+        captured: dict[str, object] = {}
+
+        async def _fake_execute(**kwargs: object) -> ExecutionResult:
+            captured.update(kwargs)
+            ctx = kwargs["context"]
+            assert isinstance(ctx, AgentContext)
+            return ExecutionResult(
+                context=ctx, termination_reason=TerminationReason.COMPLETED
+            )
+
+        engine._loop.execute = _fake_execute  # type: ignore[method-assign]
+
+        await engine._execute_resumed_loop(
+            checkpoint_ctx,
+            agent_id=str(sample_agent.id),
+            task_id=str(task.id),
+        )
+
+        resumed_ctx = captured["context"]
+        assert isinstance(resumed_ctx, AgentContext)
+        assert resumed_ctx.token_ceiling is None

@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.approval.protocol import ApprovalStoreProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
+from synthorg.engine._ceiling_publish import sync_ctx_ceilings
 from synthorg.engine.artifacts.baseline_scope import RunBaselineProbe
 from synthorg.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
@@ -216,14 +217,11 @@ class AgentEngineCheckpointResumeMixin:
         # The checkpoint carries whatever ceilings were in force when it was
         # taken; the checker just built above is what actually enforces this
         # resumed run and may disagree, e.g. Task.hard_token_ceiling unset
-        # and budget.run_hard_token_ceiling changed while the run was parked.
-        # Without this, check_budget_signal and nudge_unproductive_spend read
-        # a threshold the loop is not the one enforcing.
-        if budget_checker is not None:
-            cost_ceiling, token_ceiling = budget_checker.ceilings.as_optionals()
-            checkpoint_ctx = checkpoint_ctx.model_copy(
-                update={"cost_ceiling": cost_ceiling, "token_ceiling": token_ceiling}
-            )
+        # and budget.run_hard_token_ceiling changed while the run was parked,
+        # or disabled entirely. Without this, check_budget_signal and
+        # nudge_unproductive_spend read a threshold the loop is not the one
+        # enforcing.
+        checkpoint_ctx = sync_ctx_ceilings(checkpoint_ctx, budget_checker)
         # A checkpoint-resumed run is exactly the long, budget-bounded
         # session these two exist to keep legible; without them a run
         # surviving a restart loses its turn-boundary remainder report and

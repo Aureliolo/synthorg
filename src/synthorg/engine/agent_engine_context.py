@@ -11,6 +11,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
+from synthorg.engine._ceiling_publish import ctx_ceiling_values
 from synthorg.engine._ceiling_sync import ceiling_synced_task
 from synthorg.engine.context import AgentContext
 from synthorg.engine.context_budget import make_context_indicator
@@ -222,11 +223,7 @@ class AgentEngineContextMixin:
         Returns:
             ``(cost_ceiling, token_ceiling, context_capacity_tokens)``.
         """
-        cost_ceiling, token_ceiling = (
-            budget_checker.ceilings.as_optionals()
-            if budget_checker is not None
-            else (None, None)
-        )
+        cost_ceiling, token_ceiling = ctx_ceiling_values(budget_checker)
         context_capacity_tokens = await self._resolve_context_capacity_tokens(
             provider, identity, agent_id=agent_id, task_id=task_id
         )

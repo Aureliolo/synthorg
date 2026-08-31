@@ -11,10 +11,12 @@ from typing import TYPE_CHECKING
 
 from synthorg.budget.currency import DEFAULT_CURRENCY
 from synthorg.budget.errors import BudgetExhaustedError
+from synthorg.budget.session_budget import SessionBudgetChecker
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
+from synthorg.engine._ceiling_publish import sync_ctx_ceilings
 from synthorg.engine.agent_execute_request import AgentExecuteRequest
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
@@ -284,14 +286,48 @@ class AgentEngineResumeMixin:
         )
         return tool_invoker, system_prompt
 
-    async def _resume_execute(  # noqa: PLR0913
+    async def _rebuild_resume_budget(
         self,
         *,
+        task: Task,
+        agent_id: str,
+        task_id: str,
+        ctx: AgentContext,
+    ) -> tuple[SessionBudgetChecker | None, AgentContext]:
+        """Rebuild the resumed run's budget checker and sync *ctx* to it.
+
+        Rebuilt rather than restored: a checker is a live predicate
+        closure, not persisted state, so every dispatch of a context
+        (fresh or resumed) builds its own. A ceiling changed -- raised,
+        lowered, or disabled entirely -- while the run sat parked
+        awaiting approval is picked up here but not by the restored
+        context, so the context is synced to match.
+
+        Returns:
+            ``(budget_checker, ctx)``: the rebuilt checker and *ctx* with
+            its ceilings published from it.
+        """
+        project_budget = 0.0
+        if self._project_repo is not None:
+            project_budget = await self._validate_project(
+                task=task, agent_id=agent_id, task_id=task_id
+            )
+        budget_checker = await self._build_budget_checker(
+            task,
+            agent_id,
+            project_id=task.project,
+            project_budget=project_budget,
+        )
+        return budget_checker, sync_ctx_ceilings(ctx, budget_checker)
+
+    async def _dispatch_resumed_execution(  # noqa: PLR0913
+        self,
+        *,
+        budget_checker: SessionBudgetChecker | None,
         identity: AgentIdentity,
         task: Task,
         agent_id: str,
         task_id: str,
-        approval_id: str,
         ctx: AgentContext,
         system_prompt: SystemPrompt,
         tool_invoker: ToolInvokerProtocol | None,
@@ -312,36 +348,12 @@ class AgentEngineResumeMixin:
             reason to ``BUDGET_EXHAUSTED`` / ``ERROR``).
         """
         try:
-            # Rebuilt rather than restored: a checker is a live predicate
-            # closure, not persisted state, so every dispatch of a context
-            # (fresh or resumed) builds its own. A ceiling changed while the
-            # run sat parked awaiting approval is picked up here but not by
-            # the restored context, so ctx is synced to match below.
-            project_budget = 0.0
-            if self._project_repo is not None:
-                project_budget = await self._validate_project(
-                    task=task, agent_id=agent_id, task_id=task_id
-                )
-            budget_checker = await self._build_budget_checker(
-                task,
-                agent_id,
-                project_id=task.project,
-                project_budget=project_budget,
-            )
-            if budget_checker is not None:
-                cost_ceiling, token_ceiling = budget_checker.ceilings.as_optionals()
-                ctx = ctx.model_copy(
-                    update={
-                        "cost_ceiling": cost_ceiling,
-                        "token_ceiling": token_ceiling,
-                    }
-                )
             # A resumed run continues prior work: exempt it from the
             # empty-run (zero-tool-call) fail-loud, whose per-segment proxy
             # would otherwise discard a task that already produced artifacts
             # before the approval park.
             with resumed_run_scope():
-                result = await self._execute(
+                return await self._execute(
                     AgentExecuteRequest(
                         identity=identity,
                         task=task,
@@ -384,6 +396,43 @@ class AgentEngineResumeMixin:
                 effective_autonomy=effective_autonomy,
                 provider=self._provider,
             )
+
+    async def _resume_execute(  # noqa: PLR0913
+        self,
+        *,
+        identity: AgentIdentity,
+        task: Task,
+        agent_id: str,
+        task_id: str,
+        approval_id: str,
+        ctx: AgentContext,
+        system_prompt: SystemPrompt,
+        tool_invoker: ToolInvokerProtocol | None,
+        effective_autonomy: EffectiveAutonomy | None,
+        start: float,
+        timeout_seconds: float | None,
+    ) -> AgentRunResult:
+        """Rebuild the resumed run's budget, dispatch it, and log completion.
+
+        Returns:
+            The terminal :class:`AgentRunResult` of the resumed run.
+        """
+        budget_checker, ctx = await self._rebuild_resume_budget(
+            task=task, agent_id=agent_id, task_id=task_id, ctx=ctx
+        )
+        result = await self._dispatch_resumed_execution(
+            budget_checker=budget_checker,
+            identity=identity,
+            task=task,
+            agent_id=agent_id,
+            task_id=task_id,
+            ctx=ctx,
+            system_prompt=system_prompt,
+            tool_invoker=tool_invoker,
+            effective_autonomy=effective_autonomy,
+            start=start,
+            timeout_seconds=timeout_seconds,
+        )
         logger.info(
             APPROVAL_GATE_RESUME_COMPLETED,
             approval_id=approval_id,
