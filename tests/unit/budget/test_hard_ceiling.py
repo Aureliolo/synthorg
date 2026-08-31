@@ -19,6 +19,7 @@ from datetime import UTC, date, datetime
 from uuid import uuid4
 
 import pytest
+import structlog.testing
 
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.enforcer import BudgetEnforcer
@@ -129,6 +130,56 @@ async def test_closure_propagates_task_forecast_id() -> None:
         checker(_context(accumulated_cost=1.60))
 
     assert info.value.forecast_id == forecast_id
+
+
+async def test_configured_ceiling_logs_its_provenance_from_task() -> None:
+    """A task-set hard ceiling is logged with source='task'."""
+    tracker = CostTracker()
+    enforcer = BudgetEnforcer(budget_config=_config(), cost_tracker=tracker)
+    task = _task(hard_ceiling=1.50)
+    with structlog.testing.capture_logs() as logs:
+        checker = await enforcer.make_budget_checker(task, "agent-1")
+    assert checker is not None
+    configured = [
+        log for log in logs if log["event"] == "budget.hard_ceiling.configured"
+    ]
+    assert len(configured) == 1
+    assert configured[0]["hard_ceiling"] == pytest.approx(1.50)
+    assert configured[0]["source"] == "task"
+    assert configured[0]["currency"] == "USD"
+    assert configured[0]["task_id"] == sid("task-1")
+
+
+async def test_configured_ceiling_logs_its_provenance_from_setting() -> None:
+    """A ceiling inherited from the setting is logged with source='setting'."""
+    tracker = CostTracker()
+    enforcer = BudgetEnforcer(
+        budget_config=_config(run_hard_ceiling=2.00),
+        cost_tracker=tracker,
+    )
+    with structlog.testing.capture_logs() as logs:
+        checker = await enforcer.make_budget_checker(_task(), "agent-1")
+    assert checker is not None
+    configured = [
+        log for log in logs if log["event"] == "budget.hard_ceiling.configured"
+    ]
+    assert len(configured) == 1
+    assert configured[0]["hard_ceiling"] == pytest.approx(2.00)
+    assert configured[0]["source"] == "setting"
+
+
+async def test_no_ceiling_configured_does_not_log_provenance() -> None:
+    """Neither ceiling set, other limits active: nothing to attribute."""
+    tracker = CostTracker()
+    config = _config().model_copy(update={"run_hard_token_ceiling": 0})
+    enforcer = BudgetEnforcer(budget_config=config, cost_tracker=tracker)
+    with structlog.testing.capture_logs() as logs:
+        checker = await enforcer.make_budget_checker(_task(), "agent-1")
+    assert checker is not None
+    configured = [
+        log for log in logs if log["event"] == "budget.hard_ceiling.configured"
+    ]
+    assert configured == []
 
 
 async def test_global_run_hard_ceiling_used_when_task_field_absent() -> None:

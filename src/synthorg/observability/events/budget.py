@@ -68,8 +68,10 @@ BUDGET_NOTIFICATION_FAILED: Final[str] = "budget.notification.failed"
 
 # Embedding cost tracking events
 BUDGET_EMBEDDING_COST_RECORDED: Final[str] = "budget.embedding_cost.recorded"
-BUDGET_EMBEDDING_COST_FAILED: Final[str] = "budget.embedding_cost.failed"
 BUDGET_EMBEDDING_MODEL_UNPRICED: Final[str] = "budget.embedding_cost.model_unpriced"
+
+# Image generation cost tracking events
+BUDGET_IMAGE_MODEL_UNPRICED: Final[str] = "budget.image_cost.model_unpriced"
 
 # Project-level budget events
 BUDGET_PROJECT_COST_QUERIED: Final[str] = "budget.project_cost.queried"

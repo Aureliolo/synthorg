@@ -16,6 +16,8 @@ import litellm as _litellm
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.types import NotBlankStr
+from synthorg.observability import get_logger
+from synthorg.observability.events.budget import BUDGET_IMAGE_MODEL_UNPRICED
 from synthorg.providers import errors
 from synthorg.providers._cost import compute_image_cost
 from synthorg.providers.drivers.litellm_auth import AuthContext, apply_auth_kwargs
@@ -25,6 +27,8 @@ from synthorg.providers.image_models import (
     ImageGenerationConfig,
     ImageGenerationResponse,
 )
+
+logger = get_logger(__name__)
 
 _RESPONSE_FORMAT_B64: str = "b64_json"
 _DEFAULT_IMAGE_MIME: Final[str] = "image/png"
@@ -100,6 +104,13 @@ async def generate_image_via_litellm(  # noqa: PLR0913 -- keyword-only driver st
     except Exception as exc:
         reraise_critical(exc)
         raise map_exception(exc, model) from exc
+    if model_config.cost_per_image is None:
+        logger.warning(
+            BUDGET_IMAGE_MODEL_UNPRICED,
+            provider=provider_name,
+            model=model_config.id,
+            setting="cost_per_image",
+        )
     return map_image_response(
         response,
         model_id=model_config.id,
