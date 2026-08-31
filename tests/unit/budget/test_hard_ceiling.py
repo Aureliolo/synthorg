@@ -32,6 +32,7 @@ from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskType
 from synthorg.engine.context import AgentContext
+from synthorg.observability.events.budget import BUDGET_HARD_CEILING_CONFIGURED
 from synthorg.providers.models import TokenUsage
 from tests._shared import as_uuid, sid
 
@@ -140,9 +141,7 @@ async def test_configured_ceiling_logs_its_provenance_from_task() -> None:
     with structlog.testing.capture_logs() as logs:
         checker = await enforcer.make_budget_checker(task, "agent-1")
     assert checker is not None
-    configured = [
-        log for log in logs if log["event"] == "budget.hard_ceiling.configured"
-    ]
+    configured = [log for log in logs if log["event"] == BUDGET_HARD_CEILING_CONFIGURED]
     assert len(configured) == 1
     assert configured[0]["hard_ceiling"] == pytest.approx(1.50)
     assert configured[0]["hard_ceiling_source"] == "task"
@@ -161,9 +160,7 @@ async def test_configured_ceiling_logs_its_provenance_from_setting() -> None:
     with structlog.testing.capture_logs() as logs:
         checker = await enforcer.make_budget_checker(_task(), "agent-1")
     assert checker is not None
-    configured = [
-        log for log in logs if log["event"] == "budget.hard_ceiling.configured"
-    ]
+    configured = [log for log in logs if log["event"] == BUDGET_HARD_CEILING_CONFIGURED]
     assert len(configured) == 1
     assert configured[0]["hard_ceiling"] == pytest.approx(2.00)
     assert configured[0]["hard_ceiling_source"] == "setting"
@@ -182,9 +179,7 @@ async def test_dollar_and_token_ceilings_are_attributed_independently() -> None:
     with structlog.testing.capture_logs() as logs:
         checker = await enforcer.make_budget_checker(task, "agent-1")
     assert checker is not None
-    configured = [
-        log for log in logs if log["event"] == "budget.hard_ceiling.configured"
-    ]
+    configured = [log for log in logs if log["event"] == BUDGET_HARD_CEILING_CONFIGURED]
     assert len(configured) == 1
     assert configured[0]["hard_ceiling_source"] == "setting"
     assert configured[0]["hard_token_ceiling_source"] == "task"
@@ -199,9 +194,7 @@ async def test_no_ceiling_configured_does_not_log_provenance() -> None:
     with structlog.testing.capture_logs() as logs:
         checker = await enforcer.make_budget_checker(_task(), "agent-1")
     assert checker is not None
-    configured = [
-        log for log in logs if log["event"] == "budget.hard_ceiling.configured"
-    ]
+    configured = [log for log in logs if log["event"] == BUDGET_HARD_CEILING_CONFIGURED]
     assert configured == []
 
 

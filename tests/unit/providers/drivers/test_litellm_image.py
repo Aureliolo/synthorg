@@ -12,6 +12,7 @@ import structlog.testing
 
 from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.schema import ProviderModelConfig
+from synthorg.observability.events.budget import BUDGET_IMAGE_MODEL_UNPRICED
 from synthorg.providers.drivers.litellm_driver import LiteLLMDriver
 from synthorg.providers.drivers.litellm_image import map_image_response
 from synthorg.providers.errors import (
@@ -122,8 +123,7 @@ async def test_driver_generate_image_none_cost_is_free() -> None:
         mock_call.return_value = _fake_image_response("QUJD")
         result = await driver.generate_image("a cat", "img")
     assert result.usage.cost == 0.0
-    event = "budget.image_cost.model_unpriced"
-    matches = [log for log in logs if log["event"] == event]
+    matches = [log for log in logs if log["event"] == BUDGET_IMAGE_MODEL_UNPRICED]
     assert len(matches) == 1
     assert matches[0]["provider"] == "example-provider"
     assert matches[0]["model"] == "example-image-001"
@@ -139,7 +139,7 @@ async def test_driver_generate_image_priced_model_does_not_warn() -> None:
         mock_call.return_value = _fake_image_response("QUJD")
         await driver.generate_image("a cat", "img")
     events = [log["event"] for log in logs]
-    assert "budget.image_cost.model_unpriced" not in events
+    assert BUDGET_IMAGE_MODEL_UNPRICED not in events
 
 
 async def test_driver_maps_litellm_auth_error() -> None:

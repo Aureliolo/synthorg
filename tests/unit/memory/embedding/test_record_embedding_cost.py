@@ -13,6 +13,10 @@ import structlog.testing
 
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.memory.embedding.dispatch import record_embedding_cost
+from synthorg.observability.events.budget import (
+    BUDGET_EMBEDDING_COST_RECORDED,
+    BUDGET_EMBEDDING_MODEL_UNPRICED,
+)
 from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
@@ -38,8 +42,9 @@ class TestUnpricedModelWarns:
                 provider=_PROVIDER,
                 model=_MODEL,
             )
-        event = "budget.embedding_cost.model_unpriced"
-        matches = [log for log in logs if log["event"] == event]
+        matches = [
+            log for log in logs if log["event"] == BUDGET_EMBEDDING_MODEL_UNPRICED
+        ]
         assert len(matches) == 1
         assert matches[0]["model"] == f"{_PROVIDER}/{_MODEL}"
         assert matches[0]["setting"] == "cost_per_1k_input/cost_per_1k_output"
@@ -56,7 +61,7 @@ class TestUnpricedModelWarns:
                 model=_MODEL,
             )
         events = [log["event"] for log in logs]
-        assert "budget.embedding_cost.model_unpriced" not in events
+        assert BUDGET_EMBEDDING_MODEL_UNPRICED not in events
 
 
 class TestSuccessfulRecordLogsRecorded:
@@ -70,7 +75,7 @@ class TestSuccessfulRecordLogsRecorded:
                 model=_MODEL,
             )
         events = [log["event"] for log in logs]
-        assert "budget.embedding_cost.recorded" in events
+        assert BUDGET_EMBEDDING_COST_RECORDED in events
         recorded = tracker.record.await_args.args[0]
         assert recorded.cost == 0.002
 

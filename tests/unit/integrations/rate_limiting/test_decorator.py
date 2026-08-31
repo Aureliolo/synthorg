@@ -15,6 +15,7 @@ import structlog.testing
 from synthorg.integrations.errors import ConnectionRateLimitError
 from synthorg.integrations.rate_limiting.decorator import with_connection_rate_limit
 from synthorg.integrations.rate_limiting.shared_state import SharedRateLimitCoordinator
+from synthorg.observability.events.integrations import TOOL_RATE_LIMIT_HIT
 from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
@@ -46,7 +47,7 @@ async def test_a_full_connection_window_logs_before_raising(
     ):
         await call()
 
-    matches = [log for log in logs if log.get("event") == "integrations.rate_limit.hit"]
+    matches = [log for log in logs if log.get("event") == TOOL_RATE_LIMIT_HIT]
     assert len(matches) == 1
     assert matches[0]["log_level"] == "warning"
     assert matches[0]["connection_name"] == "conn-a"
@@ -70,5 +71,5 @@ async def test_a_free_window_does_not_log_the_hit_event(
         result = await call()
 
     assert result == "ran"
-    matches = [log for log in logs if log.get("event") == "integrations.rate_limit.hit"]
+    matches = [log for log in logs if log.get("event") == TOOL_RATE_LIMIT_HIT]
     assert matches == []
