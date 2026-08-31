@@ -39,7 +39,8 @@ API -> CLI
     Global output modes: `--quiet` (errors only), `--verbose/-v` (verbose/trace), `--plain`
     (ASCII-only), `--json` (machine-readable), `--no-color`, `--yes` (non-interactive).
     Typed exit codes: 0 (success), 1 (runtime), 2 (usage), 3 (unhealthy), 4 (unreachable),
-    10 (update available). Key flags have corresponding `SYNTHORG_*` or standard env vars.
+    10 (update available), 130 (interrupted). Key flags have corresponding `SYNTHORG_*` or
+    standard env vars.
 
 ## API Surface
 

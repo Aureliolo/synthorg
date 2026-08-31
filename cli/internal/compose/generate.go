@@ -36,7 +36,7 @@ var baseComposeTmpl = template.Must(
 // helpers bound to empty data; Generate overwrites the data-bound ones
 // on each clone before Execute. yamlStr is genuinely static.
 var composeParseFuncs = template.FuncMap{
-	"yamlStr":            yamlStr,
+	"yamlStr":            YAMLStr,
 	"digestPin":          digestPin(nil),
 	"sandboxImageRef":    sandboxImageRef(nil),
 	"sidecarImageRef":    sidecarImageRef(nil),
@@ -262,7 +262,7 @@ func Generate(p Params) ([]byte, error) {
 	}
 
 	funcMap := template.FuncMap{
-		"yamlStr":            yamlStr,
+		"yamlStr":            YAMLStr,
 		"digestPin":          digestPin(p.DigestPins),
 		"sandboxImageRef":    sandboxImageRef(p.DigestPins),
 		"sidecarImageRef":    sidecarImageRef(p.DigestPins),
@@ -450,9 +450,13 @@ func fineTuneImageRef(pins map[string]string, variant string) func(tag string) s
 	}
 }
 
-// yamlStr safely quotes a string value for YAML, escaping special characters.
-// Also escapes $ to prevent Docker Compose variable interpolation.
-func yamlStr(s string) string {
+// YAMLStr safely quotes a string value for YAML, escaping special characters.
+// Also escapes $ to prevent Docker Compose variable interpolation. Exported
+// so cli/cmd's patch-fallback path (which rewrites SYNTHORG_*_IMAGE env
+// lines in an existing compose.yml without regenerating from the template)
+// applies the identical escaping rule the template itself uses, rather than
+// maintaining a second copy that could drift from it.
+func YAMLStr(s string) string {
 	// If the string contains YAML-special or Compose-interpolation characters,
 	// double-quote and escape.
 	if strings.ContainsAny(s, "\x00$:#{}[]|>&*!%@`\"'\\\n\r\t") {

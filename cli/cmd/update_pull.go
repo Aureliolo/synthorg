@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Aureliolo/synthorg/cli/internal/compose"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
@@ -25,7 +26,7 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 
 	// Back up existing compose.yml for rollback on failure.
 	composePath := filepath.Join(safeDir, "compose.yml")
-	rollback := composeRollback(cmd, composePath)
+	rollback := composeRollback(cmd, safeDir, composePath)
 
 	errOut := ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions())
 
@@ -69,14 +70,19 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 // composeRollback snapshots the existing compose.yml and returns a closure that
 // restores it (or removes a freshly-written one when no prior file existed) so a
 // failed verify/pull never leaves a half-applied compose.yml behind.
-func composeRollback(cmd *cobra.Command, composePath string) func() {
+func composeRollback(cmd *cobra.Command, safeDir, composePath string) func() {
 	backup, backupErr := os.ReadFile(composePath) //nolint:gosec // G304: composePath is <data-dir>/compose.yml under the SecurePath-cleaned data dir
 
 	return func() {
 		switch {
 		case backupErr == nil:
-			// A prior compose.yml was read successfully: restore it.
-			if wErr := os.WriteFile(composePath, backup, 0o600); wErr != nil { //nolint:gosec // G304: composePath is <data-dir>/compose.yml under the SecurePath-cleaned data dir
+			// A prior compose.yml was read successfully: restore it. Goes
+			// through AtomicWriteFile, not a plain os.WriteFile, for the same
+			// reason the forward-path write does: rollback now runs live on
+			// the first Ctrl+C (see cmd.Execute), and a second, forced
+			// interrupt landing mid-write must not be able to truncate the
+			// file it exists to protect.
+			if wErr := compose.AtomicWriteFile(safeDir, "compose.yml", backup); wErr != nil {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
 					"Warning: failed to restore compose.yml backup: %v\n", wErr)
 			}

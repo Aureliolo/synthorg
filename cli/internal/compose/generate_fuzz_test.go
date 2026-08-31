@@ -34,7 +34,7 @@ func FuzzYamlStr(f *testing.F) {
 	f.Add("\x00null\x00byte")
 
 	f.Fuzz(func(t *testing.T, s string) {
-		result := yamlStr(s)
+		result := YAMLStr(s)
 
 		// Result must never be empty.
 		if result == "" {

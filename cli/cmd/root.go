@@ -5,10 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/Aureliolo/synthorg/cli/internal/completion"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
@@ -375,12 +378,10 @@ func isTransportError(err error) bool {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return true
 	}
-	var netErr *net.OpError
-	if errors.As(err, &netErr) {
+	if _, ok := errors.AsType[*net.OpError](err); ok {
 		return true
 	}
-	var dnsErr *net.DNSError
-	if errors.As(err, &dnsErr) {
+	if _, ok := errors.AsType[*net.DNSError](err); ok {
 		return true
 	}
 	// Check for net.Error interface (covers timeout errors from HTTP clients).
@@ -391,25 +392,117 @@ func isTransportError(err error) bool {
 	return false
 }
 
-// Execute runs the root command.
+// Execute runs the root command under a context that a SIGINT/SIGTERM
+// cancels, so a long-running step already threading cmd.Context() through
+// (an image pull, a network verification call) unwinds through its own
+// error-handling path instead of the process dying mid-write.
+//
+// update's pullAndPersist depends on this: it writes compose.yml with the
+// new image pins before the pull runs (docker compose pull reads the image
+// refs it pulls from that file), and only persists config.json after the
+// pull succeeds -- rolling compose.yml back to its prior contents on any
+// error, cancellation included. Without a caught signal, Ctrl+C during a
+// pull killed the process before that rollback ever ran, leaving
+// compose.yml ahead of config.json; the next `update` then regenerated
+// compose from the stale config and proposed reverting the file it had
+// already correctly written.
+//
+// A second interrupt force-exits: if a step is wedged (a stuck Docker
+// daemon, a network call whose own timeout has not yet tripped), the
+// operator needs an escape that does not depend on that step unwinding.
 func Execute() error {
-	err := rootCmd.Execute()
+	// Registered before NotifyContext so no signal delivered between the two
+	// listeners coming up can be missed -- see forceExitOnSecondInterrupt.
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(c)
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go forceExitOnSecondInterrupt(ctx, c)
+
+	err := rootCmd.ExecuteContext(ctx)
+	return reportExecuteError(ctx, rootCmd.ErrOrStderr(), err)
+}
+
+// reportExecuteError turns rootCmd.ExecuteContext's result into what
+// Execute returns, split out from Execute so the ctx-cancelled branch is
+// testable without standing up a real signal delivery.
+func reportExecuteError(ctx context.Context, errOut io.Writer, err error) error {
 	if err == nil {
 		return nil
 	}
+	if ctx.Err() != nil {
+		// The command was cancelled by our own signal handler: report the
+		// operator's own Ctrl+C plainly rather than whatever raw error the
+		// interrupted subprocess happened to return (e.g. "signal: killed"),
+		// which reads as a failure rather than the cancellation it is.
+		//
+		// Deliberately does not claim any specific outcome (e.g. "compose.yml
+		// was rolled back"): this handler runs for every command, has no
+		// knowledge of what the interrupted command was doing, and a command
+		// whose own rollback failed, was a no-op, or does not touch
+		// compose/config at all (e.g. `status --watch`) would make that claim
+		// false. A command with a durable side effect to report on interrupt
+		// (update's compose.yml rollback) does so from its own code, where it
+		// actually knows the outcome.
+		//
+		// WarnAlways, not Warn: this is the one line telling a --quiet/--json
+		// scripted invocation why it exited ExitInterrupted instead of
+		// completing, so it must survive --quiet the same way
+		// unsuppressibleWarner's callers do.
+		errUI := ui.NewUIWithOptions(errOut, globalUIOptions())
+		errUI.WarnAlways("Interrupted.")
+		return NewExitError(ExitInterrupted, err)
+	}
 	// ChildExitError / ExitError: main.go handles exit code propagation;
 	// their internal messages are not user-facing.
-	var ce *ChildExitError
-	var ee *ExitError
-	if errors.As(err, &ce) || errors.As(err, &ee) {
+	_, isChildExitErr := errors.AsType[*ChildExitError](err)
+	_, isExitErr := errors.AsType[*ExitError](err)
+	if isChildExitErr || isExitErr {
 		return err
 	}
-	_, _ = fmt.Fprintln(rootCmd.ErrOrStderr(), err)
+	_, _ = fmt.Fprintln(errOut, err)
 	if hint := errorHint(err); hint != "" {
-		errUI := ui.NewUIWithOptions(rootCmd.ErrOrStderr(), globalUIOptions())
+		errUI := ui.NewUIWithOptions(errOut, globalUIOptions())
 		errUI.HintError(hint)
 	}
 	return err
+}
+
+// armSecondSignal blocks until ctx is cancelled by the first signal (see
+// Execute), then waits for a genuinely second SIGINT/SIGTERM on c. c is
+// registered by Execute before NotifyContext's own listener comes up, so no
+// gap exists between "not yet listening for a second signal" and "listening
+// for one" -- the gap forceExitOnSecondInterrupt used to have by creating
+// and registering its own channel only after ctx.Done() fired, during which
+// a second signal was delivered to NotifyContext's already-spent internal
+// channel and silently dropped.
+//
+// Go's signal package fans a delivered signal out to every channel
+// registered via signal.Notify in one synchronous step before any consumer
+// goroutine observes it, so by the time ctx.Done() unblocks here, c already
+// holds a copy of that same first signal; that copy is drained before
+// waiting for the next one.
+func armSecondSignal(ctx context.Context, c chan os.Signal) {
+	<-ctx.Done()
+	<-c
+	<-c
+}
+
+// forceExitOnSecondInterrupt arms the second-signal listener (see
+// armSecondSignal) and exits immediately once it fires. A second
+// SIGINT/SIGTERM after the first means the graceful shutdown itself is
+// stuck, so it exits immediately rather than leaving the operator with no
+// way out short of killing the process externally.
+//
+// Assumes Execute is called at most once per process (true today: only
+// main.go calls it). A second concurrent Execute call would leave this
+// goroutine running for the life of the process past the first call's own
+// return, since nothing here ever cancels it independently of ctx.
+func forceExitOnSecondInterrupt(ctx context.Context, c chan os.Signal) {
+	armSecondSignal(ctx, c)
+	os.Exit(ExitInterrupted)
 }
 
 // printAllHelp recursively prints help for all available commands.
