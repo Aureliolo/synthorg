@@ -413,6 +413,34 @@ class TestAuditChainVerifier:
         assert result.valid is False
         assert result.first_break_position == 1
 
+    async def test_signer_exception_recorded_broken_then_reraised(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A signer failure (crypto / network / key-unavailable) must not
+        create a tamper-detection blind spot: the outcome is recorded as
+        broken before the exception propagates."""
+        signer = _make_mock_signer()
+        signer.verify = AsyncMock(side_effect=RuntimeError("key unavailable"))
+        verifier = AuditChainVerifier(signer=signer)
+        chain = HashChain()
+        chain.append(b"event-1", b"sig", datetime.now(UTC))
+
+        recorded: dict[str, object] = {}
+        monkeypatch.setattr(
+            "synthorg.observability.audit_chain.verifier."
+            "record_audit_chain_verification",
+            lambda **kwargs: recorded.update(kwargs),
+        )
+
+        with pytest.raises(RuntimeError, match="key unavailable"):
+            await verifier.verify_chain(chain)
+
+        assert recorded == {
+            "outcome": "broken",
+            "entries_checked": 0,
+            "first_break_position": None,
+        }
+
 
 # ── Property Tests ─────────────────────────────────────────────────
 
