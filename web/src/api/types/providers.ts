@@ -36,6 +36,7 @@ export type {
   CapabilityAssignmentDTO,
   CapabilityAssignmentsResponse,
   CapabilityOverrideRequest,
+  CapabilityOverridesUpdateRequest,
   CapabilityRecommendationDTO,
   CapabilityRecommendationsResponse,
   CapabilitySourceDTO,
@@ -43,6 +44,7 @@ export type {
   CapabilitySourceRowsRequest,
   CapabilitySourceSettingRequest,
   CapabilitySourcesResponse,
+  ModelCapabilityOverrides,
   UpdateModelConfigRequest,
   UpdateProviderRequest,
 } from './dtos.gen'

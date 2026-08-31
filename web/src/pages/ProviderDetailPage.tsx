@@ -236,7 +236,6 @@ function ProviderDetailBody({
         <ProviderModelList
           models={models}
           supportsDelete={provider.supports_model_delete}
-          supportsConfig={provider.supports_model_config}
           onDelete={(modelId) => d.setDeleteModelId(modelId)}
           onConfigure={(model) => d.setConfigModel(model)}
           onReenableToolCalling={(modelId) => {
@@ -318,6 +317,7 @@ function ProviderDetailDialogs({
         model={d.configModel}
         open={d.configModel !== null}
         onClose={() => d.setConfigModel(null)}
+        supportsLocalParams={provider.supports_model_config}
       />
 
       <DeleteProviderModelDialog d={d} decodedName={decodedName} />

@@ -2,12 +2,13 @@ import {
   pullModel as apiPullModel,
   deleteModel as apiDeleteModel,
   reenableToolCalling as apiReenableToolCalling,
+  updateModelCapabilityOverrides as apiUpdateModelCapabilityOverrides,
   updateModelConfig as apiUpdateModelConfig,
 } from '@/api/endpoints/providers'
 import { getCrudErrorTitle, getErrorMessage } from '@/utils/errors'
-import { reenableKey } from '@/utils/providers'
+import { modelActionKey } from '@/utils/providers'
 import { createLogger } from '@/lib/logger'
-import type { LocalModelParams } from '@/api/types/providers'
+import type { CapabilityOverridesUpdateRequest, LocalModelParams } from '@/api/types/providers'
 import { useToastStore } from '@/stores/toast'
 import type { ProvidersSet, ProvidersGet } from './types'
 
@@ -141,13 +142,42 @@ async function updateModelConfigImpl(
   }
 }
 
+async function updateModelCapabilityOverridesImpl(
+  set: ProvidersSet,
+  get: ProvidersGet,
+  name: string,
+  modelId: string,
+  overrides: CapabilityOverridesUpdateRequest,
+): Promise<boolean> {
+  set({ updatingCapabilityOverrides: true })
+  try {
+    await apiUpdateModelCapabilityOverrides(name, modelId, overrides)
+    useToastStore.getState().add({
+      variant: 'success',
+      title: `Capability overrides updated for "${modelId}"`,
+    })
+    await refreshActiveDetail(get, name)
+    return true
+  } catch (err) {
+    log.error('Failed to update capability overrides:', getErrorMessage(err))
+    useToastStore.getState().add({
+      variant: 'error',
+      ...getCrudErrorTitle(err, 'Failed to update capability overrides'),
+      description: getErrorMessage(err),
+    })
+    return false
+  } finally {
+    set({ updatingCapabilityOverrides: false })
+  }
+}
+
 async function reenableToolCallingImpl(
   set: ProvidersSet,
   get: ProvidersGet,
   name: string,
   modelId: string,
 ): Promise<boolean> {
-  const pendingKey = reenableKey(name, modelId)
+  const pendingKey = modelActionKey(name, modelId)
   // Per-model concurrency: different models re-enable in parallel, but a second
   // click on a model already in flight is a no-op (its row is disabled, so this
   // only guards a double-invoke).
@@ -207,6 +237,11 @@ export function createLocalModelActions(
       modelId: string,
       params: LocalModelParams,
     ) => updateModelConfigImpl(set, get, name, modelId, params),
+    updateModelCapabilityOverrides: (
+      name: string,
+      modelId: string,
+      overrides: CapabilityOverridesUpdateRequest,
+    ) => updateModelCapabilityOverridesImpl(set, get, name, modelId, overrides),
     reenableToolCalling: (name: string, modelId: string) =>
       reenableToolCallingImpl(set, get, name, modelId),
   }

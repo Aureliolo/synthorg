@@ -135,14 +135,13 @@ export const WithDeleteActions: Story = {
 }
 
 export const WithConfigActions: Story = {
-  args: { models, supportsConfig: true, onConfigure: fn() },
+  args: { models, onConfigure: fn() },
 }
 
 export const WithAllActions: Story = {
   args: {
     models,
     supportsDelete: true,
-    supportsConfig: true,
     onDelete: fn(),
     onConfigure: fn(),
   },
@@ -152,5 +151,27 @@ export const ToolCallingUnavailable: Story = {
   args: {
     models: [{ ...models[0]!, tool_calls_verified: false }, models[1]!],
     onReenableToolCalling: fn(),
+  },
+}
+
+export const WithOperatorOverride: Story = {
+  args: {
+    // supports_prompt_caching is on and operator-declared: the pill carries
+    // the "*" marker, a ring, and an accessible "(operator override)" note.
+    models: [
+      {
+        ...models[0]!,
+        supports_prompt_caching: true,
+        capability_overrides: {
+          supports_tools: null,
+          supports_vision: null,
+          supports_streaming: null,
+          supports_embeddings: null,
+          supports_image_generation: null,
+          supports_reasoning: null,
+          supports_prompt_caching: true,
+        },
+      },
+    ],
   },
 }

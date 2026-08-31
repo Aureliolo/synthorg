@@ -7,7 +7,7 @@ import {
   formatRatePercent,
   formatTokenCount,
   formatCost,
-  reenableKey,
+  modelActionKey,
 } from "@/utils/providers";
 import type {
   ProviderConfig,
@@ -397,21 +397,21 @@ describe("formatCost", () => {
   });
 });
 
-describe("reenableKey", () => {
+describe("modelActionKey", () => {
   it("is stable for the same (provider, model) pair", () => {
-    expect(reenableKey("test-provider", "test-basic-001")).toBe(
-      reenableKey("test-provider", "test-basic-001"),
+    expect(modelActionKey("test-provider", "test-basic-001")).toBe(
+      modelActionKey("test-provider", "test-basic-001"),
     );
   });
 
   it("distinguishes the same model id across providers", () => {
-    expect(reenableKey("provider-a", "shared-model")).not.toBe(
-      reenableKey("provider-b", "shared-model"),
+    expect(modelActionKey("provider-a", "shared-model")).not.toBe(
+      modelActionKey("provider-b", "shared-model"),
     );
   });
 
   it("stays injective when the model id contains the delimiter", () => {
     // ``a`` + ``b:c`` must not collide with ``a:b`` + ``c``.
-    expect(reenableKey("a", "b:c")).not.toBe(reenableKey("a:b", "c"));
+    expect(modelActionKey("a", "b:c")).not.toBe(modelActionKey("a:b", "c"));
   });
 });

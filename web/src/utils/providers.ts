@@ -122,16 +122,16 @@ export function getProviderHealthColor(
 }
 
 /**
- * Composite key for the in-flight tool-calling re-enable state.
+ * Composite key for a per-model in-flight action (re-enable, capability
+ * override save, ...).
  *
- * The runtime tool-call feedback feature is keyed by `(provider, model)`
- * end-to-end. Model ids are not unique across providers, so a bare model id
- * would let a re-enable in flight for one provider disable the same id on a
+ * Model ids are not unique across providers, so a bare model id would let an
+ * action in flight for one provider's model collide with the same id on a
  * different provider. JSON-encoding the pair keeps the key injective
  * regardless of any delimiter that might appear inside a provider name or
  * model id.
  */
-export function reenableKey(provider: string, modelId: string): string {
+export function modelActionKey(provider: string, modelId: string): string {
   return JSON.stringify([provider, modelId])
 }
 

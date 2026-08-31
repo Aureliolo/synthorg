@@ -1,6 +1,7 @@
 import type { StoreApi } from 'zustand'
 import type {
   AddModelRequest,
+  CapabilityOverridesUpdateRequest,
   CreateFromPresetRequest,
   CreateProviderRequest,
   CredentialsRotateRequest,
@@ -72,9 +73,16 @@ export interface ProvidersState {
   /** True while a model-config save (``updateModelConfig``) is in flight. */
   updatingModelConfig: boolean
   /**
-   * Provider-qualified keys (see ``reenableKey``) whose tool-calling re-enable
-   * is in flight. A set rather than a single id so re-enables for different
-   * models run concurrently and each row reflects only its own pending state.
+   * True while a capability-override save (``updateModelCapabilityOverrides``)
+   * is in flight. A single flag, not a per-model set, because only one
+   * model's overrides can be edited at a time (one drawer open at once).
+   */
+  updatingCapabilityOverrides: boolean
+  /**
+   * Provider-qualified keys (see ``modelActionKey``) whose tool-calling
+   * re-enable is in flight. A set rather than a single id so re-enables for
+   * different models run concurrently and each row reflects only its own
+   * pending state.
    */
   reenablingModelIds: ReadonlySet<string>
 
@@ -134,6 +142,11 @@ export interface ProvidersState {
   cancelPull: () => void
   deleteModel: (name: string, modelId: string) => Promise<boolean>
   updateModelConfig: (name: string, modelId: string, params: LocalModelParams) => Promise<boolean>
+  updateModelCapabilityOverrides: (
+    name: string,
+    modelId: string,
+    overrides: CapabilityOverridesUpdateRequest,
+  ) => Promise<boolean>
   reenableToolCalling: (name: string, modelId: string) => Promise<boolean>
 
   // Audit log read actions

@@ -40,6 +40,7 @@ export const useProvidersStore = create<ProvidersState>()((set, get) => ({
   pullProgress: null,
   deletingModel: false,
   updatingModelConfig: false,
+  updatingCapabilityOverrides: false,
   reenablingModelIds: new Set<string>(),
 
   // Audit + capability detail panes

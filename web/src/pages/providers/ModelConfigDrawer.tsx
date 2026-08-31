@@ -1,10 +1,16 @@
 import { useState } from 'react'
 import { Drawer } from '@/components/ui/drawer'
 import { InputField } from '@/components/ui/input-field'
+import { SelectField, type SelectOption } from '@/components/ui/select-field'
 import { Button } from '@/components/ui/button'
 import { ErrorBanner } from '@/components/ui/error-banner'
 import { useProvidersStore } from '@/stores/providers'
-import type { LocalModelParams, ProviderModelResponse } from '@/api/types/providers'
+import type {
+  CapabilityOverridesUpdateRequest,
+  LocalModelParams,
+  ModelCapabilityOverrides,
+  ProviderModelResponse,
+} from '@/api/types/providers'
 
 const STALE_REASON_LABEL: Record<'removed_from_catalog' | 'deprecated', string> = {
   removed_from_catalog: 'removed from the provider catalogue',
@@ -16,6 +22,13 @@ interface ModelConfigDrawerProps {
   model: ProviderModelResponse | null
   open: boolean
   onClose: () => void
+  /**
+   * Whether the provider supports local launch-parameter tuning
+   * (``supports_model_config``). Capability overrides apply to any
+   * provider and are always shown; this only gates the local-params
+   * section, which is meaningless for a provider with no local runtime.
+   */
+  supportsLocalParams: boolean
 }
 
 const EMPTY_LOCAL_PARAMS: LocalModelParams = {
@@ -139,7 +152,114 @@ function ModelConfigFields({
   )
 }
 
-function ModelConfigForm({
+type OverrideField = keyof ModelCapabilityOverrides
+
+interface OverrideFieldSpec {
+  field: OverrideField
+  label: string
+  resolved: (model: ProviderModelResponse) => boolean
+}
+
+const OVERRIDE_FIELDS: readonly OverrideFieldSpec[] = [
+  { field: 'supports_tools', label: 'Tool calling', resolved: (m) => m.supports_tools },
+  { field: 'supports_vision', label: 'Vision', resolved: (m) => m.supports_vision },
+  { field: 'supports_streaming', label: 'Streaming', resolved: (m) => m.supports_streaming },
+  { field: 'supports_embeddings', label: 'Embeddings', resolved: (m) => m.supports_embeddings },
+  {
+    field: 'supports_image_generation',
+    label: 'Image generation',
+    resolved: (m) => m.supports_image_generation,
+  },
+  { field: 'supports_reasoning', label: 'Reasoning', resolved: (m) => m.supports_reasoning },
+  {
+    field: 'supports_prompt_caching',
+    label: 'Prompt caching',
+    resolved: (m) => m.supports_prompt_caching,
+  },
+]
+
+const OVERRIDE_OPTIONS: readonly SelectOption[] = [
+  { value: '', label: 'Auto (resolved value)' },
+  { value: 'true', label: 'Force on' },
+  { value: 'false', label: 'Force off' },
+]
+
+/** Three-state override value as a `<select>` string: '', 'true', or 'false'. */
+function overrideToSelectValue(value: boolean | null | undefined): string {
+  if (value === true) return 'true'
+  if (value === false) return 'false'
+  return ''
+}
+
+function selectValueToOverride(value: string): boolean | null {
+  if (value === 'true') return true
+  if (value === 'false') return false
+  return null
+}
+
+function initialOverrideSelections(
+  overrides: ModelCapabilityOverrides | null,
+): Record<OverrideField, string> {
+  return Object.fromEntries(
+    OVERRIDE_FIELDS.map((spec) => [
+      spec.field,
+      overrideToSelectValue(overrides?.[spec.field]),
+    ]),
+  ) as Record<OverrideField, string>
+}
+
+function buildOverridesRequest(
+  selections: Record<OverrideField, string>,
+): CapabilityOverridesUpdateRequest {
+  return Object.fromEntries(
+    OVERRIDE_FIELDS.map((spec) => [spec.field, selectValueToOverride(selections[spec.field])]),
+  )
+}
+
+function CapabilityOverridesForm({
+  providerName,
+  model,
+}: {
+  providerName: string
+  model: ProviderModelResponse
+}) {
+  const updateOverrides = useProvidersStore((s) => s.updateModelCapabilityOverrides)
+  const saving = useProvidersStore((s) => s.updatingCapabilityOverrides)
+  const [selections, setSelections] = useState(() =>
+    initialOverrideSelections(model.capability_overrides),
+  )
+
+  const handleSave = async () => {
+    await updateOverrides(providerName, model.id, buildOverridesRequest(selections))
+  }
+
+  return (
+    <div className="flex flex-col gap-section-gap border-t border-border pt-section-gap">
+      <h3 className="text-sm font-medium text-foreground">Capability overrides</h3>
+      <p className="text-xs text-text-muted">
+        Force a capability on or off when the model card is silent on it. An override wins over
+        whatever the provider or LiteLLM reports.
+      </p>
+      {OVERRIDE_FIELDS.map((spec) => (
+        <SelectField
+          key={spec.field}
+          label={`${spec.label} (resolved: ${spec.resolved(model) ? 'on' : 'off'})`}
+          value={selections[spec.field]}
+          options={OVERRIDE_OPTIONS}
+          disabled={saving}
+          onChange={(value) => setSelections((prev) => ({ ...prev, [spec.field]: value }))}
+        />
+      ))}
+      <div className="flex justify-end pt-2">
+        <Button size="sm" onClick={handleSave} disabled={saving}>
+          {saving ? 'Saving...' : 'Save overrides'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function LocalParamsForm({
   providerName,
   model,
   onClose,
@@ -166,18 +286,6 @@ function ModelConfigForm({
 
   return (
     <div className="flex flex-col gap-section-gap">
-      {model.stale != null && (
-        <ErrorBanner
-          variant="section"
-          severity="warning"
-          title="This model is stale"
-          description={`${model.id} was ${STALE_REASON_LABEL[model.stale.reason]}.${
-            model.stale.successor_model_id != null
-              ? ` Consider switching to ${model.stale.successor_model_id}.`
-              : ' Consider switching to a current model.'
-          }`}
-        />
-      )}
       <ModelConfigFields
         numCtx={numCtx}
         setNumCtx={setNumCtx}
@@ -202,7 +310,46 @@ function ModelConfigForm({
   )
 }
 
-export function ModelConfigDrawer({ providerName, model, open, onClose }: ModelConfigDrawerProps) {
+function ModelConfigDrawerBody({
+  providerName,
+  model,
+  onClose,
+  supportsLocalParams,
+}: {
+  providerName: string
+  model: ProviderModelResponse
+  onClose: () => void
+  supportsLocalParams: boolean
+}) {
+  return (
+    <div className="flex flex-col gap-section-gap">
+      {model.stale != null && (
+        <ErrorBanner
+          variant="section"
+          severity="warning"
+          title="This model is stale"
+          description={`${model.id} was ${STALE_REASON_LABEL[model.stale.reason]}.${
+            model.stale.successor_model_id != null
+              ? ` Consider switching to ${model.stale.successor_model_id}.`
+              : ' Consider switching to a current model.'
+          }`}
+        />
+      )}
+      {supportsLocalParams && (
+        <LocalParamsForm providerName={providerName} model={model} onClose={onClose} />
+      )}
+      <CapabilityOverridesForm providerName={providerName} model={model} />
+    </div>
+  )
+}
+
+export function ModelConfigDrawer({
+  providerName,
+  model,
+  open,
+  onClose,
+  supportsLocalParams,
+}: ModelConfigDrawerProps) {
   return (
     <Drawer
       open={open}
@@ -210,11 +357,12 @@ export function ModelConfigDrawer({ providerName, model, open, onClose }: ModelC
       title={model ? `Configure ${model.id}` : 'Configure Model'}
     >
       {model && (
-        <ModelConfigForm
+        <ModelConfigDrawerBody
           key={model.id}
           providerName={providerName}
           model={model}
           onClose={onClose}
+          supportsLocalParams={supportsLocalParams}
         />
       )}
     </Drawer>

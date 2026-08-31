@@ -64,4 +64,29 @@ describe('ProviderModelList capability provenance', () => {
     )
     expect(screen.getByText('cached')).toBeInTheDocument()
   })
+
+  it('marks an operator-overridden capability, not an auto-detected one', () => {
+    render(
+      <ProviderModelList
+        models={[
+          buildModel({
+            metadata_source: 'litellm',
+            supports_prompt_caching: true,
+            supports_tools: true,
+            capability_overrides: {
+              supports_tools: null,
+              supports_vision: null,
+              supports_streaming: null,
+              supports_embeddings: null,
+              supports_image_generation: null,
+              supports_reasoning: null,
+              supports_prompt_caching: true,
+            },
+          }),
+        ]}
+      />,
+    )
+    expect(screen.getByTitle('cached: set by an operator override')).toBeInTheDocument()
+    expect(screen.getByText('tools')).not.toHaveAttribute('title')
+  })
 })
