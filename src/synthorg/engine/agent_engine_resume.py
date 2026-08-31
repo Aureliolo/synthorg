@@ -320,20 +320,8 @@ class AgentEngineResumeMixin:
         )
         return budget_checker, sync_ctx_ceilings(ctx, budget_checker)
 
-    async def _dispatch_resumed_execution(  # noqa: PLR0913
-        self,
-        *,
-        budget_checker: SessionBudgetChecker | None,
-        identity: AgentIdentity,
-        task: Task,
-        agent_id: str,
-        task_id: str,
-        ctx: AgentContext,
-        system_prompt: SystemPrompt,
-        tool_invoker: ToolInvokerProtocol | None,
-        effective_autonomy: EffectiveAutonomy | None,
-        start: float,
-        timeout_seconds: float | None,
+    async def _dispatch_resumed_execution(
+        self, request: AgentExecuteRequest
     ) -> AgentRunResult:
         """Run the resumed loop, mirroring ``run()``'s error handling.
 
@@ -353,48 +341,32 @@ class AgentEngineResumeMixin:
             # would otherwise discard a task that already produced artifacts
             # before the approval park.
             with resumed_run_scope():
-                return await self._execute(
-                    AgentExecuteRequest(
-                        identity=identity,
-                        task=task,
-                        agent_id=agent_id,
-                        task_id=task_id,
-                        completion_config=None,
-                        ctx=ctx,
-                        system_prompt=system_prompt,
-                        start=start,
-                        timeout_seconds=timeout_seconds,
-                        tool_invoker=tool_invoker,
-                        effective_autonomy=effective_autonomy,
-                        provider=self._provider,
-                        budget_checker=budget_checker,
-                    )
-                )
+                return await self._execute(request)
         except BudgetExhaustedError as exc:
             return await self._handle_budget_error(
                 exc=exc,
-                identity=identity,
-                task=task,
-                agent_id=agent_id,
-                task_id=task_id,
-                duration_seconds=self._clock.monotonic() - start,
-                ctx=ctx,
-                system_prompt=system_prompt,
+                identity=request.identity,
+                task=request.task,
+                agent_id=request.agent_id,
+                task_id=request.task_id,
+                duration_seconds=self._clock.monotonic() - request.start,
+                ctx=request.ctx,
+                system_prompt=request.system_prompt,
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             # lint-allow: swallow-ok -- fatal-error boundary returns FAILED
             reraise_critical(exc)
             return await self._handle_fatal_error(
                 exc=exc,
-                identity=identity,
-                task=task,
-                agent_id=agent_id,
-                task_id=task_id,
-                duration_seconds=self._clock.monotonic() - start,
-                ctx=ctx,
-                system_prompt=system_prompt,
-                effective_autonomy=effective_autonomy,
-                provider=self._provider,
+                identity=request.identity,
+                task=request.task,
+                agent_id=request.agent_id,
+                task_id=request.task_id,
+                duration_seconds=self._clock.monotonic() - request.start,
+                ctx=request.ctx,
+                system_prompt=request.system_prompt,
+                effective_autonomy=request.effective_autonomy,
+                provider=request.provider,
             )
 
     async def _resume_execute(  # noqa: PLR0913
@@ -421,17 +393,21 @@ class AgentEngineResumeMixin:
             task=task, agent_id=agent_id, task_id=task_id, ctx=ctx
         )
         result = await self._dispatch_resumed_execution(
-            budget_checker=budget_checker,
-            identity=identity,
-            task=task,
-            agent_id=agent_id,
-            task_id=task_id,
-            ctx=ctx,
-            system_prompt=system_prompt,
-            tool_invoker=tool_invoker,
-            effective_autonomy=effective_autonomy,
-            start=start,
-            timeout_seconds=timeout_seconds,
+            AgentExecuteRequest(
+                identity=identity,
+                task=task,
+                agent_id=agent_id,
+                task_id=task_id,
+                completion_config=None,
+                ctx=ctx,
+                system_prompt=system_prompt,
+                start=start,
+                timeout_seconds=timeout_seconds,
+                tool_invoker=tool_invoker,
+                effective_autonomy=effective_autonomy,
+                provider=self._provider,
+                budget_checker=budget_checker,
+            )
         )
         logger.info(
             APPROVAL_GATE_RESUME_COMPLETED,
