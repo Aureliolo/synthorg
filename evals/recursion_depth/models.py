@@ -362,7 +362,7 @@ class UnitRecord(BaseModel):
     produced: bool = False
     attempts: int = Field(default=0, ge=0)
     turns: int = Field(default=0, ge=0)
-    cost: float | None = Field(default=0.0)
+    cost: float | None = Field(default=0.0, ge=0.0)
     tokens: int = Field(default=0, ge=0)
     input_tokens: int | None = Field(default=None, ge=0)
     output_tokens: int | None = Field(default=None, ge=0)
@@ -394,6 +394,30 @@ class UnitRecord(BaseModel):
             msg = (
                 f"unit {self.unit_id} delivered and still reports "
                 f"{self.detail!r} as why it did not"
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _parked_attempts_bounded_by_rounds(self) -> Self:
+        """A round parks at most once, so parks cannot outnumber rounds.
+
+        ``CellRecord.is_unjudged`` keys on ``parked_attempts == len(terminations)``
+        to decide whether a merge was judged at all; enforcing the bound here
+        rather than trusting every future writer keeps that equality from
+        silently going one-sided.
+
+        Returns:
+            ``self`` when the count is in range.
+
+        Raises:
+            ValueError: ``parked_attempts`` exceeds the number of rounds this
+                unit actually ran.
+        """
+        if self.parked_attempts > len(self.terminations):
+            msg = (
+                f"unit {self.unit_id} reports {self.parked_attempts} parked "
+                f"attempts across only {len(self.terminations)} rounds"
             )
             raise ValueError(msg)
         return self
@@ -626,7 +650,7 @@ class DepthPoint(BaseModel):
     required: int = Field(ge=0)
     satisfied: int = Field(ge=0)
     cells: int = Field(ge=0)
-    cost: float | None = Field(default=None)
+    cost: float | None = Field(default=None, ge=0.0)
     tokens: int = Field(default=0, ge=0)
     attempts: int = Field(default=0, ge=0)
 

@@ -184,9 +184,15 @@ async def _do_semantic_compaction(
         ctx, archivable, config, preserve_markers_override=preserve_markers_override
     )
     if summarizer is not None and config.llm_summarizer_enabled:
+        preserve_markers = (
+            config.preserve_epistemic_markers
+            if preserve_markers_override is None
+            else preserve_markers_override
+        )
         summary_text = await summarizer.summarize(
             archivable,
             fallback_text=summary_text,
+            preserve_markers=preserve_markers,
         )
     if offloader is not None and config.memory_offload_enabled:
         await offloader.offload(

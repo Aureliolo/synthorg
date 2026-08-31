@@ -26,6 +26,8 @@ from synthorg.engine.checkpoint.resume import (
 from synthorg.engine.context import AgentContext
 from synthorg.engine.cost_recording import record_execution_costs
 from synthorg.engine.errors import RecoveryCheckpointMissingError
+from synthorg.engine.loop_budget_signal import resolve_budget_signal_config
+from synthorg.engine.loop_empty_run import resolve_produce_early_percent
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
@@ -61,6 +63,7 @@ if TYPE_CHECKING:
         HeartbeatRepository,
     )
     from synthorg.persistence.project_protocol import ProjectRepository
+    from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
 
@@ -98,6 +101,7 @@ class AgentEngineCheckpointResumeMixin:
     _validate_project: ValidateProject
     _build_budget_checker: BuildBudgetChecker
     _budget_enforcer: BudgetEnforcer | None
+    _config_resolver: ConfigResolver | None
     _loop: ExecutionLoop
     _make_loop_with_callback: MakeLoopWithCallback
     _provider: CompletionProvider
@@ -209,6 +213,14 @@ class AgentEngineCheckpointResumeMixin:
             if checkpoint_ctx.task_execution is not None
             else None
         )
+        # A checkpoint-resumed run is exactly the long, budget-bounded
+        # session these two exist to keep legible; without them a run
+        # surviving a restart loses its turn-boundary remainder report and
+        # its terminal warning for the rest of its life.
+        budget_signal_config = await resolve_budget_signal_config(self._config_resolver)
+        produce_early_percent = await resolve_produce_early_percent(
+            self._config_resolver
+        )
 
         loop = self._make_loop_with_callback(self._loop, agent_id, task_id)
         result: ExecutionResult = await loop.execute(
@@ -224,6 +236,8 @@ class AgentEngineCheckpointResumeMixin:
             budget_checker=budget_checker,
             shutdown_checker=self._shutdown_checker,
             completion_config=completion_config,
+            budget_signal_config=budget_signal_config,
+            produce_early_percent=produce_early_percent,
         )
         return result
 

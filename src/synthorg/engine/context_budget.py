@@ -117,6 +117,8 @@ class ContextBudgetIndicator(BaseModel):
 
 def make_context_indicator(
     ctx: AgentContext,
+    *,
+    source: str = "prompt_declaration",
 ) -> ContextBudgetIndicator:
     """Create a ``ContextBudgetIndicator`` from an ``AgentContext``.
 
@@ -125,6 +127,12 @@ def make_context_indicator(
 
     Args:
         ctx: Agent context with fill and capacity data.
+        source: What is rendering this indicator: ``"prompt_declaration"``
+            (the default, once per run when the system prompt is built) or
+            ``"turn_signal"`` (a per-turn render at the turn-boundary budget
+            signal). Logged rather than inferred, since the two calls are
+            otherwise indistinguishable in the event stream despite meaning
+            different things.
 
     Returns:
         Frozen indicator model.
@@ -146,12 +154,17 @@ def make_context_indicator(
         ),
         token_ceiling=ctx.token_ceiling,
     )
-    logger.debug(
+    # info, not debug: a "turn_signal" render IS the budget signal firing,
+    # and an operator diagnosing a run's behaviour should see it without
+    # needing full debug tracing (bounded by the step-percent gate, so this
+    # is not per-turn volume).
+    logger.info(
         CONTEXT_BUDGET_INDICATOR_INJECTED,
         execution_id=ctx.execution_id,
         fill_tokens=indicator.fill_tokens,
         capacity_tokens=indicator.capacity_tokens,
         fill_percent=indicator.fill_percent,
+        source=source,
     )
     return indicator
 

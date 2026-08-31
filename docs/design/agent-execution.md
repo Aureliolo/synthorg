@@ -42,9 +42,13 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     `CompletionProvider`, optional `ToolInvoker`, optional `BudgetChecker`,
     optional `ShutdownChecker`, optional `CompletionConfig`, optional
     `TaskCancellationChecker` (operator cancellation and supersession),
-    optional `TurnObserver` (per-step progress), and
+    optional `TurnObserver` (per-step progress),
     `streaming_enabled` (streams each turn and makes it interruptible
-    mid-flight for cancellation and steering REDIRECT).
+    mid-flight for cancellation and steering REDIRECT), optional
+    `BudgetSignalConfig` and `produce_early_percent` (the turn-boundary
+    budget signal's thresholds and the produce-early checkpoint's spend
+    threshold, both described in
+    [Turn-Boundary Signals](#turn-boundary-signals) below).
 
     The loop reports a turn once; how many things listen is the engine's
     business, so `compose_turn_observers` fans it out. Two listen today: the
@@ -751,7 +755,7 @@ system prompts, and compresses conversations at turn boundaries.
 
 ### Context Fill Tracking
 
-`AgentContext` carries three context-budget fields:
+`AgentContext` carries three fill-estimation fields:
 
 - `context_fill_tokens`: estimated tokens in the full context (system prompt +
   conversation + tool definitions)
@@ -759,6 +763,17 @@ system prompts, and compresses conversations at turn boundaries.
   `ModelCapabilities`, or `None` when unknown
 - `context_fill_percent`: computed percentage (`fill / capacity * 100`),
   `None` when capacity is unknown
+
+Alongside these, `AgentContext` carries the budget and turn-boundary state the
+sections below describe: `cost_ceiling` and `token_ceiling` (the published
+per-session bounds a checker enforces against, read by
+[Turn-Boundary Signals](#turn-boundary-signals) below),
+`budget_signal_last_step_percent` (the highest step already reported, so a
+crossing fires once), `produce_early_nudged` (whether the produce-early
+checkpoint has already fired this run), and `compaction_request` (a pending
+agent-directed `compact_context` directive, see
+[Agent-Controlled Context Compaction](#agent-controlled-context-compaction)
+below).
 
 Fill is re-estimated after each turn via `update_context_fill()` in
 `context_budget.py`, using the `PromptTokenEstimator` protocol (default:

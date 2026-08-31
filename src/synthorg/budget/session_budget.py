@@ -161,8 +161,20 @@ class SessionBudgetChecker:
     gauge reads the exact pair the predicate below is closed over, not a
     second resolution of it.
 
+    That guarantee is exact for the token axis, which has one check
+    (``hard_token_ceiling``) and it is what :attr:`ceilings` publishes. It is
+    looser for cost: :attr:`ceilings`'s ``cost_ceiling`` is only the tighter
+    of the task and per-run money bounds, and does not fold in an
+    estate-level bound (project, monthly, daily) that ``_check`` also
+    enforces and that may be the one actually tightest for a given run.
+    Nothing renders ``cost_ceiling`` to the agent today, so the gap is
+    dormant; it needs closing before a cost-based analogue of the token
+    budget signal is built on top of this.
+
     Attributes:
-        ceilings: The bound this checker enforces.
+        ceilings: The bound this checker enforces. Exact for
+            ``token_ceiling``; may be looser than the true enforced stop for
+            ``cost_ceiling`` when an estate-level bound binds tighter.
     """
 
     ceilings: SessionCeilings

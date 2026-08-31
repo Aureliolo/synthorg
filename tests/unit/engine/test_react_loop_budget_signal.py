@@ -8,6 +8,7 @@ with a terminal warning near the ceiling") is checked against the loop, not
 just the function.
 """
 
+import re
 from datetime import date
 from typing import override
 
@@ -94,6 +95,14 @@ def _user_messages(ctx: AgentContext) -> list[str]:
     ]
 
 
+def _extract_remaining_tokens(line: str, *, ceiling: int = 1_000) -> int:
+    """Read the spend figure out of an injected budget line's own text."""
+    match = re.search(r"Budget: ([\d,]+)/", line)
+    assert match is not None, line
+    spent = int(match.group(1).replace(",", ""))
+    return ceiling - spent
+
+
 class TestReactLoopBudgetSignal:
     """The signal fires at declared steps and escalates near the ceiling."""
 
@@ -140,9 +149,11 @@ class TestReactLoopBudgetSignal:
         assert "50%" in step_lines[1]
         assert "75%" in step_lines[2]
 
-        remainders = [int(1_000 - pct) * 10 for pct in (30, 55, 82)]
+        # Each step line names a strictly smaller remainder than the last:
+        # 700, then 450, then 180 tokens left out of the 1,000 ceiling.
+        remainders = [_extract_remaining_tokens(line) for line in step_lines]
+        assert remainders == [700, 450, 180]
         assert remainders == sorted(remainders, reverse=True)
-        assert len(set(remainders)) == len(remainders)
 
         terminal_lines = signal_lines[3:]
         assert len(terminal_lines) == 2

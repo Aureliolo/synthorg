@@ -594,7 +594,12 @@ def _gate_table(report: RecursionDepthReport) -> list[str]:
     cost: dict[Arm, list[float | None]] = {arm: [] for arm in Arm}
     for cell, unit in _merges_of(report):
         merges[cell.arm] += 1
-        parked[cell.arm] += int(unit.parked)
+        # unit.parked reads only the LAST review, so a merge parked on
+        # attempt 1 and approved on attempt 2 reads False there even though
+        # a round genuinely escalated. parked_attempts counts every round
+        # that did, which is the figure "how many escalations happened"
+        # actually asks for.
+        parked[cell.arm] += unit.parked_attempts
         amendments[cell.arm] += unit.amendments
         attempts[cell.arm] += unit.attempts
         tokens[cell.arm] += unit.tokens

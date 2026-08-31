@@ -411,9 +411,17 @@ def _started[RecordT: BaseModel](
         The open journal.
     """
     handle = path.open("w", encoding="utf-8", newline="")
-    handle.write(json.dumps({_HEADER_KIND_FIELD: spec.kind} | dict(identity)) + "\n")
-    handle.flush()
-    os.fsync(handle.fileno())
+    try:
+        header = {_HEADER_KIND_FIELD: spec.kind} | dict(identity)
+        handle.write(json.dumps(header) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    except OSError, ValueError:
+        # A partially-written header leaves nothing worth keeping open: the
+        # handle would otherwise leak until GC/process exit, held for a
+        # journal this call is about to fail out of anyway.
+        handle.close()
+        raise
     return RunJournal(handle, spec)
 
 

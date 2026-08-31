@@ -46,7 +46,6 @@ class AgentExecuteRequest:
     tool_invoker: ToolInvokerProtocol | None = None
     effective_autonomy: EffectiveAutonomy | None = None
     provider: CompletionProvider | None = None
-    project_budget: float = 0.0
     budget_checker: SessionBudgetChecker | None = None
 
     def __post_init__(self) -> None:

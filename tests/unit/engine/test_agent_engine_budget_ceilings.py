@@ -22,7 +22,7 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.context import AgentContext
-from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.providers.enums import MessageRole
 from tests._shared import as_uuid
 
@@ -237,3 +237,45 @@ class TestApprovalResumeAlsoGetsAChecker:
             result.execution_result.termination_reason
             == TerminationReason.BUDGET_EXHAUSTED
         )
+
+
+class TestCheckpointResumeAlsoGetsTheTurnBoundarySignals:
+    """A checkpoint-resumed run must not lose the budget signal or the
+    produce-early nudge -- both are gated only on ``ctx.token_ceiling``, so a
+    resumed run that carries a real ceiling (the ceiling-stamping half of this
+    fix) still needs both parameters threaded into ``loop.execute`` to
+    actually render them.
+    """
+
+    async def test_execute_resumed_loop_passes_both_signals(
+        self,
+        sample_agent: AgentIdentity,
+        mock_provider_factory: type,
+    ) -> None:
+        task = _task(sample_agent, hard_token_ceiling=500_000)
+        provider = mock_provider_factory([])
+        engine = AgentEngine(provider=provider)
+        checkpoint_ctx = AgentContext.from_identity(
+            sample_agent, task=task, token_ceiling=500_000
+        )
+
+        captured: dict[str, object] = {}
+
+        async def _fake_execute(**kwargs: object) -> ExecutionResult:
+            captured.update(kwargs)
+            ctx = kwargs["context"]
+            assert isinstance(ctx, AgentContext)
+            return ExecutionResult(
+                context=ctx, termination_reason=TerminationReason.COMPLETED
+            )
+
+        engine._loop.execute = _fake_execute  # type: ignore[method-assign]
+
+        await engine._execute_resumed_loop(
+            checkpoint_ctx,
+            agent_id=str(sample_agent.id),
+            task_id=str(task.id),
+        )
+
+        assert captured["budget_signal_config"] is not None
+        assert captured["produce_early_percent"] is not None

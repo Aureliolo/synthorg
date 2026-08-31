@@ -20,6 +20,7 @@ from synthorg.execution.turn import TurnRecord
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.context_budget import (
     CONTEXT_BUDGET_COMPACTION_FAILED,
+    CONTEXT_BUDGET_COMPACTION_SKIPPED,
 )
 from synthorg.observability.events.execution import (
     EXECUTION_LOOP_BUDGET_EXHAUSTED,
@@ -315,15 +316,30 @@ async def invoke_compaction(
         MemoryError: Re-raised unconditionally.
         RecursionError: Re-raised unconditionally.
     """
-    if compaction_callback is None:
-        return None
     requested = ctx.compaction_request
+    if compaction_callback is None:
+        # No compaction is wired at all. A pending agent-directed request
+        # would otherwise never be cleared: it is read nowhere else, so it
+        # would strand on the context forever, with the tool having promised
+        # "it will run before your next turn." Clearing it here is the
+        # honest no-op, not a silent stranding.
+        if requested is None:
+            return None
+        return ctx.model_copy(update={"compaction_request": None})
     try:
         if requested is None:
             return await compaction_callback(ctx)
         compacted = await compaction_callback(
             ctx, force=True, preserve_markers=requested.preserve_markers
         )
+        if compacted is None:
+            logger.debug(
+                CONTEXT_BUDGET_COMPACTION_SKIPPED,
+                execution_id=ctx.execution_id,
+                turn=turn_number,
+                reason="agent_directed_request_declined",
+                forced=True,
+            )
         return (compacted if compacted is not None else ctx).model_copy(
             update={"compaction_request": None}
         )

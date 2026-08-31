@@ -17,20 +17,23 @@ context or ``None``.
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.context import AgentContext
 from synthorg.engine.context_budget import make_context_indicator
 from synthorg.engine.loop_budget_defaults import (
     DEFAULT_BUDGET_SIGNAL_STEP_PERCENT,
     DEFAULT_BUDGET_SIGNAL_TERMINAL_PERCENT,
 )
-from synthorg.observability import get_logger, safe_error_description
-from synthorg.observability.events.execution import EXECUTION_ENGINE_ERROR
+from synthorg.observability import get_logger
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
+from synthorg.settings.kill_switch import resolve_int_with_fallback
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 logger = get_logger(__name__)
+
+_ENGINE_NAMESPACE = "engine"
+_STEP_PERCENT_KEY = "budget_signal_step_percent"
+_TERMINAL_PERCENT_KEY = "budget_signal_terminal_percent"
 
 
 class BudgetSignalConfig(BaseModel):
@@ -46,9 +49,11 @@ class BudgetSignalConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    step_percent: int = Field(ge=0, description="Percent interval between reports")
+    step_percent: int = Field(
+        ge=0, le=100, description="Percent interval between reports"
+    )
     terminal_percent: int = Field(
-        gt=0, description="Percent past which every turn warns"
+        gt=0, le=100, description="Percent past which every turn warns"
     )
 
 
@@ -58,40 +63,32 @@ async def resolve_budget_signal_config(
     """Resolve the live budget-signal thresholds.
 
     Read per run, beside ``resolve_turn_extensions``: an operator's change
-    takes effect on the next dispatch rather than the next restart.
+    takes effect on the next dispatch rather than the next restart. Each key
+    resolves through its own :func:`resolve_int_with_fallback` call, on the
+    same convention every other live-resolved setting in the tree uses, so a
+    resolver outage on one key is attributable (``SETTINGS_FETCH_FAILED``
+    names the failing ``namespace``/``key``) rather than leaving both
+    thresholds unexplained.
 
     Args:
         config_resolver: Settings resolver, or ``None`` when unwired.
 
     Returns:
         The operator-configured thresholds, or the declared defaults when no
-        resolver is wired or the read fails.
+        resolver is wired or a read fails.
     """
-    if config_resolver is None:
-        return BudgetSignalConfig(
-            step_percent=DEFAULT_BUDGET_SIGNAL_STEP_PERCENT,
-            terminal_percent=DEFAULT_BUDGET_SIGNAL_TERMINAL_PERCENT,
-        )
-    try:
-        step_percent = await config_resolver.get_int(
-            "engine", "budget_signal_step_percent"
-        )
-        terminal_percent = await config_resolver.get_int(
-            "engine", "budget_signal_terminal_percent"
-        )
-    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-        # lint-allow: swallow-ok -- degrade-to-default wiring
-        reraise_critical(exc)
-        logger.warning(
-            EXECUTION_ENGINE_ERROR,
-            note="failed to read the budget-signal thresholds, using defaults",
-            error_type=type(exc).__name__,
-            error=safe_error_description(exc),
-        )
-        return BudgetSignalConfig(
-            step_percent=DEFAULT_BUDGET_SIGNAL_STEP_PERCENT,
-            terminal_percent=DEFAULT_BUDGET_SIGNAL_TERMINAL_PERCENT,
-        )
+    step_percent = await resolve_int_with_fallback(
+        resolver=config_resolver,
+        namespace=_ENGINE_NAMESPACE,
+        key=_STEP_PERCENT_KEY,
+        fallback=DEFAULT_BUDGET_SIGNAL_STEP_PERCENT,
+    )
+    terminal_percent = await resolve_int_with_fallback(
+        resolver=config_resolver,
+        namespace=_ENGINE_NAMESPACE,
+        key=_TERMINAL_PERCENT_KEY,
+        fallback=DEFAULT_BUDGET_SIGNAL_TERMINAL_PERCENT,
+    )
     return BudgetSignalConfig(
         step_percent=step_percent, terminal_percent=terminal_percent
     )
@@ -103,7 +100,7 @@ def _step_message(ctx: AgentContext, boundary: int) -> str:
     Returns:
         The USER-role message content.
     """
-    indicator = make_context_indicator(ctx).format()
+    indicator = make_context_indicator(ctx, source="turn_signal").format()
     return (
         f"{indicator} You have used {boundary}% of your token budget for this "
         "run. If you have not started producing your deliverable, start now; "
@@ -117,7 +114,7 @@ def _terminal_message(ctx: AgentContext, terminal_percent: int) -> str:
     Returns:
         The USER-role message content.
     """
-    indicator = make_context_indicator(ctx).format()
+    indicator = make_context_indicator(ctx, source="turn_signal").format()
     return (
         f"{indicator} You are at or past {terminal_percent}% of your token "
         "budget, close to this run's ceiling. Finish or record what you have "
@@ -139,8 +136,10 @@ def check_budget_signal(
     Returns:
         The context with the injected message (and, for a step report, the
         crossed boundary recorded), or ``None`` when nothing should be
-        reported this turn -- a run with no token ceiling, a spend still
-        below the next undeclared step, or a step already announced.
+        reported this turn -- a run with no token ceiling, the periodic
+        signal disabled (``step_percent <= 0``) with spend still below the
+        terminal share, a spend still below the next undeclared step, or a
+        step already announced.
     """
     if ctx.token_ceiling is None:
         return None

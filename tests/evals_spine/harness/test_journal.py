@@ -8,6 +8,7 @@ the two halves of that disagree by default.
 """
 
 import json
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
@@ -694,14 +695,17 @@ class TestConcurrentRecording:
     ) -> None:
         journal, _ = _opened(tmp_path, resume=False)
         count = 32
+        # Without a shared start line, scheduling alone could run every
+        # thread to completion before another begins, leaving no actual
+        # overlap for `record()`'s lock to arbitrate.
+        barrier = threading.Barrier(count)
+
+        def _record(tokens: int) -> None:
+            barrier.wait()
+            journal.record(_measured(tokens=tokens))
 
         with ThreadPoolExecutor(max_workers=count) as pool:
-            list(
-                pool.map(
-                    lambda tokens: journal.record(_measured(tokens=tokens)),
-                    range(count),
-                )
-            )
+            list(pool.map(_record, range(count)))
         journal.close()
 
         lines = (tmp_path / JOURNAL_NAME).read_text(encoding="utf-8").splitlines()

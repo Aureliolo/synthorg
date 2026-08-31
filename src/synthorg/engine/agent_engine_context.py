@@ -197,6 +197,49 @@ class AgentEngineContextMixin:
             return None
         return capabilities.max_context_tokens
 
+    async def _resolve_ceilings(
+        self,
+        *,
+        provider: CompletionProvider,
+        identity: AgentIdentity,
+        budget_checker: SessionBudgetChecker | None,
+        agent_id: str,
+        task_id: str,
+    ) -> tuple[float | None, int | None, int | None]:
+        """Resolve what this run's context should be constructed with.
+
+        ``SessionCeilings`` spells "disabled" as 0 (a helper session builds
+        it from optionals via ``.of``); ``AgentContext`` spells the same
+        fact ``None`` (a ``gt=0`` field). This is the one site where the two
+        spellings are declared equivalent, since a verbatim stamp of a
+        genuinely-zero money bound (a flat-rate connection) would fail the
+        context's own validation.
+
+        Returned rather than stamped via ``model_copy``: ``AgentContext``'s
+        ``gt=0`` / no-NaN constraints on these three fields only validate
+        through the constructor, per ``from_identity``'s own docstring, so
+        the caller must pass them into ``AgentContext.from_identity``
+        itself.
+
+        Returns:
+            ``(cost_ceiling, token_ceiling, context_capacity_tokens)``.
+        """
+        ceilings = budget_checker.ceilings if budget_checker is not None else None
+        cost_ceiling = (
+            ceilings.cost_ceiling
+            if ceilings is not None and ceilings.cost_ceiling > 0
+            else None
+        )
+        token_ceiling = (
+            ceilings.token_ceiling
+            if ceilings is not None and ceilings.token_ceiling > 0
+            else None
+        )
+        context_capacity_tokens = await self._resolve_context_capacity_tokens(
+            provider, identity, agent_id=agent_id, task_id=task_id
+        )
+        return cost_ceiling, token_ceiling, context_capacity_tokens
+
     async def _prepare_context(
         self,
         *,
@@ -224,29 +267,16 @@ class AgentEngineContextMixin:
             if self._budget_enforcer is not None
             else DEFAULT_CURRENCY
         )
-        # ``SessionCeilings`` spells "disabled" as 0 (a helper session builds
-        # it from optionals via ``.of``); ``AgentContext`` spells the same
-        # fact ``None`` (a ``gt=0`` field). This is the one site where the two
-        # spellings are declared equivalent, since a verbatim stamp of a
-        # genuinely-zero money bound (a flat-rate connection) would fail the
-        # context's own validation.
-        ceilings = (
-            execution.budget_checker.ceilings
-            if execution.budget_checker is not None
-            else None
-        )
-        cost_ceiling = (
-            ceilings.cost_ceiling
-            if ceilings is not None and ceilings.cost_ceiling > 0
-            else None
-        )
-        token_ceiling = (
-            ceilings.token_ceiling
-            if ceilings is not None and ceilings.token_ceiling > 0
-            else None
-        )
-        context_capacity_tokens = await self._resolve_context_capacity_tokens(
-            execution.provider, identity, agent_id=agent_id, task_id=task_id
+        (
+            cost_ceiling,
+            token_ceiling,
+            context_capacity_tokens,
+        ) = await self._resolve_ceilings(
+            provider=execution.provider,
+            identity=identity,
+            budget_checker=execution.budget_checker,
+            agent_id=agent_id,
+            task_id=task_id,
         )
 
         # Built before the prompt so the declaration below reads the exact

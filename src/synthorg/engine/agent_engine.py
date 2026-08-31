@@ -699,7 +699,6 @@ class AgentEngine(
                             tool_invoker=tool_invoker,
                             effective_autonomy=effective_autonomy,
                             provider=provider,
-                            project_budget=_project_budget,
                             budget_checker=budget_checker,
                         )
                     )

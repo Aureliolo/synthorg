@@ -177,6 +177,7 @@ async def nudge_empty_run(
         execution_id=ctx.execution_id,
         turn=turn_number,
         turns_remaining=ctx.max_turns - turn_number,
+        trigger="empty_turn",
     )
     return ctx.with_message(message)
 

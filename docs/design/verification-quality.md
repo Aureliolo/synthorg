@@ -611,11 +611,15 @@ Two things then happen without an operator watching:
 **A parked gate with no human is the harness's problem, not the product's.**
 Every park above heals because something can eventually answer it: a human
 decision, a staffing reconciler, an operator hire. The recursion-depth eval
-harness's `BlindMergeReviewer` (`evals/recursion_depth/`) parks a merge
-attempt the same way (`parked=True`, no verdict) to measure what an
-unresolvable escalation does to the repair loop, and nothing in the harness
-ever answers it -- there is no human, no reconciler, no staffing sweep. A
-merge whose every attempt parks that way is therefore UNJUDGED rather than
+harness's gated arm reviews each merge through `OracleMergeReviewer`
+(`evals/recursion_depth/gate.py`), which reaches this same completion-oracle
+ESCALATE path when its review session starves; when that happens the merge
+parks (`parked=True`, no verdict) exactly as the product's own parks do, and
+nothing in the harness ever answers it -- there is no human, no reconciler, no
+staffing sweep. The ungated arm's `BlindMergeReviewer` never parks by
+construction (it returns `approved=None, parked=False` on every attempt,
+having asked no question to escalate), so this is a gated-arm-only failure
+mode. A merge whose every attempt parks is therefore UNJUDGED rather than
 gated-and-approved, and the report excludes it from the depth curve rather
 than reading the absence of an answer as one. That is a deliberate property
 of the measurement, not a gap in this design: the product's own parks always

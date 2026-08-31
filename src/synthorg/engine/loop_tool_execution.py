@@ -329,6 +329,7 @@ def _apply_tool_call_side_effect(
                 CONTEXT_BUDGET_AGENT_COMPACTION_REQUESTED,
                 execution_id=ctx.execution_id,
                 strategy=strategy,
+                reason=reason,
                 preserve_markers=preserve_markers,
                 turn=turn_number,
             )

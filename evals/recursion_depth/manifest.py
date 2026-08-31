@@ -264,7 +264,13 @@ class RecursionDepthManifest(BaseModel):
             reason: a unit is held by ``unit_token_ceiling`` in practice.
         unit_cost_ceiling: What one unit's session may spend before the
             gateway's own hard kill stops it. Money only, so it is half a
-            bound: see ``unit_token_ceiling``.
+            bound: see ``unit_token_ceiling``. Shared unscaled across every
+            role under :func:`session_limits_for` (leaf, planner, merge,
+            review): unlike the token axis there is no
+            ``merge_cost_base`` / ``review_cost_base`` pair, because a
+            flat-rate connection attributes 0.0 to every call and a
+            fan-in-scaled money ceiling would be sized against a bound that
+            never fires there.
         unit_token_ceiling: The same bound counted in tokens, and the only one
             of the two that binds everywhere. A flat-rate connection
             attributes 0.0 to every call, so the cost ceiling cannot fire
@@ -525,10 +531,14 @@ class RecursionDepthManifest(BaseModel):
     def _validate_sizing_bounds(self) -> None:
         """Check every role's cap can hold its own base.
 
-        A cap below its base refuses every session of that role before the
-        sweep starts, which is a matrix that cannot record rather than one
-        that records something too small: catching it here says so at load
-        rather than at the first merge or review that is refused.
+        A cap below its base means :func:`session_limits_for`'s
+        ``min(base, cap)`` silently sizes every session of that role to the
+        undersized cap instead, which nothing downstream would catch as a
+        manifest mistake: the session's own budget enforcer would refuse it
+        as an ordinary too-small ceiling at runtime, indistinguishable from
+        the matrix legitimately needing less. Catching it here, as a load-time
+        refusal of the manifest itself, says so before the sweep starts
+        spending rather than at the first merge or review the enforcer stops.
 
         Raises:
             ValueError: A role's base sizing exceeds its own cap.

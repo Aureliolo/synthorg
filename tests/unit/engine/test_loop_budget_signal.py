@@ -8,6 +8,7 @@ connection with no prompt caching.
 """
 
 from datetime import date
+from unittest.mock import call
 
 import pytest
 
@@ -173,3 +174,10 @@ class TestResolveBudgetSignalConfig:
 
         assert config.step_percent == 10
         assert config.terminal_percent == 80
+        # Pins the actual (namespace, key) pair each read used: a resolver
+        # reading the wrong setting would still satisfy the assertions above
+        # if it happened to read a same-shaped value from elsewhere.
+        assert resolver.get_int.call_args_list == [
+            call("engine", "budget_signal_step_percent"),
+            call("engine", "budget_signal_terminal_percent"),
+        ]

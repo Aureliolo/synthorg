@@ -633,9 +633,10 @@ class TestResponseToMessage:
     def test_a_reasoning_only_turn_says_nothing_out_loud(self) -> None:
         """The working is not something the model said, so it is not content.
 
-        Nor is it an empty assistant message: an OpenAI-compatible provider
-        rejects one outright ("Assistant message must have either content or
-        tool_calls, but not none"), so replaying it kills the very next call.
+        Nor is it an empty assistant message: a chat-completions-style
+        provider rejects one outright ("Assistant message must have either
+        content or tool_calls, but not none"), so replaying it kills the
+        very next call.
         The turn is recorded by its ``TurnRecord``; the conversation records
         what was said, and nothing was.
         """
