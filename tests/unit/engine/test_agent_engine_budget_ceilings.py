@@ -18,6 +18,8 @@ from synthorg.budget.config import BudgetAlertConfig, BudgetConfig
 from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.project import Project
+from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.engine.agent_engine import AgentEngine
@@ -25,6 +27,7 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.providers.enums import MessageRole
 from tests._shared import as_uuid
+from tests.unit.budget.conftest import make_cost_record
 
 from .conftest import make_completion_response
 
@@ -238,6 +241,52 @@ class TestApprovalResumeAlsoGetsAChecker:
             == TerminationReason.BUDGET_EXHAUSTED
         )
 
+    async def test_resumed_run_enforces_its_project_budget(
+        self,
+        sample_agent: AgentIdentity,
+        mock_provider_factory: type,
+    ) -> None:
+        """The resumed checker must resolve the project budget itself,
+        matching what a fresh run does, rather than defaulting it to 0.0
+        (disabled) as a bare ``_build_budget_checker(task, agent_id,
+        project_id=...)`` call would.
+        """
+        task = _task(sample_agent)
+        cfg = BudgetConfig(
+            total_monthly=1000.0,
+            alerts=BudgetAlertConfig(warn_at=75, critical_at=90, hard_stop_at=100),
+        )
+        tracker = CostTracker(budget_config=cfg)
+        await tracker.record(make_cost_record(project_id=task.project, cost=50.0))
+        enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
+        # Budget already exceeded by the recorded spend above: enforcement
+        # only fires if the resumed checker actually resolves and applies it.
+        project = Project(
+            id=as_uuid(task.project),
+            name="Test Project",
+            budget=10.0,
+            status=ProjectStatus.ACTIVE,
+        )
+        repo = AsyncMock()
+        repo.get = AsyncMock(return_value=project)
+        provider = mock_provider_factory([])
+        engine = AgentEngine(
+            provider=provider, budget_enforcer=enforcer, project_repo=repo
+        )
+        parked_ctx = AgentContext.from_identity(sample_agent, task=task)
+
+        result = await engine.resume_parked_run(
+            parked_context=parked_ctx,
+            approval_id="appr-2",
+            decision_message="Approved, continue.",
+            approved=True,
+        )
+
+        assert (
+            result.execution_result.termination_reason
+            == TerminationReason.BUDGET_EXHAUSTED
+        )
+
 
 class TestCheckpointResumeAlsoGetsTheTurnBoundarySignals:
     """A checkpoint-resumed run must not lose the budget signal or the
@@ -278,3 +327,49 @@ class TestCheckpointResumeAlsoGetsTheTurnBoundarySignals:
 
         assert captured["budget_signal_config"] is not None
         assert captured["produce_early_percent"] is not None
+
+
+class TestCheckpointResumeSyncsAChangedCeiling:
+    """A ceiling changed while the checkpoint sat parked applies to the
+    resumed run, not the number the checkpoint was taken under: the checker
+    rebuilt for resume is what ``loop.execute`` enforces, and the context
+    it is handed must read the same threshold.
+    """
+
+    async def test_context_ceiling_follows_the_rebuilt_checker(
+        self,
+        sample_agent: AgentIdentity,
+        mock_provider_factory: type,
+    ) -> None:
+        # hard_token_ceiling is what _build_budget_checker reads with no org
+        # enforcer wired -- it stands in for the ceiling having changed while
+        # the checkpoint was parked, in this case raised past what the
+        # checkpointed context still carries.
+        task = _task(sample_agent, hard_token_ceiling=750_000)
+        provider = mock_provider_factory([])
+        engine = AgentEngine(provider=provider)
+        checkpoint_ctx = AgentContext.from_identity(
+            sample_agent, task=task, token_ceiling=500_000
+        )
+
+        captured: dict[str, object] = {}
+
+        async def _fake_execute(**kwargs: object) -> ExecutionResult:
+            captured.update(kwargs)
+            ctx = kwargs["context"]
+            assert isinstance(ctx, AgentContext)
+            return ExecutionResult(
+                context=ctx, termination_reason=TerminationReason.COMPLETED
+            )
+
+        engine._loop.execute = _fake_execute  # type: ignore[method-assign]
+
+        await engine._execute_resumed_loop(
+            checkpoint_ctx,
+            agent_id=str(sample_agent.id),
+            task_id=str(task.id),
+        )
+
+        resumed_ctx = captured["context"]
+        assert isinstance(resumed_ctx, AgentContext)
+        assert resumed_ctx.token_ceiling == 750_000

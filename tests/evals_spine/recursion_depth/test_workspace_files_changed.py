@@ -108,7 +108,7 @@ def _markdown(tmp_path: Path, workspace_files_changed: int | None) -> str:
 
 
 class TestFilesChanged:
-    """The pure primitive: the symmetric difference of two fingerprints."""
+    """The pure primitive: how many paths differ between two fingerprints."""
 
     def test_an_unchanged_tree_counts_zero(self) -> None:
         before = frozenset({("a.py", "digest-1")})
@@ -127,12 +127,12 @@ class TestFilesChanged:
 
         assert files_changed(before, after) == 1
 
-    def test_an_edited_file_counts_twice(self) -> None:
-        """Its old pair drops out and its new one enters: two entries, one file."""
+    def test_an_edited_file_counts_once(self) -> None:
+        """One path with a different content key is one changed file, not two."""
         before = frozenset({("a.py", "digest-1")})
         after = frozenset({("a.py", "digest-2")})
 
-        assert files_changed(before, after) == 2
+        assert files_changed(before, after) == 1
 
 
 class TestTheEndingReachesTheReader:

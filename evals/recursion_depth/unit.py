@@ -129,11 +129,11 @@ def probe_artifacts(task: Task, workspace: CellWorkspace) -> ArtifactPresence:
 def files_changed(before: UnitFingerprint, after: UnitFingerprint) -> int:
     """How many produced files a unit's session touched.
 
-    The symmetric difference of the two fingerprints: a file added or removed
-    counts once, a file whose content changed counts twice (its old pair drops
-    out, its new one enters), which is the honest cost of not tracking paths
-    across a rewrite. Distinct from ``produced_tree(...) == baseline``, which
-    only asks whether anything changed at all.
+    Counted by PATH, not by fingerprint entry: a rewrite drops one
+    ``(path, content_key)`` pair and adds another, and the symmetric
+    difference of the raw fingerprints would count that one touched file
+    twice. Distinct from ``produced_tree(...) == baseline``, which only asks
+    whether anything changed at all.
 
     Args:
         before: The unit's tree before the session ran.
@@ -142,7 +142,12 @@ def files_changed(before: UnitFingerprint, after: UnitFingerprint) -> int:
     Returns:
         The count.
     """
-    return len(before ^ after)
+    before_by_path = dict(before)
+    after_by_path = dict(after)
+    return sum(
+        before_by_path.get(path) != after_by_path.get(path)
+        for path in before_by_path.keys() | after_by_path.keys()
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,7 +179,7 @@ class UnitDelivery:
         reason: Why this is not a clean delivery, empty when it is. Set with
             ``produced`` false when nothing was built, and with ``produced``
             true when something was built that does not stand up.
-        workspace_files_changed: The symmetric difference between the tree
+        workspace_files_changed: How many files differ between the tree
             before and after, so "turns were spent and nothing changed" is
             readable from the record without opening a transcript. ``None``
             only when reconstructed from a recording made before this field

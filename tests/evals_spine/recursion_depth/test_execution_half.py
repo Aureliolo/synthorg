@@ -684,18 +684,19 @@ class TestTheMergeLoop:
         assert outcome.parked_attempts == len(outcome.terminations) == 3
         assert outcome.verdict != "approve"
 
-    async def test_workspace_files_changed_is_the_symmetric_difference(
+    async def test_workspace_files_changed_reaches_run_merge(
         self, tmp_path: Path, scripted_sessions: list[_Attempt]
     ) -> None:
         """Wired end to end: the fixture's fingerprint differs before and
-        after by construction, so this covers ``run_merge`` reaching
-        ``files_changed`` rather than ``files_changed`` itself, which is
-        tested against real fingerprints in test_merge_delivery.py."""
+        after by construction (one path, a new content key each call), so
+        this covers ``run_merge`` reaching ``files_changed`` rather than
+        ``files_changed`` itself, which is tested against real fingerprints
+        in test_merge_delivery.py."""
         reviewer = _ScriptedReviewer([MergeReview(approved=True, verdict="approve")])
 
         outcome = await run_merge(_deps(), self._plan(tmp_path, attempts=3), reviewer)
 
-        assert outcome.workspace_files_changed == 2
+        assert outcome.workspace_files_changed == 1
 
     async def test_every_attempt_gets_its_own_execution_id(
         self, tmp_path: Path, scripted_sessions: list[_Attempt]

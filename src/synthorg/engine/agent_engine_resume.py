@@ -51,8 +51,10 @@ if TYPE_CHECKING:
         HandleFatalError,
         MakeToolInvoker,
         ResolveMemoryStrategy,
+        ValidateProject,
     )
     from synthorg.engine.task_engine import TaskEngine
+    from synthorg.persistence.project_protocol import ProjectRepository
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.settings.resolver import ConfigResolver
 
@@ -85,6 +87,8 @@ class AgentEngineResumeMixin:
     _make_tool_invoker: MakeToolInvoker
     _resolve_memory_strategy: ResolveMemoryStrategy
     _build_budget_checker: BuildBudgetChecker
+    _validate_project: ValidateProject
+    _project_repo: ProjectRepository | None
     _execute: Execute
     _handle_fatal_error: HandleFatalError
     _handle_budget_error: HandleBudgetError
@@ -313,8 +317,16 @@ class AgentEngineResumeMixin:
             # (fresh or resumed) builds its own. The ceilings it publishes
             # already match what the restored context carries, since both
             # derive from the same task.
+            project_budget = 0.0
+            if self._project_repo is not None:
+                project_budget = await self._validate_project(
+                    task=task, agent_id=agent_id, task_id=task_id
+                )
             budget_checker = await self._build_budget_checker(
-                task, agent_id, project_id=task.project
+                task,
+                agent_id,
+                project_id=task.project,
+                project_budget=project_budget,
             )
             # A resumed run continues prior work: exempt it from the
             # empty-run (zero-tool-call) fail-loud, whose per-segment proxy

@@ -213,6 +213,17 @@ class AgentEngineCheckpointResumeMixin:
             if checkpoint_ctx.task_execution is not None
             else None
         )
+        # The checkpoint carries whatever ceilings were in force when it was
+        # taken; the checker just built above is what actually enforces this
+        # resumed run and may disagree, e.g. Task.hard_token_ceiling unset
+        # and budget.run_hard_token_ceiling changed while the run was parked.
+        # Without this, check_budget_signal and nudge_unproductive_spend read
+        # a threshold the loop is not the one enforcing.
+        if budget_checker is not None:
+            cost_ceiling, token_ceiling = budget_checker.ceilings.as_optionals()
+            checkpoint_ctx = checkpoint_ctx.model_copy(
+                update={"cost_ceiling": cost_ceiling, "token_ceiling": token_ceiling}
+            )
         # A checkpoint-resumed run is exactly the long, budget-bounded
         # session these two exist to keep legible; without them a run
         # surviving a restart loses its turn-boundary remainder report and

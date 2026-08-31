@@ -369,13 +369,20 @@ def _projection_lines(manifest: RecursionDepthManifest, projected: int) -> list[
         # to its own declared cap, which this matrix sets above the leaf's flat
         # budget, so a bound stated in the leaf's terms would understate what a
         # sweep dominated by wide merges can actually spend.
+        #
+        # A nominal estimate, not a strict bound: SessionBudget checks between
+        # units rather than before each session, so the true session count can
+        # exceed max_sessions by whatever the unit in flight when the ceiling
+        # is hit still needs.
         (
-            f"  token bound   : "
+            f"  token estimate: "
             f"{manifest.max_sessions * _widest_token_ceiling(manifest):,} if "
             f"every session spends its whole "
-            f"{_widest_token_ceiling(manifest):,}-token ceiling, and this is "
-            "the bound that holds on a flat-rate connection, where the money "
-            "ceiling above can never fire"
+            f"{_widest_token_ceiling(manifest):,}-token ceiling, nominal "
+            "against max_sessions rather than a strict bound (the in-flight "
+            "unit that trips the ceiling can still overrun it), and this is "
+            "the figure that stays meaningful on a flat-rate connection, "
+            "where the money ceiling above can never fire"
         ),
     ]
 
@@ -663,10 +670,18 @@ async def _build_context(
         # at scoring time: a genuinely free call and an unpriced one are the
         # same number, and only the connection's own declared billing model
         # tells them apart.
-        priced_providers=frozenset(
-            pair.provider
-            for pair in (manifest.executor, manifest.reviewer)
-            if provider_is_priced(pair, company_config=company_config)
+        #
+        # A sweep-wide flag, not a per-pair set: capture_provenance's own
+        # cost_basis is UNPRICED the moment either connection is, so a merge
+        # whose assembling session priced its calls and whose review did not
+        # has no honest total either. Populating the set from one priced pair
+        # while the other is not would record numeric costs the provenance
+        # stamp already declared meaningless.
+        priced_providers=(
+            frozenset({manifest.executor.provider, manifest.reviewer.provider})
+            if provider_is_priced(manifest.executor, company_config=company_config)
+            and provider_is_priced(manifest.reviewer, company_config=company_config)
+            else frozenset()
         ),
         # The only place a model FAMILY is written down. A live identity has no
         # such field, so every per-unit record read `family: null` and the

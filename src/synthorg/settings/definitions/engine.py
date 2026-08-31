@@ -1086,12 +1086,13 @@ _r.register(
         default="25",
         description=(
             "How often, in percent of a run's token ceiling, the agent is"
-            " told how much of its budget remains: once each time accumulated"
-            " spend crosses a further step. A run with no token ceiling gets"
-            " no signal at all, and the ceiling itself is declared once, in"
-            " the system prompt, at zero spend. Zero disables the per-turn"
-            " signal entirely, leaving only the terminal warning at"
-            " engine.budget_signal_terminal_percent. Read live, per run."
+            " told how much of its budget it has used: once each time"
+            " accumulated spend crosses a further step. A run with no token"
+            " ceiling gets no signal at all, and the ceiling itself is"
+            " declared once, in the system prompt, at zero spend. Zero"
+            " disables the per-turn signal entirely, leaving only the"
+            " terminal warning at engine.budget_signal_terminal_percent."
+            " Read live, per run."
         ),
         group="Execution",
         level=SettingLevel.ADVANCED,

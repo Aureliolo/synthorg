@@ -208,12 +208,10 @@ class AgentEngineContextMixin:
     ) -> tuple[float | None, int | None, int | None]:
         """Resolve what this run's context should be constructed with.
 
-        ``SessionCeilings`` spells "disabled" as 0 (a helper session builds
-        it from optionals via ``.of``); ``AgentContext`` spells the same
-        fact ``None`` (a ``gt=0`` field). This is the one site where the two
-        spellings are declared equivalent, since a verbatim stamp of a
-        genuinely-zero money bound (a flat-rate connection) would fail the
-        context's own validation.
+        ``budget_checker.ceilings.as_optionals()`` is the translation between
+        ``SessionCeilings``'s "disabled" (0) and ``AgentContext``'s (``None``,
+        a ``gt=0`` field): a verbatim stamp of a genuinely-zero money bound (a
+        flat-rate connection) would fail the context's own validation.
 
         Returned rather than stamped via ``model_copy``: ``AgentContext``'s
         ``gt=0`` / no-NaN constraints on these three fields only validate
@@ -224,16 +222,10 @@ class AgentEngineContextMixin:
         Returns:
             ``(cost_ceiling, token_ceiling, context_capacity_tokens)``.
         """
-        ceilings = budget_checker.ceilings if budget_checker is not None else None
-        cost_ceiling = (
-            ceilings.cost_ceiling
-            if ceilings is not None and ceilings.cost_ceiling > 0
-            else None
-        )
-        token_ceiling = (
-            ceilings.token_ceiling
-            if ceilings is not None and ceilings.token_ceiling > 0
-            else None
+        cost_ceiling, token_ceiling = (
+            budget_checker.ceilings.as_optionals()
+            if budget_checker is not None
+            else (None, None)
         )
         context_capacity_tokens = await self._resolve_context_capacity_tokens(
             provider, identity, agent_id=agent_id, task_id=task_id

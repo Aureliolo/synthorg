@@ -334,6 +334,8 @@ def _review_input(request: MergeReviewRequest) -> CompletionOracleReviewInput:
         stakes=request.task.stakes,
         estimated_complexity=request.task.estimated_complexity,
         project_id=NotBlankStr(request.task.project),
+        max_turns=request.limits.max_turns,
+        token_ceiling=request.limits.token_ceiling,
     )
 
 

@@ -154,11 +154,12 @@ def make_context_indicator(
         ),
         token_ceiling=ctx.token_ceiling,
     )
-    # INFO because a "turn_signal" render IS the budget signal firing, which
-    # an operator diagnosing a run's behaviour needs without turning on full
-    # debug tracing. The step-percent gate bounds it, so this is not per-turn
-    # volume.
-    logger.info(
+    # DEBUG rather than INFO: a "turn_signal" render at the STEP boundary is
+    # bounded by the step-percent gate, but past the TERMINAL threshold
+    # check_budget_signal renders one every turn with no gate at all, so an
+    # INFO level here would grow with however many turns a run spends past
+    # its ceiling rather than with the fixed handful of step crossings.
+    logger.debug(
         CONTEXT_BUDGET_INDICATOR_INJECTED,
         execution_id=ctx.execution_id,
         fill_tokens=indicator.fill_tokens,

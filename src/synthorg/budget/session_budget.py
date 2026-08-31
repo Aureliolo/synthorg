@@ -87,6 +87,24 @@ class SessionCeilings(BaseModel):
         """Whether either bound is set."""
         return self.cost_ceiling > 0 or self.token_ceiling > 0
 
+    def as_optionals(self) -> tuple[float | None, int | None]:
+        """The inverse of :meth:`of`: a disabled bound read back as ``None``.
+
+        ``AgentContext`` spells "disabled" as ``None`` on its ``gt=0``
+        ``cost_ceiling`` / ``token_ceiling`` fields, the opposite convention
+        from this class's own ``0``. This is the one place the two
+        spellings are declared equivalent in this direction, so a caller
+        stamping ceilings onto an ``AgentContext`` has one place to ask
+        rather than re-deriving the translation.
+
+        Returns:
+            ``(cost_ceiling, token_ceiling)``, each ``None`` when disabled.
+        """
+        return (
+            self.cost_ceiling if self.cost_ceiling > 0 else None,
+            self.token_ceiling if self.token_ceiling > 0 else None,
+        )
+
 
 async def resolve_session_token_ceiling(
     resolver: ConfigResolverProtocol | None,
