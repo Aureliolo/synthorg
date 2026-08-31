@@ -186,6 +186,8 @@ class TestRateLimiterRPMThrottling:
 
         rpm_logs = [e for e in cap if e.get("reason") == "rpm_limit"]
         assert len(rpm_logs) >= 1
+        # A feature silently stalling a call must not hide at debug.
+        assert rpm_logs[0]["log_level"] == "info"
 
 
 class TestRateLimiterLogging:

@@ -9,9 +9,11 @@ from collections.abc import Callable, Coroutine
 from typing import Final, ParamSpec, TypeVar
 
 from synthorg.core.resilience_config import RateLimiterConfig
-from synthorg.observability import get_logger
+from synthorg.integrations.errors import ConnectionRateLimitError
+from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.integrations import (
     TOOL_RATE_LIMIT_ACQUIRED,
+    TOOL_RATE_LIMIT_HIT,
 )
 from synthorg.providers.resilience.rate_limiter import RateLimiter
 
@@ -101,6 +103,10 @@ def with_connection_rate_limit(
 
             Returns:
                 The wrapped coroutine's result, unchanged.
+
+            Raises:
+                ConnectionRateLimitError: If the connection-wide coordinator's
+                    sliding window is full.
             """
             from synthorg.integrations.rate_limiting.shared_state import (  # noqa: PLC0415
                 get_coordinator,
@@ -108,7 +114,15 @@ def with_connection_rate_limit(
 
             coordinator = get_coordinator(connection_name)
             if coordinator is not None:
-                await coordinator.acquire()
+                try:
+                    await coordinator.acquire()
+                except ConnectionRateLimitError as exc:
+                    logger.warning(
+                        TOOL_RATE_LIMIT_HIT,
+                        connection_name=connection_name,
+                        error=safe_error_description(exc),
+                    )
+                    raise
                 logger.debug(
                     TOOL_RATE_LIMIT_ACQUIRED,
                     connection_name=connection_name,

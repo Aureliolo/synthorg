@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from typing import override
 
 import pytest
+import structlog.testing
 
 from synthorg.core.domain_errors import CheckpointActiveConflictError
 from synthorg.core.memory_enums import MemoryCategory
@@ -297,6 +298,26 @@ class TestMemoryServiceCheckpoints:
         )
         await service.delete_checkpoint(sid("a"))
         assert await repo.get(sid("a")) is None
+
+    async def test_delete_success_is_logged(self) -> None:
+        """A deleted checkpoint logs success, matching deploy/rollback."""
+        repo = _FakeCheckpointRepo()
+        await repo.save(_checkpoint(checkpoint_id="a"))
+        service = MemoryService(
+            checkpoint_repo=repo,
+            run_repo=_FakeRunRepo(),
+            settings_service=None,
+        )
+        with structlog.testing.capture_logs() as logs:
+            await service.delete_checkpoint(sid("a"))
+
+        matches = [
+            log
+            for log in logs
+            if log.get("event") == "memory.fine_tune.checkpoint_deleted"
+        ]
+        assert len(matches) == 1
+        assert matches[0]["log_level"] == "info"
 
     async def test_delete_active_checkpoint_raises_typed_conflict(self) -> None:
         """Deleting the active checkpoint is a typed 409, not a QueryError.

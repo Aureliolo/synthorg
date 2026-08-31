@@ -205,7 +205,7 @@ class RateLimiter:
                 )
                 raise RuntimeError(msg)
             # Sleep outside the lock so other coroutines can proceed.
-            logger.debug(
+            logger.info(
                 PROVIDER_RATE_LIMITER_THROTTLED,
                 provider=self._provider_name,
                 wait_seconds=round(wait, 2),
