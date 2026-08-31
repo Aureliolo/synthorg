@@ -294,3 +294,57 @@ class TestPerFieldFallback:
             base=self._base(),
         )
         assert meta.supports_tools is False
+
+    def test_litellm_real_shape_explicit_none_falls_back_per_field(self) -> None:
+        """LiteLLM always sets every key explicitly, ``None`` when unknown.
+
+        A card silent on a capability arrives as ``{"supports_x": None,
+        ...}``, never as an omitted key. A membership check on the key
+        (``"x" in info``) treats an explicit ``None`` as "the card speaks"
+        and collapses straight to ``False`` instead of falling back to
+        base; only a ``.get(...) is not None`` check tells the two apart.
+        """
+        real_shape_card = {
+            "supports_function_calling": None,
+            "supports_vision": None,
+            "supports_reasoning": None,
+            "supports_prompt_caching": None,
+            "mode": None,
+            "max_output_tokens": None,
+            "max_tokens": None,
+        }
+        meta = extract_model_metadata(
+            real_shape_card,
+            litellm_provider=None,
+            model_id="examplemodel1.0",
+            parser=_PARSER,
+            base=self._base(max_output_tokens=4096),
+        )
+        assert meta.supports_tools is True
+        assert meta.supports_vision is True
+        assert meta.supports_reasoning is True
+        assert meta.supports_prompt_caching is True
+        assert meta.supports_embeddings is True
+        assert meta.supports_image_generation is True
+        assert meta.max_output_tokens == 4096
+
+    def test_litellm_real_shape_explicit_value_wins_over_base(self) -> None:
+        # A field the card genuinely speaks on, even alongside sibling
+        # explicit-None fields, is not a gap: the fresh reading wins.
+        real_shape_card = {
+            "supports_function_calling": False,
+            "supports_vision": None,
+            "supports_reasoning": None,
+            "supports_prompt_caching": None,
+            "mode": "chat",
+        }
+        meta = extract_model_metadata(
+            real_shape_card,
+            litellm_provider=None,
+            model_id="examplemodel1.0",
+            parser=_PARSER,
+            base=self._base(),
+        )
+        assert meta.supports_tools is False
+        assert meta.supports_vision is True
+        assert meta.supports_embeddings is False

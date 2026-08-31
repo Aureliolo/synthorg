@@ -265,33 +265,33 @@ def extract_model_metadata(
     return ModelMetadata(
         supports_tools=(
             bool(info["supports_function_calling"])
-            if "supports_function_calling" in info
+            if info.get("supports_function_calling") is not None
             else base.supports_tools
         ),
         tool_calls_verified=base.tool_calls_verified,
         supports_vision=(
             bool(info["supports_vision"])
-            if "supports_vision" in info
+            if info.get("supports_vision") is not None
             else base.supports_vision
         ),
         supports_reasoning=(
             bool(info["supports_reasoning"])
-            if "supports_reasoning" in info
+            if info.get("supports_reasoning") is not None
             else base.supports_reasoning
         ),
         supports_prompt_caching=(
             bool(info["supports_prompt_caching"])
-            if "supports_prompt_caching" in info
+            if info.get("supports_prompt_caching") is not None
             else base.supports_prompt_caching
         ),
         supports_embeddings=(
             str(info["mode"]) == "embedding"
-            if "mode" in info
+            if info.get("mode") is not None
             else base.supports_embeddings
         ),
         supports_image_generation=(
             str(info["mode"]) == "image_generation"
-            if "mode" in info
+            if info.get("mode") is not None
             else base.supports_image_generation
         ),
         max_output_tokens=max_output,
