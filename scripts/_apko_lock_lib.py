@@ -398,7 +398,7 @@ def alias_candidates(name: str, resolved: frozenset[str]) -> list[str]:
     """Return the resolved packages an alias plausibly reached.
 
     Two shapes, because Wolfi uses both: it appends the series (``glibc`` ->
-    ``glibc-2.43``) and it inserts it between segments (``postgresql-client``
+    ``glibc-2.44``) and it inserts it between segments (``postgresql-client``
     -> ``postgresql-18-client``), and a plain prefix match finds only the first.
     """
     segments = name.split(SEGMENT_SEPARATOR)

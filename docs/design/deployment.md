@@ -96,9 +96,10 @@ staleness risk: Wolfi retains superseded versions, and every package named in a
 Naming the resolved package turns an alias into a **series** pin, and a series
 pin is exactly the thing nothing in the pipeline can watch. `apko lock`
 faithfully re-resolves the series that was asked for, so the weekly refresh is
-silent the day `nodejs-26` lands; no Renovate manager reads `apko.yaml`, so the
-bump never appears as a PR; and the gate cannot object, because the pin is what
-it demands. The only place the fact exists is the upstream index.
+silent the day `postgresql-19-client` lands; no Renovate manager reads
+`apko.yaml`, so the bump never appears as a PR; and the gate cannot object,
+because the pin is what it demands. The only place the fact exists is the
+upstream index.
 
 `scripts/report_apko_series_drift.py` reads it. For every Wolfi-backed
 manifest it takes each package name carrying a version token, reduces the name

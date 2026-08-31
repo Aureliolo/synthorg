@@ -1,12 +1,12 @@
 """Report apko package pins whose upstream series has been superseded.
 
-A pinned name such as ``nodejs-24`` or ``postgresql-18-client`` is a SERIES
+A pinned name such as ``nodejs-26`` or ``postgresql-18-client`` is a SERIES
 pin, not a version pin: apko keeps resolving it for as long as Wolfi ships the
-series, so the day ``nodejs-26`` lands nothing anywhere changes and nothing
-says so. The lockfile cannot notice (it faithfully records the series that was
-asked for), Renovate cannot notice (no manager reads ``apko.yaml``), and the
-gate cannot notice (the pin is exactly what it demands). The only place the
-fact exists is the upstream index, so that is what this reads.
+series, so the day ``postgresql-19-client`` lands nothing anywhere changes and
+nothing says so. The lockfile cannot notice (it faithfully records the series
+that was asked for), Renovate cannot notice (no manager reads ``apko.yaml``),
+and the gate cannot notice (the pin is exactly what it demands). The only
+place the fact exists is the upstream index, so that is what this reads.
 
 This is a REPORT, deliberately not a ``check_*`` gate: a newer series existing
 is news, not a defect, and blocking a push on somebody else's release cadence

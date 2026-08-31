@@ -15,7 +15,10 @@
 # comment claims, which is a pairing nothing would flag. An unsupported
 # pairing is not cosmetic: npm prints its unsupported-engine banner on stderr
 # for every invocation, so it lands in every agent's captured stderr and in
-# the evidence a reviewer reads. CI asserts the pair stays honest.
+# the evidence a reviewer reads. CI asserts the pair stays honest. A future
+# node series bump should prefer an even major (node's LTS track) over an
+# odd one: report_apko_series_drift.py has no node-specific LTS awareness,
+# so nothing else will steer that choice.
 # Network enforcement is handled by the sidecar proxy (docker/sidecar/),
 # not by the sandbox container.
 #
