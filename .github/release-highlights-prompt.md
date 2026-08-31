@@ -36,26 +36,9 @@ METHOD (work internally; do not show your reasoning):
 4. Before writing anything, finish the cluster list and give each cluster ONE
    bucket. The number of bullets you emit equals the number of clusters,
    exactly: that is what keeps one change from being described twice under two
-   headers, which is this task's most common failure.
-
-   Count the entries in the fence and find the matching band below. Its upper
-   number is a HARD CEILING on your cluster count, not a target: landing under
-   it is fine, landing over it is a failure of this step specifically, because
-   it means you stopped merging before you were done.
-
-     under 10 entries    ->  1-3 clusters
-     10-30 entries       ->  3-5 clusters
-     30-60 entries       ->  4-7 clusters
-     60-120 entries      ->  6-9 clusters
-     over 120 entries    ->  8-12 clusters
-
-   If your cluster count exceeds the ceiling, merge the smallest or most
-   related clusters into their nearest neighbour, REPEATEDLY, and recount
-   after every merge. Keep merging until the count is at or under the
-   ceiling. Do not drop a cluster to get there; fold it into the one it
-   resembles most. Do not start writing bullets until the count already
-   fits: a bullet written first becomes a sentence you are reluctant to
-   delete, which is how the count creeps back over.
+   headers, which is this task's most common failure. If the cluster count sits
+   outside the band below, merge the closest clusters until it fits; do not
+   drop one to get there.
 5. Each cluster's bullet goes into exactly ONE of TWO buckets:
    - NOTICE: an existing user directly observes this on upgrade (a fix to broken
      behaviour, a UX change, a new security requirement, a changed default).
@@ -137,11 +120,27 @@ much as the others, and that is the section where it goes wrong.
   GOOD: "- Agents can search the live web, through whichever of three
          providers you hold a key for"
 
-LENGTH. The bullet count was already fixed in step 4 (one bullet per
-cluster, clusters merged down to that step's ceiling before any bullet was
-written); do not add, split, or drop a bullet here to change the total.
-Never pad to reach the LOWER end of that band, and never drop something
-genuinely user-visible to stay under the ceiling: merge it into whichever
+LENGTH. The TOTAL across both sections is a HARD CEILING, scaled to how much
+the release contains. Count the entries in the fence and use the matching
+band:
+
+  under 10 entries    ->  1-3 bullets
+  10-30 entries       ->  3-5 bullets
+  30-60 entries       ->  4-7 bullets
+  60-120 entries      ->  6-9 bullets
+  over 120 entries    ->  8-12 bullets
+
+The upper end of the band is a MAXIMUM, not a target: landing under it is
+fine, landing one over it is a mistake, landing three or more over it means
+step 4's merge instruction was skipped. If your cluster list still exceeds the
+band's upper bound after step 4, that is not evidence the release needs more
+bullets: merge the smallest or most related clusters into their nearest
+neighbour, repeatedly, until the count fits, and only then start writing.
+Never count first and write second; the merging happens before a single
+bullet is drafted, or the drafted bullets anchor you to keeping them all.
+
+Never pad to reach the LOWER end of the band, and never drop something
+genuinely user-visible to fit under the ceiling: merge it into whichever
 cluster it is closest to instead of cutting it.
 
 Each bullet is ONE line, maximum 20 words. No emoji, no marketing language, no
