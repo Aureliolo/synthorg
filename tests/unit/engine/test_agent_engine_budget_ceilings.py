@@ -241,10 +241,9 @@ class TestApprovalResumeAlsoGetsAChecker:
 
 class TestCheckpointResumeAlsoGetsTheTurnBoundarySignals:
     """A checkpoint-resumed run must not lose the budget signal or the
-    produce-early nudge -- both are gated only on ``ctx.token_ceiling``, so a
-    resumed run that carries a real ceiling (the ceiling-stamping half of this
-    fix) still needs both parameters threaded into ``loop.execute`` to
-    actually render them.
+    produce-early nudge -- carrying a real ``ctx.token_ceiling`` is only half
+    of what renders them, since both are also gated on the parameters
+    ``loop.execute`` is called with.
     """
 
     async def test_execute_resumed_loop_passes_both_signals(

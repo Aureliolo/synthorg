@@ -463,9 +463,9 @@ The predicate is not the whole answer this owner returns: `build_session_budget_
 wraps it in `SessionBudgetChecker`, a frozen pair carrying the enforced `SessionCeilings`
 alongside the callable, so a turn-boundary consumer (the context-budget indicator's
 `Budget:` segment, the periodic budget signal) reads the exact pair the predicate is
-closed over rather than re-resolving a second, possibly-drifted answer. That guarantee
-holds exactly for the token axis, which has one check (`hard_token_ceiling`) and it is
-what gets published; it is looser for cost, where `SessionBudgetChecker.ceilings.cost_ceiling`
+closed over rather than re-resolving a second, possibly-drifted answer. That holds exactly
+for the token axis, which has one check (`hard_token_ceiling`) and it is what gets
+published; it is looser for cost, where `SessionBudgetChecker.ceilings.cost_ceiling`
 is only the tighter of the task and per-run money bounds and does not fold in an
 estate-level bound (project, monthly, daily) that may be the one actually tightest for
 a given run. Nothing renders `cost_ceiling` to the agent today, so the gap is dormant;

@@ -536,12 +536,10 @@ def adopt_repaired_spend(
         (staging / JOURNAL_NAME).replace(out_dir / JOURNAL_NAME)
         swapped = True
     finally:
-        # journal.close() is idempotent (TextIOWrapper.close() on an
-        # already-closed handle is a no-op), so calling it again here is
-        # safe on the success path; on a failure partway through the loop
-        # it is the only thing that closes the handle at all, which is what
-        # lets rmtree below actually remove the staging directory on
-        # Windows instead of silently leaving it behind with an open file.
+        # On a failure partway through the loop this is the only thing that
+        # closes the handle, and an open handle is what leaves ``rmtree``
+        # below silently unable to remove the staging directory on Windows.
+        # Harmless on the success path, where ``close()`` is idempotent.
         if journal is not None:
             journal.close()
         # The raw journal is the sentinel the guard above reads, so a copy that

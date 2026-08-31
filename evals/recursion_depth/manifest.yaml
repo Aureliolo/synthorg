@@ -169,13 +169,11 @@ review_max_turns_cap: 100
 # cap-4 cell costing twice what the shape of a cap-3 tree implies, and it still
 # stops a runaway well short of double the matrix.
 #
-# Both this and expected_sessions_per_cell below were measured under the
-# pre-#2887 harness, where a parked merge broke the repair loop like an
-# approval. #2887 makes a parked attempt retry instead, so a merge that parks
-# repeatedly can now spend up to its full attempt budget rather than one
-# attempt: these figures are a known under-estimate until re-measured against
-# the fixed harness, starting with the depth-1 smoke this PR's own plan calls
-# for before the matrix runs again.
+# Both this and expected_sessions_per_cell below were measured while a park
+# ended the repair loop the way an approval does. A parked attempt retries
+# instead, so a merge that parks repeatedly spends up to its full attempt
+# budget rather than one attempt: both figures are a known under-estimate
+# until a depth-1 smoke re-measures them.
 max_sessions: 2600
 # What the plan projection assumes one planning session splits into. Used ONLY
 # to print the bill before a run; nothing in the run reads it, and the tree the

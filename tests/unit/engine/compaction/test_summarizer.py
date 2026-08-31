@@ -413,9 +413,10 @@ class TestForcedCompaction:
         self,
         sample_agent: AgentIdentity,
     ) -> None:
-        """The bug this guards against: with a summariser configured and
-        succeeding, ``preserve_markers=True`` used to be silently discarded
-        because only the text-only fallback path honoured it."""
+        """With a summariser configured and succeeding, its summary is the
+        one that lands, so ``preserve_markers=True`` has to reach it: an
+        override honoured only by the text-only fallback reaches nothing on
+        the path that actually renders the summary."""
 
         class _RecordingProvider:
             def __init__(self) -> None:

@@ -30,7 +30,7 @@ from typing import Final
 from evals.harness.workspace import CellWorkspace, drop_escaping_links
 from evals.recursion_depth.gate import MergeReview, MergeReviewer, MergeReviewRequest
 from evals.recursion_depth.manifest import ModelPair
-from evals.recursion_depth.models import sum_costs
+from evals.recursion_depth.models import reject_negative_deltas, sum_costs
 from evals.recursion_depth.session import (
     SessionLimits,
     SweepDeps,
@@ -265,31 +265,20 @@ class _MergeSpend:
     ) -> _MergeSpend:
         """Add one further session's figures.
 
-        Refuses a negative delta here, on the same reasoning as
-        ``PlanningSpend.book``: letting it reach the ``UnitRecord`` this
-        eventually builds catches it a module and one exception boundary
-        away from the call that computed it, by which point the running
-        total is already wrong and nothing names which session corrupted it.
-
         Returns:
             The total including it.
 
         Raises:
             ValueError: Any of the deltas is negative.
         """
-        if (
-            (cost is not None and cost < 0)
-            or turns < 0
-            or tokens < 0
-            or input_tokens < 0
-            or output_tokens < 0
-        ):
-            msg = (
-                f"merge spend cannot decrease: cost={cost}, turns={turns}, "
-                f"tokens={tokens}, input_tokens={input_tokens}, "
-                f"output_tokens={output_tokens}"
-            )
-            raise ValueError(msg)
+        reject_negative_deltas(
+            "merge",
+            cost=cost,
+            turns=turns,
+            tokens=tokens,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+        )
         return _MergeSpend(
             sessions=self.sessions + 1,
             turns=self.turns + turns,

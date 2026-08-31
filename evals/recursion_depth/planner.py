@@ -22,7 +22,7 @@ from evals.errors import RecursionDepthPlannerSubstitutedError
 from evals.harness.binding import RunBinding
 from evals.harness.stall_watch import ProgressTrackingLedger
 from evals.recursion_depth.manifest import ModelPair
-from evals.recursion_depth.models import sum_costs
+from evals.recursion_depth.models import reject_negative_deltas, sum_costs
 from evals.recursion_depth.session import (
     SessionLimits,
     SweepDeps,
@@ -119,12 +119,6 @@ class PlanningSpend:
     def book(self, *, cost: float | None, tokens: int, sessions: int) -> None:
         """Add one attempt's spend.
 
-        Refuses a negative delta here rather than letting it reach the
-        ``UnitRecord`` this eventually builds: that model's ``ge=0`` fields
-        catch it two modules and one exception boundary away from the call
-        that computed it, by which point the running total is already wrong
-        and nothing names which attempt corrupted it.
-
         Args:
             cost: What the attempt's ledger recorded, or ``None`` when the
                 connection it ran on does not price its calls.
@@ -134,12 +128,7 @@ class PlanningSpend:
         Raises:
             ValueError: Any of the three deltas is negative.
         """
-        if (cost is not None and cost < 0) or tokens < 0 or sessions < 0:
-            msg = (
-                f"planning spend cannot decrease: cost={cost}, "
-                f"tokens={tokens}, sessions={sessions}"
-            )
-            raise ValueError(msg)
+        reject_negative_deltas("planning", cost=cost, tokens=tokens, sessions=sessions)
         self._cost = sum_costs((self._cost, cost))
         self._tokens += tokens
         self._sessions += sessions

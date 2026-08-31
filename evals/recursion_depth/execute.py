@@ -27,7 +27,7 @@ from typing import Final
 from evals.harness.workspace import CellWorkspace
 from evals.recursion_depth.claims import requirement_ids_of
 from evals.recursion_depth.manifest import ModelPair
-from evals.recursion_depth.models import sum_costs
+from evals.recursion_depth.models import reject_negative_deltas, sum_costs
 from evals.recursion_depth.session import (
     SessionLimits,
     SessionOutcome,
@@ -361,12 +361,6 @@ class _Spend:
     def plus(self, outcome: SessionOutcome) -> _Spend:
         """Add a further session's figures.
 
-        Refuses a negative delta here, on the same reasoning as
-        ``PlanningSpend.book``: letting it reach the ``UnitRecord`` this
-        eventually builds catches it a module and one exception boundary
-        away from the call that computed it, by which point the running
-        total is already wrong and nothing names which session corrupted it.
-
         Args:
             outcome: The session that has just run.
 
@@ -376,20 +370,14 @@ class _Spend:
         Raises:
             ValueError: Any of ``outcome``'s deltas is negative.
         """
-        if (
-            (outcome.cost is not None and outcome.cost < 0)
-            or outcome.turns < 0
-            or outcome.tokens < 0
-            or outcome.input_tokens < 0
-            or outcome.output_tokens < 0
-        ):
-            msg = (
-                f"leaf spend cannot decrease: cost={outcome.cost}, "
-                f"turns={outcome.turns}, tokens={outcome.tokens}, "
-                f"input_tokens={outcome.input_tokens}, "
-                f"output_tokens={outcome.output_tokens}"
-            )
-            raise ValueError(msg)
+        reject_negative_deltas(
+            "leaf",
+            cost=outcome.cost,
+            turns=outcome.turns,
+            tokens=outcome.tokens,
+            input_tokens=outcome.input_tokens,
+            output_tokens=outcome.output_tokens,
+        )
         return _Spend(
             turns=self.turns + outcome.turns,
             cost=sum_costs((self.cost, outcome.cost)),

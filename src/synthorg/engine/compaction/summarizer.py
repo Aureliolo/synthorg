@@ -184,15 +184,12 @@ async def _do_semantic_compaction(
         ctx, archivable, config, preserve_markers_override=preserve_markers_override
     )
     if summarizer is not None and config.llm_summarizer_enabled:
-        preserve_markers = (
-            config.preserve_epistemic_markers
-            if preserve_markers_override is None
-            else preserve_markers_override
-        )
         summary_text = await summarizer.summarize(
             archivable,
             fallback_text=summary_text,
-            preserve_markers=preserve_markers,
+            preserve_markers=_resolve_preserve_markers(
+                config, override=preserve_markers_override
+            ),
         )
     if offloader is not None and config.memory_offload_enabled:
         await offloader.offload(
@@ -252,6 +249,26 @@ def _prepare_compaction(
     return _split_conversation(ctx, config)
 
 
+def _resolve_preserve_markers(
+    config: CompactionConfig, *, override: bool | None
+) -> bool:
+    """Resolve one compaction's epistemic-marker setting.
+
+    Both summary paths (text-only and LLM) answer the same request, so they
+    read it through one resolution rather than each restating the fallback.
+
+    Args:
+        config: Compaction configuration, carrying the configured default.
+        override: The requesting caller's per-call choice, or ``None``.
+
+    Returns:
+        The override when supplied, else ``config.preserve_epistemic_markers``.
+    """
+    if override is None:
+        return config.preserve_epistemic_markers
+    return override
+
+
 def _build_text_summary(
     ctx: AgentContext,
     archivable: tuple[ChatMessage, ...],
@@ -273,14 +290,11 @@ def _build_text_summary(
         The summary text (also the semantic-path fallback).
     """
     task_complexity = _extract_task_complexity(ctx)
-    preserve_markers = (
-        config.preserve_epistemic_markers
-        if preserve_markers_override is None
-        else preserve_markers_override
-    )
     return _build_summary(
         archivable,
-        preserve_markers=preserve_markers,
+        preserve_markers=_resolve_preserve_markers(
+            config, override=preserve_markers_override
+        ),
         task_complexity=task_complexity,
     )
 

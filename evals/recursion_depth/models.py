@@ -111,6 +111,29 @@ def sum_costs(values: Iterable[float | None]) -> float | None:
     return total
 
 
+def reject_negative_deltas(what: str, **deltas: float | None) -> None:
+    """Refuse a negative spend delta at the call that computed it.
+
+    Every accumulator books into a ``UnitRecord`` in the end, and that
+    model's ``ge=0`` fields catch a negative delta modules and one exception
+    boundary away from its origin, by which point the running total is
+    already wrong and nothing names which session corrupted it. Refusing at
+    the booking keeps the two together.
+
+    Args:
+        what: What is being booked, naming the ledger in the message.
+        deltas: The figures this booking adds, by field name. A ``None``
+            cost is unpriced rather than negative and passes.
+
+    Raises:
+        ValueError: Any supplied delta is negative.
+    """
+    if any(value is not None and value < 0 for value in deltas.values()):
+        rendered = ", ".join(f"{name}={value}" for name, value in deltas.items())
+        msg = f"{what} spend cannot decrease: {rendered}"
+        raise ValueError(msg)
+
+
 #: What the harness measures under, stated wherever the number is. Held beside
 #: the field they populate rather than beside the renderer, because the writer
 #: seeds them and the renderer only draws them, and a caveat owned by the

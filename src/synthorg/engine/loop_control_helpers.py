@@ -284,6 +284,18 @@ def _handle_stagnation_verdict(
     return None
 
 
+def _without_compaction_request(ctx: AgentContext) -> AgentContext | None:
+    """Clear a pending compaction request, in the loop's own vocabulary.
+
+    Returns:
+        ``ctx`` with the request cleared when one was pending, else ``None``
+        -- the loop's "carry on with the context you have" answer.
+    """
+    if ctx.compaction_request is None:
+        return None
+    return ctx.model_copy(update={"compaction_request": None})
+
+
 async def invoke_compaction(
     ctx: AgentContext,
     compaction_callback: CompactionCallback | None,
@@ -318,14 +330,10 @@ async def invoke_compaction(
     """
     requested = ctx.compaction_request
     if compaction_callback is None:
-        # No compaction is wired at all. A pending agent-directed request
-        # would otherwise never be cleared: it is read nowhere else, so it
-        # would strand on the context forever, with the tool having promised
-        # "it will run before your next turn." Clearing it here is the
-        # honest no-op, not a silent stranding.
-        if requested is None:
-            return None
-        return ctx.model_copy(update={"compaction_request": None})
+        # Nothing else reads the request, so leaving it on the context
+        # strands it there for the rest of the run, against a tool that
+        # promised the agent "it will run before your next turn."
+        return _without_compaction_request(ctx)
     try:
         if requested is None:
             return await compaction_callback(ctx)
@@ -340,9 +348,8 @@ async def invoke_compaction(
                 reason="agent_directed_request_declined",
                 forced=True,
             )
-        return (compacted if compacted is not None else ctx).model_copy(
-            update={"compaction_request": None}
-        )
+            return _without_compaction_request(ctx)
+        return compacted.model_copy(update={"compaction_request": None})
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- best-effort side channel
         reraise_critical(exc)
@@ -353,6 +360,4 @@ async def invoke_compaction(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        if requested is None:
-            return None
-        return ctx.model_copy(update={"compaction_request": None})
+        return _without_compaction_request(ctx)

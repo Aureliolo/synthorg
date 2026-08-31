@@ -99,8 +99,9 @@ class TestLLMSummarizer:
 
     async def test_preserve_markers_true_adds_the_instruction(self) -> None:
         """An agent's explicit request must reach the LLM path, not only the
-        text-only fallback path -- the bug this test guards against left the
-        override silently discarded whenever the summariser succeeded."""
+        text-only fallback: a summariser that succeeds is the path that
+        renders the summary, so an override honoured only by the fallback is
+        an override honoured nowhere."""
         provider = _FakeProvider(content="summary")
         await _summarizer(provider).summarize(
             _archivable(), fallback_text=_FALLBACK, preserve_markers=True
