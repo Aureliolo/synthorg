@@ -19,6 +19,7 @@ func loadFixture(t *testing.T, name string) string {
 }
 
 func TestExtractHighlights(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		body         string // either inline or "fixture:<name>"
@@ -27,6 +28,10 @@ func TestExtractHighlights(t *testing.T) {
 		wantOmits    []string
 	}{
 		{
+			// The pre-tagline shape: no tagline, three sections. The CLI
+			// walks every release in (installed, target], which reaches back
+			// past the point either changed, so this is a live input rather
+			// than a historical artefact.
 			name:   "with_markers",
 			body:   "fixture:with_highlights.md",
 			wantOK: true,
@@ -49,7 +54,30 @@ func TestExtractHighlights(t *testing.T) {
 			},
 		},
 		{
-			name:   "no_markers_pre_1555",
+			// The shape a fresh release carries: tagline first, two sections,
+			// no "Under the hood". Kept as a fixture beside the pre-tagline
+			// one so a change to either shape has something to fail.
+			name:   "tagline_and_two_sections",
+			body:   "fixture:tagline_two_section.md",
+			wantOK: true,
+			wantContains: []string{
+				"_Nineteen new gates shipped",
+				"### What you'll notice",
+				"### What's new",
+				"Release digests are built from commit bodies",
+			},
+			wantOmits: []string{
+				"<!-- HIGHLIGHTS_START -->",
+				"<!-- HIGHLIGHTS_END -->",
+				"## Highlights",
+				"AI-generated summary (model:",
+				"### Under the hood",
+				"## [0.9.0]",
+				"## CLI Installation",
+			},
+		},
+		{
+			name:   "no_markers_legacy_release",
 			body:   "fixture:no_highlights.md",
 			wantOK: false,
 		},
@@ -111,10 +139,72 @@ func TestExtractHighlights(t *testing.T) {
 				"## [0.0.1]",
 			},
 		},
+		{
+			// A tagline leads the block, so the attribution blockquote sits
+			// somewhere in the middle rather than directly under the header.
+			// The tagline is the hook and must survive; the attribution must
+			// still go, since the walk has no room to explain what it names.
+			name: "tagline_precedes_attribution",
+			body: "<!-- HIGHLIGHTS_START -->\n## Highlights\n\n" +
+				"_Nineteen new gates, because the last nineteen were not enough._\n\n" +
+				"> _AI-generated summary (model: `example-capable-001` via Example). " +
+				"Commit-based changelog below._\n\n" +
+				"### What's new\n\n- A bullet.\n\n<!-- HIGHLIGHTS_END -->\n\n## [0.0.1]\n",
+			wantOK: true,
+			wantContains: []string{
+				"_Nineteen new gates, because the last nineteen were not enough._",
+				"### What's new",
+				"- A bullet.",
+			},
+			wantOmits: []string{
+				"<!-- HIGHLIGHTS_START -->",
+				"<!-- HIGHLIGHTS_END -->",
+				"## Highlights",
+				"AI-generated summary (model:",
+				"## [0.0.1]",
+			},
+		},
+		{
+			// stripAttribution scans every line rather than one position, so a
+			// body carrying the blockquote twice (a re-run that appended
+			// instead of replacing) must come back with neither copy. Matching
+			// one and stopping would ship the second into the walk.
+			name: "repeated_attribution_all_removed",
+			body: "<!-- HIGHLIGHTS_START -->\n## Highlights\n\n" +
+				"> _AI-generated summary (model: `example-capable-001` via Example)._\n\n" +
+				"### What's new\n\n- A bullet.\n\n" +
+				"> _AI-generated summary (model: `example-capable-001` via Example)._\n\n" +
+				"<!-- HIGHLIGHTS_END -->\n\n## [0.0.1]\n",
+			wantOK: true,
+			wantContains: []string{
+				"### What's new",
+				"- A bullet.",
+			},
+			wantOmits: []string{
+				"AI-generated summary",
+			},
+		},
+		{
+			// The blockquote is indented rather than at column 0. Matching on
+			// the trimmed line is what covers it; anchoring on the raw prefix
+			// would leave the line in place.
+			name: "indented_attribution_removed",
+			body: "<!-- HIGHLIGHTS_START -->\n## Highlights\n\n" +
+				"   > _AI-generated summary (model: `example-capable-001`)._\n\n" +
+				"### What's new\n\n- A bullet.\n\n<!-- HIGHLIGHTS_END -->\n",
+			wantOK: true,
+			wantContains: []string{
+				"### What's new",
+			},
+			wantOmits: []string{
+				"AI-generated summary",
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			body := tt.body
 			if name, found := strings.CutPrefix(body, "fixture:"); found {
 				body = loadFixture(t, name)
@@ -139,6 +229,7 @@ func TestExtractHighlights(t *testing.T) {
 }
 
 func TestExtractCommits(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name         string
 		body         string
@@ -236,6 +327,7 @@ func TestExtractCommits(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			body := tt.body
 			if name, found := strings.CutPrefix(body, "fixture:"); found {
 				body = loadFixture(t, name)

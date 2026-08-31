@@ -76,9 +76,8 @@ jobs:
           # This is a COSMETIC status annotation. It must never abort the
           # real release work that follows, so a transient API/auth blip is
           # retried and then tolerated (the status row simply stays unset)
-          # rather than failing the step. The earlier behaviour -- a bare
-          # POST under `set -e` -- let a momentary 401 here skip the entire
-          # draft-publish pipeline.
+          # rather than failing the step: a momentary 401 on a cosmetic status
+          # must never skip the entire draft-publish pipeline.
           attempt=0
           until gh api -X POST "repos/$GITHUB_REPOSITORY/statuses/$HEAD_SHA" \
             -f state=pending \
@@ -286,14 +285,11 @@ jobs:
       # build-images.yml (smoke-test-backend-image composite action), so a
       # broken binary or backend image fails the originating PR with
       # a red ❌ on the commit row -- not the finalize-release step
-      # after a tag has already been cut. The previous smoke steps
-      # here were redundant (Docker images are content-addressed, so
-      # the GHCR-pulled image is bit-identical to the one tested at
-      # build time; CLI archive integrity is already verified by the
-      # cosign-signed checksums.txt before publish), and they were
-      # also the only place either probe ran -- meaning a regression
-      # was caught only after a tag was already cut, which is too
-      # late. Build-time smoke makes this gate redundant.
+      # after a tag has already been cut. Re-probing here would prove
+      # nothing: Docker images are content-addressed, so the GHCR-pulled
+      # image is bit-identical to the one tested at build time, and CLI
+      # archive integrity is verified by the cosign-signed checksums.txt
+      # before publish.
 
       - name: Assemble + publish draft
         if: steps.preflight.outputs.proceed == 'true'
@@ -541,21 +537,28 @@ jobs:
             fi
           fi
 
-          # ── Promote AI Highlights from the release-please PR body ──
-          # release-cut.yml writes a `<!-- HIGHLIGHTS_START -->...<!-- HIGHLIGHTS_END -->`
-          # block onto the rolling release-please PR body via gh pr edit.
-          # When the PR is merged, release-please builds the release notes
-          # from CHANGELOG.md only, leaving the Highlights block stranded on
-          # the PR. Locate the merged PR via the head_sha -> pulls
-          # association and copy the marker block (verbatim, markers
+          # ── Promote AI Highlights from the release-please PR ──
+          # release-cut.yml publishes a
+          # `<!-- HIGHLIGHTS_START -->...<!-- HIGHLIGHTS_END -->` block to a
+          # sticky comment on the rolling release-please PR, and mirrors it
+          # into that PR's body. When the PR is merged, release-please builds
+          # the release notes from CHANGELOG.md only, leaving the block
+          # stranded on the PR. Locate the merged PR via the head_sha ->
+          # pulls association and copy the marker block (verbatim, markers
           # included) to the top of the release body so:
           #   - users see the AI summary on github.com/<repo>/releases
           #   - `synthorg update` parses it via cli/internal/selfupdate
           #     ExtractHighlights for the styled changelog walk.
           #
+          # The COMMENT is read first and the body is only a fallback:
+          # release-please owns that body and rewrites it on every changelog
+          # change, so a block living there alone survives exactly until the
+          # next rewrite that is not followed by a successful generation.
+          # The fallback exists for releases cut before the comment shipped.
+          #
           # Stable releases only (release-please does not run on dev tags).
-          # Best-effort: missing PR, missing block, or empty PR body all
-          # leave the release body untouched.
+          # Best-effort: a missing PR, a missing block, or no readable source
+          # all leave the release body untouched.
           HIGHLIGHTS=""
           if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             # Distinguish "API failed" (warning, propagation skipped) from
@@ -579,32 +582,58 @@ jobs:
               echo "::warning::gh api commits/${HEAD_SHA}/pulls failed; skipping Highlights propagation."
             fi
             if [ -n "$PR_NUMBER" ]; then
+              HIGHLIGHTS_SOURCE=""
+              # The sticky comment is the canonical copy, and it is read
+              # through the same gh_retry ladder as every other read in this
+              # step: the PR-body fallback below exists for releases cut
+              # before the comment shipped, not as a resilience path, and
+              # degrading to it on a transient blip would publish whatever
+              # release-please last rewrote the body to.
+              #
+              # Selected by AUTHOR as well as by marker. Anyone can comment on
+              # a public PR, and this block is copied verbatim into an
+              # immutable published release and rendered by `synthorg update`,
+              # so a content-only match would let a stranger write release
+              # notes. `github.token` posts the comment, so
+              # `github-actions[bot]` is the only legitimate author.
+              STICKY_SELECT='flatten(1) | map(select(.user.login == "github-actions[bot]" and (.body | contains("<!-- HIGHLIGHTS_STICKY -->"))))'
+              if COMMENTS_OUTPUT=$(gh_retry gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate --slurp); then
+                HIGHLIGHTS_SOURCE=$(printf '%s' "$COMMENTS_OUTPUT" \
+                  | jq -r "$STICKY_SELECT | first | .body // empty")
+                if [ -n "$HIGHLIGHTS_SOURCE" ]; then
+                  echo "Read Highlights from the sticky comment on PR #${PR_NUMBER}."
+                fi
+              else
+                echo "::warning::gh api issues/${PR_NUMBER}/comments failed after retries; falling back to the PR body."
+              fi
+
               # Split the call into capture + classify so an auth /
               # rate-limit failure surfaces a `::warning::` distinct
               # from "PR was deleted" (legitimate skip). The previous
-              # `|| true` swallowed all non-zero exits and conflated
-              # the two -- a regression that would silently lose
-              # Highlights every release until someone noticed.
-              if PR_VIEW_OUTPUT=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq '.body' 2>&1); then
-                PR_BODY="$PR_VIEW_OUTPUT"
-              else
-                PR_BODY=""
-                # `gh pr view` returns non-zero on both 404 (PR
-                # genuinely deleted) and on auth / rate-limit / 5xx
-                # failures. Distinguish via stderr fingerprint.
-                if printf '%s' "$PR_VIEW_OUTPUT" | grep -qiE 'not found|could not resolve'; then
-                  echo "::notice::release-please PR #${PR_NUMBER} no longer exists; skipping Highlights propagation."
+              # a blanket `|| true` would conflate the two and silently
+              # lose Highlights on every release with no way to tell which
+              # cause it was.
+              if [ -z "$HIGHLIGHTS_SOURCE" ]; then
+                if PR_VIEW_OUTPUT=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq '.body' 2>&1); then
+                  HIGHLIGHTS_SOURCE="$PR_VIEW_OUTPUT"
                 else
-                  echo "::warning::gh pr view #${PR_NUMBER} failed (auth / rate-limit / API error); skipping Highlights propagation."
-                  echo "::warning::stderr: ${PR_VIEW_OUTPUT}"
+                  # `gh pr view` returns non-zero on both 404 (PR
+                  # genuinely deleted) and on auth / rate-limit / 5xx
+                  # failures. Distinguish via stderr fingerprint.
+                  if printf '%s' "$PR_VIEW_OUTPUT" | grep -qiE 'not found|could not resolve'; then
+                    echo "::notice::release-please PR #${PR_NUMBER} no longer exists; skipping Highlights propagation."
+                  else
+                    echo "::warning::gh pr view #${PR_NUMBER} failed (auth / rate-limit / API error); skipping Highlights propagation."
+                    echo "::warning::stderr: ${PR_VIEW_OUTPUT}"
+                  fi
                 fi
               fi
-              if [ -n "$PR_BODY" ]; then
+              if [ -n "$HIGHLIGHTS_SOURCE" ]; then
                 # Find marker line numbers via exact whole-line match
                 # (`grep -nFx`): -n adds line numbers, -F treats the
                 # marker as a fixed string (no regex), -x requires the
                 # entire line to match. This rules out three failure
-                # modes the previous substring approach permitted:
+                # modes a substring match permits:
                 #   1. a docs/code prose block that quotes the marker
                 #      inline (e.g. ``See \`<!-- HIGHLIGHTS_START -->\`...``)
                 #      cannot trigger extraction;
@@ -631,15 +660,15 @@ jobs:
                 # release-please diff) would be picked first, the
                 # order guard would refuse to extract, and Highlights
                 # would silently never propagate.
-                START_LINE=$(grep -nFx '<!-- HIGHLIGHTS_START -->' <<< "$PR_BODY" | head -n1 | cut -d: -f1 || true)
+                START_LINE=$(grep -nFx '<!-- HIGHLIGHTS_START -->' <<< "$HIGHLIGHTS_SOURCE" | head -n1 | cut -d: -f1 || true)
                 if [ -n "$START_LINE" ]; then
-                  END_LINE=$(grep -nFx '<!-- HIGHLIGHTS_END -->' <<< "$PR_BODY" \
+                  END_LINE=$(grep -nFx '<!-- HIGHLIGHTS_END -->' <<< "$HIGHLIGHTS_SOURCE" \
                     | awk -F: -v start="$START_LINE" '$1 > start { print $1; exit }' || true)
                 else
                   END_LINE=""
                 fi
                 if [ -n "$START_LINE" ] && [ -n "$END_LINE" ] && [ "$START_LINE" -lt "$END_LINE" ]; then
-                  EXTRACTED=$(sed -n "${START_LINE},${END_LINE}p" <<< "$PR_BODY")
+                  EXTRACTED=$(sed -n "${START_LINE},${END_LINE}p" <<< "$HIGHLIGHTS_SOURCE")
                 fi
                 if [ -n "$EXTRACTED" ]; then
                   # Trim trailing newlines so the prepend produces exactly

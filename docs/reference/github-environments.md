@@ -223,12 +223,6 @@ installation token (valid ≤1 hour) via the
    (both SHA-pinned in-workflow). The latter backs the weekly GHCR prune
    job; an Actions-restricted fork that omits it fails the cleanup at
    action-resolution time.
-8. Add the `MISTRAL_API_KEY` repository secret (a Mistral API key on
-   the free Experiment tier). The release-notes Highlights step in
-   `release-cut.yml` and the `release-highlights-dryrun.yml` dry-run read it; a
-   repository-level secret is visible to the `release` environment
-   job. The step is failure-tolerant, so a missing or invalid key only
-   skips the Highlights block -- it never fails the release.
 
 **No rotation schedule**. Installation tokens are ephemeral:
 minted per workflow run and valid for at most one hour, then
@@ -246,6 +240,34 @@ declares them in its YAML. Tag-only release jobs
 the separate `release-tags` environment, which carries no
 privileged secrets, so a forged `v*` tag on unmerged code
 cannot reach the App credentials.
+
+## `MISTRAL_API_KEY` (repository secret)
+
+Unrelated to the App above: this is a plain repository secret, not an
+environment one, and it mints nothing. The release-notes tagline +
+Highlights step in `release-cut.yml` and the
+`release-highlights-dryrun.yml` dry-run read it; a repository-level
+secret is visible to the `release` environment job.
+
+The step is failure-tolerant, so a missing or invalid key only skips the
+Highlights block, never the release. Silence is not the outcome, though:
+a failure opens the self-closing `Release Highlights generation is
+failing` tracker, and the block already published survives, because the
+sticky comment is only rewritten on a successful generation.
+
+Deliberately no plan or allowance figures here: Mistral's tiers and
+their included usage change, and a number copied into this page is one
+nobody re-checks. Read the current terms from
+[Mistral's pricing page](https://mistral.ai/pricing/) and the account's
+own Admin Console, which is the only place this key's actual balance
+and rate limits appear.
+
+What matters operationally is that **which models a key may call is
+published nowhere**, and a plan can withdraw one without notice. The
+model is declared once as `HIGHLIGHTS_MODEL` in `release-cut.yml`; when
+it starts returning `403 tier_not_allowed`, dispatch
+`release-highlights-dryrun.yml`, which lists what the key can call and
+rehearses the real prompt and digest against any candidate.
 
 ## Testing the `apko-lock` gate
 
