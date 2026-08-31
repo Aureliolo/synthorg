@@ -7,8 +7,10 @@ operator ask the same question on demand, e.g. while investigating an
 incident, without waiting for the next scheduled sweep.
 """
 
+from typing import Self
+
 from litestar import Controller, post
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_ceo
@@ -27,8 +29,31 @@ class AuditChainVerificationResponse(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     valid: bool
-    entries_checked: int
-    first_break_position: int | None = None
+    entries_checked: int = Field(ge=0)
+    first_break_position: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _validate_consistency(self) -> Self:
+        """Ensure break position aligns with validity.
+
+        Mirrors :meth:`ChainVerificationResult._validate_consistency`: a
+        wire-facing DTO built by hand from that domain result must not
+        silently accept a shape the domain type itself would reject.
+
+        Returns:
+            The validated :class:`AuditChainVerificationResponse` instance.
+
+        Raises:
+            ValueError: If ``first_break_position`` is set when
+                ``valid=True`` or absent when ``valid=False``.
+        """
+        if self.valid and self.first_break_position is not None:
+            msg = "first_break_position must be None when valid=True"
+            raise ValueError(msg)
+        if not self.valid and self.first_break_position is None:
+            msg = "first_break_position required when valid=False"
+            raise ValueError(msg)
+        return self
 
 
 async def _verify_live_chain() -> AuditChainVerificationResponse:

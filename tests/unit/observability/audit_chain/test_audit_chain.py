@@ -22,6 +22,7 @@ from synthorg.observability.audit_chain.timestamping import (
 )
 from synthorg.observability.audit_chain.verifier import (
     AuditChainVerifier,
+    ChainVerificationResult,
 )
 
 
@@ -366,6 +367,19 @@ class TestAuditChainSink:
         result = await sink.verify_chain()
         assert result.valid is False
         assert result.first_break_position == 1
+
+
+@pytest.mark.unit
+class TestChainVerificationResultShape:
+    def test_negative_first_break_position_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ChainVerificationResult(
+                valid=False, entries_checked=1, first_break_position=-1
+            )
+
+    def test_negative_entries_checked_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ChainVerificationResult(valid=True, entries_checked=-1)
 
 
 # ── Verifier Tests ─────────────────────────────────────────────────

@@ -4,8 +4,12 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import ValidationError
 
-from synthorg.api.controllers.audit_chain import _verify_live_chain
+from synthorg.api.controllers.audit_chain import (
+    AuditChainVerificationResponse,
+    _verify_live_chain,
+)
 from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.observability.audit_chain.chain import HashChain
 from synthorg.observability.audit_chain.protocol import AuditChainSigner, SignedPayload
@@ -87,3 +91,32 @@ class TestAuditChainController:
         rejection of the route itself."""
         resp = await async_test_client.post("/api/v1/observability/audit-chain/verify")
         assert resp.status_code != 403
+
+
+class TestAuditChainVerificationResponseShape:
+    """The wire-facing DTO must reject the same self-contradicting shapes
+    as the domain ``ChainVerificationResult`` it is built from by hand."""
+
+    def test_negative_first_break_position_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            AuditChainVerificationResponse(
+                valid=False, entries_checked=1, first_break_position=-1
+            )
+
+    def test_negative_entries_checked_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            AuditChainVerificationResponse(
+                valid=True, entries_checked=-1, first_break_position=None
+            )
+
+    def test_valid_with_break_position_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            AuditChainVerificationResponse(
+                valid=True, entries_checked=1, first_break_position=0
+            )
+
+    def test_invalid_without_break_position_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            AuditChainVerificationResponse(
+                valid=False, entries_checked=1, first_break_position=None
+            )

@@ -37,6 +37,7 @@ class ChainVerificationResult(BaseModel):
     )
     first_break_position: int | None = Field(
         default=None,
+        ge=0,
         description="Position of first broken link",
     )
 
