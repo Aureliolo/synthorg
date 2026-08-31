@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pre-push / CI gate: every ``ModelCapabilities`` field has a real reader.
 
-#2888 found six fields on the routing-layer ``ModelCapabilities`` record
+Six fields on the routing-layer ``ModelCapabilities`` record were found
 (``max_output_tokens``, ``max_context_tokens``, ``cost_per_1k_input``,
 ``cost_per_1k_output``, ``supports_system_messages``,
 ``supports_streaming_tool_calls``) with no reader outside the class's own
@@ -42,7 +42,7 @@ to the field's declaring line. The reason is mandatory. The only legitimate
 case is a field a genuinely external consumer reads by value rather than by
 Python attribute access (there is none today).
 
-No baseline. #2888 deletes every field this gate would have flagged in the
+No baseline: every field this gate would have flagged is deleted in the
 same PR that introduces it.
 
 Usage::

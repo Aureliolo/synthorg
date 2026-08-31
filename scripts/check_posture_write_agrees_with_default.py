@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Pre-push / CI gate: a posture write never repeats its own default.
 
-#2888 found ``("engine", "reasoning_effort_low", "none")`` in
+``("engine", "reasoning_effort_low", "none")`` shipped in
 ``_posture_seeding.py``'s ``cost_disciplined`` bundle: a no-op write that
 happened to equal the setting's registered default at the time it was
 written. A no-op that still writes PINS the row, so a later default change
-(the fix in #2888 itself, raising the registered default so the cheapest
-stakes level stops paying the provider's own reasoning bill) never reaches
-any deployment that already ran the posture. The module's own comment
-claimed "a bundle only ever turns a flag on", which this exact row falsified.
+(raising the registered default so the cheapest stakes level stops paying
+the provider's own reasoning bill) never reaches any deployment that
+already ran the posture. The module's own comment claimed "a bundle only
+ever turns a flag on", which this exact row falsified.
 
 This gate asks two questions of every triple a posture bundle declares,
 neither of them enforceable by re-reading the module in isolation:
@@ -48,7 +48,7 @@ something that cannot vary.
 Allowlist / opt-out
 --------------------
 None. A genuine exception to either rule is a bug in the posture bundle: the
-fix is to delete the offending row, which is exactly what #2888 does.
+fix is always to delete the offending row.
 
 Usage::
 

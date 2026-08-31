@@ -1,7 +1,7 @@
 """Unit tests for ``scripts/check_posture_write_agrees_with_default.py``.
 
-The gate exists because #2888 found ``("engine", "reasoning_effort_low",
-"none")`` in the posture seeder: a write that happened to equal the
+The gate exists because ``("engine", "reasoning_effort_low",
+"none")`` shipped in the posture seeder: a write that happened to equal the
 setting's registered default at the time it was written, which pins the
 row against a later default change. The pure helpers (``_flatten_dispatch``,
 ``_check_writes``) are exercised directly against fixture data; ``_scan``

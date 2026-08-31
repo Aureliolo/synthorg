@@ -471,8 +471,8 @@ appended to the audit chain by `AuditChainSink`. See
 for the opt-in rule and the sink's record-shape extraction logic.
 
 A declared constant with no live emitter is the cheapest marker of a
-feature that never actually shipped: #2888 measured 247 of 4,357
-(5.7%) in that state. `check_declared_event_is_emitted.py` fails a
+feature that never actually shipped: a call-graph trace measured 247
+of 4,357 (5.7%) in that state. `check_declared_event_is_emitted.py` fails a
 `Final[str]` constant under `observability/events/` referenced nowhere
 in `src/synthorg/` outside the events package itself (imports, `evals/`
 and `scripts/` are legitimate out-of-package consumers; a docstring or

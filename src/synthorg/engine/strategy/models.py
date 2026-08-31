@@ -377,9 +377,8 @@ class StrategyConfig(BaseModel):
     single frozen model.  ``output_mode``, ``default_lenses``,
     ``constitutional_principles``, and ``context`` reach the prompt via
     ``adapter.py``.  ``cost_tier``, ``confidence.format``, and
-    ``progressive`` have no reader: they were consumed by the impact
-    scorer and confidence formatter (``impact.py``, ``confidence.py``),
-    which had no production caller and were removed.  Added to
+    ``progressive`` parse and validate but select nothing; see
+    ``docs/design/strategy.md#confidence-calibration``.  Added to
     :class:`~synthorg.config.schema.RootConfig` as the ``strategy``
     field.
 

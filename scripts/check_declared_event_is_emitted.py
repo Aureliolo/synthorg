@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pre-push / CI gate: every declared event constant is emitted somewhere.
 
-#2888's call-graph traces measured 247 of 4,357 event constants (5.7%) never
+A call-graph trace measured 247 of 4,357 event constants (5.7%) never
 emitted anywhere outside the module that declares them: a deleted feature
 leaving its taxonomy behind, a stale duplicate of a live name, or a designed
 taxonomy only partly implemented. An unemitted event constant is the cheapest
@@ -27,9 +27,8 @@ attribute access, so a Name-context walk is sufficient and a comment or
 docstring mentioning the name is correctly excluded.
 
 ``tests/`` is deliberately NOT a consumer: a constant only the test suite
-names is dead, which is the state 37 constants shipped in per the #2888
-register. A test importing a constant to assert its value is not evidence
-anything emits it.
+names is dead, which is the state 37 constants shipped in. A test
+importing a constant to assert its value is not evidence anything emits it.
 
 What it does NOT do
 --------------------
@@ -49,8 +48,8 @@ importing the Python identifier.
 
 Baseline
 --------
-#2888's own re-verification found the population dominated by a shape a
-per-line opt-out cannot honestly cover: most of the 260 that survived Part 4's
+Re-verification found the surviving population dominated by a shape a
+per-line opt-out cannot honestly cover: most of the 260 that survived the
 deletion pass are error paths that exist and simply log nothing at the
 failure site (``PERSISTENCE_SETTING_SAVE_FAILED``, ``DB_CONNECTION_FAILED``,
 ...), not dead taxonomy. Deleting them would remove real observability;

@@ -1,6 +1,6 @@
 """Unit tests for ``scripts/check_capability_field_has_reader.py``.
 
-The gate exists because #2888 found six ``ModelCapabilities`` fields with
+The gate exists because six ``ModelCapabilities`` fields shipped with
 no reader outside the class's own validator, hidden from every existing
 gate because identically-named fields on other DTOs absorbed a naive
 tree-wide attribute-access scan. The tests below are built around that

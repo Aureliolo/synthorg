@@ -1,7 +1,8 @@
 """Unit tests for ``scripts/check_declared_event_is_emitted.py``.
 
-The gate exists because #2888 measured 247 of 4,357 event constants never
-emitted outside the module that declares them. A regex or a scan that counts
+The gate exists because a call-graph trace measured 247 of 4,357 event
+constants never emitted outside the module that declares them. A regex or
+a scan that counts
 docstring mentions as references makes exactly this defect invisible, so the
 tests below are built around that failure mode: a constant mentioned only in
 a comment or docstring must still fail as unemitted.
