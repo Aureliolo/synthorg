@@ -538,17 +538,19 @@ jobs:
           # tagline and the disclaimer onto one line, where the CLI's
           # line-anchored strip could no longer see the disclaimer at all.
           #
-          # Attribution sits above the bullets so every reader sees the
-          # section is generated before they read it. The model name is read
-          # from the same variable the request used, so the two cannot drift.
+          # Attribution sits above EVERY generated line, tagline included, so
+          # a reader is told the whole block is AI-generated before reading
+          # any of it rather than after the tagline has already landed the
+          # joke. The model name is read from the same variable the request
+          # used, so the two cannot drift.
           TRIMMED_BULLETS=$(printf '%s' "$BULLETS" | sed -e 's/^[[:space:]]*$//' -e '/./,$!d')
           {
             printf '<!-- HIGHLIGHTS_START -->\n## Highlights\n\n'
+            # shellcheck disable=SC2016  # backticks in the printf format are literal markdown code spans
+            printf '> _AI-generated summary (model: `%s` via Mistral). Commit-based changelog below._\n\n' "$MISTRAL_MODEL"
             if [ -n "${TAGLINE//[[:space:]]/}" ]; then
               printf '_%s_\n\n' "$TAGLINE"
             fi
-            # shellcheck disable=SC2016  # backticks in the printf format are literal markdown code spans
-            printf '> _AI-generated summary (model: `%s` via Mistral). Commit-based changelog below._\n\n' "$MISTRAL_MODEL"
             printf '%s\n\n' "$TRIMMED_BULLETS"
             printf '<!-- HIGHLIGHTS_END -->'
           } > highlights-block.md

@@ -54,9 +54,10 @@ func TestExtractHighlights(t *testing.T) {
 			},
 		},
 		{
-			// The shape a fresh release carries: tagline first, two sections,
-			// no "Under the hood". Kept as a fixture beside the pre-tagline
-			// one so a change to either shape has something to fail.
+			// The shape a fresh release carries: attribution first, then the
+			// tagline, then two sections, no "Under the hood". Kept as a
+			// fixture beside the pre-tagline one so a change to either shape
+			// has something to fail.
 			name:   "tagline_and_two_sections",
 			body:   "fixture:tagline_two_section.md",
 			wantOK: true,
@@ -140,15 +141,43 @@ func TestExtractHighlights(t *testing.T) {
 			},
 		},
 		{
-			// A tagline leads the block, so the attribution blockquote sits
-			// somewhere in the middle rather than directly under the header.
-			// The tagline is the hook and must survive; the attribution must
-			// still go, since the walk has no room to explain what it names.
+			// Bodies published before the render order swapped: a tagline
+			// leads the block, so the attribution blockquote sits somewhere
+			// in the middle rather than directly under the header. The walk
+			// still reaches these across (installed, target], so this shape
+			// stays covered even though a fresh release no longer produces
+			// it. The tagline is the hook and must survive; the attribution
+			// must still go, since the walk has no room to explain what it
+			// names.
 			name: "tagline_precedes_attribution",
 			body: "<!-- HIGHLIGHTS_START -->\n## Highlights\n\n" +
 				"_Nineteen new gates, because the last nineteen were not enough._\n\n" +
 				"> _AI-generated summary (model: `example-capable-001` via Example). " +
 				"Commit-based changelog below._\n\n" +
+				"### What's new\n\n- A bullet.\n\n<!-- HIGHLIGHTS_END -->\n\n## [0.0.1]\n",
+			wantOK: true,
+			wantContains: []string{
+				"_Nineteen new gates, because the last nineteen were not enough._",
+				"### What's new",
+				"- A bullet.",
+			},
+			wantOmits: []string{
+				"<!-- HIGHLIGHTS_START -->",
+				"<!-- HIGHLIGHTS_END -->",
+				"## Highlights",
+				"AI-generated summary (model:",
+				"## [0.0.1]",
+			},
+		},
+		{
+			// The current render order: attribution leads the block so a
+			// reader is told the summary is AI-generated before reading the
+			// tagline, which now sits below it rather than above.
+			name: "attribution_precedes_tagline",
+			body: "<!-- HIGHLIGHTS_START -->\n## Highlights\n\n" +
+				"> _AI-generated summary (model: `example-capable-001` via Example). " +
+				"Commit-based changelog below._\n\n" +
+				"_Nineteen new gates, because the last nineteen were not enough._\n\n" +
 				"### What's new\n\n- A bullet.\n\n<!-- HIGHLIGHTS_END -->\n\n## [0.0.1]\n",
 			wantOK: true,
 			wantContains: []string{

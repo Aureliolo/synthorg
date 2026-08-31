@@ -260,12 +260,11 @@ jobs:
             if [ "$HAS_MARKER" -eq 1 ]; then
               BODY=$(printf '%s\n' "$RESPONSE" | sed "${TAGLINE_LINE}d")
             fi
-            if [ -n "${TAGLINE//[[:space:]]/}" ]; then
-              printf '_%s_\n\n' "$TAGLINE"
-            fi
             echo "> _AI-generated summary (model: \`${MISTRAL_MODEL}\` via Mistral). Commit-based changelog below._"
             echo ""
-            if [ -z "${TAGLINE//[[:space:]]/}" ]; then
+            if [ -n "${TAGLINE//[[:space:]]/}" ]; then
+              printf '_%s_\n\n' "$TAGLINE"
+            else
               echo "_Model emitted no TAGLINE line._"
               echo ""
             fi
