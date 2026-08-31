@@ -30,6 +30,8 @@ from synthorg.observability.events.integrations import (
     CHAT_API_ENVELOPE_FAILED,
     CHAT_API_REQUEST_FAILED,
     CHAT_INBOUND_CONNECTED,
+    CHAT_INBOUND_DECODE_FAILED,
+    CHAT_INBOUND_EVENT_RECEIVED,
 )
 
 logger = get_logger(__name__)
@@ -109,11 +111,17 @@ class SlackSocketModeClient:
         logger.info(CHAT_INBOUND_CONNECTED)
         async with self._connector(url) as session:
             async for frame in session:
+                logger.debug(CHAT_INBOUND_EVENT_RECEIVED)
                 decoded = decode_frame(frame)
                 if decoded.disconnect:
                     if decoded.envelope_id:
                         await session.ack(decoded.envelope_id)
                     return
+                if decoded.drop_reason is not None:
+                    logger.warning(
+                        CHAT_INBOUND_DECODE_FAILED,
+                        reason=decoded.drop_reason.value,
+                    )
                 if decoded.event is not None:
                     await on_event(decoded.event)
                 if decoded.envelope_id:

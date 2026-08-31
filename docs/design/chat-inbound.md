@@ -130,6 +130,29 @@ leave the thread correlation in place so an authorised decider can still
 act. Without it, membership of the notified channel would be the whole
 authorisation model for a governed action.
 
+## Observability
+
+Every frame gets a signal, so a stuck consumer or a dropped human reply is
+visible without re-instrumenting the loop to find out. `CHAT_INBOUND_EVENT_RECEIVED`
+fires at `debug` on every frame (a volume signal), and `CHAT_INBOUND_DECODE_FAILED`
+fires at `warning`, carrying the `reason` value and never the payload, whenever
+`decode_frame` returns a `DecodeDropReason`:
+
+| Reason | Meaning |
+| --- | --- |
+| `no_envelope_id` | A fully-decoded, routable event (reaction included) arrived with no envelope id and cannot be acked or routed -- the sharpest case, because it drops a human reply that decoded successfully |
+| `malformed_payload` / `malformed_event` | The envelope's `payload` or `payload["event"]` was not the expected mapping shape |
+| `validation_failed` | The event failed `InboundChatEvent` validation |
+| `bot_authored` | Bot echo, dropped to prevent a feedback loop |
+| `message_subtype` | An edit/join/etc. subtype, not a human reply |
+| `unroutable_type` | An event type the router has no handler for |
+| `missing_attribution` | No user or channel on an otherwise-decodable event |
+| `malformed_reaction` | A `reaction_added` event with an unexpected shape |
+
+`decode_frame` stays pure (it returns the reason; it does not log), so
+`socket_mode.py`'s receive loop is the one place that turns a drop into a log
+line, and a valid frame still routes normally alongside the log call.
+
 ## Kill-switch + resilience
 
 The consumer is a resident `start()`/`stop()` service wired like
