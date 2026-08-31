@@ -483,7 +483,13 @@ jobs:
           # model published the raw `TAGLINE:` string to every surface.
           # Missing or empty is not a failure: the bullets are the substance
           # and a release note without a joke is still a release note.
-          TAGLINE_LINE=$(printf '%s\n' "$SAFE" | grep -n -m1 '[^[:space:]]' | cut -d: -f1)
+          #
+          # The `||` is what makes that true. A reply of only whitespace passes
+          # the step's `response != ''` guard, and `grep` then matches nothing
+          # and exits 1, which under `pipefail` aborts the whole render rather
+          # than reaching the no-tagline path a few lines down.
+          TAGLINE_LINE=$(printf '%s\n' "$SAFE" | grep -n -m1 '[^[:space:]]' | cut -d: -f1) \
+            || TAGLINE_LINE=""
           TAGLINE=""
           HAS_MARKER=0
           if [ -n "$TAGLINE_LINE" ]; then
