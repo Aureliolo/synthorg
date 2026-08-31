@@ -17,6 +17,7 @@ chart could otherwise mislead.
   with judgement is not the finding.
 """
 
+from collections.abc import Iterable
 from datetime import datetime
 from enum import StrEnum
 from typing import Final, Literal, Self
@@ -86,6 +87,29 @@ PLAN: Final[Literal["plan"]] = "plan"
 #: does not exist yet. Anything reading a journalled id back has to recognise
 #: the plan row by its shape, so the shape is declared once here.
 PLAN_UNIT_SUFFIX: Final[str] = "-plan"
+
+
+def sum_costs(values: Iterable[float | None]) -> float | None:
+    """Fold cost components with ``None`` absorbing rather than zero.
+
+    A component is ``None`` when the session it came from ran on a connection
+    that does not price its calls, which is a fact about the WHOLE figure, not
+    a zero contribution to it: a merge whose assembling session was priced and
+    whose review was not has no honest total, only a partial sum wearing the
+    shape of one. Folding a single ``None`` into the running total therefore
+    poisons it for good, exactly as a genuinely unknown quantity should.
+
+    Returns:
+        The sum of the known components, or ``None`` if any component is
+        ``None``, or ``0.0`` if *values* is empty.
+    """
+    total = 0.0
+    for value in values:
+        if value is None:
+            return None
+        total += value
+    return total
+
 
 #: What the harness measures under, stated wherever the number is. Held beside
 #: the field they populate rather than beside the renderer, because the writer
@@ -188,6 +212,19 @@ UNRESOLVABLE_CLAIM_CELLS_CAVEAT: Final[str] = (
     "they would have reached are missing from every curve below."
 )
 
+#: Fires whenever ``Provenance.cost_basis`` is ``UNPRICED``, so a reader of a
+#: recording where every cost figure is absent is told why in the same place
+#: the repaired-tokens caveat lives, rather than left to guess whether nobody
+#: filled the column in.
+UNPRICED_COST_CAVEAT: Final[str] = (
+    "At least one connection this sweep dispatched through does not price its "
+    "calls (its billing model is not in MEASURABLE_BILLING_MODELS), or could "
+    "not be resolved at all, so every cost figure in this recording is absent "
+    "rather than zero: an unpriced call and a free one are not the same claim. "
+    "Token counts are unaffected and remain the figure the equal-budget check "
+    "is stated in."
+)
+
 
 class UnitRecord(BaseModel):
     """One unit of one run: what it was asked for and what it did.
@@ -230,10 +267,27 @@ class UnitRecord(BaseModel):
             not observable through the gate's dispatch seam, which answers with
             the pair it ran on and nothing else; its spend is, and spend is
             what the confound is about.
-        cost: Total spend across those sessions.
+        cost: Total spend across those sessions, ``None`` when the connection
+            those sessions ran on does not price its calls (a flat-rate or
+            subscription connection reports every call at zero), which is a
+            different claim from a genuinely free session: a stored ``0.0``
+            says "measured and free", and a recording made before this
+            distinction existed reads every unit that way. The whole-sweep
+            resolution is ``Provenance.cost_basis``, and this field's ``None``
+            never means "unmeasured for this unit alone".
         tokens: Input plus output tokens across the same sessions. The arm
             comparison that does not move with a price change, and the figure
             the equal-budget check is stated in.
+        input_tokens: The input half of ``tokens``. ``None`` on a recording
+            made before the split existed, and also on a PLAN unit: the
+            planner's own ledger (``PlanningSpend``) only ever accumulates a
+            total, so a plan row has no split to report even in a fresh
+            recording. ``tokens`` stays the total rather than becoming a
+            computed sum of this and ``output_tokens``, because a recording
+            that never carried the split still carries a real ``tokens``
+            figure and a computed field would demand both halves to answer
+            it.
+        output_tokens: The output half of ``tokens``, on the same terms.
         executor: The pair this unit was actually built on.
         reviewer: The pair that JUDGED it, on a gated merge. Recorded per unit
             rather than once per sweep because the gate is the treatment: a
@@ -245,9 +299,15 @@ class UnitRecord(BaseModel):
             produced a flat line.
         verdict: The gate's verdict on this merge, absent in the ungated arm
             and on every leaf.
-        parked: Whether the gate escalated with no human to decide, so the
-            merge stood unreviewed. Counted and reported: a gated line resting
-            on unresolved escalations is a different claim.
+        parked: Whether the LAST review escalated with no human to decide, so
+            the merge stood unreviewed. Counted and reported: a gated line
+            resting on unresolved escalations is a different claim.
+        parked_attempts: How many repair ROUNDS parked (not sessions, unlike
+            ``attempts``), empty (``0``) on a leaf. ``parked_attempts ==
+            len(terminations)`` and both non-zero means every round that ran
+            asked for a verdict and got none: the unit is UNJUDGED rather
+            than gated-and-approved, and ``emit.py`` excludes it from the
+            depth curve on that basis.
         amendments: How many times the merging agent recorded changing a
             child's interface to make the pieces fit. Contracts do not survive
             implementation, so this is expected to be non-zero; a run reporting
@@ -278,6 +338,12 @@ class UnitRecord(BaseModel):
             and ``budget_exhausted`` reads here in one line, and reading it
             off the transcripts instead is what it cost before. A review's
             ending is absent for the reason its turns are, see ``turns``.
+        workspace_files_changed: The symmetric difference between the unit's
+            tree before its session(s) ran and after, so "spent turns and
+            changed nothing" is a queryable fact rather than something a
+            transcript has to be opened to see. ``None`` on a recording made
+            before this field existed, which is a different claim from ``0``:
+            the earlier journal never asked the question at all.
     """
 
     # populate_by_name so the field is settable by its own name despite
@@ -296,19 +362,23 @@ class UnitRecord(BaseModel):
     produced: bool = False
     attempts: int = Field(default=0, ge=0)
     turns: int = Field(default=0, ge=0)
-    cost: float = Field(default=0.0, ge=0.0)
+    cost: float | None = Field(default=0.0)
     tokens: int = Field(default=0, ge=0)
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
     executor: ModelPair | None = None
     reviewer: ModelPair | None = None
     detail: str = ""
     verdict: NotBlankStr | None = None
     parked: bool = False
+    parked_attempts: int = Field(default=0, ge=0)
     amendments: int = Field(default=0, ge=0)
     missing_declared_paths: tuple[str, ...] = Field(
         default=(),
         validation_alias=AliasChoices("missing_declared_paths", "undeclared_paths"),
     )
     terminations: tuple[str, ...] = ()
+    workspace_files_changed: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def _delivered_units_carry_no_reason(self) -> Self:
@@ -403,13 +473,15 @@ class CellRecord(BaseModel):
     # time under another name.
     @computed_field
     @property
-    def total_cost(self) -> float:
+    def total_cost(self) -> float | None:
         """What this run spent.
 
         Returns:
-            The summed unit cost.
+            The summed unit cost, or ``None`` if any unit's own cost is
+            ``None``: a partial sum reported as the whole is the same defect
+            a silent ``0.0`` was.
         """
-        return sum(unit.cost for unit in self.units)
+        return sum_costs(unit.cost for unit in self.units)
 
     @computed_field
     @property
@@ -430,6 +502,28 @@ class CellRecord(BaseModel):
             The summed unit tokens.
         """
         return sum(unit.tokens for unit in self.units)
+
+    @computed_field
+    @property
+    def is_unjudged(self) -> bool:
+        """Whether any merge in this run asked for a verdict and never got one.
+
+        Keyed on PARK EXHAUSTION (every round a merge ran parked), never on
+        verdict absence: ``BlindMergeReviewer`` returns no verdict on every
+        attempt by design, so keying on absence would erase the ungated
+        control arm from the curve along with the cells this is actually for.
+        Structurally impossible in the ungated arm, where a merge never parks.
+
+        Returns:
+            ``True`` when any merge unit has ``parked_attempts`` equal to its
+            own round count and both non-zero.
+        """
+        return any(
+            unit.kind == MERGE
+            and unit.parked_attempts > 0
+            and unit.parked_attempts == len(unit.terminations)
+            for unit in self.units
+        )
 
 
 class PlannedTreeRecord(BaseModel):
@@ -532,7 +626,7 @@ class DepthPoint(BaseModel):
     required: int = Field(ge=0)
     satisfied: int = Field(ge=0)
     cells: int = Field(ge=0)
-    cost: float = Field(default=0.0, ge=0.0)
+    cost: float | None = Field(default=None)
     tokens: int = Field(default=0, ge=0)
     attempts: int = Field(default=0, ge=0)
 
@@ -770,6 +864,31 @@ class SpendSource(StrEnum):
     REPAIRED = "repaired"
 
 
+class CostBasis(StrEnum):
+    """Whether a sweep's spend figures are money or an honest absence of it.
+
+    A sweep-wide verdict rather than a per-unit one, because the claim it
+    carries is about the WHOLE artifact: a merge whose assembling session ran
+    on a priced connection and whose review ran on an unpriced one has no
+    partial answer, only a partial sum wearing the shape of a total. Resolved
+    once, from both of the manifest's pairs, at the point provenance is
+    captured.
+
+    Members:
+        PRICED: Every connection this sweep dispatched through prices its
+            calls (``ProviderConfig.billing_model`` is a member of
+            ``MEASURABLE_BILLING_MODELS`` for both pairs), so a stored cost
+            figure is money.
+        UNPRICED: At least one connection does not, or could not be resolved
+            at all, so every cost figure this sweep records is ``None`` and a
+            reader must not treat a stored ``0.0`` from an earlier recording
+            as this sweep's claim.
+    """
+
+    PRICED = "priced"
+    UNPRICED = "unpriced"
+
+
 class Provenance(BaseModel):
     """What this sweep was measured against.
 
@@ -789,6 +908,25 @@ class Provenance(BaseModel):
             the figures a reader is holding: stated only by the run that typed
             the flag, a later re-score of the same journal reports the opposite
             of what it holds.
+        executor_connection_sha256: What SYSTEM ``executor`` actually dispatches
+            through, as opposed to the placeholder ``(provider, model_id)`` name
+            it carries: the real endpoint, model and serving stack, which can
+            differ behind one name and which the placeholder cannot see.
+            ``None`` on a recording made before this field existed, and on any
+            recording where the connection could not be resolved; comparable
+            like every other identity field, so a provider swap mid-matrix
+            refuses a resume rather than silently splicing two systems into
+            one curve.
+        reviewer_connection_sha256: The same fact for ``reviewer``. Digested
+            separately because the two pairs can sit on different connections,
+            and a swap of either one contaminates the curve.
+        cost_basis: Whether this sweep's cost figures are money or an honest
+            absence of it, resolved once from both pairs' connections.
+            ``PRICED`` on a recording made before this field existed: those
+            recordings stored a real ``cost`` throughout, on a connection this
+            field did not yet know how to doubt, and defaulting the historical
+            claim to the honest reading it always was is not the same as a
+            fresh recording resolving unpriced today.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -803,6 +941,9 @@ class Provenance(BaseModel):
     reviewer: ModelPair
     independence: Independence
     spend_source: SpendSource = SpendSource.JOURNALLED
+    executor_connection_sha256: NotBlankStr | None = None
+    reviewer_connection_sha256: NotBlankStr | None = None
+    cost_basis: CostBasis = CostBasis.PRICED
 
     @field_validator("generated_at")
     @classmethod
@@ -850,6 +991,14 @@ class RecursionDepthReport(BaseModel):
         spread_by_depth_cap: The same, binned on the cap.
         achieved_depth_histogram: How many runs reached each depth, per cap.
             Without it a flat right half of the primary curve is unreadable.
+        unjudged_by_depth: How many measured cells asked a gate for a verdict
+            and never got one (``CellRecord.is_unjudged``), by achieved depth.
+            Those cells are excluded from ``by_achieved_depth`` and
+            ``by_depth_cap`` -- a cell whose gate rendered no verdict is a
+            missing observation, not a gated one -- but stay in ``cells``
+            with their spend intact, and this field is what makes the
+            exclusion a fact of the artifact rather than prose that a later
+            re-score of the same journal could report differently.
         caveats: What a reader must hold in mind, in the report's own words.
     """
 
@@ -865,6 +1014,7 @@ class RecursionDepthReport(BaseModel):
     spread_by_achieved_depth: tuple[DepthSpread, ...] = ()
     spread_by_depth_cap: tuple[DepthSpread, ...] = ()
     achieved_depth_histogram: dict[str, int] = Field(default_factory=dict)
+    unjudged_by_depth: dict[str, int] = Field(default_factory=dict)
     caveats: tuple[str, ...] = ()
 
     @field_validator("schema_version")
@@ -906,13 +1056,13 @@ class RecursionDepthReport(BaseModel):
 
     @computed_field
     @property
-    def total_cost(self) -> float:
+    def total_cost(self) -> float | None:
         """What the whole sweep spent.
 
         Returns:
-            The summed cell cost.
+            The summed cell cost, or ``None`` when any cell's own total is.
         """
-        return sum(cell.total_cost for cell in self.cells)
+        return sum_costs(cell.total_cost for cell in self.cells)
 
     @computed_field
     @property
@@ -931,7 +1081,9 @@ __all__ = [
     "PLAN",
     "PLAN_UNIT_SUFFIX",
     "RECURSION_DEPTH_SCHEMA_VERSION",
+    "UNPRICED_COST_CAVEAT",
     "CellRecord",
+    "CostBasis",
     "DepthPoint",
     "DepthSpread",
     "Provenance",
@@ -940,4 +1092,5 @@ __all__ = [
     "SurvivalPoint",
     "UnitKind",
     "UnitRecord",
+    "sum_costs",
 ]

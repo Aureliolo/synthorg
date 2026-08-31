@@ -130,9 +130,12 @@ class MergeReview:
             has to be readable as "judged" rather than "asked and unanswered".
         findings: What a rejection said, in the reviewer's own words, which is
             what the repair attempt is briefed from.
-        cost: What the review spent.
+        cost: What the review spent, ``None`` when the connection it ran on
+            does not price its calls.
         tokens: What it spent in tokens, which is the arm comparison that does
             not move with a price change.
+        input_tokens: The input half of ``tokens``.
+        output_tokens: The output half of ``tokens``.
         reviewer: The pair the review actually ran on, absent when nothing
             judged. The gate is the treatment, so a judge that silently came up
             on the executor's own pair biases toward the null, and the pair is
@@ -143,8 +146,10 @@ class MergeReview:
     approved: bool | None
     parked: bool = False
     findings: tuple[str, ...] = ()
-    cost: float = 0.0
+    cost: float | None = 0.0
     tokens: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
     reviewer: ModelPair | None = None
     verdict: str | None = None
 
@@ -305,7 +310,13 @@ class BlindMergeReviewer:
             execution_id=request.execution_id,
             limits=request.limits,
         )
-        return MergeReview(approved=None, cost=outcome.cost, tokens=outcome.tokens)
+        return MergeReview(
+            approved=None,
+            cost=outcome.cost,
+            tokens=outcome.tokens,
+            input_tokens=outcome.input_tokens,
+            output_tokens=outcome.output_tokens,
+        )
 
 
 def _review_input(request: MergeReviewRequest) -> CompletionOracleReviewInput:
@@ -393,6 +404,8 @@ def _from_gate_result(
         findings=tuple(_finding_text(finding) for finding in findings),
         cost=spend.cost,
         tokens=spend.tokens,
+        input_tokens=spend.input_tokens,
+        output_tokens=spend.output_tokens,
         reviewer=reviewer,
         verdict=verdict.value,
     )

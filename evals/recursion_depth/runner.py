@@ -63,7 +63,7 @@ from evals.recursion_depth.journal import (
     open_cell_journal,
     open_progress_journal,
 )
-from evals.recursion_depth.manifest import Arm, RecursionDepthManifest
+from evals.recursion_depth.manifest import Arm, RecursionDepthManifest, Role
 from evals.recursion_depth.merge import (
     MergeOutcome,
     MergePiece,
@@ -86,10 +86,11 @@ from evals.recursion_depth.models import (
     Provenance,
     RecursionDepthReport,
     UnitRecord,
+    sum_costs,
 )
 from evals.recursion_depth.oracle import run_oracle
 from evals.recursion_depth.planner import PlanningSpend, TreePlanner
-from evals.recursion_depth.session import SessionLimits, SweepDeps
+from evals.recursion_depth.session import SessionLimits, SweepDeps, session_limits_for
 from evals.recursion_depth.staffing import SweepRoster
 from evals.recursion_depth.tree import (
     SpecBrief,
@@ -427,18 +428,13 @@ class SweepContext:
     budget: SessionBudget
     leaf_concurrency: int = 1
 
-    @property
-    def limits(self) -> SessionLimits:
-        """The bounds every session in this sweep gets.
+    def limits_for(self, role: Role, *, fan_in: int) -> SessionLimits:
+        """The bounds one session of *role* gets, scaled by *fan_in*.
 
         Returns:
             The turn and spend bounds.
         """
-        return SessionLimits(
-            max_turns=self.manifest.unit_max_turns,
-            cost_ceiling=self.manifest.unit_cost_ceiling,
-            token_ceiling=self.manifest.unit_token_ceiling,
-        )
+        return session_limits_for(self.manifest, role, fan_in=fan_in)
 
     def reviewer_for(self, arm: Arm) -> MergeReviewer:
         """What looks at a merge in *arm*.
@@ -588,7 +584,13 @@ async def run_sweep(
             ):
                 break
         cells = records.cells
-    caveats.extend(derived_caveats(cells, spend_source=provenance.spend_source))
+    caveats.extend(
+        derived_caveats(
+            cells,
+            spend_source=provenance.spend_source,
+            cost_basis=provenance.cost_basis,
+        )
+    )
     return assemble_report(
         provenance=provenance,
         cells=cells,
@@ -666,7 +668,7 @@ def _unavailable(
         arm=cell.arm.value,
         repetition=cell.repetition,
         units_built=len(units),
-        cost=sum(unit.cost for unit in units),
+        cost=sum_costs(unit.cost for unit in units),
         error_type=type(exc).__name__,
         error=safe_error_description(exc),
     )
@@ -796,7 +798,11 @@ def _continue_cell(
             )
             return None
         produced[key] = workspace
-        delivered[key] = UnitDelivery(produced=unit.produced, reason=unit.detail)
+        delivered[key] = UnitDelivery(
+            produced=unit.produced,
+            reason=unit.detail,
+            workspace_files_changed=unit.workspace_files_changed,
+        )
     for unit in resumed.units:
         units.replay(unit)
     logger.info(
@@ -1058,7 +1064,9 @@ async def _build_tree_units(
         )
         produced[str(parent.id)] = outcome.workspace
         delivered[str(parent.id)] = UnitDelivery(
-            produced=outcome.produced, reason=outcome.detail
+            produced=outcome.produced,
+            reason=outcome.detail,
+            workspace_files_changed=outcome.workspace_files_changed,
         )
         units.append(_merge_record(parent, node, outcome))
         context.budget.spend(outcome.attempts)
@@ -1177,7 +1185,11 @@ async def _build_missing_leaves(
             )
         key = str(task.id)
         produced[key] = leaf.workspace
-        delivered[key] = UnitDelivery(produced=leaf.produced, reason=leaf.detail)
+        delivered[key] = UnitDelivery(
+            produced=leaf.produced,
+            reason=leaf.detail,
+            workspace_files_changed=leaf.workspace_files_changed,
+        )
         # Deliberately synchronous inside a gathered coroutine. The append
         # write-flush-fsyncs, and running it on the loop is what serialises
         # concurrent siblings against one file handle: a thread hop would free
@@ -1258,7 +1270,7 @@ async def _run_one_leaf(
         owner=owner,
         workspace=workspace,
         execution_id=f"{cell.key}-leaf-{task.id}",
-        limits=context.limits,
+        limits=context.limits_for(Role.LEAF, fan_in=0),
     )
 
 
@@ -1283,6 +1295,7 @@ async def _run_one_merge(
         spec_dir=context.spec_dir,
         work_root=context.work_root,
     )
+    fan_in = len(pieces)
     return await run_merge(
         context.deps,
         MergePlan(
@@ -1292,7 +1305,8 @@ async def _run_one_merge(
             pieces=pieces,
             criteria=_merge_criteria(context, parent, node),
             execution_prefix=f"{cell.key}-merge-{parent.id}",
-            limits=context.limits,
+            merge_limits=context.limits_for(Role.MERGE, fan_in=fan_in),
+            review_limits=context.limits_for(Role.REVIEW, fan_in=fan_in),
             attempts=context.manifest.merge_attempts,
         ),
         reviewer,
@@ -1381,10 +1395,13 @@ def _leaf_record(
         turns=leaf.turns,
         cost=leaf.cost,
         tokens=leaf.tokens,
+        input_tokens=leaf.input_tokens,
+        output_tokens=leaf.output_tokens,
         executor=leaf.executor,
         detail=leaf.detail,
         missing_declared_paths=leaf.missing_declared_paths,
         terminations=leaf.terminations,
+        workspace_files_changed=leaf.workspace_files_changed,
     )
 
 
@@ -1407,14 +1424,18 @@ def _merge_record(
         turns=outcome.turns,
         cost=outcome.cost,
         tokens=outcome.tokens,
+        input_tokens=outcome.input_tokens,
+        output_tokens=outcome.output_tokens,
         executor=outcome.executor,
         reviewer=outcome.reviewer,
         detail=outcome.detail,
         verdict=NotBlankStr(outcome.verdict) if outcome.verdict is not None else None,
         parked=outcome.parked,
+        parked_attempts=outcome.parked_attempts,
         amendments=outcome.amendments,
         missing_declared_paths=outcome.missing_declared_paths,
         terminations=outcome.terminations,
+        workspace_files_changed=outcome.workspace_files_changed,
     )
 
 

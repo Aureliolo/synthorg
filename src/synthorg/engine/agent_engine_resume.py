@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     from synthorg.core.clock import Clock
     from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine._agent_engine_callables import (
+        BuildBudgetChecker,
         Execute,
         HandleBudgetError,
         HandleFatalError,
@@ -83,6 +84,7 @@ class AgentEngineResumeMixin:
     _task_engine: TaskEngine | None
     _make_tool_invoker: MakeToolInvoker
     _resolve_memory_strategy: ResolveMemoryStrategy
+    _build_budget_checker: BuildBudgetChecker
     _execute: Execute
     _handle_fatal_error: HandleFatalError
     _handle_budget_error: HandleBudgetError
@@ -306,6 +308,14 @@ class AgentEngineResumeMixin:
             reason to ``BUDGET_EXHAUSTED`` / ``ERROR``).
         """
         try:
+            # Rebuilt rather than restored: a checker is a live predicate
+            # closure, not persisted state, so every dispatch of a context
+            # (fresh or resumed) builds its own. The ceilings it publishes
+            # already match what the restored context carries, since both
+            # derive from the same task.
+            budget_checker = await self._build_budget_checker(
+                task, agent_id, project_id=task.project
+            )
             # A resumed run continues prior work: exempt it from the
             # empty-run (zero-tool-call) fail-loud, whose per-segment proxy
             # would otherwise discard a task that already produced artifacts
@@ -325,6 +335,7 @@ class AgentEngineResumeMixin:
                         tool_invoker=tool_invoker,
                         effective_autonomy=effective_autonomy,
                         provider=self._provider,
+                        budget_checker=budget_checker,
                     )
                 )
         except BudgetExhaustedError as exc:

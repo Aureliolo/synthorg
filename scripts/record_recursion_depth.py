@@ -65,6 +65,7 @@ from evals.recursion_depth.journal import adopt_repaired_spend, read_recorded_ce
 from evals.recursion_depth.manifest import (
     ModelPair,
     RecursionDepthManifest,
+    Role,
     load_manifest,
 )
 from evals.recursion_depth.models import (
@@ -78,14 +79,14 @@ from evals.recursion_depth.models import (
 )
 from evals.recursion_depth.planner import AgentSessionPlanner
 from evals.recursion_depth.preflight import run_preflight
-from evals.recursion_depth.provenance import capture_provenance
+from evals.recursion_depth.provenance import capture_provenance, provider_is_priced
 from evals.recursion_depth.runner import (
     SessionBudget,
     SweepContext,
     planned_cells,
     run_sweep,
 )
-from evals.recursion_depth.session import SessionLimits, SweepDeps
+from evals.recursion_depth.session import SweepDeps, session_limits_for
 from evals.recursion_depth.spend_repair import (
     placed_units,
     repair_cell_spend,
@@ -362,14 +363,39 @@ def _projection_lines(manifest: RecursionDepthManifest, projected: int) -> list[
         # the worst case in money is 0.00 no matter how long the sweep runs.
         # Tokens are counted on every provider, so this line is the bound an
         # operator can rely on without first knowing how they are billed.
+        #
+        # The multiplier is the WIDEST ceiling any role can be sized to, not
+        # `unit_token_ceiling` alone: a merge or a review scales with fan-in up
+        # to its own declared cap, which this matrix sets above the leaf's flat
+        # budget, so a bound stated in the leaf's terms would understate what a
+        # sweep dominated by wide merges can actually spend.
         (
             f"  token bound   : "
-            f"{manifest.max_sessions * manifest.unit_token_ceiling:,} if every "
-            f"session spends its whole {manifest.unit_token_ceiling:,}, and this "
-            "is the bound that holds on a flat-rate connection, where the "
-            "money ceiling above can never fire"
+            f"{manifest.max_sessions * _widest_token_ceiling(manifest):,} if "
+            f"every session spends its whole "
+            f"{_widest_token_ceiling(manifest):,}-token ceiling, and this is "
+            "the bound that holds on a flat-rate connection, where the money "
+            "ceiling above can never fire"
         ),
     ]
+
+
+def _widest_token_ceiling(manifest: RecursionDepthManifest) -> int:
+    """The largest per-session token ceiling any role can be sized to.
+
+    A leaf and a planning session are flat at ``unit_token_ceiling``; a merge
+    and a review scale with fan-in up to their own declared caps, which sit
+    above it. The worst-case bound above is only honest against the widest of
+    the three, not against the leaf's alone.
+
+    Returns:
+        The ceiling.
+    """
+    return max(
+        manifest.unit_token_ceiling,
+        manifest.merge_token_cap,
+        manifest.review_token_cap,
+    )
 
 
 def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
@@ -457,6 +483,7 @@ async def _sweep_under(
     args: argparse.Namespace,
     manifest: RecursionDepthManifest,
     spec: SpecBrief,
+    company_config: RootConfig,
 ) -> RecursionDepthReport:
     """Stamp what this run is measured against, then run it.
 
@@ -469,6 +496,7 @@ async def _sweep_under(
         args: The parsed command line.
         manifest: The recording matrix.
         spec: The specification the sweep builds.
+        company_config: The config the pairs actually dispatch through.
 
     Returns:
         The report the sweep produced.
@@ -480,6 +508,7 @@ async def _sweep_under(
             manifest_path=args.manifest,
             manifest=manifest,
             spec=spec,
+            company_config=company_config,
             out_dir=args.out_dir,
         )
     )
@@ -529,10 +558,15 @@ async def _record(
                 manifest=manifest,
                 spec=spec,
                 work_root=run_work_root,
+                company_config=company_config,
             )
             _log_record_start(args, manifest=manifest, host=host)
             report = await _sweep_under(
-                context, args=args, manifest=manifest, spec=spec
+                context,
+                args=args,
+                manifest=manifest,
+                spec=spec,
+                company_config=company_config,
             )
             # Written inside the host's lifetime so a teardown that overruns
             # cannot discard a sweep that already cost real money to produce.
@@ -585,6 +619,7 @@ async def _build_context(
     manifest: RecursionDepthManifest,
     spec: SpecBrief,
     work_root: Path,
+    company_config: RootConfig,
 ) -> SweepContext:
     """Arm the settings, staff the roster, and wire the sweep.
 
@@ -624,20 +659,25 @@ async def _build_context(
         # trees `--keep-workspaces` leaves and are read against them.
         transcript_root=work_root / "transcripts",
         stall_idle_seconds=args.stall_notify_seconds,
+        # Resolved once, from both pairs, rather than derived from a zero sum
+        # at scoring time: a genuinely free call and an unpriced one are the
+        # same number, and only the connection's own declared billing model
+        # tells them apart.
+        priced_providers=frozenset(
+            pair.provider
+            for pair in (manifest.executor, manifest.reviewer)
+            if provider_is_priced(pair, company_config=company_config)
+        ),
         # The only place a model FAMILY is written down. A live identity has no
         # such field, so every per-unit record read `family: null` and the
         # cross_family claim the gated arm rests on was evidenced nowhere.
         declared_pairs=(manifest.executor, manifest.reviewer),
     )
-    # What a PLANNING session gets. The units are bounded by
-    # ``SweepContext.limits``, which reads the manifest itself; the two share a
-    # spend ceiling and differ in turns, because the shipped decomposition
-    # config caps a planner's turns and nothing caps a unit's.
-    planner_limits = SessionLimits(
-        max_turns=manifest.planner_max_turns,
-        cost_ceiling=manifest.unit_cost_ceiling,
-        token_ceiling=manifest.unit_token_ceiling,
-    )
+    # What a PLANNING session gets, on the same declarative sizing every other
+    # role uses (`SweepContext.limits_for` reaches the same function for the
+    # units it dispatches), so this is not a second answer to how a role is
+    # sized: a planner takes no fan-in scaling, matching a leaf.
+    planner_limits = session_limits_for(manifest, Role.PLAN, fan_in=0)
     return SweepContext(
         manifest=manifest,
         spec=spec,
@@ -665,6 +705,7 @@ def _build_deps(
     binder: HarnessBinder,
     transcript_root: Path,
     declared_pairs: tuple[ModelPair, ...],
+    priced_providers: frozenset[str] = frozenset(),
     stall_idle_seconds: float = DEFAULT_STALL_IDLE_SECONDS,
 ) -> SweepDeps:
     """Bind every per-unit collaborator to the hosted gateway.
@@ -679,6 +720,8 @@ def _build_deps(
         binder: What routes and authenticates each unit at that gateway.
         transcript_root: Where per-session transcripts are written.
         declared_pairs: The manifest's pairs, carrying the declared families.
+        priced_providers: Provider connections resolved as pricing their
+            calls, from the same config the preflight already read.
         stall_idle_seconds: Idle time after which a unit is reported stalled.
 
     Returns:
@@ -714,6 +757,7 @@ def _build_deps(
         stall_idle_seconds=stall_idle_seconds,
         on_stall=_print_stall,
         declared_pairs=declared_pairs,
+        priced_providers=priced_providers,
     )
 
 

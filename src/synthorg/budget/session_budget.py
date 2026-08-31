@@ -14,6 +14,7 @@ tuned number per session kind.
 """
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -148,9 +149,37 @@ class _SessionContext(Protocol):
         ...
 
 
+@dataclass(frozen=True, slots=True)
+class SessionBudgetChecker:
+    """A budget predicate that publishes the ceilings it enforces.
+
+    A loop consumes this as a plain ``Callable[[ctx], bool]`` every turn; a
+    prompt or a turn-boundary signal consumes :attr:`ceilings` once, before
+    the loop starts, to render what the session's bound actually IS. Two
+    return values from two different builders is how a published ceiling and
+    an enforced one come apart; carrying both here means whoever renders the
+    gauge reads the exact pair the predicate below is closed over, not a
+    second resolution of it.
+
+    Attributes:
+        ceilings: The bound this checker enforces.
+    """
+
+    ceilings: SessionCeilings
+    _predicate: Callable[[_SessionContext], bool]
+
+    def __call__(self, ctx: _SessionContext) -> bool:
+        """Whether *ctx* has exhausted :attr:`ceilings`.
+
+        Returns:
+            ``True`` once either bound in :attr:`ceilings` is reached.
+        """
+        return self._predicate(ctx)
+
+
 def build_session_budget_checker(
     ceilings: SessionCeilings,
-) -> Callable[[_SessionContext], bool] | None:
+) -> SessionBudgetChecker | None:
     """Build the halt predicate for a bounded helper session.
 
     Takes the pair rather than two scalars: a caller that has one bound in
@@ -165,9 +194,9 @@ def build_session_budget_checker(
             one that always applies.
 
     Returns:
-        A predicate that is ``True`` once either bound is reached, or
-        ``None`` when neither bound is set. ``None`` rather than a
-        never-true predicate so a caller can tell "no bound" from "a bound
+        A :class:`SessionBudgetChecker` that is ``True`` once either bound is
+        reached, or ``None`` when neither bound is set. ``None`` rather than
+        a never-true predicate so a caller can tell "no bound" from "a bound
         not yet reached".
     """
     if not ceilings.bounded:
@@ -181,4 +210,4 @@ def build_session_budget_checker(
             return True
         return money > 0 and usage.cost >= money
 
-    return _check
+    return SessionBudgetChecker(ceilings=ceilings, _predicate=_check)

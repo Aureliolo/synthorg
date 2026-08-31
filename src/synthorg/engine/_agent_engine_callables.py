@@ -15,6 +15,7 @@ defaults included) so the declarations stay precise rather than ``Any``.
 from typing import Protocol
 
 from synthorg.budget.errors import BudgetExhaustedError
+from synthorg.budget.session_budget import SessionBudgetChecker
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.core.task import Task
@@ -94,6 +95,19 @@ class Execute(Protocol):
     """Signature of ``AgentEngine._execute``."""
 
     async def __call__(self, request: AgentExecuteRequest) -> AgentRunResult: ...
+
+
+class BuildBudgetChecker(Protocol):
+    """Signature of ``AgentEngineContextMixin._build_budget_checker``."""
+
+    async def __call__(
+        self,
+        task: Task,
+        agent_id: str,
+        *,
+        project_id: str | None,
+        project_budget: float = ...,
+    ) -> SessionBudgetChecker | None: ...
 
 
 class HandleBudgetError(Protocol):

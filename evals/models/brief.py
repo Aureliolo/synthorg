@@ -144,9 +144,10 @@ class LimitsSpec(BaseModel):
 
     ``max_total_cost`` and ``max_turns`` bound the run: the first arms the
     gateway's hard kill for a run dispatching through it, the second is the
-    turn ceiling the loop is given. A provider priced at zero leaves the first
-    unable to fire, which is worth knowing when reading a scoreboard recorded
-    against one.
+    base turn budget the loop is given, which re-earns itself via the
+    operator's ``engine.max_turn_extensions`` and so does not alone stop a
+    runaway. A provider priced at zero leaves the first unable to fire, which
+    is worth knowing when reading a scoreboard recorded against one.
 
     ``max_wall_clock_seconds`` is measured, not enforced. A run that overruns
     it is recorded as a process fact

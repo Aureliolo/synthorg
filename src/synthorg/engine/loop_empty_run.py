@@ -17,11 +17,13 @@ depending on its arguments.
 
 from collections.abc import Iterable
 
+from synthorg.core.task import Task
 from synthorg.engine.artifacts.baseline_scope import (
     current_run_baseline,
     produced_nothing_since,
 )
 from synthorg.engine.context import AgentContext
+from synthorg.engine.loop_budget_defaults import DEFAULT_PRODUCE_EARLY_PERCENT
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.resume_scope import is_resumed_run
 from synthorg.execution.turn import TurnRecord
@@ -31,9 +33,14 @@ from synthorg.observability.events.execution import (
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
+from synthorg.settings.kill_switch import resolve_int_with_fallback
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.tools.discovery import DISCOVERY_NAMES
 
 logger = get_logger(__name__)
+
+_ENGINE_NAMESPACE = "engine"
+_PRODUCE_EARLY_PERCENT_KEY = "produce_early_percent"
 
 
 async def delivered_nothing(turns: Iterable[TurnRecord]) -> bool:
@@ -172,3 +179,100 @@ async def nudge_empty_run(
         turns_remaining=ctx.max_turns - turn_number,
     )
     return ctx.with_message(message)
+
+
+def _produce_early_message(task: Task, spend_percent: float) -> ChatMessage:
+    """Word the produce-early correction.
+
+    Returns:
+        The USER-role message content, fencing the declared deliverables.
+    """
+    declared = wrap_untrusted(
+        TAG_TASK_DATA,
+        ", ".join(artifact.path for artifact in task.artifacts_expected),
+    )
+    return ChatMessage(
+        role=MessageRole.USER,
+        content=(
+            f"You have used {int(spend_percent)}% of this run's token budget "
+            "and your workspace is exactly as you found it: reading, "
+            "exploring and planning have left no deliverable behind. It "
+            f"declares these deliverables: {declared} Write the smallest "
+            "useful version of each now, then refine; do not spend further "
+            "budget exploring before writing something."
+        ),
+    )
+
+
+async def nudge_unproductive_spend(
+    ctx: AgentContext,
+    turns: list[TurnRecord],
+    produce_early_percent: int,
+) -> AgentContext | None:
+    """Extend *ctx* with a correction when spend has outpaced delivery.
+
+    Complements the correction above: that one only reaches a turn with
+    literally no tool calls, so a session that spends its whole budget
+    reading and exploring -- calling a tool every turn, delivering nothing --
+    never reaches it. This fires once, at a declared share of the run's
+    token ceiling, regardless of what those turns called.
+
+    Args:
+        ctx: Current agent context.
+        turns: Every turn recorded so far.
+        produce_early_percent: Share of the token ceiling that must have
+            passed, with nothing produced, before this fires. Zero disables
+            it.
+
+    Returns:
+        The context with the correction appended, or ``None`` when no
+        correction applies.
+    """
+    if ctx.produce_early_nudged or produce_early_percent <= 0:
+        return None
+    if is_resumed_run():
+        return None
+    execution = ctx.task_execution
+    if execution is None or not execution.task.artifacts_expected:
+        return None
+    if ctx.token_ceiling is None or ctx.max_turns <= len(turns):
+        return None
+    spend_percent = (ctx.accumulated_cost.total_tokens / ctx.token_ceiling) * 100.0
+    if spend_percent < produce_early_percent:
+        return None
+    if not await delivered_nothing(turns):
+        return None
+    logger.info(
+        EXECUTION_LOOP_EMPTY_RUN_NUDGED,
+        execution_id=ctx.execution_id,
+        turn=len(turns),
+        turns_remaining=ctx.max_turns - len(turns),
+        trigger="produce_early_spend",
+    )
+    message = _produce_early_message(execution.task, spend_percent)
+    return ctx.with_message(message).model_copy(update={"produce_early_nudged": True})
+
+
+async def resolve_produce_early_percent(
+    config_resolver: ConfigResolverProtocol | None,
+) -> int:
+    """Resolve the live produce-early spend threshold.
+
+    Read per run, beside the budget signal it shares a turn-boundary slot
+    with, so an operator's change takes effect on the next dispatch rather
+    than the next restart.
+
+    Args:
+        config_resolver: Settings resolver, or ``None`` when unwired.
+
+    Returns:
+        The operator-configured ``engine.produce_early_percent``, else
+        :data:`DEFAULT_PRODUCE_EARLY_PERCENT`. Zero is a legitimate choice
+        (disable the checkpoint) so it is honoured rather than read as unset.
+    """
+    return await resolve_int_with_fallback(
+        resolver=config_resolver,
+        namespace=_ENGINE_NAMESPACE,
+        key=_PRODUCE_EARLY_PERCENT_KEY,
+        fallback=DEFAULT_PRODUCE_EARLY_PERCENT,
+    )

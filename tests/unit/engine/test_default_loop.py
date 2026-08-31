@@ -46,8 +46,10 @@ class _StubTool(BaseTool):
         return ToolExecutionResult(content="stub")
 
 
-async def _compaction(ctx: AgentContext) -> AgentContext | None:
-    del ctx
+async def _compaction(
+    ctx: AgentContext, *, force: bool = False, preserve_markers: bool | None = None
+) -> AgentContext | None:
+    del ctx, force, preserve_markers
     return None
 
 

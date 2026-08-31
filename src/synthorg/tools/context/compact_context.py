@@ -1,10 +1,12 @@
 """Agent-controlled context compaction tool.
 
 Allows agents to explicitly request context compaction when context
-fill is high and reasoning clarity is critical.  The tool signals
-intent via metadata -- it does NOT mutate the frozen AgentContext
-directly.  The execution loop detects the directive and invokes
-compaction at the turn boundary.
+fill is high and reasoning clarity is critical.  The tool does NOT mutate
+the frozen ``AgentContext`` directly: the loop observes this tool's CALL at
+the existing turn-boundary side-effect seam
+(``loop_tool_execution.py::_apply_tool_call_side_effect``) and forces
+compaction there, skipping the fill-threshold check and honouring the
+requested ``preserve_markers`` override.
 """
 
 from typing import ClassVar, Literal, override
@@ -14,14 +16,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.core.boundary import parse_typed
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.sanitization import sanitize_message
-from synthorg.observability import get_logger
-from synthorg.observability.events.context_budget import (
-    CONTEXT_BUDGET_AGENT_COMPACTION_REQUESTED,
-)
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
-
-logger = get_logger(__name__)
 
 CompactContextStrategy = Literal["summarize"]
 
@@ -46,13 +42,14 @@ class CompactContextArgs(BaseModel):
 class CompactContextTool(BaseTool):
     """Signal context compaction to the execution loop.
 
-    The tool validates arguments and returns a compaction directive
-    in ``ToolExecutionResult.metadata``.  The execution loop detects
-    the directive and performs actual compaction at the turn boundary.
+    The tool validates arguments; the loop reads the tool CALL itself
+    (this class's own ``strategy`` / ``reason`` / ``preserve_markers``
+    arguments) at the turn-boundary side-effect seam and forces compaction
+    there. ``ToolExecutionResult.metadata`` is set for the same information
+    but is never read back by the loop -- it is dropped at the invoker
+    boundary before the loop ever sees it.
 
     This tool is stateless and safe to register unconditionally.
-    Compaction only triggers when ``CompactionConfig.agent_controlled``
-    is enabled in the engine configuration.
     """
 
     args_model: ClassVar[type[BaseModel] | None] = CompactContextArgs
@@ -77,14 +74,21 @@ class CompactContextTool(BaseTool):
         *,
         arguments: dict[str, object],
     ) -> ToolExecutionResult:
-        """Signal compaction directive via metadata.
+        """Record the compaction directive; the loop reads the call, not this result.
+
+        The loop observes this tool's CALL (its own arguments), not
+        ``ToolExecutionResult.metadata``, which is dropped at the invoker
+        boundary and never reaches it -- so the directive this records here
+        is for the operator reading the transcript, not a signal anything
+        downstream consumes.
 
         Args:
             arguments: Validated tool arguments (strategy, reason,
                 optionally preserve_markers).
 
         Returns:
-            Result with ``compaction_directive`` metadata key.
+            Result reporting the directive; ``compaction_directive`` metadata
+            kept for the same reason, not consumed by the loop.
         """
         args = parse_typed("tool.execute", arguments, CompactContextArgs)
         strategy = args.strategy
@@ -92,15 +96,11 @@ class CompactContextTool(BaseTool):
         preserve_markers = args.preserve_markers
         sanitized_reason = sanitize_message(reason, max_length=256)
 
-        logger.info(
-            CONTEXT_BUDGET_AGENT_COMPACTION_REQUESTED,
-            strategy=strategy,
-            preserve_markers=preserve_markers,
-            reason=sanitized_reason,
-        )
-
         return ToolExecutionResult(
-            content=("Compaction directive accepted. Will execute at turn boundary."),
+            content=(
+                f"Compaction requested (strategy={strategy!r}). It will run "
+                "before your next turn."
+            ),
             metadata={
                 "compaction_directive": True,
                 "strategy": strategy,

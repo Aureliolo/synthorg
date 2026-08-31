@@ -22,6 +22,7 @@ from evals.errors import RecursionDepthPlannerSubstitutedError
 from evals.harness.binding import RunBinding
 from evals.harness.stall_watch import ProgressTrackingLedger
 from evals.recursion_depth.manifest import ModelPair
+from evals.recursion_depth.models import sum_costs
 from evals.recursion_depth.session import (
     SessionLimits,
     SweepDeps,
@@ -86,18 +87,23 @@ class PlanningSpend:
     Tokens travel beside cost because cost alone measures nothing against a
     flat-rate subscription, where every record is priced at zero and the token
     count is the only thing that moves.
+
+    Cost is ``None``-poisoned rather than accumulated once the planning
+    session's own connection turns out not to price its calls: a booking that
+    kept summing after that would carry a partial figure as though it were the
+    whole one, which is the same defect a stored ``0.0`` was.
     """
 
     __slots__ = ("_cost", "_sessions", "_tokens")
 
     def __init__(self) -> None:
-        self._cost = 0.0
+        self._cost: float | None = 0.0
         self._tokens = 0
         self._sessions = 0
 
     @property
-    def cost(self) -> float:
-        """What the planning attempts have spent."""
+    def cost(self) -> float | None:
+        """What the planning attempts have spent, or ``None`` if unpriced."""
         return self._cost
 
     @property
@@ -110,7 +116,7 @@ class PlanningSpend:
         """How many planning sessions have run."""
         return self._sessions
 
-    def book(self, *, cost: float, tokens: int, sessions: int) -> None:
+    def book(self, *, cost: float | None, tokens: int, sessions: int) -> None:
         """Add one attempt's spend.
 
         Refuses a negative delta here rather than letting it reach the
@@ -120,20 +126,21 @@ class PlanningSpend:
         and nothing names which attempt corrupted it.
 
         Args:
-            cost: What the attempt's ledger recorded.
+            cost: What the attempt's ledger recorded, or ``None`` when the
+                connection it ran on does not price its calls.
             tokens: Input plus output tokens over the same records.
             sessions: How many planning sessions the attempt ran.
 
         Raises:
             ValueError: Any of the three deltas is negative.
         """
-        if cost < 0 or tokens < 0 or sessions < 0:
+        if (cost is not None and cost < 0) or tokens < 0 or sessions < 0:
             msg = (
                 f"planning spend cannot decrease: cost={cost}, "
                 f"tokens={tokens}, sessions={sessions}"
             )
             raise ValueError(msg)
-        self._cost += cost
+        self._cost = sum_costs((self._cost, cost))
         self._tokens += tokens
         self._sessions += sessions
 
@@ -203,6 +210,7 @@ class AgentSessionPlanner:
             The tree.
         """
         provider = await self.deps.build_provider(self._binding(task, execution_id))
+        priced = self.executor.provider in self.deps.priced_providers
         fallback = ProgressTrackingLedger()
         async with (
             # Planning is transcribed for the same reason execution is, and it
@@ -250,6 +258,7 @@ class AgentSessionPlanner:
                     execution_id=execution_id,
                     depth_cap=depth_cap,
                     gateway_hosted=self.deps.open_run_ledger is not None,
+                    priced=priced,
                 )
                 raise
             except Exception as exc:
@@ -265,6 +274,7 @@ class AgentSessionPlanner:
                     execution_id=execution_id,
                     depth_cap=depth_cap,
                     gateway_hosted=self.deps.open_run_ledger is not None,
+                    priced=priced,
                 )
                 raise
             # Counted from the tree rather than from the cap: a planner that
@@ -275,6 +285,7 @@ class AgentSessionPlanner:
                 spend,
                 sessions=len(levels(result)),
                 gateway_hosted=self.deps.open_run_ledger is not None,
+                priced=priced,
                 label=execution_id,
             )
         return result
@@ -347,6 +358,7 @@ async def _shielded_book(
     execution_id: str,
     depth_cap: int,
     gateway_hosted: bool,
+    priced: bool,
 ) -> None:
     """Book a failed attempt's spend without displacing the failure.
 
@@ -373,6 +385,7 @@ async def _shielded_book(
         execution_id: Which planning attempt this was.
         depth_cap: The ``max_depth`` it was planning to.
         gateway_hosted: Whether these calls crossed a hosted gateway.
+        priced: Whether the connection this attempt ran on prices its calls.
     """
     try:
         await asyncio.shield(
@@ -381,6 +394,7 @@ async def _shielded_book(
                 spend,
                 sessions=sessions,
                 gateway_hosted=gateway_hosted,
+                priced=priced,
                 label=execution_id,
             )
         )
@@ -411,6 +425,7 @@ async def _book(
     *,
     sessions: int,
     gateway_hosted: bool,
+    priced: bool,
     label: str,
 ) -> None:
     """Book what *tracker* recorded for one planning attempt.
@@ -429,11 +444,14 @@ async def _book(
         sessions: How many planning sessions this attempt ran.
         gateway_hosted: Whether these calls crossed a hosted gateway, which
             decides whether a second account of one call is on the ledger.
+        priced: Whether the connection this attempt ran on prices its calls.
         label: Names this attempt in the dedupe log line.
     """
     await tracker.drain_pending_records()
     records = await collect_all_records(tracker)
-    booked = session_spend(records, gateway_hosted=gateway_hosted, label=label)
+    booked = session_spend(
+        records, gateway_hosted=gateway_hosted, label=label, priced=priced
+    )
     spend.book(cost=booked.cost, tokens=booked.tokens, sessions=sessions)
 
 

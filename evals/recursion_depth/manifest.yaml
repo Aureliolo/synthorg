@@ -125,6 +125,40 @@ unit_cost_ceiling: 5.0
 # subsystem there, so extra room buys thrashing. The recording of that run is
 # kept under `results/ceiling-3m/` as the evidence for this paragraph.
 unit_token_ceiling: 1500000
+# A merge must read every child before it can write one line; a leaf reads
+# nothing. Sizing both off `unit_token_ceiling` is what starved the recording
+# stopped on 2026-08-30: four merges made 167 tool calls between them, all of
+# them `shell_command`, and wrote zero files, because reading alone exhausted
+# the flat budget before a writing tool was ever loaded.
+#
+# `merge_token_base` matches `unit_token_ceiling`: an assembly with nothing to
+# read still has to write a tree, on the same footing as a leaf. The per-piece
+# increment is a first-cut estimate of what one child's tree costs to read,
+# not yet a measurement of this matrix's own trees; the cap bounds an unusually
+# wide node rather than describing an expected one. Both are meant to be
+# corrected once a run under this sizing measures its own per-piece cost, the
+# same way `unit_token_ceiling` above carries the history of its own revision.
+merge_token_base: 1500000
+merge_token_per_piece: 500000
+merge_token_cap: 8000000
+# Turns are the BASE budget described above `unit_max_turns`, so the same
+# looseness applies: the token bounds are what actually stop a runaway.
+merge_max_turns_base: 40
+merge_max_turns_per_piece: 5
+merge_max_turns_cap: 120
+# A review reads the same pieces the merge read, plus what the merge produced,
+# so its reading burden is the merge's own and the two are sized symmetrically.
+# This matrix's own evidence: rep 1's review spent 1,058,678 tokens against the
+# old flat 1,500,000 ceiling without reaching a verdict, which is the starved
+# reviewer that let a park stand for what should have been an escalation.
+review_token_base: 1500000
+review_token_per_piece: 500000
+review_token_cap: 8000000
+# Lower than the merge's own: a review writes a verdict and findings, not an
+# assembled tree.
+review_max_turns_base: 30
+review_max_turns_per_piece: 5
+review_max_turns_cap: 100
 # Aborts rather than overruns. A depth sweep's session count is a product of
 # branching factors the manifest cannot predict, and the cost of being wrong
 # about it is spend rather than a wrong answer.

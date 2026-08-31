@@ -20,6 +20,7 @@ from synthorg.engine.background_job_watch import (
 from synthorg.engine.checkpoint.callback import CheckpointCallback
 from synthorg.engine.compaction.protocol import CompactionCallback
 from synthorg.engine.intervention.inbox import SteeringInbox
+from synthorg.engine.loop_budget_signal import BudgetSignalConfig, check_budget_signal
 from synthorg.engine.quality.classifier import StepQualityClassifier
 from synthorg.engine.response_budget import DEFAULT_AGENT_MAX_RESPONSE_TOKENS
 from synthorg.engine.resume_scope import is_resumed_run
@@ -51,7 +52,11 @@ from .loop_control_helpers import (
     invoke_compaction,
 )
 from .loop_controls import LoopControls
-from .loop_empty_run import delivered_nothing, nudge_empty_run
+from .loop_empty_run import (
+    delivered_nothing,
+    nudge_empty_run,
+    nudge_unproductive_spend,
+)
 from .loop_helpers import (
     build_result,
     check_response_errors,
@@ -279,6 +284,8 @@ class ReactLoop:
         task_cancellation_checker: TaskCancellationChecker | None = None,
         turn_observer: TurnObserver | None = None,
         streaming_enabled: bool = False,
+        budget_signal_config: BudgetSignalConfig | None = None,
+        produce_early_percent: int | None = None,
     ) -> ExecutionResult:
         """Run the ReAct loop until termination.
 
@@ -299,6 +306,11 @@ class ReactLoop:
             streaming_enabled: When ``True``, each per-turn LLM call streams
                 and is interruptible mid-flight (operator cancellation and
                 steering REDIRECT); otherwise a non-streaming call is used.
+            budget_signal_config: Optional turn-boundary thresholds for
+                reporting live spend against ``context.token_ceiling``.
+            produce_early_percent: Share of ``context.token_ceiling`` that
+                must pass, with nothing produced, before a corrective nudge
+                fires once; ``None`` or non-positive disables it.
 
         Returns:
             Execution result with final context and termination info.
@@ -352,6 +364,18 @@ class ReactLoop:
             )
             if nudged_stall is not None:
                 ctx = nudged_stall
+
+            if budget_signal_config is not None:
+                signalled = check_budget_signal(ctx, budget_signal_config)
+                if signalled is not None:
+                    ctx = signalled
+
+            if produce_early_percent is not None:
+                early_nudged = await nudge_unproductive_spend(
+                    ctx, turns, produce_early_percent
+                )
+                if early_nudged is not None:
+                    ctx = early_nudged
 
             # Refresh tool defs each turn so newly loaded tools appear
             tool_defs = get_tool_definitions(tool_invoker, ctx.loaded_tools)

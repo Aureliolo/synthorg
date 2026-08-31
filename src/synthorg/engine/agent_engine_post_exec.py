@@ -21,6 +21,7 @@ from synthorg.engine.cost_recording import (
     resolve_tracker_currency,
 )
 from synthorg.engine.errors import ExecutionStateError
+from synthorg.engine.loop_budget_signal import BudgetSignalConfig
 from synthorg.engine.loop_protocol import (
     BudgetChecker,
     ExecutionLoop,
@@ -585,6 +586,8 @@ class AgentEnginePostExecMixin:
         provider: CompletionProvider | None = None,
         turn_observer: TurnObserver | None = None,
         streaming_enabled: bool = False,
+        budget_signal_config: BudgetSignalConfig | None = None,
+        produce_early_percent: int | None = None,
     ) -> ExecutionResult:
         """Execute the loop, using ``asyncio.wait`` for timeout control.
 
@@ -605,6 +608,8 @@ class AgentEnginePostExecMixin:
             task_cancellation_checker=self._make_task_cancellation_checker(task_id),
             turn_observer=turn_observer,
             streaming_enabled=streaming_enabled,
+            budget_signal_config=budget_signal_config,
+            produce_early_percent=produce_early_percent,
         )
         if timeout_seconds is None:
             return await coro

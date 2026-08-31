@@ -25,9 +25,11 @@ from evals.recursion_depth.manifest import Arm, ModelPair
 from evals.recursion_depth.models import (
     MERGE,
     UNATTRIBUTED_LEAVES_CAVEAT,
+    UNPRICED_COST_CAVEAT,
     UNRESOLVABLE_CLAIM_CELLS_CAVEAT,
     UNRESOLVED_CLAIMS_CAVEAT,
     CellRecord,
+    CostBasis,
     DepthPoint,
     DepthSpread,
     Provenance,
@@ -35,6 +37,7 @@ from evals.recursion_depth.models import (
     SpendSource,
     SurvivalPoint,
     UnitRecord,
+    sum_costs,
 )
 from evals.recursion_depth.score import (
     achieved_depth_histogram,
@@ -44,6 +47,7 @@ from evals.recursion_depth.score import (
     spread_by_depth_cap,
     survival_by_achieved_depth,
     survival_by_depth_cap,
+    unjudged_by_achieved_depth,
 )
 from evals.recursion_depth.spend_repair import SPEND_REPAIRED_CAVEAT
 from synthorg.observability import get_logger
@@ -68,7 +72,10 @@ REPORT_CHART_NAME: Final[str] = "chart.svg"
 
 
 def derived_caveats(
-    cells: Sequence[CellRecord], *, spend_source: SpendSource
+    cells: Sequence[CellRecord],
+    *,
+    spend_source: SpendSource,
+    cost_basis: CostBasis = CostBasis.PRICED,
 ) -> list[str]:
     """The caveats a recording implies on its own.
 
@@ -84,6 +91,10 @@ def derived_caveats(
             the journal rather than from whoever typed a flag, because a claim
             about the figures a reader is holding has to survive being
             re-scored by somebody else.
+        cost_basis: Whether this recording's cost figures are money or an
+            honest absence of it. Defaults to ``PRICED`` for the same reason
+            ``Provenance.cost_basis`` does: a recording made before this field
+            existed carried a real cost throughout.
 
     Returns:
         The caveats this recording implies, which may be none.
@@ -102,6 +113,7 @@ def derived_caveats(
         *([UNRESOLVED_CLAIMS_CAVEAT.format(dropped=dropped)] if dropped else []),
         *([UNRESOLVABLE_CLAIM_CELLS_CAVEAT.format(cells=stopped)] if stopped else []),
         *([SPEND_REPAIRED_CAVEAT] if spend_source is SpendSource.REPAIRED else []),
+        *([UNPRICED_COST_CAVEAT] if cost_basis is CostBasis.UNPRICED else []),
     ]
 
 
@@ -151,11 +163,19 @@ def assemble_report(
         )
         raise RecursionDepthNoCellsMeasuredError(msg)
     required = provenance.requirement_count
+    # A cell whose gate rendered no verdict is a missing observation, not a
+    # gated one: excluded from the satisfaction curves alone. The oracle
+    # grades survival and spread too, so exclusion there would be equally
+    # defensible; it is scoped narrower because both are already thin lines
+    # and thinning them further costs more than it buys. unjudged_by_depth
+    # is a first-class field precisely so either curve can be recomputed
+    # without it if that trade is ever revisited.
+    judged = tuple(cell for cell in measured if not cell.is_unjudged)
     return RecursionDepthReport(
         provenance=provenance,
         cells=tuple(cells),
-        by_achieved_depth=curve_by_achieved_depth(measured, requirement_count=required),
-        by_depth_cap=curve_by_depth_cap(measured, requirement_count=required),
+        by_achieved_depth=curve_by_achieved_depth(judged, requirement_count=required),
+        by_depth_cap=curve_by_depth_cap(judged, requirement_count=required),
         survival_by_achieved_depth=survival_by_achieved_depth(measured),
         survival_by_depth_cap=survival_by_depth_cap(measured),
         spread_by_achieved_depth=spread_by_achieved_depth(
@@ -163,6 +183,7 @@ def assemble_report(
         ),
         spread_by_depth_cap=spread_by_depth_cap(measured, requirement_count=required),
         achieved_depth_histogram=achieved_depth_histogram(measured),
+        unjudged_by_depth=unjudged_by_achieved_depth(measured),
         caveats=tuple(caveats),
     )
 
@@ -215,8 +236,15 @@ def _caption(report: RecursionDepthReport) -> tuple[str, ...]:
     histogram = ", ".join(
         f"{key} ({count})" for key, count in report.achieved_depth_histogram.items()
     )
+    unjudged = ", ".join(
+        f"depth {depth} ({count})" for depth, count in report.unjudged_by_depth.items()
+    )
+    excluded_note = (
+        f"Excluded as unjudged (gate exhausted every round on a park): {unjudged}."
+    )
     return (
         f"Runs reaching each depth: {histogram or 'none recorded'}.",
+        *((excluded_note,) if unjudged else ()),
         *report.caveats,
     )
 
@@ -247,7 +275,7 @@ def _provenance_lines(report: RecursionDepthReport) -> list[str]:
             f"({provenance.independence.value})"
         ),
         (
-            f"- Total spend: {report.total_cost:.4f} across "
+            f"- Total spend: {_cost_cell(report.total_cost)} across "
             f"{report.total_tokens} tokens "
             f"({provenance.spend_source.value})"
         ),
@@ -337,6 +365,7 @@ def _markdown(report: RecursionDepthReport) -> str:
         "",
         *_gate_table(report),
         "",
+        *_unjudged_lines(report),
         "## Who judged whom",
         "",
         "The gate is the treatment, so a reviewer that came up on the executor's",
@@ -396,7 +425,7 @@ def _curve_table(points: tuple[DepthPoint, ...]) -> list[str]:
             f"| {point.depth} | {point.arm.value} | {point.satisfied} "
             f"| {point.required} | {rendered} | {point.cells} "
             f"| {point.attempts} | {point.tokens} "
-            f"| {point.cost:.4f} |"
+            f"| {_cost_cell(point.cost)} |"
         )
     return rows
 
@@ -468,6 +497,19 @@ def _rate(value: float | None) -> str:
     return "n/a" if value is None else f"{value:.3f}"
 
 
+def _cost_cell(value: float | None) -> str:
+    """Render one cost figure, an absence rather than a zero when unpriced.
+
+    ``None`` here means the connection that spent it does not price its
+    calls, not that nothing was spent, and printing ``0.0000`` would claim
+    the former is the latter.
+
+    Returns:
+        The rendered figure.
+    """
+    return "unpriced" if value is None else f"{value:.4f}"
+
+
 def _cell_table(report: RecursionDepthReport) -> list[str]:
     """Render one row per recorded run.
 
@@ -494,7 +536,7 @@ def _cell_table(report: RecursionDepthReport) -> list[str]:
         table.append(
             f"| {key} | {achieved} | {satisfied} | {required} "
             f"| {cell.total_attempts} | {cell.total_tokens} "
-            f"| {cell.total_cost:.4f} |"
+            f"| {_cost_cell(cell.total_cost)} |"
         )
     return table
 
@@ -549,14 +591,14 @@ def _gate_table(report: RecursionDepthReport) -> list[str]:
     merges = dict.fromkeys(Arm, 0)
     attempts = dict.fromkeys(Arm, 0)
     tokens = dict.fromkeys(Arm, 0)
-    cost = dict.fromkeys(Arm, 0.0)
+    cost: dict[Arm, list[float | None]] = {arm: [] for arm in Arm}
     for cell, unit in _merges_of(report):
         merges[cell.arm] += 1
         parked[cell.arm] += int(unit.parked)
         amendments[cell.arm] += unit.amendments
         attempts[cell.arm] += unit.attempts
         tokens[cell.arm] += unit.tokens
-        cost[cell.arm] += unit.cost
+        cost[cell.arm].append(unit.cost)
     rows = [
         (
             "| Arm | Merges | Sessions | Tokens | Spend | Parked escalations "
@@ -566,10 +608,41 @@ def _gate_table(report: RecursionDepthReport) -> list[str]:
     ]
     rows.extend(
         f"| {arm.value} | {merges[arm]} | {attempts[arm]} | {tokens[arm]} "
-        f"| {cost[arm]:.4f} | {parked[arm]} | {amendments[arm]} |"
+        f"| {_cost_cell(sum_costs(cost[arm]))} | {parked[arm]} | {amendments[arm]} |"
         for arm in Arm
     )
     return rows
+
+
+def _unjudged_lines(report: RecursionDepthReport) -> list[str]:
+    """Name the cells the primary curves excluded, and what they cost.
+
+    Empty when nothing was excluded, so a sweep where the gate never starved
+    prints nothing here: the section exists to make an exclusion visible, not
+    to assert one happened.
+
+    Returns:
+        The section's lines, or an empty list.
+    """
+    if not report.unjudged_by_depth:
+        return []
+    excluded = tuple(cell for cell in report.measured_cells if cell.is_unjudged)
+    total_cost = sum_costs(cell.total_cost for cell in excluded)
+    depths = ", ".join(
+        f"depth {depth}: {count}" for depth, count in report.unjudged_by_depth.items()
+    )
+    excluded_line = (
+        f"it is left out of `by_achieved_depth` and `by_depth_cap`. {len(excluded)} "
+        f"cell(s) were excluded this way ({depths}), costing "
+        f"{_cost_cell(total_cost)} between them. They remain in `cells` and in "
+        "the journal with their spend intact."
+    )
+    return [
+        "**Excluded from the curve above**: a cell whose gate exhausted every",
+        "repair round on a park is a missing observation, not a gated one, so",
+        excluded_line,
+        "",
+    ]
 
 
 def _pair_label(pair: ModelPair | None) -> str:
@@ -631,6 +704,15 @@ def _pairing_table(report: RecursionDepthReport) -> list[str]:
     return rows
 
 
+def _files_changed_cell(value: int | None) -> str:
+    """Render the workspace delta, naming a recording that never asked.
+
+    Returns:
+        The count, or a stated absence for a pre-existing recording.
+    """
+    return "not recorded" if value is None else str(value)
+
+
 def _merge_table(report: RecursionDepthReport) -> list[str]:
     """Render one row per merge, both parties named.
 
@@ -640,9 +722,9 @@ def _merge_table(report: RecursionDepthReport) -> list[str]:
     rows = [
         (
             "| Cell | Depth | Assembly | Assembled by | Judged by | Verdict "
-            "| Parked | Amendments | Delivered | Attempts ended |"
+            "| Parked | Amendments | Delivered | Files changed | Attempts ended |"
         ),
-        "|---|---:|---|---|---|---|---|---:|---|---|",
+        "|---|---:|---|---|---|---|---|---:|---|---:|---|",
     ]
     rows.extend(
         f"| {cell_key(cell.depth_cap, cell.arm, cell.repetition)} | {unit.depth} "
@@ -650,6 +732,7 @@ def _merge_table(report: RecursionDepthReport) -> list[str]:
         f"| {_cell(_pair_label(unit.reviewer))} | {_cell(unit.verdict or 'none')} "
         f"| {'yes' if unit.parked else 'no'} | {unit.amendments} "
         f"| {'yes' if unit.delivered else 'no'} "
+        f"| {_files_changed_cell(unit.workspace_files_changed)} "
         f"| {_cell(', '.join(unit.terminations) or 'not recorded')} |"
         for cell, unit in _merges_of(report)
     )

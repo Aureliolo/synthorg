@@ -126,6 +126,25 @@ def probe_artifacts(task: Task, workspace: CellWorkspace) -> ArtifactPresence:
     )
 
 
+def files_changed(before: UnitFingerprint, after: UnitFingerprint) -> int:
+    """How many produced files a unit's session touched.
+
+    The symmetric difference of the two fingerprints: a file added or removed
+    counts once, a file whose content changed counts twice (its old pair drops
+    out, its new one enters), which is the honest cost of not tracking paths
+    across a rewrite. Distinct from ``produced_tree(...) == baseline``, which
+    only asks whether anything changed at all.
+
+    Args:
+        before: The unit's tree before the session ran.
+        after: The unit's tree after.
+
+    Returns:
+        The count.
+    """
+    return len(before ^ after)
+
+
 @dataclass(frozen=True, slots=True)
 class UnitDelivery:
     """What a unit produced, kept apart from whether what it produced stands up.
@@ -155,10 +174,17 @@ class UnitDelivery:
         reason: Why this is not a clean delivery, empty when it is. Set with
             ``produced`` false when nothing was built, and with ``produced``
             true when something was built that does not stand up.
+        workspace_files_changed: The symmetric difference between the tree
+            before and after, so "turns were spent and nothing changed" is
+            readable from the record without opening a transcript. ``None``
+            only when reconstructed from a recording made before this field
+            existed; every delivery this module computes fresh carries a
+            real count, including zero.
     """
 
     produced: bool
     reason: str
+    workspace_files_changed: int | None = None
 
     @property
     def delivered(self) -> bool:
@@ -211,6 +237,7 @@ __all__ = [
     "UnitDelivery",
     "UnitFingerprint",
     "built_unit_workspace",
+    "files_changed",
     "leaf_unit_key",
     "merge_unit_key",
     "probe_artifacts",

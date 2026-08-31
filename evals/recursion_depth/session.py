@@ -37,7 +37,7 @@ from evals.recursion_depth.grading import (
     SandboxReleaseHook,
     UnitGrader,
 )
-from evals.recursion_depth.manifest import ModelPair
+from evals.recursion_depth.manifest import ModelPair, RecursionDepthManifest, Role
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker_protocol import collect_all_records
@@ -118,7 +118,11 @@ class SessionLimits:
     """What one session may consume.
 
     Attributes:
-        max_turns: The turn ceiling the loop is given.
+        max_turns: The base turn budget the loop is given. Whether it
+            re-earns itself via extensions is the CALLER's choice, not this
+            field's: the unit path resolves live ``engine.max_turn_extensions``,
+            so it never stops a runaway alone; the planning path passes none,
+            making it a genuine hard ceiling there.
         cost_ceiling: What the bearer authorises before the gateway kills the
             run server-side.
         token_ceiling: The same bound counted in tokens. Load-bearing rather
@@ -131,6 +135,68 @@ class SessionLimits:
     max_turns: int
     cost_ceiling: float
     token_ceiling: int
+
+
+def session_limits_for(
+    manifest: RecursionDepthManifest, role: Role, *, fan_in: int
+) -> SessionLimits:
+    """What one session of *role* gets, scaled by how much it has to read.
+
+    A leaf and a planning session read no sibling's tree, so they take no
+    fan-in scaling and keep their existing flat budgets. A merge must read
+    every child before it can write one line, and a review reads the same
+    pieces plus what the merge produced, so both scale with ``fan_in``, capped
+    so an unusually wide node cannot mint an unbounded session. This is the
+    single owner of that arithmetic: a merge and its review are sized here and
+    nowhere else, so raising one role's base can never silently raise another's.
+
+    Args:
+        manifest: The recording matrix, for the declared bases, per-piece
+            increments and caps.
+        role: Which kind of session is being sized.
+        fan_in: How many pieces the session must read. Zero for a leaf or a
+            planning session, for which this argument changes nothing.
+
+    Returns:
+        The turn and spend bounds.
+    """
+    if role is Role.LEAF:
+        return SessionLimits(
+            max_turns=manifest.unit_max_turns,
+            cost_ceiling=manifest.unit_cost_ceiling,
+            token_ceiling=manifest.unit_token_ceiling,
+        )
+    if role is Role.PLAN:
+        return SessionLimits(
+            max_turns=manifest.planner_max_turns,
+            cost_ceiling=manifest.unit_cost_ceiling,
+            token_ceiling=manifest.unit_token_ceiling,
+        )
+    if role is Role.MERGE:
+        return SessionLimits(
+            max_turns=min(
+                manifest.merge_max_turns_base
+                + fan_in * manifest.merge_max_turns_per_piece,
+                manifest.merge_max_turns_cap,
+            ),
+            cost_ceiling=manifest.unit_cost_ceiling,
+            token_ceiling=min(
+                manifest.merge_token_base + fan_in * manifest.merge_token_per_piece,
+                manifest.merge_token_cap,
+            ),
+        )
+    return SessionLimits(
+        max_turns=min(
+            manifest.review_max_turns_base
+            + fan_in * manifest.review_max_turns_per_piece,
+            manifest.review_max_turns_cap,
+        ),
+        cost_ceiling=manifest.unit_cost_ceiling,
+        token_ceiling=min(
+            manifest.review_token_base + fan_in * manifest.review_token_per_piece,
+            manifest.review_token_cap,
+        ),
+    )
 
 
 @dataclass(frozen=True)
@@ -190,6 +256,13 @@ class SweepDeps:
             claim a gated result rests on is evidenced nowhere. Looked up by
             exact ``provider/model_id``, never derived from the provider: one
             connection serves many families.
+        priced_providers: Which provider connections price their calls
+            (``ProviderConfig.billing_model`` a member of
+            ``MEASURABLE_BILLING_MODELS``), resolved once at sweep start from
+            the config the preflight already reads. A session dispatching
+            through a provider not in this set reports its cost as ``None``
+            rather than the connection's own always-zero figure, which is a
+            different claim: "unmeasured" is not "free".
     """
 
     build_provider: ProviderFactory
@@ -207,6 +280,7 @@ class SweepDeps:
     stall_idle_seconds: float = DEFAULT_STALL_IDLE_SECONDS
     on_stall: StallReporter | None = None
     declared_pairs: tuple[ModelPair, ...] = ()
+    priced_providers: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -214,12 +288,20 @@ class SessionSpend:
     """What a session's ledger adds up to.
 
     Attributes:
-        cost: Summed cost of every record.
+        cost: Summed cost of every record, or ``None`` when the connection
+            these records were billed on does not price its calls: an
+            always-zero figure from a flat-rate or subscription connection is
+            not the same claim as a genuinely free session, and reporting it
+            as ``0.0`` either way is the defect this field exists to end.
         tokens: Summed input plus output tokens across the same records.
+        input_tokens: The input half of ``tokens``.
+        output_tokens: The output half of ``tokens``.
     """
 
-    cost: float
+    cost: float | None
     tokens: int
+    input_tokens: int = 0
+    output_tokens: int = 0
 
 
 @dataclass(frozen=True)
@@ -227,19 +309,24 @@ class SessionOutcome:
     """What one session did.
 
     Attributes:
-        cost: What it spent, read off the ledger.
+        cost: What it spent, read off the ledger. ``None`` on the same terms
+            as :attr:`SessionSpend.cost`.
         tokens: Input plus output tokens across the same records. Reported
             beside cost because the two arms do different amounts of work per
             merge, and a survival gap bought with spend rather than with
             judgement is not the finding.
+        input_tokens: The input half of ``tokens``.
+        output_tokens: The output half of ``tokens``.
         turns: How many turns it took.
         termination: Why the loop stopped, for a human reading a failure.
     """
 
-    cost: float
+    cost: float | None
     tokens: int
     turns: int
     termination: str
+    input_tokens: int = 0
+    output_tokens: int = 0
 
 
 @dataclass(frozen=True)
@@ -258,6 +345,10 @@ class OpenSession:
             separates them.
         label: What the stall watch and the log lines call this session.
         task_id: Whose records on that shared ledger are this session's.
+        priced: Whether the connection this session dispatches through prices
+            its calls. Read off ``SweepDeps.priced_providers`` at open time
+            rather than re-resolved per read, because the connection a
+            session runs on cannot change mid-session.
     """
 
     engine: AgentEngine
@@ -266,6 +357,7 @@ class OpenSession:
     gateway_hosted: bool
     task_id: str
     already: int
+    priced: bool
 
     async def spend(self, *, turns: int | None = None) -> SessionSpend:
         """Read what this session has cost so far, in money and in tokens.
@@ -323,7 +415,10 @@ class OpenSession:
                 turns=turns,
             )
         return session_spend(
-            records, gateway_hosted=self.gateway_hosted, label=self.label
+            records,
+            gateway_hosted=self.gateway_hosted,
+            label=self.label,
+            priced=self.priced,
         )
 
 
@@ -346,7 +441,7 @@ def _split_by_category(
 
 
 def session_spend(
-    records: Sequence[CostRecord], *, gateway_hosted: bool, label: str
+    records: Sequence[CostRecord], *, gateway_hosted: bool, label: str, priced: bool
 ) -> SessionSpend:
     """Add up one session's records, counting each CALL exactly once.
 
@@ -369,6 +464,10 @@ def session_spend(
         records: What the session's ledger holds, already drained.
         gateway_hosted: Whether this run's calls crossed a hosted gateway.
         label: Names the session in the log line below.
+        priced: Whether the connection these records were billed on prices
+            its calls. ``False`` reports ``cost=None`` rather than summing a
+            column every record on an unpriced connection carries as zero:
+            that number is real cost only when the connection means it.
 
     Returns:
         The session's cost and tokens.
@@ -422,9 +521,13 @@ def session_spend(
                 # double-count, and wrong in the direction nothing later
                 # corrects, since the money is spent either way.
                 counted = records
+    input_tokens = sum(record.input_tokens for record in counted)
+    output_tokens = sum(record.output_tokens for record in counted)
     return SessionSpend(
-        cost=sum(record.cost for record in counted),
-        tokens=sum(record.input_tokens + record.output_tokens for record in counted),
+        cost=sum(record.cost for record in counted) if priced else None,
+        tokens=input_tokens + output_tokens,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
     )
 
 
@@ -498,6 +601,7 @@ async def open_session(
             gateway_hosted=deps.open_run_ledger is not None,
             task_id=binding.task_id,
             already=await _standing(ledger, binding.task_id),
+            priced=binding.ref.provider in deps.priced_providers,
         )
 
 
@@ -644,6 +748,8 @@ async def run_session(
     outcome = SessionOutcome(
         cost=spend.cost,
         tokens=spend.tokens,
+        input_tokens=spend.input_tokens,
+        output_tokens=spend.output_tokens,
         turns=result.total_turns,
         termination=result.termination_reason.value,
     )
@@ -854,6 +960,7 @@ __all__ = [
     "open_session",
     "run_binding",
     "run_session",
+    "session_limits_for",
     "session_spend",
     "transcript_scope",
     "watching",

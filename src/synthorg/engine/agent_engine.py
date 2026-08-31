@@ -22,7 +22,6 @@ from synthorg.engine._agent_engine_types import (
     ResearchToolFactoryProvider,
     StructureMapToolFactoryProvider,
 )
-from synthorg.engine._ceiling_sync import ceiling_synced_task
 from synthorg.engine._stream_progress import (
     make_turn_observer,
     publish_run_started,
@@ -38,6 +37,7 @@ from synthorg.engine.agent_engine_chat_action import AgentEngineChatActionMixin
 from synthorg.engine.agent_engine_context import (
     AgentEngineContextMixin,
     MemoryContextInputs,
+    RunExecutionDeps,
 )
 from synthorg.engine.agent_engine_errors import AgentEngineErrorsMixin
 from synthorg.engine.agent_engine_factories import AgentEngineFactoriesMixin
@@ -66,10 +66,11 @@ from synthorg.engine.errors import (
     ExecutionStateError,
     ProjectNotFoundError,
 )
+from synthorg.engine.loop_budget_signal import resolve_budget_signal_config
+from synthorg.engine.loop_empty_run import resolve_produce_early_percent
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
-    make_budget_checker,
 )
 from synthorg.engine.post_execution.rework_settlement import (
     ScoredRun,
@@ -127,7 +128,6 @@ if TYPE_CHECKING:
     from synthorg.engine.flight_recording import FlightRecorderSink
     from synthorg.engine.intervention.inbox import SteeringInbox
     from synthorg.engine.loop_protocol import (
-        BudgetChecker,
         ExecutionLoop,
         ShutdownChecker,
     )
@@ -649,6 +649,17 @@ class AgentEngine(
                     project_id=task.project,
                     memory_strategy=memory_strategy,
                 )
+                # Built before the prompt, not inside the execution span, so
+                # the ceilings it publishes can be stamped on the context the
+                # prompt is built from: a resolution inside the span would be
+                # too late to declare, and a second one would be a second
+                # owner of the same ceiling.
+                budget_checker = await self._build_budget_checker(
+                    task,
+                    agent_id,
+                    project_id=task.project,
+                    project_budget=_project_budget,
+                )
                 ctx, system_prompt = await self._prepare_context(
                     identity=identity,
                     task=task,
@@ -658,7 +669,11 @@ class AgentEngine(
                     memory=MemoryContextInputs(
                         messages=memory_messages, strategy=memory_strategy
                     ),
-                    tool_invoker=tool_invoker,
+                    execution=RunExecutionDeps(
+                        provider=provider,
+                        budget_checker=budget_checker,
+                        tool_invoker=tool_invoker,
+                    ),
                     effective_autonomy=effective_autonomy,
                 )
                 if replay_ctx is not None:
@@ -685,6 +700,7 @@ class AgentEngine(
                             effective_autonomy=effective_autonomy,
                             provider=provider,
                             project_budget=_project_budget,
+                            budget_checker=budget_checker,
                         )
                     )
             except (MemoryError, RecursionError) as exc:
@@ -817,7 +833,7 @@ class AgentEngine(
         tool_invoker = request.tool_invoker
         effective_autonomy = request.effective_autonomy
         provider = request.provider
-        project_budget = request.project_budget
+        budget_checker = request.budget_checker
         with _tracer.start_as_current_span(
             "agent.execution",
             attributes={
@@ -826,17 +842,6 @@ class AgentEngine(
                 "agent.status": identity.status.value,
             },
         ) as span:
-            budget_checker: BudgetChecker | None
-            if self._budget_enforcer:
-                budget_checker = await self._budget_enforcer.make_budget_checker(
-                    await ceiling_synced_task(task, self._cost_forecast_repo),
-                    agent_id,
-                    project_id=task.project,
-                    project_budget=project_budget,
-                )
-            else:
-                budget_checker = make_budget_checker(task)
-
             logger.debug(
                 EXECUTION_ENGINE_PROMPT_BUILT,
                 agent_id=agent_id,
@@ -872,6 +877,12 @@ class AgentEngine(
             streaming_enabled = await self._resolve_streaming_enabled(
                 provider or self._provider, identity, task_id=task_id
             )
+            budget_signal_config = await resolve_budget_signal_config(
+                self._config_resolver
+            )
+            produce_early_percent = await resolve_produce_early_percent(
+                self._config_resolver
+            )
             # before/after_agent fire around the loop run (no-op when unwired);
             # after_agent is guaranteed in a finally inside the helper so a
             # loop timeout/exception cannot skip the end-of-run cleanup seam.
@@ -897,6 +908,8 @@ class AgentEngine(
                     provider=provider or self._provider,
                     turn_observer=turn_observer,
                     streaming_enabled=streaming_enabled,
+                    budget_signal_config=budget_signal_config,
+                    produce_early_percent=produce_early_percent,
                 )
 
             # A review that returns REWORK means "run this again", and this

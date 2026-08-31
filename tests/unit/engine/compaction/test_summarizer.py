@@ -298,6 +298,119 @@ class TestMakeCompactionCallback:
 
 
 @pytest.mark.unit
+class TestForcedCompaction:
+    """``force=True`` is the agent-directed path via ``compact_context``."""
+
+    async def test_force_skips_the_fill_threshold(
+        self,
+        sample_agent: AgentIdentity,
+    ) -> None:
+        config = CompactionConfig(
+            fill_threshold_percent=95.0,
+            min_messages_to_compact=4,
+            preserve_recent_turns=1,
+        )
+        callback = make_compaction_callback(config=config)
+        messages = (
+            _msg(MessageRole.SYSTEM, "system prompt"),
+            _msg(MessageRole.USER, "question 1"),
+            _msg(MessageRole.ASSISTANT, "answer 1"),
+            _msg(MessageRole.USER, "question 2"),
+            _msg(MessageRole.ASSISTANT, "answer 2"),
+            _msg(MessageRole.USER, "question 3"),
+        )
+        ctx = _build_context(sample_agent, messages=messages, capacity=1000, fill=100)
+
+        unforced = await callback(ctx)
+        assert unforced is None
+
+        forced = await callback(ctx, force=True)
+        assert forced is not None
+        assert len(forced.conversation) < len(messages)
+
+    async def test_preserve_markers_override_true_keeps_the_marker(
+        self,
+        sample_agent: AgentIdentity,
+    ) -> None:
+        config = CompactionConfig(
+            fill_threshold_percent=95.0,
+            min_messages_to_compact=4,
+            preserve_recent_turns=1,
+            preserve_epistemic_markers=False,
+        )
+        callback = make_compaction_callback(config=config)
+        messages = (
+            _msg(MessageRole.SYSTEM, "system prompt"),
+            _msg(MessageRole.USER, "question 1"),
+            _msg(MessageRole.ASSISTANT, "Wait, this needs more thought."),
+            _msg(MessageRole.USER, "question 2"),
+            _msg(MessageRole.ASSISTANT, "answer 2"),
+            _msg(MessageRole.USER, "question 3"),
+        )
+        ctx = _build_context(sample_agent, messages=messages, capacity=1000, fill=100)
+
+        forced = await callback(ctx, force=True, preserve_markers=True)
+
+        assert forced is not None
+        summary = forced.conversation[1].content or ""
+        assert "Epistemic markers preserved" in summary
+
+    async def test_preserve_markers_override_false_drops_the_marker(
+        self,
+        sample_agent: AgentIdentity,
+    ) -> None:
+        config = CompactionConfig(
+            fill_threshold_percent=95.0,
+            min_messages_to_compact=4,
+            preserve_recent_turns=1,
+            preserve_epistemic_markers=True,
+        )
+        callback = make_compaction_callback(config=config)
+        messages = (
+            _msg(MessageRole.SYSTEM, "system prompt"),
+            _msg(MessageRole.USER, "question 1"),
+            _msg(MessageRole.ASSISTANT, "Wait, this needs more thought."),
+            _msg(MessageRole.USER, "question 2"),
+            _msg(MessageRole.ASSISTANT, "answer 2"),
+            _msg(MessageRole.USER, "question 3"),
+        )
+        ctx = _build_context(sample_agent, messages=messages, capacity=1000, fill=100)
+
+        forced = await callback(ctx, force=True, preserve_markers=False)
+
+        assert forced is not None
+        summary = forced.conversation[1].content or ""
+        assert "Epistemic markers preserved" not in summary
+
+    async def test_no_override_falls_back_to_the_config_default(
+        self,
+        sample_agent: AgentIdentity,
+    ) -> None:
+        config = CompactionConfig(
+            fill_threshold_percent=95.0,
+            min_messages_to_compact=4,
+            preserve_recent_turns=1,
+            preserve_epistemic_markers=True,
+        )
+        callback = make_compaction_callback(config=config)
+        messages = (
+            _msg(MessageRole.SYSTEM, "system prompt"),
+            _msg(MessageRole.USER, "question 1"),
+            _msg(MessageRole.ASSISTANT, "Wait, this needs more thought."),
+            _msg(MessageRole.USER, "question 2"),
+            _msg(MessageRole.ASSISTANT, "answer 2"),
+            _msg(MessageRole.USER, "question 3"),
+        )
+        ctx = _build_context(sample_agent, messages=messages, capacity=1000, fill=100)
+
+        forced = await callback(ctx, force=True)
+
+        assert forced is not None
+        summary = forced.conversation[1].content or ""
+        assert "Epistemic markers preserved" in summary
+
+
+@pytest.mark.unit
 class TestCompactionSanitization:
     """Assistant content snippets are sanitized in compaction summaries."""
 

@@ -311,6 +311,25 @@ class TestAgentEngineFatalErrorResult:
         """If _handle_fatal_error itself fails, original exception is raised."""
         provider = mock_provider_factory([])
         engine = AgentEngine(provider=provider)
+        real_from_identity = AgentContext.from_identity.__func__  # type: ignore[attr-defined]
+        call_count = 0
+
+        def _from_identity_side_effect(*args: object, **kwargs: object) -> AgentContext:
+            # The context build now precedes the prompt build inside
+            # ``_prepare_context`` (the budget gauge needs it to declare
+            # against), so this patch's first call is the primary path's
+            # own context, which must succeed for ``build_system_prompt``
+            # to be reached at all; only the recovery fallback's own call
+            # is the "secondary failure" this test is about. Patching a
+            # classmethod attribute replaces it with a plain callable, so
+            # ``cls`` is not passed implicitly and must be supplied here.
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                built: AgentContext = real_from_identity(AgentContext, *args, **kwargs)
+                return built
+            msg = "secondary failure"
+            raise ValueError(msg)
 
         with (
             patch(
@@ -319,7 +338,7 @@ class TestAgentEngineFatalErrorResult:
             ),
             patch(
                 "synthorg.engine.agent_engine_errors.AgentContext.from_identity",
-                side_effect=ValueError("secondary failure"),
+                side_effect=_from_identity_side_effect,
             ),
             pytest.raises(RuntimeError, match="original error") as exc_info,
         ):

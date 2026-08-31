@@ -290,6 +290,12 @@ async def invoke_compaction(
 ) -> AgentContext | None:
     """Invoke compaction callback if configured.
 
+    A pending ``ctx.compaction_request`` (the ``compact_context`` tool's
+    directive) forces the call and overrides ``preserve_markers`` for it;
+    the request is cleared afterward whether or not compaction actually ran,
+    because a request compaction declined (too few messages, nothing left to
+    archive) must not re-fire on every subsequent turn.
+
     Errors are logged but never propagated -- compaction must not
     interrupt execution. This includes provider failures such as
     ``RetryExhaustedError`` from the compaction LLM call: compaction is
@@ -301,7 +307,9 @@ async def invoke_compaction(
         turn_number: Current turn number for logging.
 
     Returns:
-        Compacted context, or ``None`` if no compaction occurred.
+        The context to continue with when a request was pending (compacted,
+        or the original with the request cleared); the compacted context, or
+        ``None``, for the ordinary periodic call.
 
     Raises:
         MemoryError: Re-raised unconditionally.
@@ -309,8 +317,16 @@ async def invoke_compaction(
     """
     if compaction_callback is None:
         return None
+    requested = ctx.compaction_request
     try:
-        return await compaction_callback(ctx)
+        if requested is None:
+            return await compaction_callback(ctx)
+        compacted = await compaction_callback(
+            ctx, force=True, preserve_markers=requested.preserve_markers
+        )
+        return (compacted if compacted is not None else ctx).model_copy(
+            update={"compaction_request": None}
+        )
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
         # lint-allow: swallow-ok -- best-effort side channel
         reraise_critical(exc)
@@ -321,4 +337,6 @@ async def invoke_compaction(
             error_type=type(exc).__name__,
             error=safe_error_description(exc),
         )
-        return None
+        if requested is None:
+            return None
+        return ctx.model_copy(update={"compaction_request": None})

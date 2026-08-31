@@ -1081,6 +1081,67 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
+        key="budget_signal_step_percent",
+        type=SettingType.INTEGER,
+        default="25",
+        description=(
+            "How often, in percent of a run's token ceiling, the agent is"
+            " told how much of its budget remains: once each time accumulated"
+            " spend crosses a further step. A run with no token ceiling gets"
+            " no signal at all, and the ceiling itself is declared once, in"
+            " the system prompt, at zero spend. Zero disables the per-turn"
+            " signal entirely, leaving only the terminal warning at"
+            " engine.budget_signal_terminal_percent. Read live, per run."
+        ),
+        group="Execution",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=100,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="budget_signal_terminal_percent",
+        type=SettingType.INTEGER,
+        default="90",
+        description=(
+            "Share of a run's token ceiling past which the budget signal"
+            " fires on every turn rather than at engine.budget_signal_step_"
+            "percent's intervals, with wording naming what happens when the"
+            " ceiling is reached. Read live, per run."
+        ),
+        group="Execution",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=100,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
+        key="produce_early_percent",
+        type=SettingType.INTEGER,
+        default="50",
+        description=(
+            "Share of a work task's token ceiling a session may spend before"
+            " having produced anything earns a corrective nudge, distinct"
+            " from the zero-artifact guard that only judges a finished run:"
+            " this fires while the session is still alive, so it can still"
+            " act. Fires once per run. Zero disables it. Read live, per run."
+        ),
+        group="Execution",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=100,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
         key="task_engine_max_queue_size",
         type=SettingType.INTEGER,
         default="1000",

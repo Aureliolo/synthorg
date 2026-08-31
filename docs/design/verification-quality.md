@@ -608,6 +608,19 @@ Two things then happen without an operator watching:
   additionally nudged when the roster changes, so a hire that lands is picked
   up immediately rather than at the next tick.
 
+**A parked gate with no human is the harness's problem, not the product's.**
+Every park above heals because something can eventually answer it: a human
+decision, a staffing reconciler, an operator hire. The recursion-depth eval
+harness's `BlindMergeReviewer` (`evals/recursion_depth/`) parks a merge
+attempt the same way (`parked=True`, no verdict) to measure what an
+unresolvable escalation does to the repair loop, and nothing in the harness
+ever answers it -- there is no human, no reconciler, no staffing sweep. A
+merge whose every attempt parks that way is therefore UNJUDGED rather than
+gated-and-approved, and the report excludes it from the depth curve rather
+than reading the absence of an answer as one. That is a deliberate property
+of the measurement, not a gap in this design: the product's own parks always
+have a party that can release them.
+
 ## Order of Operations
 
 Quality and approval surfaces operate at distinct points in the task

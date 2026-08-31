@@ -10,7 +10,13 @@ import pytest
 
 from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.manifest import Arm
-from evals.recursion_depth.models import LEAF, MERGE, CellRecord, UnitRecord
+from evals.recursion_depth.models import (
+    LEAF,
+    MERGE,
+    CellRecord,
+    UnitRecord,
+    sum_costs,
+)
 from evals.recursion_depth.score import (
     achieved_depth_histogram,
     curve_by_achieved_depth,
@@ -601,7 +607,7 @@ class TestArmsAndCost:
             passing=(),
         )
 
-        total = sum(
+        total = sum_costs(
             point.cost
             for point in curve_by_achieved_depth((cell,), requirement_count=_REQUIRED)
         )

@@ -27,10 +27,8 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.cost_recording import record_execution_costs
 from synthorg.engine.errors import RecoveryCheckpointMissingError
 from synthorg.engine.loop_protocol import (
-    BudgetChecker,
     ExecutionResult,
     TerminationReason,
-    make_budget_checker,
 )
 from synthorg.engine.recovery import RecoveryResult, RecoveryStrategy
 from synthorg.engine.task_sync import apply_post_execution_transitions
@@ -49,6 +47,7 @@ if TYPE_CHECKING:
     from synthorg.core.clock import Clock
     from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine._agent_engine_callables import (
+        BuildBudgetChecker,
         MakeLoopWithCallback,
         MakeToolInvoker,
         ResolveMemoryStrategy,
@@ -97,6 +96,7 @@ class AgentEngineCheckpointResumeMixin:
     _recovery_strategy: RecoveryStrategy | None
     _project_repo: ProjectRepository | None
     _validate_project: ValidateProject
+    _build_budget_checker: BuildBudgetChecker
     _budget_enforcer: BudgetEnforcer | None
     _loop: ExecutionLoop
     _make_loop_with_callback: MakeLoopWithCallback
@@ -199,20 +199,16 @@ class AgentEngineCheckpointResumeMixin:
             The :class:`ExecutionResult` from running the engine's
             configured loop against the reconciled checkpoint context.
         """
-        budget_checker: BudgetChecker | None
-        if checkpoint_ctx.task_execution is None:
-            budget_checker = None
-        elif self._budget_enforcer:
-            budget_checker = await self._budget_enforcer.make_budget_checker(
+        budget_checker = (
+            await self._build_budget_checker(
                 checkpoint_ctx.task_execution.task,
                 agent_id,
                 project_id=project_id,
                 project_budget=project_budget,
             )
-        else:
-            budget_checker = make_budget_checker(
-                checkpoint_ctx.task_execution.task,
-            )
+            if checkpoint_ctx.task_execution is not None
+            else None
+        )
 
         loop = self._make_loop_with_callback(self._loop, agent_id, task_id)
         result: ExecutionResult = await loop.execute(

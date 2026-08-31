@@ -29,6 +29,7 @@ from synthorg.engine.background_job_watch_channel import (
     background_job_watched_update,
 )
 from synthorg.engine.compaction.models import CompressionMetadata
+from synthorg.engine.compaction_request_channel import CompactionRequest
 from synthorg.engine.context_disclosure import (
     resource_loaded_update,
     tool_loaded_update,
@@ -88,7 +89,9 @@ class AgentContext(BaseModel):
     )
     turn_count: int = Field(default=0, ge=0, description="Turns completed")
     max_turns: int = Field(
-        default=DEFAULT_MAX_TURNS, gt=0, description="Hard turn limit"
+        default=DEFAULT_MAX_TURNS,
+        gt=0,
+        description="Base turn budget; re-earned by turn_extensions_remaining",
     )
     turn_extensions_remaining: int = Field(
         default=0, ge=0, description="Further turn budgets this run may grant itself"
@@ -164,6 +167,15 @@ class AgentContext(BaseModel):
     background_job_watch: BackgroundJobWatchChannel = Field(
         default_factory=BackgroundJobWatchChannel,
         description="Background jobs this run is watching for staleness",
+    )
+    budget_signal_last_step_percent: int = Field(
+        default=0, ge=0, description="Highest budget-signal step already reported"
+    )
+    produce_early_nudged: bool = Field(
+        default=False, description="Whether the produce-early checkpoint has fired"
+    )
+    compaction_request: CompactionRequest | None = Field(
+        default=None, description="Pending agent-directed compaction request"
     )
 
     @model_validator(mode="after")

@@ -8,6 +8,7 @@ the two halves of that disagree by default.
 """
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -70,7 +71,9 @@ _REVIEWER = ModelPair(
 )
 
 
-def _provenance(*, commit: str = "0" * 40) -> Provenance:
+def _provenance(
+    *, commit: str = "0" * 40, executor_connection_sha256: str | None = None
+) -> Provenance:
     """Build a provenance stamp.
 
     Returns:
@@ -86,6 +89,11 @@ def _provenance(*, commit: str = "0" * 40) -> Provenance:
         executor=_EXECUTOR,
         reviewer=_REVIEWER,
         independence=Independence.CROSS_FAMILY,
+        executor_connection_sha256=(
+            NotBlankStr(executor_connection_sha256)
+            if executor_connection_sha256
+            else None
+        ),
     )
 
 
@@ -132,7 +140,11 @@ def _unavailable(*, depth_cap: int = 1, arm: Arm = Arm.UNGATED) -> CellRecord:
 
 
 def _opened(
-    tmp_path: Path, *, resume: bool, commit: str = "0" * 40
+    tmp_path: Path,
+    *,
+    resume: bool,
+    commit: str = "0" * 40,
+    executor_connection_sha256: str | None = None,
 ) -> tuple[RunJournal[CellRecord], ResumeState[CellRecord]]:
     """Open a journal at *tmp_path* under the recursion-depth binding.
 
@@ -142,7 +154,11 @@ def _opened(
     return open_journal(
         tmp_path,
         SPEC,
-        identity=matrix_identity(_provenance(commit=commit)),
+        identity=matrix_identity(
+            _provenance(
+                commit=commit, executor_connection_sha256=executor_connection_sha256
+            )
+        ),
         resume=resume,
     )
 
@@ -330,6 +346,42 @@ class TestResume:
 
         with pytest.raises(HarnessJournalMismatchError, match="git_commit"):
             _opened(tmp_path, resume=True, commit="1" * 40)
+
+    def test_a_connection_swap_behind_the_same_pair_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        # The placeholder (provider, model_id) name on the manifest cannot see
+        # this: the endpoint behind it changed, and two systems are not one
+        # curve either.
+        journal, _ = _opened(
+            tmp_path, resume=False, executor_connection_sha256="sha256:" + "a" * 64
+        )
+        journal.record(_measured())
+        journal.close()
+
+        with pytest.raises(
+            HarnessJournalMismatchError, match="executor_connection_sha256"
+        ):
+            _opened(
+                tmp_path,
+                resume=True,
+                executor_connection_sha256="sha256:" + "b" * 64,
+            )
+
+    def test_resuming_with_the_same_connection_digest_is_not_refused(
+        self, tmp_path: Path
+    ) -> None:
+        journal, _ = _opened(
+            tmp_path, resume=False, executor_connection_sha256="sha256:" + "a" * 64
+        )
+        journal.record(_measured())
+        journal.close()
+
+        _, state = _opened(
+            tmp_path, resume=True, executor_connection_sha256="sha256:" + "a" * 64
+        )
+
+        assert state.holds(cell_key(1, Arm.GATED, 0)) is not None
 
     def test_an_existing_journal_is_never_silently_overwritten(
         self, tmp_path: Path
@@ -632,3 +684,31 @@ class TestRecordingIsOneOwner:
         assert len(cells) == 1
         written = (tmp_path / JOURNAL_NAME).read_text(encoding="utf-8").splitlines()
         assert len(written) == 2
+
+
+class TestConcurrentRecording:
+    """Many threads may finish a cell at once; `record()` must not interleave them."""
+
+    def test_n_threads_recording_concurrently_leave_every_line_intact(
+        self, tmp_path: Path
+    ) -> None:
+        journal, _ = _opened(tmp_path, resume=False)
+        count = 32
+
+        with ThreadPoolExecutor(max_workers=count) as pool:
+            list(
+                pool.map(
+                    lambda tokens: journal.record(_measured(tokens=tokens)),
+                    range(count),
+                )
+            )
+        journal.close()
+
+        lines = (tmp_path / JOURNAL_NAME).read_text(encoding="utf-8").splitlines()
+        # A garbled line from an interleaved write would fail this parse before
+        # the count is even checked.
+        assert len(lines) == count + 1
+        recorded_tokens = sorted(
+            json.loads(line)["units"][0]["tokens"] for line in lines[1:]
+        )
+        assert recorded_tokens == list(range(count))

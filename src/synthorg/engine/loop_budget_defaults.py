@@ -48,3 +48,19 @@ spent 246 turns asking for a tool named ``write``.
 
 Fallback when ``engine.max_unresolved_tool_turns`` is not resolvable; zero
 disables the stop."""
+
+DEFAULT_BUDGET_SIGNAL_STEP_PERCENT: Final[int] = 25
+"""How often, in percent of the token ceiling, the budget signal reports.
+
+Fallback when ``engine.budget_signal_step_percent`` is not resolvable."""
+
+DEFAULT_BUDGET_SIGNAL_TERMINAL_PERCENT: Final[int] = 90
+"""Share of the token ceiling past which the budget signal fires every turn.
+
+Fallback when ``engine.budget_signal_terminal_percent`` is not resolvable."""
+
+DEFAULT_PRODUCE_EARLY_PERCENT: Final[int] = 50
+"""Share of a work task's token ceiling that must pass, with nothing produced,
+before the produce-early checkpoint corrects the run.
+
+Fallback when ``engine.produce_early_percent`` is not resolvable."""

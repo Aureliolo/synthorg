@@ -83,7 +83,21 @@ def make_compaction_callback(
     """
     est = estimator or DefaultTokenEstimator()
 
-    async def _compact(ctx: AgentContext) -> AgentContext | None:
+    async def _compact(
+        ctx: AgentContext,
+        *,
+        force: bool = False,
+        preserve_markers: bool | None = None,
+    ) -> AgentContext | None:
+        if force:
+            return await force_compaction(
+                ctx,
+                config,
+                est,
+                summarizer=summarizer,
+                offloader=offloader,
+                preserve_markers_override=preserve_markers,
+            )
         if summarizer is None and offloader is None:
             return _do_compaction(ctx, config, est)
         return await _do_semantic_compaction(
@@ -99,6 +113,7 @@ def _do_compaction(
     estimator: PromptTokenEstimator,
     *,
     force: bool = False,
+    preserve_markers_override: bool | None = None,
 ) -> AgentContext | None:
     """Core (text, synchronous) compaction logic.
 
@@ -107,6 +122,9 @@ def _do_compaction(
         config: Compaction configuration.
         estimator: Token estimator.
         force: Skip fill threshold check (for agent-initiated compaction).
+        preserve_markers_override: Per-call override for
+            ``config.preserve_epistemic_markers``; ``None`` uses the
+            configured default.
 
     Returns:
         New compacted ``AgentContext`` or ``None`` if no compaction needed.
@@ -115,7 +133,9 @@ def _do_compaction(
     if prep is None:
         return None
     head, archivable, recent = prep
-    summary_text = _build_text_summary(ctx, archivable, config)
+    summary_text = _build_text_summary(
+        ctx, archivable, config, preserve_markers_override=preserve_markers_override
+    )
     return _finalise(
         ctx,
         head=head,
@@ -134,6 +154,7 @@ async def _do_semantic_compaction(
     summarizer: LLMSummarizer | None,
     offloader: MemoryOffloader | None,
     force: bool = False,
+    preserve_markers_override: bool | None = None,
 ) -> AgentContext | None:
     """Semantic compaction: LLM summary and/or memory offload.
 
@@ -148,6 +169,9 @@ async def _do_semantic_compaction(
         summarizer: Optional LLM-backed summariser.
         offloader: Optional memory offloader.
         force: Skip the fill-threshold check (agent-initiated compaction).
+        preserve_markers_override: Per-call override for
+            ``config.preserve_epistemic_markers``; ``None`` uses the
+            configured default.
 
     Returns:
         New compacted ``AgentContext`` or ``None`` if no compaction needed.
@@ -156,7 +180,9 @@ async def _do_semantic_compaction(
     if prep is None:
         return None
     head, archivable, recent = prep
-    summary_text = _build_text_summary(ctx, archivable, config)
+    summary_text = _build_text_summary(
+        ctx, archivable, config, preserve_markers_override=preserve_markers_override
+    )
     if summarizer is not None and config.llm_summarizer_enabled:
         summary_text = await summarizer.summarize(
             archivable,
@@ -224,16 +250,31 @@ def _build_text_summary(
     ctx: AgentContext,
     archivable: tuple[ChatMessage, ...],
     config: CompactionConfig,
+    *,
+    preserve_markers_override: bool | None = None,
 ) -> str:
     """Build the snippet-join text summary for the archived batch.
+
+    Args:
+        ctx: Current agent context.
+        archivable: The messages being archived.
+        config: Compaction configuration.
+        preserve_markers_override: Per-call override for
+            ``config.preserve_epistemic_markers``; ``None`` uses the
+            configured default.
 
     Returns:
         The summary text (also the semantic-path fallback).
     """
     task_complexity = _extract_task_complexity(ctx)
+    preserve_markers = (
+        config.preserve_epistemic_markers
+        if preserve_markers_override is None
+        else preserve_markers_override
+    )
     return _build_summary(
         archivable,
-        preserve_markers=config.preserve_epistemic_markers,
+        preserve_markers=preserve_markers,
         task_complexity=task_complexity,
     )
 
@@ -466,6 +507,7 @@ async def force_compaction(
     *,
     summarizer: LLMSummarizer | None = None,
     offloader: MemoryOffloader | None = None,
+    preserve_markers_override: bool | None = None,
 ) -> AgentContext | None:
     """Compact context without checking the fill threshold.
 
@@ -483,12 +525,21 @@ async def force_compaction(
         estimator: Token estimator.
         summarizer: Optional LLM-backed semantic summariser.
         offloader: Optional memory offloader for archived batches.
+        preserve_markers_override: Per-call override for
+            ``config.preserve_epistemic_markers``, from the requesting
+            tool call; ``None`` uses the configured default.
 
     Returns:
         Compacted context, or ``None`` if too few messages.
     """
     if summarizer is None and offloader is None:
-        return _do_compaction(ctx, config, estimator, force=True)
+        return _do_compaction(
+            ctx,
+            config,
+            estimator,
+            force=True,
+            preserve_markers_override=preserve_markers_override,
+        )
     return await _do_semantic_compaction(
         ctx,
         config,
@@ -496,4 +547,5 @@ async def force_compaction(
         summarizer=summarizer,
         offloader=offloader,
         force=True,
+        preserve_markers_override=preserve_markers_override,
     )

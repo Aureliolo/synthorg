@@ -97,6 +97,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "build_work_pipeline",
         "ForecastGate",
         "ShipRetroCaptureService",
+        "make_context_indicator",
     ),
     depends_on=(),
 )

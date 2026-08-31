@@ -27,6 +27,7 @@ from typing import Final
 from evals.harness.workspace import CellWorkspace
 from evals.recursion_depth.claims import requirement_ids_of
 from evals.recursion_depth.manifest import ModelPair
+from evals.recursion_depth.models import sum_costs
 from evals.recursion_depth.session import (
     SessionLimits,
     SessionOutcome,
@@ -38,6 +39,7 @@ from evals.recursion_depth.tree import SpecBrief
 from evals.recursion_depth.unit import (
     UnitDelivery,
     UnitFingerprint,
+    files_changed,
     probe_artifacts,
     produced_tree,
 )
@@ -89,8 +91,11 @@ class LeafOutcome:
             repair is the treatment being measured and giving it to leaves in
             both arms would move the difference off the merge.
         turns: Agent turns across those sessions.
-        cost: What it spent.
+        cost: What it spent, ``None`` when the connection it ran on does not
+            price its calls.
         tokens: What it spent in tokens.
+        input_tokens: The input half of ``tokens``.
+        output_tokens: The output half of ``tokens``.
         executor: The pair it actually ran on.
         produced: Whether its own tree changed. Separate from ``delivered``
             because this is the half its parent's brief renders: a leaf that
@@ -106,19 +111,25 @@ class LeafOutcome:
             zero a unit that did the work.
         detail: Why it is not delivered, for a human reading the run.
         terminations: How each of its sessions ended, in order.
+        workspace_files_changed: The symmetric difference between the tree
+            before and after, so "spent turns, changed nothing" is readable
+            from the record without a transcript.
     """
 
     workspace: CellWorkspace
     delivered: bool
     attempts: int
     turns: int
-    cost: float
+    cost: float | None
     produced: bool = False
     tokens: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
     executor: ModelPair | None = None
     missing_declared_paths: tuple[str, ...] = ()
     detail: str = ""
     terminations: tuple[str, ...] = ()
+    workspace_files_changed: int | None = None
 
 
 def leaf_task(
@@ -290,10 +301,13 @@ async def run_leaf(
         turns=spent.turns,
         cost=spent.cost,
         tokens=spent.tokens,
+        input_tokens=spent.input_tokens,
+        output_tokens=spent.output_tokens,
         executor=ModelPair.of(owner, deps.declared_pairs),
         missing_declared_paths=final.missing,
         detail=delivery.reason,
         terminations=spent.terminations,
+        workspace_files_changed=delivery.workspace_files_changed,
     )
 
 
@@ -303,8 +317,15 @@ class _Spend:
 
     Attributes:
         turns: Turns taken, summed over the attempts.
-        cost: Money booked, summed over the attempts.
+        cost: Money booked, summed over the attempts, ``None`` once any
+            attempt's own cost is: a leaf resumed onto a second attempt after
+            an infrastructure failure has one connection throughout, so this
+            can only change between attempts if the connection's own pricing
+            does, and folding with ``sum_costs`` reports that honestly rather
+            than silently dropping the unpriced half.
         tokens: Tokens booked, summed over the attempts.
+        input_tokens: The input half of ``tokens``.
+        output_tokens: The output half of ``tokens``.
         terminations: How each session ended, in the order they ran. Kept as a
             sequence rather than a last-one-wins field because the attempts
             fail for different reasons and the earlier one is usually the one
@@ -312,8 +333,10 @@ class _Spend:
     """
 
     turns: int
-    cost: float
+    cost: float | None
     tokens: int
+    input_tokens: int
+    output_tokens: int
     terminations: tuple[str, ...]
 
     @classmethod
@@ -330,6 +353,8 @@ class _Spend:
             turns=outcome.turns,
             cost=outcome.cost,
             tokens=outcome.tokens,
+            input_tokens=outcome.input_tokens,
+            output_tokens=outcome.output_tokens,
             terminations=(outcome.termination,),
         )
 
@@ -344,8 +369,10 @@ class _Spend:
         """
         return _Spend(
             turns=self.turns + outcome.turns,
-            cost=self.cost + outcome.cost,
+            cost=sum_costs((self.cost, outcome.cost)),
             tokens=self.tokens + outcome.tokens,
+            input_tokens=self.input_tokens + outcome.input_tokens,
+            output_tokens=self.output_tokens + outcome.output_tokens,
             terminations=(*self.terminations, outcome.termination),
         )
 
@@ -421,18 +448,25 @@ async def _delivery(
                 f"the unit ran no turns, so nothing was built and this is not "
                 f"a delivery failure: it terminated {outcome.termination}"
             ),
+            workspace_files_changed=0,
         )
-    if await asyncio.to_thread(produced_tree, workspace) == baseline:
+    after = await asyncio.to_thread(produced_tree, workspace)
+    if after == baseline:
         return UnitDelivery(
-            produced=False, reason="the session left its tree exactly as it found it"
+            produced=False,
+            reason="the session left its tree exactly as it found it",
+            workspace_files_changed=0,
         )
+    changed = files_changed(baseline, after)
     async with graded(deps, workspace, owner=f"grade:{task.id}") as grader:
         passed, report = await grader.own_tests_pass(workspace.project_dir)
     if not passed:
         return UnitDelivery(
-            produced=True, reason=f"the unit's own tests did not pass: {report}"
+            produced=True,
+            reason=f"the unit's own tests did not pass: {report}",
+            workspace_files_changed=changed,
         )
-    return UnitDelivery(produced=True, reason="")
+    return UnitDelivery(produced=True, reason="", workspace_files_changed=changed)
 
 
 __all__ = [

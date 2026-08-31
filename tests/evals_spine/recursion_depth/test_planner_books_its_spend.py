@@ -160,6 +160,7 @@ def _planner(
         build_grader=lambda _w, *, owner: mock_of[UnitGrader](),
         build_sandbox=lambda root, *, owner: mock_of[SandboxBackend](),
         open_run_ledger=_open if gateway_hosted else None,
+        priced_providers=frozenset({_EXECUTOR.provider}),
     )
     return AgentSessionPlanner(
         deps=deps,
@@ -335,7 +336,9 @@ class TestOneAccountPerCall:
             ),
         )
 
-        spent = session_spend(records, gateway_hosted=False, label="offline")
+        spent = session_spend(
+            records, gateway_hosted=False, label="offline", priced=True
+        )
 
         assert spent.tokens == 300
 
@@ -357,7 +360,9 @@ class TestOneAccountPerCall:
         )
 
         with structlog.testing.capture_logs() as cap:
-            spent = session_spend(records, gateway_hosted=True, label="cell-plan")
+            spent = session_spend(
+                records, gateway_hosted=True, label="cell-plan", priced=True
+            )
 
         assert spent.tokens == 30
         dropped = [e for e in cap if e.get("event") == EVALS_RECURSION_SPEND_DEDUPED]
@@ -387,7 +392,9 @@ class TestOneAccountPerCall:
         )
 
         with structlog.testing.capture_logs() as cap:
-            spent = session_spend(records, gateway_hosted=True, label="cell-plan")
+            spent = session_spend(
+                records, gateway_hosted=True, label="cell-plan", priced=True
+            )
 
         assert spent.tokens == 330
         # Loud regardless: the premise that every call crosses the hosted
@@ -403,6 +410,7 @@ class TestOneAccountPerCall:
                 (_record(input_tokens=10, output_tokens=20),),
                 gateway_hosted=True,
                 label="cell-plan",
+                priced=True,
             )
 
         assert not [e for e in cap if e.get("event") == EVALS_RECURSION_SPEND_DEDUPED]

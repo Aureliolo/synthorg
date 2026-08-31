@@ -764,24 +764,78 @@ Fill is re-estimated after each turn via `update_context_fill()` in
 `context_budget.py`, using the `PromptTokenEstimator` protocol (default:
 `DefaultTokenEstimator` at `len(text) // 4`).
 
+`context_capacity_tokens` is resolved in `_prepare_context()`
+(`agent_engine_context.py`) from the bound model's own
+`ModelCapabilities.max_context_tokens`, looked up through the provider the
+run already holds; a lookup failure degrades to `None`. Every task-run
+session gets this resolution now. Before it existed, no caller passed
+`context_capacity_tokens` at all, so `context_fill_percent` was `None` on
+every run and `_prepare_compaction()`'s threshold check
+(`if fill_pct is None or fill_pct < effective_threshold: return None`)
+bailed on every call -- automatic compaction had never fired on any
+task-run session in the shipped product.
+
 ### Soft Budget Indicators
 
-`ContextBudgetIndicator` is injected into the system prompt via
-`_SECTION_CONTEXT_BUDGET`:
+`ContextBudgetIndicator` (`context_budget.py`) is built once per session by
+`make_context_indicator()` and passed to `build_system_prompt()` as
+`context_budget_indicator=`; `_prompt_helpers.py`'s `context_budget` check
+adds it to the rendered section list, and `prompt_template.py` injects it
+under a `## Context Budget` heading:
 
 ```text
-[Context: 12,450/16,000 tokens (78%) | 0 archived blocks]
+[Context: 12,450/16,000 tokens (78%) | 0 archived blocks | Budget: 340,000/1,500,000 tokens (23%)]
 ```
 
-The indicator is set at initial prompt build time. The `archived_blocks` count
-is derived from `CompressionMetadata.compactions_performed`.
+The trailing `Budget:` segment only appears when the run carries a token
+ceiling (`ctx.token_ceiling is not None`); an unbounded run gets the fill
+half alone. `archived_blocks` is derived from
+`CompressionMetadata.compactions_performed`.
+
+This declaration is built ONCE, at prompt-build time, at whatever spend the
+run happens to be at (zero, for a fresh run): it states the ceiling, not the
+running total. The live remainder is a separate, turn-boundary concern --
+see below.
+
+### Turn-Boundary Signals
+
+Two checks run at the same turn-boundary slot as compaction, both pure
+functions consulted by `ReactLoop.execute()` and both a no-op when the run
+carries no token ceiling.
+
+**Budget signal** (`loop_budget_signal.py::check_budget_signal`): reports the
+live remainder against `ctx.token_ceiling` at declared steps
+(`engine.budget_signal_step_percent`, default `25`) rather than every turn --
+an injected line on every turn of a long-running merge is real, avoidable
+spend on a connection with no prompt caching. Past
+`engine.budget_signal_terminal_percent` (default `90`) the line repeats every
+turn with a terminal warning naming what happens when the ceiling is
+reached. Zero disables the periodic signal; the terminal warning still fires.
+
+**Produce-early checkpoint**
+(`loop_empty_run.py::nudge_unproductive_spend`): the zero-artifact guard is a
+post-mortem, only judging a run once it has already ended. This checkpoint
+acts while the run is alive: once a work task has spent
+`engine.produce_early_percent` (default `50`) of its token ceiling with
+nothing produced yet (asked of the workspace, the same `delivered_nothing()`
+the empty-turn correction uses), it fires once, naming the declared
+deliverables, and instructs the run to write a first version now rather than
+keep exploring. It never terminates the run -- the zero-artifact guard still
+owns that decision -- and is distinct from the empty-turn correction:
+that one only reaches a turn with literally no tool calls, so a session
+calling a tool every turn while producing nothing (reading, exploring,
+planning) never reaches it.
 
 ### Compaction Hook
 
-`CompactionCallback` is a type alias (`Callable[[AgentContext], Coroutine[...,
-AgentContext | None]]`) wired into `ReactLoop` via its constructor; the same
+`CompactionCallback` is a `Protocol` (`compaction/protocol.py`) -- not a bare
+`Callable` alias -- wired into `ReactLoop` via its constructor, the same
 injection pattern as `checkpoint_callback`, `stagnation_detector`, and
-`approval_gate`.
+`approval_gate`. Its `__call__` takes `force: bool = False` and
+`preserve_markers: bool | None = None` alongside the context, so a forced,
+agent-directed call (skipping the fill-threshold check, overriding the
+configured `preserve_epistemic_markers` for that one call) is part of the
+shape every implementation and every caller agrees on.
 
 The default implementation (`make_compaction_callback` in
 `compaction/summarizer.py`) archives oldest conversation turns into a summary
@@ -795,7 +849,7 @@ message when `context_fill_percent` exceeds a configurable threshold (default
 | `fill_threshold_percent` | `80.0` | Fill percentage that triggers compaction |
 | `min_messages_to_compact` | `4` | Minimum messages before compaction is allowed |
 | `preserve_recent_turns` | `3` | Recent turn pairs to keep uncompressed |
-| `agent_controlled` | `False` | Let the `compact_context` tool trigger compaction; auto-compaction then defers to `safety_threshold_percent` |
+| `agent_controlled` | `False` | Defer AUTOMATIC compaction to `safety_threshold_percent` as a safety net, giving the agent headroom to compact via the `compact_context` tool first; the tool itself is honoured regardless of this flag |
 | `safety_threshold_percent` | `95.0` | Auto-compaction safety net when `agent_controlled` is on; must exceed `fill_threshold_percent` |
 | `preserve_epistemic_markers` | `True` | Preserve marker-bearing sentences instead of truncating them (see [Agent-Controlled Context Compaction](#agent-controlled-context-compaction)) |
 | `llm_summarizer_enabled` | `False` | Summarise the archived batch via a completion call instead of concatenation; requires `llm_summary_model` |
@@ -823,9 +877,15 @@ previously compacted (archived 12 turns). Previous error: ...
 
 ### Loop Integration
 
-- **ReactLoop**: compaction checked after stagnation detection, at turn
-  boundaries (between completed turns), through the shared
-  `invoke_compaction()` helper in `loop_helpers.py`
+- **ReactLoop**: the budget signal and produce-early checkpoint run at the
+  TOP of each turn (before the LLM call), beside the background-job-watch
+  and steering checks. Compaction runs at the BOTTOM, after stagnation
+  detection, through the shared `invoke_compaction()` helper in
+  `loop_control_helpers.py`. A pending `ctx.compaction_request` (the
+  `compact_context` tool's directive, recorded from the tool CALL at
+  `loop_tool_execution.py::_apply_tool_call_side_effect`) forces that call
+  and is always cleared afterward, whether or not compaction actually ran,
+  so a declined request does not re-fire on every subsequent turn.
 
 ## Brain / Hands / Session
 
@@ -937,8 +997,9 @@ Compaction always builds the snippet-join text summary, and two enhancements lay
 from `CompactionConfig`. They are not alike: the LLM summariser replaces that text when it is
 enabled, taking it as the fallback for a provider failure, while the memory offload is purely
 additive and leaves the summary untouched. All of it shares the same split/finalise machinery
-in `compaction/summarizer.py`; the `invoke_compaction()` helper in `engine/loop_helpers.py` is
-the shared entry point for any loop that manages its own context in-process.
+in `compaction/summarizer.py`; the `invoke_compaction()` helper in
+`engine/loop_control_helpers.py` is the shared entry point for any loop that
+manages its own context in-process.
 
 ### Text summary (default path)
 
@@ -971,11 +1032,24 @@ Two independent upgrades layer onto the text path, both off by default:
 
 ### Agent-controlled mode
 
-With `agent_controlled` enabled, the `compact_context` tool lets an agent request compaction
-directly when it judges context fill is hurting reasoning quality; automatic compaction then
-defers to `safety_threshold_percent` (must exceed `fill_threshold_percent`) as a safety net
-rather than firing at `fill_threshold_percent` itself. With `agent_controlled` off (the
-default), only the fixed `fill_threshold_percent` threshold triggers compaction.
+The `compact_context` tool is registered unconditionally, and every call it
+makes is honoured: the loop reads the tool CALL itself (its own `strategy`,
+`reason`, `preserve_markers` arguments) at the turn-boundary side-effect seam
+in `loop_tool_execution.py`, not `ToolExecutionResult.metadata`, which is
+dropped at the invoker boundary before the loop ever reaches it. The recorded
+request forces `invoke_compaction()` to skip the fill-threshold check and
+apply the requested `preserve_markers` override on the very next turn
+boundary.
+
+`agent_controlled` governs a separate, second question: what the AUTOMATIC
+(non-agent-directed) path does. With it enabled, automatic compaction defers
+to `safety_threshold_percent` (must exceed `fill_threshold_percent`) as a
+safety net, giving the agent headroom to decide when to compact via the tool
+before the automatic path would; with it off (the default), the fixed
+`fill_threshold_percent` threshold alone triggers automatic compaction. The
+tool works identically either way -- `agent_controlled` never gates whether
+a `compact_context` call is honoured, only where the automatic safety net
+sits.
 
 Semantic, cost-aware weighting of what gets archived first (rather than oldest-first) is not
 built; see [Agent-Controlled Compaction](../research/agent-controlled-compaction.md) and the
