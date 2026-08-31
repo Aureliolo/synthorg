@@ -7,13 +7,14 @@ the two answer the same question for the loop's correction, and a field with
 two meanings is one the next consumer reads wrong.
 """
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
 from synthorg.config.provider_schema import ProviderModelConfig
 from synthorg.core.completion_enums import FinishReason
-from synthorg.providers.drivers.litellm_response import map_response
+from synthorg.providers.drivers.litellm_response import _extract_cache_hit, map_response
 from synthorg.providers.models import CompletionResponse
 from tests.unit.providers.drivers.conftest import (
     make_mock_response,
@@ -111,3 +112,56 @@ class TestDroppedToolCalls:
 
         assert [c.id for c in mapped.tool_calls] == ["call_ok"]
         assert mapped.dropped_tool_calls is True
+
+
+class TestCacheHit:
+    """``cache_hit`` reports what the response reported, never a guess.
+
+    Absent cache data is ``None`` (unknown), not ``False`` (checked, no
+    hit): a provider that never publishes the field must not read as
+    every one of its calls missing the cache.
+    """
+
+    def test_openai_shaped_cached_tokens_report_a_hit(self) -> None:
+        assert (
+            _extract_cache_hit(
+                SimpleNamespace(prompt_tokens_details=SimpleNamespace(cached_tokens=40))
+            )
+            is True
+        )
+
+    def test_openai_shaped_zero_cached_tokens_report_no_hit(self) -> None:
+        assert (
+            _extract_cache_hit(
+                SimpleNamespace(prompt_tokens_details=SimpleNamespace(cached_tokens=0))
+            )
+            is False
+        )
+
+    def test_anthropic_shaped_cache_read_tokens_report_a_hit(self) -> None:
+        assert _extract_cache_hit(SimpleNamespace(cache_read_input_tokens=25)) is True
+
+    def test_no_cache_shape_reported_is_unknown(self) -> None:
+        assert _extract_cache_hit(SimpleNamespace(prompt_tokens=100)) is None
+
+    def test_none_usage_object_is_unknown(self) -> None:
+        assert _extract_cache_hit(None) is None
+
+    def test_map_response_carries_a_reported_hit_into_provider_metadata(self) -> None:
+        response = make_mock_response(content="done", tool_calls=None)
+        response.usage = SimpleNamespace(
+            prompt_tokens=100,
+            completion_tokens=50,
+            prompt_tokens_details=SimpleNamespace(cached_tokens=40),
+        )
+
+        mapped = map_response(response, _MODEL, provider_name="test-provider")
+
+        assert mapped.provider_metadata["_synthorg_cache_hit"] is True
+
+    def test_map_response_omits_the_key_when_nothing_was_reported(self) -> None:
+        response = make_mock_response(content="done", tool_calls=None)
+
+        mapped = map_response(response, _MODEL, provider_name="test-provider")
+
+        assert "_synthorg_cache_hit" not in mapped.provider_metadata
