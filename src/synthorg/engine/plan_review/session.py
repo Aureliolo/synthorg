@@ -31,6 +31,7 @@ from synthorg.core.plan_review import PlanReviewerVerdict, PlanReviewOutcome
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
+from synthorg.engine.agent_sampling import resolve_sampling
 from synthorg.engine.context import AgentContext
 from synthorg.engine.decomposition.models import DecompositionResult, SubtaskDefinition
 from synthorg.engine.errors import PlanReviewUnavailableError
@@ -65,7 +66,7 @@ from synthorg.observability.events.plan_review import (
 )
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage, CompletionConfig
+from synthorg.providers.models import ChatMessage
 from synthorg.providers.protocol import ProviderSelector
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.registry import ToolRegistry
@@ -177,8 +178,9 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
             provider_selector: Resolves the completion client for a panellist's
                 own ``identity.model.provider``, so each reviewer runs on the
                 provider it is bound to rather than a shared default.
-            config: Optional panel configuration (size, turn cap, temperature,
-                cost ceiling). Uses defaults when omitted.
+            config: Optional panel configuration (size, turn cap, cost
+                ceiling). Uses defaults when omitted; each panellist is
+                sampled by its own binding.
             cost_tracker: Optional cost tracker; when wired each review
                 session's provider calls record against it under the reviewer.
             shutdown_checker: Optional callback returning ``True`` when a
@@ -339,9 +341,7 @@ class AgentSessionPlanReviewPanel(PlanReviewPanel):
                     tool_invoker=invoker,
                     budget_checker=self._budget_checker(),
                     shutdown_checker=self._shutdown_checker,
-                    completion_config=CompletionConfig(
-                        temperature=self._config.temperature
-                    ),
+                    completion_config=resolve_sampling(reviewer),
                 )
                 result = await run(context=ctx)
                 if self._should_resubmit(capture, result):

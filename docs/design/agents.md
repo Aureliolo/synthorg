@@ -233,6 +233,8 @@ field marked below belongs to one layer and is rejected by the other.
         provider: "example-provider"
         model_id: "example-capable-001"
         temperature: 0.3
+        top_p: null                 # nucleus threshold; moves with temperature
+        reasoning_effort: null      # null defers to the per-stakes ladder
         max_tokens: 8192
         capability: "capable"  # derived by the matcher from the selected model's context window
       model_requirement:            # AgentConfig only: requirements from template

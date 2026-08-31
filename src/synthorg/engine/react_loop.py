@@ -12,6 +12,7 @@ from typing import Self
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.engine.agent_sampling import resolve_sampling
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.background_job_watch import (
     BackgroundJobWatcher,
@@ -482,20 +483,17 @@ class ReactLoop:
             max_turns=context.max_turns,
         )
         model_id = context.identity.model.model_id
-        # A caller that hands us no config has not been through
-        # `_fold_response_budget`, so the identity's own `max_tokens` is
-        # whatever the operator bound and is `None` for every agent that bound
-        # nothing. `None` does NOT mean the same thing here as it does on the
-        # binding: the driver omits the key entirely, so it reaches the
-        # provider as no ceiling at all rather than as "resolve me". A floor
-        # keeps that one meaning out of the request; the resolver still wins
-        # wherever it ran, because a resolved config never reaches this branch.
-        config = completion_config or CompletionConfig(
-            temperature=context.identity.model.temperature,
-            max_tokens=(
-                context.identity.model.max_tokens or DEFAULT_AGENT_MAX_RESPONSE_TOKENS
-            ),
-        )
+        config = resolve_sampling(context.identity, completion_config)
+        if config.max_tokens is None:
+            # `None` does NOT mean the same thing here as it does on the
+            # binding: the driver omits the key entirely, so it reaches the
+            # provider as no ceiling at all rather than as "resolve me". A
+            # floor keeps that one meaning out of the request. The setting
+            # resolver still wins wherever it ran, because a config it
+            # resolved always carries a ceiling and never reaches this branch.
+            config = config.model_copy(
+                update={"max_tokens": DEFAULT_AGENT_MAX_RESPONSE_TOKENS}
+            )
         return (
             model_id,
             config,

@@ -402,6 +402,26 @@ copying the number, so a product bound that changes carries the sweep with it
 instead of surfacing as a write the settings service refuses partway through a
 paid run.
 
+Sampling is the one part of the treatment that is **not** armed through
+settings, because it is not a setting: temperature, `top_p`, reasoning depth
+and the per-response ceiling belong to the bound model, so each is declared on
+the manifest's own `ModelPair` and reaches the roster as the agent's
+`ModelConfig` (`evals/recursion_depth/staffing.py`). Per pair rather than once
+for the matrix, because the two models a cross-family matrix binds are
+published with different values on different dials, and which dial a model even
+honours differs by family: one may expose graded effort and ignore sampling
+while thinking, another expose no effort parameter at all. A single figure for
+both is therefore guaranteed wrong for one of them.
+
+Declaring it there rather than on the command line is what puts it inside
+`manifest_sha256`, which `matrix_identity` pins in the journal header, so a
+resume against a changed treatment is refused rather than mixing two into one
+curve. The recorded `Provenance` carries both pairs read back off the
+**dispatched identity** (`ModelPair.of`), not off the manifest, so the report
+publishes the binding that actually ran; a dial reading `unset` there is one
+the binding did not state, which per-call resolution may still have answered
+for, rather than proof that no request carried a value.
+
 The `decomposition_max_retries` row is a margin rather than a manipulation, and
 what makes it worth reading twice is how narrow the margin turns out to be. The
 setting counts RETRIES, and the first ask is not one, so a value of N allows N+1

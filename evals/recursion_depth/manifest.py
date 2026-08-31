@@ -197,6 +197,30 @@ class ModelPair(BaseModel):
         """
         return f"{self.provider}/{self.model_id}"
 
+    @property
+    def sampling_summary(self) -> str:
+        """Render every dial this pair holds, stated or not.
+
+        An unset dial is named rather than omitted, because omission reads as
+        an assertion that nothing applied while each of these resolves
+        somewhere further down. What an absence MEANS differs by caller (a
+        planned pair resolves through staffing, a recorded one through the
+        completion config), so this states only what the pair holds and leaves
+        the meaning to the caller's own caption.
+
+        Returns:
+            All four dials, comma-separated, each with its value or ``unset``.
+        """
+        return ", ".join(
+            f"{name} {'unset' if value is None else value}"
+            for name, value in (
+                ("temperature", self.temperature),
+                ("top_p", self.top_p),
+                ("reasoning_effort", self.reasoning_effort),
+                ("max_tokens", self.max_tokens),
+            )
+        )
+
     @classmethod
     def of(
         cls, identity: AgentIdentity, declared: Sequence[ModelPair] = ()
@@ -249,10 +273,14 @@ class ModelPair(BaseModel):
             if pair.family is not None
         }
         # Sampling is read off the IDENTITY, unlike `family`, because an
-        # identity does carry it: these are the values the session actually
-        # dispatched with. Reading them back off the manifest instead would
-        # record what the roster was asked to bind rather than what ran, which
-        # is the distinction this whole method exists to preserve.
+        # identity does carry it: this is the binding the roster resolved to,
+        # not what the manifest asked for, which is the distinction this whole
+        # method exists to preserve. It is the BINDING and not the request: a
+        # dial left unset here is one the binding does not state, and per-call
+        # resolution can still fill it downstream (an unset reasoning depth
+        # falls to the stakes ladder, an unset `top_p` to the completion
+        # config's own default), so an absence records what was bound rather
+        # than proving what no request carried.
         return cls(
             provider=provider,
             model_id=model_id,

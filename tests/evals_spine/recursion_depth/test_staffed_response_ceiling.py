@@ -14,12 +14,7 @@ from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.role_catalog import COMPLETION_REVIEWER_ROLE_NAME
 from synthorg.engine.response_budget import DEFAULT_AGENT_MAX_RESPONSE_TOKENS
-from synthorg.engine.routing_policy.capability_policy import (
-    CapabilityPolicy,
-    ResolvedAgentCapabilityReader,
-)
-from synthorg.engine.routing_policy.config import CapabilityPolicyConfig
-from synthorg.providers.routing.models import ResolvedModel
+from tests.evals_spine.recursion_depth._doubles import ungraded_capability
 
 pytestmark = pytest.mark.unit
 
@@ -37,19 +32,6 @@ _REVIEWER = ModelPair(
 )
 
 
-class _UngradedResolver:
-    """A catalogue that grades nothing, which is the placeholder pairs' case."""
-
-    def resolve_for_pair(self, provider_name: str, ref: str) -> ResolvedModel | None:
-        """Grade nothing.
-
-        Returns:
-            ``None``, so the roster's own claim is what selection reads.
-        """
-        del provider_name, ref
-        return None
-
-
 async def _roster() -> SweepRoster:
     """Register the roster a sweep would run on.
 
@@ -64,10 +46,7 @@ async def _roster() -> SweepRoster:
     return await build_roster(
         executor=_EXECUTOR,
         reviewer=_REVIEWER,
-        capability=CapabilityPolicy(
-            config=CapabilityPolicyConfig(),
-            reader=ResolvedAgentCapabilityReader(_UngradedResolver()),
-        ),
+        capability=ungraded_capability(),
     )
 
 
@@ -139,10 +118,7 @@ async def test_each_role_samples_at_its_own_pairs_declared_values() -> None:
                 "max_tokens": 262_144,
             }
         ),
-        capability=CapabilityPolicy(
-            config=CapabilityPolicyConfig(),
-            reader=ResolvedAgentCapabilityReader(_UngradedResolver()),
-        ),
+        capability=ungraded_capability(),
     )
 
     assert roster.builders

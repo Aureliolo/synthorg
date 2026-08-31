@@ -54,7 +54,7 @@ class AgentSessionDecompositionConfig(BaseModel):
 
     Sampling is deliberately absent: it belongs to the bound model rather than
     to the strategy, so the planning session reads it off the owner's own
-    binding (:func:`synthorg.engine.agent_sampling.binding_sampling`), exactly
+    binding (:func:`synthorg.engine.agent_sampling.resolve_sampling`), exactly
     as a work session does. A field here would be a second answer that could
     not be a right one, since a strategy config does not know which model is
     bound and the value a vendor publishes is a property of that model.

@@ -211,7 +211,7 @@ class TestFoldStakesReasoning:
         )
         assert folded is not None
         assert folded.reasoning_effort is ReasoningEffort.HIGH
-        assert folded.temperature == 0.9
+        assert folded.temperature == pytest.approx(0.9)
         assert folded.max_tokens == 2048
 
     def test_preserves_existing_config_fields(self) -> None:
@@ -221,9 +221,9 @@ class TestFoldStakesReasoning:
         )
         assert folded is not None
         assert folded.reasoning_effort is ReasoningEffort.MEDIUM
-        assert folded.temperature == 0.2
+        assert folded.temperature == pytest.approx(0.2)
         assert folded.max_tokens == 99
-        assert folded.top_p == 0.5
+        assert folded.top_p == pytest.approx(0.5)
 
     def test_the_agents_own_depth_outranks_the_ladder(self) -> None:
         """A depth bound to the agent describes the MODEL; the ladder the WORK.
@@ -257,6 +257,35 @@ class TestFoldStakesReasoning:
         )
         assert folded is not None
         assert folded.reasoning_effort is ReasoningEffort.HIGH
+
+    def test_a_caller_config_does_not_hide_the_agents_own_depth(self) -> None:
+        """A caller stating a ceiling has said nothing about depth.
+
+        Resolving by choosing between the caller's config and the binding
+        rather than merging them drops the whole binding the moment any config
+        exists, which is invisible from the dial the caller did state: the
+        ceiling arrives correctly and the depth the operator bound is gone.
+        """
+        identity = _identity("expert").model_copy(
+            update={
+                "model": ModelConfig(
+                    provider=_PROVIDER,
+                    model_id=_TIER_MODEL_IDS["expert"],
+                    capability="expert",
+                    reasoning_effort=ReasoningEffort.LOW,
+                ),
+            },
+        )
+        folded = AgentEngineRunMixin._fold_stakes_reasoning(
+            CompletionConfig(temperature=0.4, max_tokens=500),
+            identity,
+            ReasoningEffort.HIGH,
+        )
+
+        assert folded is not None
+        assert folded.reasoning_effort is ReasoningEffort.LOW
+        assert folded.max_tokens == 500
+        assert folded.temperature == pytest.approx(0.4)
 
     def test_the_binding_top_p_survives_the_fold(self) -> None:
         """Sampling declared on the pair reaches the request beside the depth.

@@ -30,6 +30,7 @@ from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
+from synthorg.engine.agent_sampling import resolve_sampling
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import InitiativeEvaluationError
 from synthorg.engine.initiative.evaluate_models import (
@@ -57,7 +58,7 @@ from synthorg.observability.events.initiative import (
 )
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage, CompletionConfig
+from synthorg.providers.models import ChatMessage
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
@@ -73,10 +74,15 @@ _DEFAULT_CEILINGS: SessionCeilings = SessionCeilings(cost_ceiling=1.0, token_cei
 class EvaluationSessionConfig(BaseModel):
     """Configuration for the evaluation session.
 
+    Sampling is deliberately absent: it belongs to the bound model, so the
+    session reads it off the lead's own binding through
+    :func:`synthorg.engine.agent_sampling.resolve_sampling`. A field here
+    could not hold a right answer, because a session config does not know
+    which model is bound and the value a vendor publishes is a property of
+    that model.
+
     Attributes:
         max_turns: Hard turn cap for the session.
-        temperature: Sampling temperature. Low by default: this is a judgement
-            against stated criteria, not a creative task.
         ceilings: Both spend bounds on the session. One field, not two, so a
             wiring path that resolves the money bound cannot leave the token
             bound at its default in silence: money measures nothing against a
@@ -86,12 +92,6 @@ class EvaluationSessionConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
     max_turns: int = Field(default=10, ge=1, le=50, description="Session turn cap")
-    temperature: float = Field(
-        default=0.1,
-        ge=0.0,
-        le=2.0,
-        description="Sampling temperature",
-    )
     ceilings: SessionCeilings = Field(
         default=_DEFAULT_CEILINGS,
         description="Per-session money + token bounds",
@@ -293,7 +293,7 @@ class InitiativeEvaluator:
     """Runs the bounded lead-run session that scores a delivered initiative.
 
     Args:
-        config: Session configuration (turn cap, temperature, cost ceiling).
+        config: Session configuration (turn cap, cost ceiling).
         cost_tracker: Optional cost tracker; when wired the session's provider
             calls record against it under the lead.
         shutdown_checker: Optional callback returning ``True`` when a graceful
@@ -376,9 +376,7 @@ class InitiativeEvaluator:
                 tool_invoker=invoker,
                 budget_checker=self._budget_checker(),
                 shutdown_checker=self._shutdown_checker,
-                completion_config=CompletionConfig(
-                    temperature=self._config.temperature
-                ),
+                completion_config=resolve_sampling(lead),
             )
         return capture.settled(lead_id=str(lead.id), result=result)
 

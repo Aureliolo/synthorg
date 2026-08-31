@@ -142,32 +142,6 @@ def _pair(pair: ModelPair) -> str:
     return f"{pair.label} ({detail})"
 
 
-def _sampling(pair: ModelPair) -> str:
-    """Render what one pair will be asked to sample and reason at.
-
-    Printed on the plan because this is the screen where an operator decides
-    to spend, and these are inputs to the result rather than incidental
-    settings: a previous recording let every one of them default and could not
-    afterwards say what it had measured. Each dial is shown only when it is
-    set, because "unset" and "set to the provider's own default" are different
-    claims and a rendered number would assert the second.
-
-    Returns:
-        A comma-separated rendering, or a statement that nothing is pinned.
-    """
-    stated = [
-        f"{name} {value}"
-        for name, value in (
-            ("temperature", pair.temperature),
-            ("top_p", pair.top_p),
-            ("reasoning_effort", pair.reasoning_effort),
-            ("max_tokens", pair.max_tokens),
-        )
-        if value is not None
-    ]
-    return ", ".join(stated) if stated else "provider defaults, nothing pinned"
-
-
 def _resolved_family(pair: ModelPair, config: RootConfig) -> str | None:
     """The family the model actually answering for *pair* belongs to.
 
@@ -465,9 +439,16 @@ def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
         + ", ".join(f"cap {d}: {manifest.repetitions[d]}" for d in manifest.depths),
         f"  arms          : {', '.join(arm.value for arm in manifest.arms)}",
         f"  executor      : {_pair(manifest.executor)}",
-        f"  exec sampling : {_sampling(manifest.executor)}",
+        f"  exec declared : {manifest.executor.sampling_summary}",
         f"  reviewer      : {_pair(manifest.reviewer)}",
-        f"  revw sampling : {_sampling(manifest.reviewer)}",
+        f"  revw declared : {manifest.reviewer.sampling_summary}",
+        # Printed on the screen where an operator decides to spend, because
+        # these are inputs to the result rather than incidental settings. A
+        # dial reading `unset` is one this manifest does not pin, which is NOT
+        # the provider's own default: staffing substitutes the response
+        # ceiling for an unset `max_tokens` and `ModelConfig` supplies the
+        # temperature, so only an unset reasoning depth reaches the model
+        # unstated.
         f"  independence  : {manifest.independence.value}",
         f"  merge attempts: {manifest.merge_attempts} (the SAME in every arm)",
         "",

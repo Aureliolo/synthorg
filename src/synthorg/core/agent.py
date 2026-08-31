@@ -148,7 +148,7 @@ class ModelConfig(BaseModel):
         le=1.0,
         description=(
             "Nucleus-sampling threshold; None leaves the provider's own. Moves "
-            "with temperature, which vendors publish it beside"
+            "with temperature, since vendors publish the two together"
         ),
     )
     reasoning_effort: ReasoningEffort | None = Field(

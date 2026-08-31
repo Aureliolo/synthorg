@@ -12642,7 +12642,7 @@ export type components = {
              * @default 0.7
              */
             readonly temperature: number;
-            /** @description Nucleus-sampling threshold; None leaves the provider's own. Moves with temperature, which vendors publish it beside */
+            /** @description Nucleus-sampling threshold; None leaves the provider's own. Moves with temperature, since vendors publish the two together */
             readonly top_p: number | null;
         };
         /**

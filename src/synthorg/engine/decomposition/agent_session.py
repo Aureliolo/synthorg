@@ -24,7 +24,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_persona import render_agent_system_prompt
-from synthorg.engine.agent_sampling import binding_sampling
+from synthorg.engine.agent_sampling import resolve_sampling
 from synthorg.engine.agent_state_recording import (
     make_runtime_state_observer,
     mark_agent_running,
@@ -629,7 +629,7 @@ class AgentSessionDecompositionStrategy(DecompositionStrategy):
                 # bound model should be sampled, and it could not be a right
                 # one: the value a vendor publishes is a property of the model,
                 # which a strategy config does not know.
-                completion_config=binding_sampling(owner),
+                completion_config=resolve_sampling(owner),
             )
 
     def _build_invoker(

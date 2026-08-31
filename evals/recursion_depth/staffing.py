@@ -123,11 +123,14 @@ def _identity(*, slug: str, name: str, role: str, pair: ModelPair) -> AgentIdent
     Returns:
         The identity.
     """
-    # `temperature` is omitted rather than defaulted when the pair declares
-    # none, so `ModelConfig`'s own default stands instead of a copy of it here
-    # that a later change to that default would silently leave behind. Built
-    # through `model_validate` rather than by keyword for that reason: it is
-    # the one shape that can leave a field unsaid.
+    # `temperature` alone is conditional because it alone is non-optional on
+    # `ModelConfig`: passing `None` would be a validation error, where the
+    # other three take `None` as the binding stating nothing. Omitting it also
+    # lets `ModelConfig`'s own default stand rather than a copy of it here
+    # that a later change to that default would silently leave behind.
+    # `model_validate` rather than `ModelConfig(**fields)` because the values
+    # are heterogeneous, and mypy strict refuses `dict[str, object]` unpacked
+    # into a per-field-typed constructor.
     fields: dict[str, object] = {
         "provider": pair.provider,
         "model_id": pair.model_id,

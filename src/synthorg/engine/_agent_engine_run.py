@@ -13,7 +13,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.task import Task
-from synthorg.engine.agent_sampling import binding_sampling
+from synthorg.engine.agent_sampling import resolve_sampling
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_budget_defaults import DEFAULT_MAX_TURNS
 from synthorg.engine.response_budget import resolve_response_tokens
@@ -214,7 +214,7 @@ class AgentEngineRunMixin:
         Returns:
             A config carrying an explicit ceiling.
         """
-        base = completion_config or binding_sampling(identity)
+        base = resolve_sampling(identity, completion_config)
         if base.max_tokens is not None:
             return base
         resolved = await resolve_response_tokens(self._config_resolver, identity)
@@ -317,23 +317,27 @@ class AgentEngineRunMixin:
     ) -> CompletionConfig | None:
         """Fold the stakes-driven reasoning effort into the run config.
 
-        An effort already stated wins, whether it came from the caller or from
-        the agent's own binding, and the ladder answers only for a run that
-        stated none. That ordering is what keeps this a precedence rather than
+        An effort already stated wins, whether the caller stated it or the
+        agent's binding did, and the ladder answers only for a run where
+        neither did. That ordering is what keeps this a precedence rather than
         a second authority: a depth an operator bound to an agent describes
         the MODEL (some families expose graded effort and ignore sampling
         entirely, others the reverse), while the ladder describes the WORK, so
         the specific claim outranks the general one.
 
-        Leaves the config untouched (possibly ``None``, so the loop builds its
-        own default) when nothing requests a depth at all. Otherwise builds on
-        the caller-supplied config, or a fresh one carrying the agent's own
-        sampling, so that is preserved alongside the reasoning dial.
+        Resolving through :func:`resolve_sampling` is what makes "the agent's
+        binding stated it" reachable at all when the caller supplied a config
+        of its own: a caller stating only a token ceiling has said nothing
+        about depth, and the binding still answers for it.
+
+        Leaves the config untouched (possibly ``None``) when nothing requests
+        a depth, because the folds below settle the remaining dials and one of
+        them always materialises a config.
 
         Returns:
             The completion config to run with, or ``None`` when unchanged.
         """
-        base = completion_config or binding_sampling(identity)
+        base = resolve_sampling(identity, completion_config)
         if base.reasoning_effort is not None:
             return base
         if reasoning_effort is None:
@@ -416,11 +420,11 @@ class AgentEngineRunMixin:
 
         Reads ``providers.prompt_caching_enabled`` live per run (fail-safe to
         the registered default on a settings outage). When enabled, sets the
-        caching flag on the run config, building a fresh config that preserves
-        the agent's temperature / max_tokens when the caller passed none. When
-        disabled, leaves the config untouched. The driver still gates the
-        actual ``cache_control`` placement on per-model caching support, so a
-        non-caching model is unaffected either way.
+        caching flag on a config resolved against the agent's binding, so the
+        dials the caller left open are the binding's rather than the
+        provider's. When disabled, leaves the config untouched. The driver
+        still gates the actual ``cache_control`` placement on per-model
+        caching support, so a non-caching model is unaffected either way.
 
         Returns:
             The completion config to run with, or ``None`` when unchanged.
@@ -432,7 +436,7 @@ class AgentEngineRunMixin:
         )
         if not enabled:
             return completion_config
-        base = completion_config or binding_sampling(identity)
+        base = resolve_sampling(identity, completion_config)
         return base.model_copy(update={"prompt_caching": True})
 
     async def _resolve_max_turns(self, *, agent_id: str, task_id: str) -> int:

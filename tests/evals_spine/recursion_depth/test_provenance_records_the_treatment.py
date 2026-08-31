@@ -143,19 +143,40 @@ class TestTheReportPublishesTheTreatment:
         assert "reasoning_effort high" in markdown
         assert "ghcr.io/example/sandbox@sha256:abc" in markdown
 
-    def test_an_unpinned_dial_is_not_rendered_as_a_number(self) -> None:
-        """ "Unset" and "set to the provider's default" are different claims.
+    def test_an_unstated_dial_is_named_rather_than_omitted(self) -> None:
+        """An absent dial is reported as unset, never as a provider default.
 
-        Rendering a figure for the first would assert the second, which is
-        exactly the confusion this whole change exists to remove.
+        Those are different claims and only one of them is true: three of
+        these four resolve to a value this system supplies (the roster
+        substitutes a response ceiling, ``ModelConfig`` supplies a
+        temperature, the completion config supplies a nucleus threshold), so
+        calling an absence "provider defaults" asserts something no request
+        carried. Omitting the dial entirely makes the same claim by silence,
+        which is why every one is named.
         """
-        from evals.recursion_depth.emit import _sampling_cell
-
         bare = ModelPair(
             provider="example-provider",
             model_id="example-capable-001",
             capability="capable",
         )
 
-        assert _sampling_cell(bare) == "provider defaults, nothing pinned"
-        assert "temperature" not in _sampling_cell(bare)
+        summary = bare.sampling_summary
+
+        assert summary == (
+            "temperature unset, top_p unset, reasoning_effort unset, max_tokens unset"
+        )
+        assert "default" not in summary
+
+    def test_a_stated_dial_reads_beside_an_unstated_one(self) -> None:
+        """The mixed case is the one a real pair is in."""
+        half = ModelPair(
+            provider="example-provider",
+            model_id="example-capable-001",
+            capability="capable",
+            temperature=0.7,
+            max_tokens=131_072,
+        )
+
+        assert half.sampling_summary == (
+            "temperature 0.7, top_p unset, reasoning_effort unset, max_tokens 131072"
+        )
