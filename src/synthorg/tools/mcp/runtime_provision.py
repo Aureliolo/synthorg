@@ -25,7 +25,7 @@ RUNTIME_PROGRAMS: Final[Mapping[str, str]] = MappingProxyType(
     {
         "bash": "bash",
         "git": "git",
-        "node": "nodejs-24",
+        "node": "nodejs-26",
         "npm": "npm-12",
         "npx": "npm-12",
         "python": "python-3.14",

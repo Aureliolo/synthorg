@@ -32,7 +32,7 @@ contents:
     # currently serves, so the series moves without the manifest changing.
     # This image links torch and sentence-transformers against libc, where an
     # unannounced series change is the least welcome, so the series is named.
-    - glibc-2.43
+    - glibc-2.44
     - openblas
 
 accounts:

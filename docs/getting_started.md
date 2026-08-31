@@ -186,7 +186,7 @@ synthorg/
 
 ## Web Dashboard Development
 
-The React dashboard lives in `web/`. Prerequisites: **Node.js 24** (CI pins `24.19.0`).
+The React dashboard lives in `web/`. Prerequisites: **Node.js 24** (CI pins `24.20.0`).
 
 ```bash
 npm --prefix web install        # install frontend deps

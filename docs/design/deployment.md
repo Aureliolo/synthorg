@@ -67,8 +67,8 @@ Four properties keep the lock honest, and each is enforced rather than assumed
 - **A manifest names what installs.** Wolfi resolves an unversioned name
   through `provides` to whichever series it serves that week, so a bare
   `glibc`, `npm` or `postgresql-client` reads like a pin while tracking a
-  moving target. Manifests name the resolved package (`glibc-2.43`, `npm-12`,
-  `postgresql-18-client`), the same way `nodejs-24` and `python-3.14` already
+  moving target. Manifests name the resolved package (`glibc-2.44`, `npm-12`,
+  `postgresql-18-client`), the same way `nodejs-26` and `python-3.14` already
   did.
 - **Whatever else names an apko package agrees with the manifest.** Two
   modules name packages by hand: `tools/mcp/runtime_provision.py`, which
@@ -96,9 +96,10 @@ staleness risk: Wolfi retains superseded versions, and every package named in a
 Naming the resolved package turns an alias into a **series** pin, and a series
 pin is exactly the thing nothing in the pipeline can watch. `apko lock`
 faithfully re-resolves the series that was asked for, so the weekly refresh is
-silent the day `nodejs-26` lands; no Renovate manager reads `apko.yaml`, so the
-bump never appears as a PR; and the gate cannot object, because the pin is what
-it demands. The only place the fact exists is the upstream index.
+silent the day `postgresql-19-client` lands; no Renovate manager reads
+`apko.yaml`, so the bump never appears as a PR; and the gate cannot object,
+because the pin is what it demands. The only place the fact exists is the
+upstream index.
 
 `scripts/report_apko_series_drift.py` reads it. For every Wolfi-backed
 manifest it takes each package name carrying a version token, reduces the name
