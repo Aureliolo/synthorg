@@ -334,7 +334,7 @@ class TestAuditChainSink:
         assert result.valid is False
         assert result.first_break_position == 1
 
-    async def test_attach_persistence_verifies_and_warns_on_a_broken_restore(
+    async def test_attach_persistence_makes_a_broken_restore_visible_to_verify(
         self,
     ) -> None:
         signer = _make_mock_signer()

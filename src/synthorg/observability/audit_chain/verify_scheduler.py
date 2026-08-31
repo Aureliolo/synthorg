@@ -1,10 +1,11 @@
 # module-kind: code
 """Periodic driver for full audit-chain verification.
 
-``AuditChainSink.attach_persistence`` verifies the chain once, at boot,
-right after hydration. That catches tampering that happened before the
-process started; it says nothing about a row rewritten out-of-band while
-this process keeps running. This scheduler re-runs the same full walk
+``AsyncCycleScheduler`` runs its first cycle eagerly, on ``start()``,
+before any wait -- so a scheduler started immediately after
+``AuditChainSink.attach_persistence`` returns performs the boot-time
+verification itself; that structural property is why the sink does not
+also verify explicitly. This scheduler then re-runs the same full walk
 (hash continuity plus every entry's signature) on a cadence, so the
 documented ``synthorg_audit_chain_verifications_total{outcome="broken"}``
 alert stays reachable for the life of the process, not only at restart.
@@ -71,6 +72,7 @@ class AuditChainVerificationScheduler(AsyncCycleScheduler):
         )
         self._sink = sink
         self._app_state = app_state
+        self._boot_cycle_done = False
 
     @override
     async def _run_cycle_once(self) -> None:
@@ -79,15 +81,20 @@ class AuditChainVerificationScheduler(AsyncCycleScheduler):
         The verifier's own ``verify_chain`` records
         ``synthorg_audit_chain_verifications_total{outcome}`` on every call
         regardless of outcome; this only adds the durability-side warning a
-        broken re-verification deserves, mirroring the boot-time check.
+        broken re-verification deserves. ``_run`` runs this eagerly on
+        ``start()``, before any wait, so the FIRST call is the boot-time
+        check the sink deliberately no longer performs itself; every call
+        after that is a genuine periodic re-verify.
         """
+        trigger = "periodic_verify" if self._boot_cycle_done else "boot_verify"
+        self._boot_cycle_done = True
         result = await self._sink.verify_chain()
         if not result.valid:
             logger.warning(
                 AUDIT_CHAIN_PERSIST_INTEGRITY_FAILED,
                 entries_checked=result.entries_checked,
                 first_break_position=result.first_break_position,
-                trigger="periodic_verify",
+                trigger=trigger,
             )
 
     @override

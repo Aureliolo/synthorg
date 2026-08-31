@@ -39,7 +39,6 @@ from synthorg.observability.events.audit_chain import (
     AUDIT_CHAIN_EMIT_ERROR,
     AUDIT_CHAIN_EMIT_TIMEOUT,
     AUDIT_CHAIN_EMIT_VALIDATION_FAILED,
-    AUDIT_CHAIN_PERSIST_INTEGRITY_FAILED,
     AUDIT_CHAIN_RECORD_SHAPE_UNKNOWN,
 )
 
@@ -172,16 +171,28 @@ class AuditChainSink(logging.Handler):
         self._persistence_writer: AuditChainPersistenceWriter | None = None
 
     async def attach_persistence(self, writer: AuditChainPersistenceWriter) -> None:
-        """Hydrate the live chain, verify it, start the writer, and register it.
+        """Hydrate the live chain from durable storage, then start the writer.
 
         Called from the startup wiring once the persistence backend is
         connected and before traffic. Hydration rebuilds the in-memory
         chain (tail hash + entries) from durable storage so verification
-        survives restarts; the rebuilt chain is then fully verified (hash
-        continuity AND every entry's signature) so a restore of tampered or
-        corrupted rows is caught at boot rather than staying silently
-        unread. Afterwards appended entries are handed to ``writer.enqueue``
-        inside the sink lock.
+        survives restarts. Full verification (hash continuity AND every
+        entry's signature) is deliberately left to the caller's own
+        ``AuditChainVerificationScheduler``: its first cycle runs eagerly
+        on ``start()``, before any wait, so a scheduler started immediately
+        after this returns already IS the boot-time check. A second
+        explicit walk here would duplicate the same O(N) signature
+        verification on every restart. Afterwards appended entries are
+        handed to ``writer.enqueue`` inside the sink lock.
+
+        ``writer.hydrate`` is handed a DETACHED chain, never the live
+        ``self._chain``, so its paginated repository reads (``await``,
+        potentially many) can never interleave with a concurrent
+        ``emit()``'s unlocked read of the live chain. Once hydration
+        finishes, the loaded entries are swapped into the live chain in
+        one synchronous, lock-held step (no ``await`` inside the lock,
+        so a re-entrant ``emit()`` on this same thread cannot deadlock on
+        a lock this coroutine already holds).
 
         Raises:
             TypeError: If ``writer.enqueue`` is a coroutine function. The
@@ -192,16 +203,12 @@ class AuditChainSink(logging.Handler):
         if inspect.iscoroutinefunction(writer.enqueue):
             msg = "AuditChainPersistenceWriter.enqueue must be synchronous"
             raise TypeError(msg)
-        await writer.hydrate(self._chain)
+        detached = HashChain(initial_hash=self._chain.initial_hash)
+        await writer.hydrate(detached)
+        with self._lock:
+            self._chain.restore(detached.entries)
         await writer.start()
         self._persistence_writer = writer
-        result = await self.verify_chain()
-        if not result.valid:
-            logger.warning(
-                AUDIT_CHAIN_PERSIST_INTEGRITY_FAILED,
-                entries_checked=result.entries_checked,
-                first_break_position=result.first_break_position,
-            )
 
     async def verify_chain(self) -> ChainVerificationResult:
         """Verify the live chain's hash continuity and every entry's signature.

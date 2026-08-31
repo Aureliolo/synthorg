@@ -20,6 +20,9 @@ FEATURE: FeatureModule = FeatureManifest(
     controllers=(MetricsController, AuditChainController),
     mcp_handlers=(),
     lifecycle_hooks=(),
-    ghost_wired_symbols=("install_audit_chain_sink",),
+    ghost_wired_symbols=(
+        "install_audit_chain_sink",
+        "AuditChainVerificationScheduler",
+    ),
     depends_on=(),
 )

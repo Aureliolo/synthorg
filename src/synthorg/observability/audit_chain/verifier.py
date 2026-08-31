@@ -9,9 +9,9 @@ from synthorg.core.critical_errors import reraise_critical
 from synthorg.observability import get_logger
 from synthorg.observability.audit_chain.chain import ChainEntry, HashChain
 from synthorg.observability.audit_chain.protocol import AuditChainSigner
+from synthorg.observability.events.audit_chain import AUDIT_CHAIN_VERIFY_COMPLETE
 from synthorg.observability.events.security import (
     SECURITY_AUDIT_CHAIN_BREAK_DETECTED,
-    SECURITY_AUDIT_CHAIN_VERIFY_COMPLETE,
     SECURITY_AUDIT_CHAIN_VERIFY_START,
 )
 from synthorg.observability.metrics_hub import record_audit_chain_verification
@@ -135,7 +135,7 @@ class AuditChainVerifier:
             return signature_break
 
         logger.info(
-            SECURITY_AUDIT_CHAIN_VERIFY_COMPLETE,
+            AUDIT_CHAIN_VERIFY_COMPLETE,
             entries_checked=len(entries),
             valid=True,
         )

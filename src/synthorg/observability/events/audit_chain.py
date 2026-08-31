@@ -69,3 +69,15 @@ AUDIT_CHAIN_VERIFY_SCHEDULER_STOPPED: Final[str] = (
     "audit_chain.verify_scheduler.stopped"
 )
 AUDIT_CHAIN_VERIFY_SCHEDULER_FAILED: Final[str] = "audit_chain.verify_scheduler.failed"
+
+AUDIT_CHAIN_VERIFY_COMPLETE: Final[str] = "audit_chain.verify.complete"
+"""A verification pass finished with the chain intact.
+
+Deliberately ``audit_chain.*`` rather than ``security.*``: the sink
+captures the ``security.`` prefix, and this fires on EVERY successful
+verification (boot and every periodic cycle), so signing it into the
+chain would append a new entry to the very chain it just verified, on
+a chain with no retention. The one-shot break signal
+(:data:`SECURITY_AUDIT_CHAIN_BREAK_DETECTED`) stays audited: it only
+fires when tampering is actually found.
+"""
