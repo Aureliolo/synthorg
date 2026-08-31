@@ -26,7 +26,7 @@ This page is the status-and-architecture reference: what ships today, how it map
 | Webhook HMAC signature verification + replay protection | Shipped |
 | SSRF validation on outbound webhooks | Shipped |
 | DNS-rebind-hardened outbound SSRF (validated IP pinned via `PinnedDnsTransport`) | Shipped |
-| Delegation guard on inbound requests (loop prevention) | Shipped |
+| Delegation depth/cycle guard on inbound requests | Not wired (see Loop Prevention below) |
 | Quadratic communication enforcement strategies | Shipped (all four modes: `alert_only` default, `soft_throttle`, `hard_block`, `disabled`) |
 | Inbound `skills/query` + `skills/negotiate` JSON-RPC handlers | Shipped |
 | Outbound `query_skills` + `negotiate_skills` client methods (`A2AClient`) | Shipped |
@@ -44,14 +44,12 @@ ExtAgent: External agent
 
 SynthOrg: {
   Gateway: A2A Gateway
-  DelegGuard: DelegationGuard
   InternalBus: Internal MessageBus
   Hub: EventStreamHub
   Projection: project_event
   WebhookRX: A2APushVerifier
 
-  Gateway -> DelegGuard: "auth + allowlist + signature"
-  DelegGuard -> InternalBus
+  Gateway -> InternalBus: "auth + allowlist + signature"
   Hub -> Projection
   WebhookRX -> InternalBus: "HMAC verify + replay dedup"
 }
@@ -61,7 +59,7 @@ SynthOrg.Projection -> ExtAgent: "SSE or webhook"
 ExtAgent -> SynthOrg.WebhookRX: "Push notification"
 ```
 
-The gateway is a thin translation layer: inbound A2A requests become internal `MessageBus` messages after passing the delegation guard and A2A-specific security checks. Outbound state is served through a per-consumer projection over the shared `EventStreamHub`, with no duplicate event source.
+The gateway is a thin translation layer: inbound A2A requests become internal `MessageBus` messages after passing A2A-specific security checks. Outbound state is served through a per-consumer projection over the shared `EventStreamHub`, with no duplicate event source.
 
 See [Security & Approval -> A2A Security](security.md#a2a-security) for the full auth, trust, webhook, and SSRF enforcement reference.
 
@@ -83,15 +81,12 @@ See [Agents -> Skill Model](agents.md#skill-model) for the skill structure.
 
 ## Loop Prevention
 
-External agents are treated as delegation sources. The same five `DelegationGuard` mechanisms that protect internal delegation chains also apply to A2A inbound requests:
-
-1. **Depth cap**: max delegation chain length
-2. **Ancestry check**: reject cycles in the delegation graph
-3. **Per-pair rate limit**: throttle repeated delegations between the same agents
-4. **Structural circuit breaker**: block an agent pair after repeated bounces
-5. **Identical-request dedup**: reject duplicate delegations within a window
-
-See [Communication Coordination -> Loop Prevention](communication-coordination.md#loop-prevention) for implementation.
+The internal [ancestry + depth guard](communication-coordination.md#delegation-depth-and-cycle-guard)
+(`engine.delegation_max_depth`, cycle check on the parent-task chain) is not wired to
+the A2A gateway: `message/send` creates a new root task via `task_engine.create_task`,
+which has no parent-task chain for the guard to walk. An external peer that is itself
+being driven by a runaway internal delegation loop is bounded by that loop's own guard
+on its own side, not by anything this gateway checks.
 
 ## Quadratic Communication Detection
 

@@ -10,7 +10,7 @@ federate with agents in other A2A-compatible systems. It is disabled by default
 (`a2a.enabled: false`). Internal communication is unchanged; the MessageBus remains the
 sole transport for intra-organisation messages.
 
-See also: [Communication](communication.md) (transport), [Coordination](communication-coordination.md) (loop prevention referenced below), [Event Stream](communication-events.md) (SSE hub).
+See also: [Communication](communication.md) (transport), [Coordination](communication-coordination.md) (delegation depth and cycle guard), [Event Stream](communication-events.md) (SSE hub).
 
 ## Architecture
 
@@ -48,8 +48,10 @@ Inbound (external -> internal)
     `skills/negotiate` (confirm a named peer still serves a skill). `tasks/get` /
     `tasks/cancel` enforce per-peer ownership (a task is stamped with its originating
     peer; a cross-peer access 404s). The gateway translates A2A requests into internal
-    MessageBus messages and applies [DelegationGuard](communication-coordination.md#loop-prevention) +
-    [A2A-specific security checks](security.md#a2a-security) before admission.
+    MessageBus messages and applies [A2A-specific security checks](security.md#a2a-security)
+    before admission; `message/send` creates a root task (see
+    [Delegation Depth and Cycle Guard](communication-coordination.md#delegation-depth-and-cycle-guard)
+    for the ancestry check that applies once that task delegates onward).
 
 Outbound (internal -> external)
 :   SynthOrg agents can delegate tasks to external A2A agents. The A2A client discovers
@@ -167,6 +169,8 @@ SynthOrg agents can delegate tasks to external A2A agents through the outbound c
 6. **State mapping**: Map external A2A task states back to internal states (see table above)
 
 The outbound client authenticates using the `a2a.auth.outbound` configuration (see
-[A2A Security](security.md#a2a-security)). Outbound delegations pass through the
-[DelegationGuard](communication-coordination.md#loop-prevention) for loop-prevention checks (ancestry, depth,
-deduplication, rate limiting, circuit breaker) before dispatch.
+[A2A Security](security.md#a2a-security)). `A2AClient.send_message` has no delegation
+depth or cycle check of its own (the
+[delegation depth and cycle guard](communication-coordination.md#delegation-depth-and-cycle-guard)
+applies to sub-agent delegation via `delegate_and_await`, a separate code path); no
+agent tool currently calls `A2AClient.send_message`, so outbound dispatch is unwired.
