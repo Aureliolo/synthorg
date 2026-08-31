@@ -19,6 +19,7 @@ from synthorg.budget.benchmark_protocol import (
 )
 from synthorg.budget.call_analytics import CallAnalyticsService
 from synthorg.budget.config import BudgetConfig
+from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.forecast_service import BudgetForecastService
 from synthorg.budget.forecaster import CostForecaster
 from synthorg.budget.optimizer import CostOptimizer
@@ -28,12 +29,20 @@ from synthorg.budget.quota_tracker import QuotaTracker
 from synthorg.budget.risk_tracker import RiskTracker
 from synthorg.budget.tracker import CostTracker
 from synthorg.budget.version_service import BudgetConfigVersionsService
+from synthorg.observability import get_logger
+from synthorg.observability.events.budget import (
+    BUDGET_ENFORCER_UNWIRED,
+    BUDGET_ENFORCER_WIRED,
+    BUDGET_ENFORCER_WRONG_TYPE,
+)
 from synthorg.persistence.benchmark_score_protocol import (
     BenchmarkScoreRepository,
 )
 from synthorg.persistence.cost_forecast_protocol import (
     CostForecastRepository,
 )
+
+logger = get_logger(__name__)
 
 
 class BudgetStateSlice(BaseFeatureStateSlice):
@@ -93,3 +102,37 @@ def cost_optimizer_of(app_state: AppStateSliceMixin) -> CostOptimizer:
     return require_service(
         app_state.slice(BudgetStateSlice).cost_optimizer, "Cost Optimizer"
     )
+
+
+def budget_enforcer_of(app_state: AppStateSliceMixin) -> BudgetEnforcer | None:
+    """Resolve the concrete budget enforcer from its slice, or ``None``.
+
+    The slice field is typed against the narrow ``BudgetAffordabilityChecker``
+    protocol so the engine layer never imports the heavy concrete enforcer;
+    this narrows it back to the ``BudgetEnforcer`` ``AgentEngine`` needs for
+    monthly, daily, project and run-hard-ceiling enforcement (task-level
+    ``budget_limit``/``hard_token_ceiling`` already enforce via the bare
+    task-only fallback with no enforcer wired). Unlike ``budget/adoption.py``'s
+    best-effort ``isinstance`` fan-out (safe to skip a holder that doesn't
+    match), this accessor's return value decides whether that broader
+    enforcement exists at all, so a wired-but-wrong-type value is logged at
+    ERROR (not a value with a harmless fallback) rather than silently read
+    the same as "not wired".
+
+    Returns:
+        The wired enforcer, or ``None`` when unwired.
+    """
+    enforcer = app_state.slice(BudgetStateSlice).budget_enforcer
+    if enforcer is None:
+        logger.debug(BUDGET_ENFORCER_UNWIRED)
+        return None
+    if isinstance(enforcer, BudgetEnforcer):
+        logger.debug(BUDGET_ENFORCER_WIRED)
+        return enforcer
+    logger.error(
+        BUDGET_ENFORCER_WRONG_TYPE,
+        expected_type="BudgetEnforcer",
+        actual_type=type(enforcer).__name__,
+        reason="enforcement_disabled",
+    )
+    return None

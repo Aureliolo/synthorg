@@ -161,7 +161,8 @@
         "QuotaTracker",
         "RiskTracker",
         "CallAnalyticsService",
-        "SessionBudgetChecker"
+        "SessionBudgetChecker",
+        "budget_enforcer_of"
       ],
       "mcp_tool_names": [
         "synthorg_budget_get_config",
@@ -1472,6 +1473,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-31T14:27:01.986166Z",
+  "generated_at": "2026-08-31T17:40:22.909117Z",
   "schema_version": 1
 }

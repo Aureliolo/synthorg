@@ -1019,9 +1019,11 @@ _r.register(
             " max_turns * (1 + max_turn_extensions) turns while one going in"
             " circles stops here. Applied by AgentEngine.run when a caller"
             " does not pass an explicit max_turns. The money backstop is"
-            " budget.run_hard_ceiling, which is enforced in-loop and on by"
-            " default; the stagnation detector ships off, so do not count on"
-            " it unless you have chosen one."
+            " budget.run_hard_ceiling, enforced in-loop whenever a budget"
+            " enforcer is wired, which the shipped boot path does whenever"
+            " persistence connects and cost-dial wiring succeeds; the"
+            " stagnation detector ships off, so do not count on it unless"
+            " you have chosen one."
         ),
         group="Execution",
         level=SettingLevel.ADVANCED,

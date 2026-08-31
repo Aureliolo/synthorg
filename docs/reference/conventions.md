@@ -911,6 +911,16 @@ accessor centralises the "not wired yet" failure into one typed 503 and
 keeps the slice's internal field shape private to its owning package.
 Name the accessor `<noun>_of` after the service it returns.
 
+A collaborator that is a genuinely optional runtime dependency rather
+than a controller/MCP-facing service returns `X | None` instead of
+raising (`budget_enforcer_of` in `budget/state.py`, `plans_of` in
+`persistence/state.py`, `ab_test_repo_of` and `alert_repo_of` in
+`meta/state.py`): its caller is itself a boot-time or engine-internal
+seam that has its own documented degrade path for "unwired" (e.g.
+`AgentEngine` running with no `BudgetEnforcer`), so a 503 would be the
+wrong failure mode. The `_of` name still applies; only the controller/
+MCP-facing accessors carry the raise-503 contract.
+
 ## 33. `_wire_*` vs `_try_wire_*` startup wiring naming
 
 On-startup wiring helpers follow a two-name contract:

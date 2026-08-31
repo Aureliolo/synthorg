@@ -71,6 +71,7 @@ FEATURE: FeatureModule = FeatureManifest(
         "RiskTracker",
         "CallAnalyticsService",
         "SessionBudgetChecker",
+        "budget_enforcer_of",
     ),
     depends_on=(),
 )

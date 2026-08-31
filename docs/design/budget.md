@@ -352,7 +352,10 @@ the engine can act on them.
 ### Hard real-money ceiling
 
 Independent of the monthly soft-warning ladder, a per-run hard ceiling halts the org
-cleanly mid-run. The in-loop `BudgetChecker` raises `RunHardCeilingExceededError` (a
+cleanly mid-run, whenever `AgentEngine` holds a wired `BudgetEnforcer`: the single
+production construction site (`workers/_engine_assembly.py::_construct_agent_engine`)
+threads it in via `budget_enforcer_of(app_state)`, and every check below is reachable
+through that one seam. The in-loop `BudgetChecker` raises `RunHardCeilingExceededError` (a
 subclass of `BudgetExhaustedError`) the moment accumulated cost meets or exceeds the
 task's `hard_ceiling` (falling back to the global `run_hard_ceiling` setting when the
 per-task value is unset). The shipped default `run_hard_ceiling` is `25.0`, a

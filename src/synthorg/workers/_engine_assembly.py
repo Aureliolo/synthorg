@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from synthorg._core.features import require_service
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.budget.coordination_collector import CoordinationMetricsCollector
-from synthorg.budget.state import BudgetStateSlice
+from synthorg.budget.state import BudgetStateSlice, budget_enforcer_of
 from synthorg.communication.state import CommunicationStateSlice
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.agent_engine import AgentEngine
@@ -323,7 +323,7 @@ async def _build_auto_review_pipeline_or_none(
     Returns ``None`` unless ``engine.auto_review_on_completion`` is set, so
     the agent runtime is threaded a pipeline only when auto-review is enabled;
     absent it, ``apply_post_execution_transitions`` leaves completed work in
-    IN_REVIEW for a human, exactly as before.
+    IN_REVIEW for a human.
 
     Returns:
         A default (internal-only) :class:`ReviewPipeline`, or ``None``.
@@ -586,6 +586,7 @@ async def _construct_agent_engine(  # noqa: PLR0913 -- boot collaborators thread
         capability=await build_capability_policy(app_state),
         agent_registry=agent_registry_of(app_state),
         cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
+        budget_enforcer=budget_enforcer_of(app_state),
         task_engine=task_engine_of(app_state),
         # Membership and per-project budget are validated against this repo
         # before a run starts; a work task refuses to run without it, so the
