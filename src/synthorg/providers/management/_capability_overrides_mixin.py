@@ -132,7 +132,7 @@ class ProviderCapabilityOverridesMixin:
         )
         await self._audit(
             provider_name=name,
-            event_type="model_config_updated",
+            event_type="model_capability_overrides_updated",
             payload={
                 "model_id": model_id,
                 "fields_changed": cast("list[JsonValue]", sorted(explicit.keys())),

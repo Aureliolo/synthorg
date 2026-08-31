@@ -356,6 +356,32 @@ class TestUpdateModelCapabilityOverrides:
         assert updated.capability_overrides.supports_vision is True
         assert updated.capability_overrides.supports_prompt_caching is True
 
+    async def test_audits_under_its_own_distinct_event_type(
+        self,
+        service: ProviderManagementService,
+        audit_repo: _FakeAuditRepo,
+        actor: ProviderAuditActor,
+    ) -> None:
+        """Not the shared ``model_config_updated`` local-params event type."""
+        from synthorg.api.dto_provider_capabilities import (
+            CapabilityOverridesUpdateRequest,
+        )
+
+        model = ProviderModelConfig(id="example-expert-001")
+        config = _make_provider_config(models=(model,))
+        service._config_resolver.get_provider_configs = AsyncMock(  # type: ignore[method-assign]
+            return_value={"cloud-test": config},
+        )
+
+        await service.update_model_capability_overrides(
+            "cloud-test",
+            "example-expert-001",
+            CapabilityOverridesUpdateRequest(supports_prompt_caching=True),
+        )
+
+        assert len(audit_repo.records) == 1
+        assert audit_repo.records[0].event_type == "model_capability_overrides_updated"
+
     async def test_explicit_null_clears_a_field(
         self,
         service: ProviderManagementService,

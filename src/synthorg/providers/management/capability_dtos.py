@@ -69,6 +69,7 @@ ProviderAuditEventType = Literal[
     "model_added",
     "model_removed",
     "model_config_updated",
+    "model_capability_overrides_updated",
     "model_pulled",
     "models_synced",
     "model_flagged_stale",

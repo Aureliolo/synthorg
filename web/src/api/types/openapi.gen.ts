@@ -15063,7 +15063,7 @@ export type components = {
              * @description Mutation category
              * @enum {string}
              */
-            readonly event_type: "provider_created" | "provider_updated" | "provider_deleted" | "provider_credentials_rotated" | "provider_rate_limits_updated" | "preset_override_updated" | "model_added" | "model_removed" | "model_config_updated" | "model_pulled" | "models_synced" | "model_flagged_stale";
+            readonly event_type: "provider_created" | "provider_updated" | "provider_deleted" | "provider_credentials_rotated" | "provider_rate_limits_updated" | "preset_override_updated" | "model_added" | "model_removed" | "model_config_updated" | "model_capability_overrides_updated" | "model_pulled" | "models_synced" | "model_flagged_stale";
             /** @description Repo-assigned row id */
             readonly id: number | null;
             /**
