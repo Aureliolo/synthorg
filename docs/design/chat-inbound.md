@@ -132,9 +132,11 @@ authorisation model for a governed action.
 
 ## Observability
 
-Every frame gets a signal, so a stuck consumer or a dropped human reply is
-visible without re-instrumenting the loop to find out. `CHAT_INBOUND_EVENT_RECEIVED`
-fires at `debug` on every frame (a volume signal), and `CHAT_INBOUND_DECODE_FAILED`
+Every real event gets a signal, so a stuck consumer or a dropped human reply
+is visible without re-instrumenting the loop to find out.
+`CHAT_INBOUND_EVENT_RECEIVED` fires at `debug` on every frame except Slack's
+own `hello` and `disconnect` protocol-control frames (a volume signal for
+actual traffic, not connection upkeep), and `CHAT_INBOUND_DECODE_FAILED`
 fires whenever `decode_frame` returns a `DecodeDropReason`, carrying the
 `reason` value and never the payload. Severity splits in two: a reason any
 channel member triggers just by using Slack normally (`ROUTINE_DROP_REASONS`
