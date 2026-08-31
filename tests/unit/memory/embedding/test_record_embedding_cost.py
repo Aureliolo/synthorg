@@ -38,8 +38,11 @@ class TestUnpricedModelWarns:
                 provider=_PROVIDER,
                 model=_MODEL,
             )
-        events = [log["event"] for log in logs]
-        assert "budget.embedding_cost.model_unpriced" in events
+        event = "budget.embedding_cost.model_unpriced"
+        matches = [log for log in logs if log["event"] == event]
+        assert len(matches) == 1
+        assert matches[0]["model"] == f"{_PROVIDER}/{_MODEL}"
+        assert matches[0]["setting"] == "cost_per_1k_input/cost_per_1k_output"
         recorded = tracker.record.await_args.args[0]
         assert recorded.cost == 0.0
 

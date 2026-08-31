@@ -122,8 +122,12 @@ async def test_driver_generate_image_none_cost_is_free() -> None:
         mock_call.return_value = _fake_image_response("QUJD")
         result = await driver.generate_image("a cat", "img")
     assert result.usage.cost == 0.0
-    events = [log["event"] for log in logs]
-    assert "budget.image_cost.model_unpriced" in events
+    event = "budget.image_cost.model_unpriced"
+    matches = [log for log in logs if log["event"] == event]
+    assert len(matches) == 1
+    assert matches[0]["provider"] == "example-provider"
+    assert matches[0]["model"] == "example-image-001"
+    assert matches[0]["setting"] == "cost_per_image"
 
 
 async def test_driver_generate_image_priced_model_does_not_warn() -> None:
