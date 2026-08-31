@@ -145,6 +145,7 @@ class TestProjectAutonomyModeResolution:
             if log["event"] == WORKERS_EXECUTION_SERVICE_AUTONOMY_DEGRADED
         ]
         assert len(degraded) == 1
+        assert degraded[0]["reason"] == "project_mode_lookup_failed"
         assert degraded[0]["fail_closed_to"] == "locked"
 
     async def test_resolve_autonomy_threads_project_level_into_resolver(self) -> None:
