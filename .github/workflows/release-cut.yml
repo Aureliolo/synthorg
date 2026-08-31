@@ -320,7 +320,7 @@ jobs:
           # forged comment must not be able to feed the arithmetic below.
           STATE=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
             --paginate --slurp \
-            --jq "$STICKY_SELECT | first | .body // empty" \
+            | jq -r "$STICKY_SELECT | first | .body // empty" \
             | sed -n 's/.*HIGHLIGHTS_STATE base=\([^ ]*\) commits=\([0-9]*\).*/\1 \2/p') || STATE=""
           PREV_BASE=$(printf '%s' "$STATE" | cut -d' ' -f1)
           PREV_COUNT=$(printf '%s' "$STATE" | cut -d' ' -f2)
@@ -575,10 +575,12 @@ jobs:
           # stays open for days, so a marker match alone would let any account
           # hand us a comment to update, mirror into the PR body and promote
           # into the published release. `--slurp` because `--paginate --jq`
-          # applies the filter per page, making `first` first-of-page.
+          # applies the filter per page, making `first` first-of-page; the
+          # selection then runs in its OWN jq, because gh refuses `--slurp`
+          # alongside `--jq` and exits 1 before making the request.
           EXISTING=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
             --paginate --slurp \
-            --jq "$STICKY_SELECT | first | .id // empty")
+            | jq -r "$STICKY_SELECT | first | .id // empty")
 
           if [ -n "$EXISTING" ]; then
             gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$EXISTING" \
@@ -610,7 +612,7 @@ jobs:
           set -euo pipefail
           COMMENT=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
             --paginate --slurp \
-            --jq "$STICKY_SELECT | first | .body // empty")
+            | jq -r "$STICKY_SELECT | first | .body // empty")
           if [ -z "$COMMENT" ]; then
             echo "No Highlights sticky comment yet; nothing to mirror."
             exit 0

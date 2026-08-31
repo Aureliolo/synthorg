@@ -43,8 +43,9 @@ ci:
   #     check-no-modify-migration:
   #     rebase / migration state checks meaningful only on the pushing
   #     developer's clone, not in an ephemeral cloud runner.
-  # ``no-release-please-token`` and ``workflow-shell-git-commits`` are
-  # deliberately NOT skipped: both are pure-Python, zero-dependency
+  # ``no-release-please-token``, ``gh-slurp-not-with-jq`` and
+  # ``workflow-shell-git-commits`` are
+  # deliberately NOT skipped: all are pure-Python, zero-dependency
   # scripts with no CI counterpart, and letting pre-commit.ci enforce
   # them at the pre-commit stage closes the gap where a PR from a
   # contributor who skipped local hooks would otherwise introduce a
@@ -333,6 +334,13 @@ repos:
         name: forbid new RELEASE_PLEASE_TOKEN references
         entry: uv
         args: [run, python, scripts/check_no_release_please_token.py]
+        language: system
+        files: ^\.github/.*\.ya?ml$
+
+      - id: gh-slurp-not-with-jq
+        name: block `gh api --slurp` combined with `--jq`/`--template`
+        entry: uv
+        args: [run, python, scripts/check_gh_slurp_not_with_jq.py]
         language: system
         files: ^\.github/.*\.ya?ml$
 
