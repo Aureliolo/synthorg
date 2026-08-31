@@ -22,6 +22,7 @@ API_APP_SHUTDOWN: Final[str] = "api.app.shutdown"
 API_AUDIT_CHAIN_PERSISTENCE_DEGRADED: Final[str] = (
     "api.app.audit_chain_persistence_degraded"
 )
+API_AUDIT_CHAIN_VERIFY_REQUESTED: Final[str] = "api.audit_chain.verify_requested"
 API_APP_DRAIN_STARTED: Final[str] = "api.app.drain.started"
 API_APP_DRAIN_COMPLETED: Final[str] = "api.app.drain.completed"
 API_APP_DRAIN_TIMEOUT: Final[str] = "api.app.drain.timeout"

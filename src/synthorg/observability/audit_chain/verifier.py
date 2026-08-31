@@ -1,4 +1,4 @@
-"""AuditChainVerifier -- verify hash chain and EvidencePackage signatures."""
+"""AuditChainVerifier -- verify hash-chain continuity and entry signatures."""
 
 from collections.abc import Sequence
 from typing import Self
@@ -61,7 +61,7 @@ class ChainVerificationResult(BaseModel):
 
 
 class AuditChainVerifier:
-    """Verify audit chain integrity and EvidencePackage signatures.
+    """Verify audit chain hash continuity and per-entry signatures.
 
     Args:
         signer: Signing backend for signature verification.
@@ -134,7 +134,7 @@ class AuditChainVerifier:
         if signature_break is not None:
             return signature_break
 
-        logger.debug(
+        logger.info(
             SECURITY_AUDIT_CHAIN_VERIFY_COMPLETE,
             entries_checked=len(entries),
             valid=True,
@@ -223,41 +223,3 @@ class AuditChainVerifier:
                     first_break_position=entry.position,
                 )
         return None
-
-    async def verify_evidence_package(self, pkg: object) -> bool:
-        """Verify that an EvidencePackage has sufficient valid signatures.
-
-        Args:
-            pkg: An ``EvidencePackage`` instance.
-
-        Returns:
-            ``True`` if ``is_fully_signed`` and all signatures verify.
-        """
-        if not getattr(pkg, "is_fully_signed", False):
-            return False
-
-        canonical: bytes = (
-            getattr(pkg, "canonical_bytes", None)
-            or getattr(pkg, "signed_bytes", b"")
-            or b""
-        )
-        signatures = getattr(pkg, "signatures", ())
-        if not canonical or not signatures:
-            return False
-        try:
-            sig_iter = iter(signatures)
-        except TypeError:
-            return False
-
-        for sig in sig_iter:
-            sig_bytes = getattr(sig, "signature_bytes", None)
-            if not isinstance(sig_bytes, bytes):
-                return False
-            valid = await self._signer.verify(
-                canonical,
-                sig_bytes,
-            )
-            if not valid:
-                return False
-
-        return True

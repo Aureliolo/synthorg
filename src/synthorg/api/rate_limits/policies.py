@@ -234,6 +234,10 @@ _POLICIES: Final[dict[str, tuple[int, int]]] = {
     "objectives.submit": (30, 60),
     # observability (Prometheus scrape)
     "observability.metrics": (60, 60),
+    # A full chain walk re-verifies every signature; bounded well below the
+    # scheduler's own minimum cadence so an operator cannot turn the
+    # on-demand endpoint into a substitute for the periodic sweep.
+    "observability.audit_chain_verify": (6, 60),
     # plans (durable plan-review revision)
     "plans.edit": (30, 60),
     # A re-plan retires a dispatched plan and cancels its in-flight work, so

@@ -124,6 +124,7 @@ run the generator after `scripts/export_openapi.py` to refresh.
 |---|---|---|
 | Admin | `/admin` | 16 routes under Admin. |
 | Analytics | `/analytics` | 3 routes under Analytics. |
+| Audit Chain | `/observability/audit-chain/verify` | Audit Chain endpoint. |
 | Backups | `/admin/backups` | 3 routes under Backups. |
 | Budget | `/budget` | 15 routes under Budget. |
 | Capabilities | `/capabilities` | Capabilities endpoint. |

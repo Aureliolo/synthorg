@@ -59,3 +59,13 @@ still counts) or a tampered row leaves the rebuilt chain unverifiable.
 Surfaced at WARNING so the tamper/loss signal is never silent; the chain
 is still loaded so new appends can continue from the rebuilt tail.
 """
+
+# ── Periodic verification scheduler ─────────────────────────────
+
+AUDIT_CHAIN_VERIFY_SCHEDULER_STARTED: Final[str] = (
+    "audit_chain.verify_scheduler.started"
+)
+AUDIT_CHAIN_VERIFY_SCHEDULER_STOPPED: Final[str] = (
+    "audit_chain.verify_scheduler.stopped"
+)
+AUDIT_CHAIN_VERIFY_SCHEDULER_FAILED: Final[str] = "audit_chain.verify_scheduler.failed"

@@ -91,9 +91,11 @@ forbidden_modules =
 allow_indirect_imports = true
 ignore_imports =
     synthorg.observability.feature -> synthorg.api.controllers.metrics
+    synthorg.observability.feature -> synthorg.api.controllers.audit_chain
     synthorg.observability.prometheus_collector -> synthorg.api.state
     synthorg.observability._prometheus_label_fetchers -> synthorg.api.state
     synthorg.observability.startup_wiring -> synthorg.api.state
+    synthorg.observability.audit_chain.verify_scheduler -> synthorg.api.state_slices
 broken_contract_guidance =
     api imports the logger, so importing api from here closes a cycle that
     surfaces at boot rather than at lint time. Read what you need from a value

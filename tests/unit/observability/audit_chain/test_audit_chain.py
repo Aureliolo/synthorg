@@ -9,7 +9,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from pydantic import ValidationError
 
-from synthorg.observability.audit_chain.chain import HashChain
+from synthorg.observability.audit_chain.chain import ChainEntry, HashChain
 from synthorg.observability.audit_chain.config import AuditChainConfig
 from synthorg.observability.audit_chain.protocol import (
     AuditChainSigner,
@@ -289,6 +289,84 @@ class TestAuditChainSink:
         assert len(chain.entries) == 5
         assert chain.verify_integrity() is True
 
+    async def test_verify_chain_reports_valid_for_untampered_entries(self) -> None:
+        signer = _make_mock_signer()
+        provider = LocalClockProvider()
+        chain = HashChain()
+        sink = AuditChainSink(signer=signer, timestamp_provider=provider, chain=chain)
+        for i in range(3):
+            record = logging.LogRecord(
+                name="test",
+                level=logging.INFO,
+                pathname=__file__,
+                lineno=0,
+                msg=f"security.event.{i}",
+                args=(),
+                exc_info=None,
+            )
+            sink.emit(record)
+        result = await sink.verify_chain()
+        assert result.valid is True
+        assert result.entries_checked == 3
+
+    async def test_verify_chain_detects_tampering_on_the_live_chain(self) -> None:
+        signer = _make_mock_signer()
+        provider = LocalClockProvider()
+        chain = HashChain()
+        sink = AuditChainSink(signer=signer, timestamp_provider=provider, chain=chain)
+        for i in range(2):
+            record = logging.LogRecord(
+                name="test",
+                level=logging.INFO,
+                pathname=__file__,
+                lineno=0,
+                msg=f"security.event.{i}",
+                args=(),
+                exc_info=None,
+            )
+            sink.emit(record)
+        tampered = chain._entries[1].model_copy(
+            update={"previous_hash": "tampered"},
+        )
+        chain._entries[1] = tampered
+
+        result = await sink.verify_chain()
+        assert result.valid is False
+        assert result.first_break_position == 1
+
+    async def test_attach_persistence_verifies_and_warns_on_a_broken_restore(
+        self,
+    ) -> None:
+        signer = _make_mock_signer()
+        provider = LocalClockProvider()
+        sink = AuditChainSink(signer=signer, timestamp_provider=provider)
+
+        staging = HashChain()
+        staging.append(b"event-0", b"sig", datetime.now(UTC))
+        staging.append(b"event-1", b"sig", datetime.now(UTC))
+        tampered = staging._entries[1].model_copy(
+            update={"previous_hash": "tampered"},
+        )
+        broken_entries = (staging._entries[0], tampered)
+
+        class _RestoringWriter:
+            def enqueue(self, entry: ChainEntry) -> None:
+                pass
+
+            async def hydrate(self, chain: HashChain) -> None:
+                chain.restore(broken_entries)
+
+            async def start(self) -> None:
+                pass
+
+            async def stop(self) -> None:
+                pass
+
+        await sink.attach_persistence(_RestoringWriter())
+        result = await sink.verify_chain()
+        assert result.valid is False
+        assert result.first_break_position == 1
+
 
 # ── Verifier Tests ─────────────────────────────────────────────────
 
@@ -357,7 +435,7 @@ class TestHashChainProperties:
         assert len(chain.entries) == n
 
 
-# ── _extract_event_name ────────────────────────────────────────────
+# ── extract_event_name ─────────────────────────────────────────────
 
 
 @pytest.mark.unit
@@ -376,38 +454,46 @@ class TestExtractEventName:
         )
 
     def test_string_msg_returns_message(self) -> None:
-        from synthorg.observability.audit_chain.sink import _extract_event_name
+        from synthorg.observability.audit_chain._record_extraction import (
+            extract_event_name,
+        )
 
         assert (
-            _extract_event_name(self._record("security.connection.created"))
+            extract_event_name(self._record("security.connection.created"))
             == "security.connection.created"
         )
 
     def test_dict_msg_returns_event_key(self) -> None:
         """structlog pre-``wrap_for_formatter`` records carry the event_dict
         directly as ``record.msg``."""
-        from synthorg.observability.audit_chain.sink import _extract_event_name
+        from synthorg.observability.audit_chain._record_extraction import (
+            extract_event_name,
+        )
 
         msg = {"event": "security.connection.updated", "extra": "kept"}
-        assert _extract_event_name(self._record(msg)) == "security.connection.updated"
+        assert extract_event_name(self._record(msg)) == "security.connection.updated"
 
     def test_tuple_msg_returns_event_key(self) -> None:
         """structlog post-``wrap_for_formatter`` records wrap the event_dict
         in a tuple so ``ProcessorFormatter`` can rebuild it later."""
-        from synthorg.observability.audit_chain.sink import _extract_event_name
+        from synthorg.observability.audit_chain._record_extraction import (
+            extract_event_name,
+        )
 
         msg = ({"event": "security.connection.deleted"}, ["foreign", "chain"])
-        assert _extract_event_name(self._record(msg)) == "security.connection.deleted"
+        assert extract_event_name(self._record(msg)) == "security.connection.deleted"
 
     def test_unknown_shape_returns_none(self) -> None:
         """Sentinel: unknown shapes return ``None`` so the caller can log
         a warning and skip the emit instead of silently dropping."""
-        from synthorg.observability.audit_chain.sink import _extract_event_name
+        from synthorg.observability.audit_chain._record_extraction import (
+            extract_event_name,
+        )
 
-        assert _extract_event_name(self._record(42)) is None
-        assert _extract_event_name(self._record(["list", "msg"])) is None
-        assert _extract_event_name(self._record(())) is None
-        assert _extract_event_name(self._record({"missing_event_key": True})) is None
+        assert extract_event_name(self._record(42)) is None
+        assert extract_event_name(self._record(["list", "msg"])) is None
+        assert extract_event_name(self._record(())) is None
+        assert extract_event_name(self._record({"missing_event_key": True})) is None
 
 
 # ── AuditChainSink emit() failure paths ────────────────────────────
@@ -417,7 +503,7 @@ def _build_log_record(event: str) -> logging.LogRecord:
     """Stdlib LogRecord pre-shaped with a structlog event-dict ``msg``.
 
     Mirrors the dict shape produced by ``synthorg.observability.get_logger``
-    so the sink's ``_extract_event_name`` and ``emit`` paths exercise the
+    so the sink's ``extract_event_name`` and ``emit`` paths exercise the
     structured route, not the bare-string fallback.
     """
     return logging.LogRecord(

@@ -2985,6 +2985,23 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/observability/audit-chain/verify": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Verify */
+        readonly post: operations["ApiV1ObservabilityAuditChainVerifyVerify"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/ontology/admin/derive": {
         readonly parameters: {
             readonly query?: never;
@@ -6627,6 +6644,14 @@ export type components = {
             /** @description Whether the request succeeded (derived from ``error``). */
             readonly success: boolean;
         };
+        /** ApiResponse[AuditChainVerificationResponse] */
+        readonly ApiResponse_AuditChainVerificationResponse_: {
+            readonly data: components["schemas"]["AuditChainVerificationResponse"] | null;
+            readonly error: string | null;
+            readonly error_detail: components["schemas"]["ErrorDetail"] | null;
+            /** @description Whether the request succeeded (derived from ``error``). */
+            readonly success: boolean;
+        };
         /** ApiResponse[AutonomyLevelResponse] */
         readonly ApiResponse_AutonomyLevelResponse_: {
             readonly data: components["schemas"]["AutonomyLevelResponse"] | null;
@@ -8139,6 +8164,12 @@ export type components = {
             readonly output_tokens: number;
             readonly participant_role: string;
             readonly sequence: number;
+        };
+        /** AuditChainVerificationResponse */
+        readonly AuditChainVerificationResponse: {
+            readonly entries_checked: number;
+            readonly first_break_position: number | null;
+            readonly valid: boolean;
         };
         /** AuditEntryRow */
         readonly AuditEntryRow: {
@@ -25341,6 +25372,33 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApiResponse_SubmitObjectiveAck_"];
+                };
+            };
+            readonly 400: components["responses"]["BadRequest"];
+            readonly 401: components["responses"]["Unauthorized"];
+            readonly 403: components["responses"]["Forbidden"];
+            readonly 409: components["responses"]["Conflict"];
+            readonly 429: components["responses"]["TooManyRequests"];
+            readonly 500: components["responses"]["InternalError"];
+            readonly 503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    readonly ApiV1ObservabilityAuditChainVerifyVerify: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Document created, URL follows */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiResponse_AuditChainVerificationResponse_"];
                 };
             };
             readonly 400: components["responses"]["BadRequest"];

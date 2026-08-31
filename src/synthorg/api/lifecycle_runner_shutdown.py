@@ -693,6 +693,15 @@ async def _run_shutdown(  # noqa: PLR0913
         iter_logging_handlers,
     )
 
+    scheduler = app_state.slice(ObservabilityStateSlice).audit_chain_verify_scheduler
+    if scheduler is not None:
+        await _try_stop(
+            scheduler.stop(),
+            API_APP_SHUTDOWN,
+            "Failed to stop audit-chain verify scheduler",
+            timeout=_SERVICE_STOP_SHUTDOWN_SECONDS,
+            service="audit_chain_verify_scheduler",
+        )
     for handler in iter_logging_handlers():
         if isinstance(handler, AuditChainSink):
             await _try_stop(
