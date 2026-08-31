@@ -95,9 +95,8 @@ _SLURP = re.compile(r"(?<![\w-])--slurp(?![\w-])")
 _FILTER = re.compile(r"(?<![\w-])(?:--jq|-q|--template|-t)(?![\w-])")
 _PAGINATE = re.compile(r"(?<![\w-])--paginate(?![\w-])")
 
-# Selectors that reduce an array to a single value. Applied per page, each
-# answers once per page instead of once. A streaming filter has none of
-# them and is correct under `--paginate` without `--slurp`.
+# Selectors that collapse an array to one value (RULE 2 above); a
+# streaming filter has none of them.
 _AGGREGATE = re.compile(r"(?<![\w.])(?:first|last|length|add)\b|\.\[0\]")
 
 _STATEMENT_BREAK = "|;&"
@@ -135,7 +134,7 @@ class _Hit:
 
     lineno: int
     rule: str
-    statement: str
+    command: str
 
 
 @dataclasses.dataclass(frozen=True)
@@ -164,7 +163,8 @@ def _unquoted(text: str) -> Iterator[tuple[int, str]]:
 
     Single and double quoted runs are skipped whole, so a `|` inside a jq
     program is not mistaken for a shell pipe and a `#` inside a string is
-    not mistaken for a comment.
+    not mistaken for a comment. A backslash outside quotes escapes the
+    character after it, which is therefore not shell syntax either.
     """
     quote = ""
     index = 0
@@ -247,6 +247,50 @@ def _join(pieces: list[tuple[str, int]]) -> tuple[str, tuple[tuple[int, int], ..
     return text, tuple(offsets)
 
 
+def _folded_block_statement(
+    lines: list[str], start: int
+) -> tuple[_Statement | None, int]:
+    """Statement from the folded block scalar opened at ``start``.
+
+    Answers ``None`` for a blank body, alongside the index one past the
+    fold.
+    """
+    end = _folded_block_lines(lines, start)
+    joined = [(_strip_comment(lines[i]).strip(), i + 1) for i in range(start + 1, end)]
+    pieces = [(text, lineno) for text, lineno in joined if text]
+    next_index = max(end, start + 1)
+    if not pieces:
+        return None, next_index
+    text, offsets = _join(pieces)
+    return _Statement(text, pieces[0][1], pieces[-1][1], offsets), next_index
+
+
+def _continuation_statement(
+    lines: list[str], start: int
+) -> tuple[_Statement | None, int]:
+    """Statement built by chasing backslash continuations from ``start``.
+
+    Answers ``None`` for a blank result, alongside the index one past the
+    statement.
+    """
+    index = start
+    pieces = [(_strip_comment(lines[index]), index + 1)]
+    while _continues(pieces[-1][0]) and index + 1 < len(lines):
+        index += 1
+        head, lineno = pieces[-1]
+        pieces[-1] = (head.rstrip()[:-1], lineno)
+        pieces.append((_strip_comment(lines[index]).strip(), index + 1))
+    # A continuation on the final line has nothing to join to; drop the
+    # dangling backslash so it does not reach the reported command.
+    head, lineno = pieces[-1]
+    if _continues(head):
+        pieces[-1] = (head.rstrip()[:-1], lineno)
+    text, offsets = _join(pieces)
+    if not text.strip():
+        return None, index + 1
+    return _Statement(text, start + 1, index + 1, offsets), index + 1
+
+
 def _statements(source: str) -> Iterator[_Statement]:
     """Yield every logical statement in ``source``.
 
@@ -257,33 +301,11 @@ def _statements(source: str) -> Iterator[_Statement]:
     index = 0
     while index < len(lines):
         if _FOLDED_BLOCK.match(lines[index]):
-            end = _folded_block_lines(lines, index)
-            pieces = [
-                (_strip_comment(lines[i]).strip(), i + 1) for i in range(index + 1, end)
-            ]
-            pieces = [(text, lineno) for text, lineno in pieces if text]
-            if pieces:
-                text, offsets = _join(pieces)
-                yield _Statement(text, pieces[0][1], pieces[-1][1], offsets)
-            index = max(end, index + 1)
-            continue
-
-        start = index
-        pieces = [(_strip_comment(lines[index]), index + 1)]
-        while _continues(pieces[-1][0]) and index + 1 < len(lines):
-            index += 1
-            head, lineno = pieces[-1]
-            pieces[-1] = (head.rstrip()[:-1], lineno)
-            pieces.append((_strip_comment(lines[index]).strip(), index + 1))
-        # A continuation on the final line has nothing to join to; drop the
-        # dangling backslash so it does not reach the reported statement.
-        head, lineno = pieces[-1]
-        if _continues(head):
-            pieces[-1] = (head.rstrip()[:-1], lineno)
-        text, offsets = _join(pieces)
-        if text.strip():
-            yield _Statement(text, start + 1, index + 1, offsets)
-        index += 1
+            statement, index = _folded_block_statement(lines, index)
+        else:
+            statement, index = _continuation_statement(lines, index)
+        if statement is not None:
+            yield statement
 
 
 def _shell_commands(text: str) -> Iterator[tuple[int, str]]:
@@ -302,11 +324,11 @@ def _shell_commands(text: str) -> Iterator[tuple[int, str]]:
     yield start, text[start:]
 
 
-def _filter_arguments(segment: str) -> list[str]:
+def _filter_arguments(command: str) -> list[str]:
     """Return the program text of every filter flag in one invocation."""
     arguments: list[str] = []
-    for match in _FILTER.finditer(segment):
-        rest = segment[match.end() :]
+    for match in _FILTER.finditer(command):
+        rest = command[match.end() :]
         if rest.startswith("="):
             rest = rest[1:]
         else:
@@ -322,14 +344,14 @@ def _filter_arguments(segment: str) -> list[str]:
     return arguments
 
 
-def _classify(segment: str) -> str | None:
-    """Return the rule ``segment`` violates, or ``None`` when it is clean."""
-    has_filter = _FILTER.search(segment) is not None
-    if _SLURP.search(segment) and has_filter:
+def _classify(command: str) -> str | None:
+    """Return the rule ``command`` violates, or ``None`` when it is clean."""
+    has_filter = _FILTER.search(command) is not None
+    if _SLURP.search(command) and has_filter:
         return _RULE_SLURP_WITH_FILTER
-    if _SLURP.search(segment) or not _PAGINATE.search(segment) or not has_filter:
+    if _SLURP.search(command) or not _PAGINATE.search(command) or not has_filter:
         return None
-    if any(_AGGREGATE.search(argument) for argument in _filter_arguments(segment)):
+    if any(_AGGREGATE.search(argument) for argument in _filter_arguments(command)):
         return _RULE_PAGINATE_AGGREGATE
     return None
 
@@ -340,6 +362,21 @@ def _opted_out(lines: list[str], statement: _Statement) -> bool:
     return any(_OPT_OUT.search(line) for line in span)
 
 
+def _read_source(path: Path) -> str:
+    """Read ``path`` as UTF-8 text.
+
+    Raises:
+        _UnreadableFileError: when the file cannot be read or decoded.
+            Callers promote that to a violation, so the gate never passes
+            a file it could not inspect.
+    """
+    try:
+        return path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError) as exc:
+        msg = f"{_rel(path)}: could not read file: {type(exc).__name__}: {exc}"
+        raise _UnreadableFileError(msg) from exc
+
+
 def _scan_file(path: Path) -> list[_Hit]:
     """Return one ``_Hit`` per offending ``gh api`` invocation in ``path``.
 
@@ -348,16 +385,10 @@ def _scan_file(path: Path) -> list[_Hit]:
     rather than both pointing at the first.
 
     Raises:
-        _UnreadableFileError: when the file cannot be read or decoded.
-            Callers promote that to a violation, so the gate never passes
-            a file it could not inspect.
+        _UnreadableFileError: propagated from ``_read_source`` when the
+            file cannot be read or decoded.
     """
-    try:
-        source = path.read_text(encoding="utf-8")
-    except (UnicodeDecodeError, OSError) as exc:
-        msg = f"{_rel(path)}: could not read file: {type(exc).__name__}: {exc}"
-        raise _UnreadableFileError(msg) from exc
-
+    source = _read_source(path)
     raw_lines = source.splitlines()
     hits: list[_Hit] = []
     for statement in _statements(source):
@@ -374,7 +405,7 @@ def _scan_file(path: Path) -> list[_Hit]:
                 _Hit(
                     lineno=statement.line_of(offset + call.start()),
                     rule=rule,
-                    statement=" ".join(command.split()),
+                    command=" ".join(command.split()),
                 )
             )
     return hits
@@ -418,7 +449,7 @@ def _collect(paths: Iterable[Path]) -> list[str]:
             violations.append(str(exc))
             continue
         violations.extend(
-            f"{_rel(path)}:{hit.lineno}: [{hit.rule}] {hit.statement}" for hit in hits
+            f"{_rel(path)}:{hit.lineno}: [{hit.rule}] {hit.command}" for hit in hits
         )
     return violations
 

@@ -62,9 +62,9 @@ def _rules(tmp_path: Path, content: str) -> list[str]:
 
 
 def _hits(tmp_path: Path, content: str) -> list[tuple[int, str, str]]:
-    """Full ``(lineno, rule, statement)`` triples for a fixture."""
+    """Full ``(lineno, rule, command)`` triples for a fixture."""
     return [
-        (hit.lineno, hit.rule, hit.statement)
+        (hit.lineno, hit.rule, hit.command)
         for hit in _MODULE._scan_file(_write(tmp_path, content))
     ]
 
