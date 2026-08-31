@@ -397,11 +397,23 @@ jobs:
 
           # The prompt lives in a file both this workflow and the dry-run
           # read, so there is exactly one place to keep it correct.
+          #
+          # reasoning_effort gives the model a real scratchpad to count
+          # entries, form clusters and check them against the prompt's band
+          # before writing anything: without it, "work internally" has
+          # nowhere to happen, since a plain completion emits its answer in
+          # one pass. Measured (dry-run, this exact prompt): 6-79 bullets
+          # across four calls without reasoning; 12 and 12 across two calls
+          # with it. HIGHLIGHTS_MODEL must keep resolving to a model that
+          # accepts this field (currently mistral-medium-3-5); a future
+          # swap to one that rejects it fails this step, which is
+          # best-effort and reported by the tracking job below.
           PAYLOAD=$(jq -n \
             --arg model "$MISTRAL_MODEL" \
             --rawfile sys .github/release-highlights-prompt.md \
             --rawfile digest changelog-digest.txt \
-            '{model: $model, temperature: 0.4, max_tokens: 4000,
+            '{model: $model, temperature: 0.4, max_tokens: 12000,
+              reasoning_effort: "high",
               messages: [{role: "system", content: $sys},
                          {role: "user", content: $digest}]}')
 
@@ -444,7 +456,16 @@ jobs:
             exit 0
           fi
 
-          CONTENT=$(printf '%s' "$BODY" | jq -r '.choices[0].message.content // empty')
+          # reasoning_effort makes message.content a list of {type, ...}
+          # chunks (thinking + text) instead of a plain string; keep only
+          # the text chunks, which is what carries the TAGLINE/bullets
+          # this step actually publishes.
+          CONTENT=$(printf '%s' "$BODY" | jq -r '
+            .choices[0].message.content as $c
+            | if ($c | type) == "array"
+              then [$c[] | select(.type == "text") | .text] | join("")
+              else ($c // empty)
+              end')
           if [ -z "$CONTENT" ]; then
             echo "::warning::Mistral returned empty content; skipping best-effort Highlights."
             echo "status=empty completion" >> "$GITHUB_OUTPUT"
