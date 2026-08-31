@@ -268,6 +268,23 @@ setting plus the model's streaming capability, not a `CompletionConfig` field:
   no config at all. Everything the caller did state survives untouched, and the
   agent's `temperature`, `top_p` and `max_tokens` are preserved alongside the
   reasoning dial.
+
+  Resolving a depth is not the same as sending one. LiteLLM validates request
+  parameters against its own view of the model before anything leaves the
+  process, so `route_reasoning_support` asks what that view actually contains
+  and reports the three states it has, never two: the route **publishes** the
+  parameter, the route knows the model and its list is **absent** of it, or
+  LiteLLM **cannot speak for** the model. Only the middle answer overrides our
+  capability metadata. The third is the common case for any provider reached
+  over a custom OpenAI-compatible `base_url`, because LiteLLM then answers with
+  the ROUTE's generic parameter list, which is identical for every unknown model
+  behind that route and names no reasoning parameter; reading that as the
+  model's own refusal removes the dial from every such deployment in silence.
+  There, our `supports_reasoning` is the only evidence there is, and the call
+  additionally declares `allowed_openai_params`, which is LiteLLM's own
+  mechanism for forwarding a parameter it cannot vouch for. Without that
+  declaration LiteLLM raises `UnsupportedParamsError` rather than letting the
+  endpoint answer, so keeping the dial and sending it are two separate steps.
 - **Prompt caching** (`providers.prompt_caching_enabled`, default on): when the
   model advertises `supports_prompt_caching`, `drivers/litellm_cache.py` rewrites
   the stable prefix (system block, tools block, and a rolling breakpoint before the
