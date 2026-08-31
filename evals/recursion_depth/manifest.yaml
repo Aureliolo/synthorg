@@ -52,13 +52,13 @@ repetitions:
 arms:
   - gated
 # Sampling and reasoning depth are declared PER PAIR, and they have to be:
-# the two models this matrix binds are published with different values on
-# different dials, so one figure for the matrix is guaranteed wrong for one of
-# them. The executor's family publishes a temperature and a top_p and exposes
-# no graded reasoning parameter at all; the reviewer's exposes reasoning effort
-# and states that temperature and top_p have NO EFFECT while thinking is on,
-# which is its default. Declaring both fields on both pairs is what lets one
-# manifest say that honestly instead of averaging it away.
+# the two models this matrix binds do not answer to the same dials, so one
+# figure for the matrix is guaranteed wrong for one of them. The reviewer's
+# family states that temperature and top_p have NO EFFECT while thinking is on,
+# which is its default state, and exposes graded reasoning effort as the dial
+# that does work; the executor's answers to temperature and top_p, which is the
+# axis the smoke cells sweep. Declaring both fields on both pairs is what lets
+# one manifest say that honestly instead of averaging it away.
 #
 # Every value here is stated rather than left to a default, because each is an
 # input to the result: a recording that cannot say what it sampled at cannot
@@ -79,10 +79,12 @@ executor:
   # end rather than from three untried points.
   temperature: 0.7
   top_p: 1.0
-  # Deliberately unset. Graded reasoning effort is not a parameter this model's
-  # family accepts, so sending one would record a treatment that never reached
-  # the wire, which is worse than the honest absence. Thinking is on by default
-  # either way.
+  # Deliberately unset while the smoke runs. Those cells sweep ONE axis,
+  # temperature with the top_p that moves alongside it, and a second dial
+  # changing underneath would leave the result attributable to neither. Whether
+  # this family grades reasoning at all is then read off the recorded request
+  # and response bodies rather than asserted here, and the matrix pins what that
+  # shows: a value stated on a vendor's word is a treatment nothing checked.
   reasoning_effort: null
   # Raised beyond reach for the smoke, then MEASURED and pinned from what the
   # transcripts show a response actually uses. A reasoning model spends this
