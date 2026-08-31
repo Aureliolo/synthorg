@@ -244,8 +244,8 @@ LOCKED organisation a weaker response than it chose and said nothing.
    context and returns the moved one, so the context has to exist first.
 8. **Prepare tools and budget**: creates `ToolInvoker` from registry and
    `BudgetChecker` from `BudgetEnforcer` (task + monthly + daily + project limits
-   with pre-computed baselines and alert deduplication) or from task budget limit
-   alone when no enforcer is configured.
+   with pre-computed baselines and alert deduplication) or from the task's own
+   `budget_limit` and `hard_token_ceiling` alone when no enforcer is configured.
 9. **Take the loop**: the engine built it at construction, wired with every
    in-process control it holds (`approval_gate`, `stagnation_detector`,
    `compaction_callback`, `steering_inbox`, `step_classifier`,

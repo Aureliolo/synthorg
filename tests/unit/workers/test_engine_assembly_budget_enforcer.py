@@ -1,10 +1,12 @@
 """Boot-wiring coverage for the budget enforcer.
 
 ``_construct_agent_engine`` is the one production call site for
-``AgentEngine(...)``. Task, monthly, daily, project and run-hard-ceiling
+``AgentEngine(...)``. Monthly, daily, project and run-hard-ceiling
 enforcement all gate on ``AgentEngine._budget_enforcer`` being set; a
 boot path that builds a ``BudgetEnforcer`` without threading it into the
-engine leaves every one of those checks structurally unreachable.
+engine leaves every one of those checks structurally unreachable (a
+task's own ``budget_limit``/``hard_token_ceiling`` still enforce via the
+bare task-only fallback regardless of whether an enforcer is wired).
 """
 
 from unittest.mock import AsyncMock
@@ -36,7 +38,9 @@ from tests._shared.scripted_provider import ScriptedProvider
 pytestmark = pytest.mark.unit
 
 
-def _app_state(*, wire_enforcer: bool) -> tuple[AppState, BudgetEnforcer | None]:
+def _app_state(
+    *, wire_enforcer: bool, budget_config: BudgetConfig | None = None
+) -> tuple[AppState, BudgetEnforcer | None]:
     """A minimal boot ``AppState``, optionally with a real budget enforcer wired.
 
     Returns:
@@ -66,7 +70,7 @@ def _app_state(*, wire_enforcer: bool) -> tuple[AppState, BudgetEnforcer | None]
     )
     if not wire_enforcer:
         return app_state, None
-    config = BudgetConfig()
+    config = budget_config or BudgetConfig()
     tracker = CostTracker(budget_config=config)
     enforcer = BudgetEnforcer(budget_config=config, cost_tracker=tracker)
     app_state.wire(
@@ -95,12 +99,38 @@ class TestBudgetEnforcerBootWiring:
         assert engine._budget_enforcer is enforcer
 
     async def test_cost_tracker_identity_invariant_holds(self) -> None:
+        """Regression guard on ``_construct_agent_engine``'s own wiring:
+        ``cost_tracker=`` and ``budget_enforcer=`` are two independent
+        reads of the same ``BudgetStateSlice``, so a future edit that
+        sources either from somewhere else would desynchronise them.
+        """
         app_state, enforcer = _app_state(wire_enforcer=True)
         assert enforcer is not None
         engine = await _engine_for(app_state)
         assert engine._budget_enforcer is not None
         assert engine._cost_tracker is engine._budget_enforcer.cost_tracker
         assert engine._cost_tracker is enforcer.cost_tracker
+
+    async def test_mismatched_cost_tracker_and_enforcer_raises(self) -> None:
+        """A future edit that reads ``cost_tracker=`` and ``budget_enforcer=``
+        from two different sources must fail loud at construction rather
+        than silently picking one: ``AgentEngine.__init__`` enforces this
+        identity itself.
+        """
+        app_state, _ = _app_state(wire_enforcer=False)
+        config = BudgetConfig()
+        slice_tracker = CostTracker(budget_config=config)
+        enforcer_tracker = CostTracker(budget_config=config)
+        enforcer = BudgetEnforcer(budget_config=config, cost_tracker=enforcer_tracker)
+        app_state.wire(
+            BudgetStateSlice,
+            budget_config=config,
+            cost_tracker=slice_tracker,
+            budget_enforcer=enforcer,
+        )
+
+        with pytest.raises(ValueError, match="cost_tracker must match"):
+            await _engine_for(app_state)
 
     async def test_unwired_enforcer_leaves_engine_without_one(self) -> None:
         app_state, _ = _app_state(wire_enforcer=False)
@@ -111,19 +141,12 @@ class TestBudgetEnforcerBootWiring:
         self,
     ) -> None:
         """An engine holding a present-but-inert enforcer would pass the
-        identity assertions above without ever enforcing anything: the
-        claim this PR makes is that the ceiling fires, not just that the
-        attribute is set.
+        identity assertions above without ever enforcing anything, so
+        this test exercises that the ceiling actually fires rather than
+        just that the attribute is set.
         """
-        app_state, _ = _app_state(wire_enforcer=False)
-        config = BudgetConfig(run_hard_ceiling=0.01)
-        tracker = CostTracker(budget_config=config)
-        enforcer = BudgetEnforcer(budget_config=config, cost_tracker=tracker)
-        app_state.wire(
-            BudgetStateSlice,
-            budget_config=config,
-            cost_tracker=tracker,
-            budget_enforcer=enforcer,
+        app_state, _ = _app_state(
+            wire_enforcer=True, budget_config=BudgetConfig(run_hard_ceiling=0.01)
         )
         engine = await _engine_for(app_state)
         task = Task(

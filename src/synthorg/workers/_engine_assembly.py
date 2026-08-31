@@ -323,7 +323,7 @@ async def _build_auto_review_pipeline_or_none(
     Returns ``None`` unless ``engine.auto_review_on_completion`` is set, so
     the agent runtime is threaded a pipeline only when auto-review is enabled;
     absent it, ``apply_post_execution_transitions`` leaves completed work in
-    IN_REVIEW for a human, exactly as before.
+    IN_REVIEW for a human.
 
     Returns:
         A default (internal-only) :class:`ReviewPipeline`, or ``None``.

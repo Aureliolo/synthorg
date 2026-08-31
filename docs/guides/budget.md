@@ -183,7 +183,9 @@ the verdict before spending.
 ### Runaway backstops
 
 Two ceilings stop a single run consuming without limit. Both ship **on**, and both
-apply without a restart.
+apply without a restart, whenever the running agent's engine holds a wired budget
+enforcer (the shipped boot path wires one whenever persistence connects and cost-dial
+wiring succeeds).
 
 | Setting | Default | What it bounds |
 |---------|---------|----------------|
