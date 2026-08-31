@@ -538,6 +538,7 @@ def _caps(model_id: str) -> ModelCapabilities:
     return ModelCapabilities(
         model_id=model_id,
         provider="test-provider",
+        max_context_tokens=1000,
     )
 
 

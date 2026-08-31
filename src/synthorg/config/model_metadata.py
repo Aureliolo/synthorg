@@ -6,8 +6,9 @@ schema module stays under its size budget.  ``ModelMetadata`` is the
 from :class:`synthorg.providers.capabilities.ModelCapabilities`, which
 is built transiently per request from this record (plus a live LiteLLM
 lookup) and read by capability-gated call sites -- prompt caching,
-reasoning effort, vision verification, image generation -- never by
-routing, which resolves its own ``ResolvedModel`` from
+reasoning effort, vision verification, image generation, the engine's
+budget-gauge context-window lookup -- never by routing, which resolves
+its own ``ResolvedModel`` from
 :class:`~synthorg.config.provider_schema.ProviderModelConfig` directly.
 """
 

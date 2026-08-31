@@ -24,7 +24,11 @@ that module) contains an ``ast.Attribute`` access naming the field, in Load
 context. The declaring module (``providers/capabilities.py`` itself) is
 excluded from both the reference scan and the reader scan: a validator
 reading its own field is not a consumer, which is exactly the shape all six
-retired fields had and nothing else.
+retired fields had and nothing else. ``max_context_tokens`` was the
+exception that proved the rule live rather than theoretical: a
+budget-legibility change landed a genuine reader for it between the original
+finding and this gate's own PR merging, so it was wired (an explicit type
+annotation at the call site) rather than deleted alongside the other five.
 
 This is deliberately duck-typed and therefore fail-CLOSED on the direction
 that matters: scoping to modules that reference the type at all (rather than
@@ -42,8 +46,8 @@ to the field's declaring line. The reason is mandatory. The only legitimate
 case is a field a genuinely external consumer reads by value rather than by
 Python attribute access (there is none today).
 
-No baseline: every field this gate would have flagged is deleted in the
-same PR that introduces it.
+No baseline: every field this gate would have flagged is either wired or
+deleted in the same PR that introduces it.
 
 Usage::
 

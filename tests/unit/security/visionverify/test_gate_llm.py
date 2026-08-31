@@ -57,6 +57,7 @@ def _capabilities(*, supports_vision: bool) -> ModelCapabilities:
     return ModelCapabilities(
         model_id="example-capable-001",
         provider="example-provider",
+        max_context_tokens=128_000,
         supports_vision=supports_vision,
     )
 

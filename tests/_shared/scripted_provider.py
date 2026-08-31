@@ -65,6 +65,7 @@ E2E_PROJECT_ID: Final[str] = "proj-e2e"
 TEST_CAPABILITIES = ModelCapabilities(
     model_id=_QUALITY_MODEL,
     provider=_TEST_PROVIDER,
+    max_context_tokens=200_000,
     supports_tools=True,
     supports_vision=False,
     supports_streaming=True,

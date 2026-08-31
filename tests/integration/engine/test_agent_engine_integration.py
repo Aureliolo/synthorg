@@ -118,6 +118,7 @@ class _ToolCallingProvider:
         return ModelCapabilities(
             model_id=model,
             provider="test-provider",
+            max_context_tokens=8192,
             supports_tools=True,
             supports_streaming=False,
         )

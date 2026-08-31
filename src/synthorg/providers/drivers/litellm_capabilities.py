@@ -87,6 +87,7 @@ def build_capabilities(
     return ModelCapabilities(
         model_id=model_config.id,
         provider=provider_name,
+        max_context_tokens=model_config.max_context,
         supports_tools=_overridden(
             resolved=metadata.supports_tools, override=overrides.supports_tools
         ),

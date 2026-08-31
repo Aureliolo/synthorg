@@ -255,6 +255,7 @@ def sample_model_capabilities() -> ModelCapabilities:
     return ModelCapabilities(
         model_id="test-model",
         provider="test-provider",
+        max_context_tokens=200_000,
         supports_tools=True,
         supports_vision=True,
         supports_streaming=True,

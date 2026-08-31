@@ -272,14 +272,19 @@ setting plus the model's streaming capability, not a `CompletionConfig` field:
 
 `ModelCapabilities` (`providers/capabilities.py`) is a transient, per-request
 record consumed by capability-gated call sites -- prompt caching, reasoning
-effort, vision verification, image generation -- never by routing, which
-resolves its own `ResolvedModel` from `ProviderModelConfig`. Every field it
-declares has a real reader outside its own module (`check_capability_field_has_reader.py`
-enforces this at pre-push/CI with no baseline); a field that only its own
-validator ever read is dead weight, not a capability, and six such fields
-(`max_output_tokens`, `max_context_tokens`, `cost_per_1k_input`,
-`cost_per_1k_output`, `supports_system_messages`,
-`supports_streaming_tool_calls`) were retired for exactly that reason.
+effort, vision verification, image generation, and the engine's budget-gauge
+context-window lookup -- never by routing, which resolves its own
+`ResolvedModel` from `ProviderModelConfig`. Every field it declares has a real
+reader outside its own module (`check_capability_field_has_reader.py` enforces
+this at pre-push/CI with no baseline); a field that only its own validator
+ever read is dead weight, not a capability, and five such fields
+(`max_output_tokens`, `cost_per_1k_input`, `cost_per_1k_output`,
+`supports_system_messages`, `supports_streaming_tool_calls`) were retired for
+exactly that reason. `max_context_tokens` survives: it looked identically
+dead at the time, but a budget-legibility change landed a genuine reader
+(`engine/agent_engine_context.py`) before this retirement merged, which is
+exactly the case the gate exists to catch on the next pass rather than this
+one.
 
 `extract_model_metadata` (`drivers/litellm_model_info.py`) falls back **per
 field**, not whole-record: it takes the model's persisted `ModelMetadata` as

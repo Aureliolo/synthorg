@@ -291,9 +291,13 @@ class TestListModelsBatchCapabilities:
             connection_name="conn-test", driver="test-driver", models=models
         )
         caps_lookup = {
-            "m1": ModelCapabilities(model_id="m1", provider="test-provider"),
+            "m1": ModelCapabilities(
+                model_id="m1", provider="test-provider", max_context_tokens=1024
+            ),
             "m2": None,
-            "m3": ModelCapabilities(model_id="m3", provider="test-provider"),
+            "m3": ModelCapabilities(
+                model_id="m3", provider="test-provider", max_context_tokens=2048
+            ),
         }
 
         driver = MagicMock()

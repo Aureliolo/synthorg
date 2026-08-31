@@ -40,6 +40,7 @@ from synthorg.observability.events.memory import (
     MEMORY_CONTEXT_INJECTED,
     MEMORY_CONTEXT_INJECTION_FAILED,
 )
+from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
 from synthorg.providers.protocol import CompletionProvider
@@ -181,7 +182,7 @@ class AgentEngineContextMixin:
             The model's ``max_context_tokens``, or ``None`` on any failure.
         """
         try:
-            capabilities = await provider.get_model_capabilities(
+            capabilities: ModelCapabilities = await provider.get_model_capabilities(
                 identity.model.model_id
             )
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised

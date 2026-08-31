@@ -42,6 +42,7 @@ class TestToProviderModelResponse:
         caps = ModelCapabilities(
             model_id="test-expert-001",
             provider="test-provider",
+            max_context_tokens=200_000,
             supports_tools=True,
             supports_vision=True,
             supports_streaming=True,
@@ -96,6 +97,7 @@ class TestToProviderModelResponse:
         caps = ModelCapabilities(
             model_id="test-image-001",
             provider="test-provider",
+            max_context_tokens=1,
             supports_image_generation=True,
         )
         resp = to_provider_model_response(config, caps)

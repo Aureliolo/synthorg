@@ -29,6 +29,7 @@ def _caps(*, image: bool) -> ModelCapabilities:
     return ModelCapabilities(
         model_id=_MODEL_ID,
         provider="example-provider",
+        max_context_tokens=1,
         supports_image_generation=image,
     )
 

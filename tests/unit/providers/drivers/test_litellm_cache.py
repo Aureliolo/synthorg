@@ -14,6 +14,7 @@ def _caps(*, supports_prompt_caching: bool) -> ModelCapabilities:
     return ModelCapabilities(
         model_id="example-expert-001",
         provider="example-provider",
+        max_context_tokens=200_000,
         supports_prompt_caching=supports_prompt_caching,
     )
 

@@ -35,6 +35,7 @@ def _caps(*, supports_reasoning: bool) -> ModelCapabilities:
     return ModelCapabilities(
         model_id=_MODEL_ID,
         provider="example-provider",
+        max_context_tokens=200_000,
         supports_reasoning=supports_reasoning,
     )
 
