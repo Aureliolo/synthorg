@@ -129,15 +129,21 @@ reviewer:
   # one, and so a later vendor change to that default cannot move the
   # treatment under a recording that already ran.
   reasoning_effort: high
-  # Higher than the executor's because this model reasons at a declared depth,
-  # and its vendor recommends far more output room at that depth than a flat
-  # per-response ceiling grants. That collision is a live candidate for the
-  # stopped recording's no-verdict failure (this matrix's own evidence, cited
-  # in full further down): reasoning is spent BEFORE content, so a verdict can
-  # be squeezed out entirely. Sized on the same assumption as the executor's,
-  # that the aliased connection's window is far larger than this ceiling, so
-  # ample prompt room remains.
-  max_tokens: 262144
+  # This is the CEILING the connection enforces, not a figure chosen with room
+  # to spare, and it is the one value here measured against the endpoint rather
+  # than reasoned about: a request above it is refused outright, per model,
+  # before anything is generated, so a larger number would fail every review
+  # call and record a run with no verdicts at all.
+  #
+  # That matters beyond the number, because this model reasons at a declared
+  # depth and its vendor recommends far more output room at that depth than this
+  # grants. Reasoning is spent BEFORE content, so a verdict can be squeezed out
+  # entirely, which is a live candidate for the stopped recording's no-verdict
+  # failure (this matrix's own evidence, cited in full further down). Through
+  # this connection that collision cannot be relieved by raising the ceiling; it
+  # is a property of the deployment, and the smoke cells measure how close a
+  # real review comes to it.
+  max_tokens: 65536
 independence: cross_family
 # How many attempts one merge gets. Equal across arms by construction, which
 # matters whenever a matrix declares more than one: repair only in the gated arm
