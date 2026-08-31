@@ -405,9 +405,10 @@ jobs:
           # one pass. Measured (dry-run, this exact prompt): 6-79 bullets
           # across four calls without reasoning; 12 and 12 across two calls
           # with it. HIGHLIGHTS_MODEL must keep resolving to a model that
-          # accepts this field (currently mistral-medium-3-5); a future
-          # swap to one that rejects it fails this step, which is
-          # best-effort and reported by the tracking job below.
+          # accepts this field; a future swap to one that rejects it fails
+          # this step, which is best-effort and reported by the tracking job
+          # below. Keep max_tokens and reasoning_effort in sync with
+          # release-highlights-dryrun.yml's default if either changes here.
           PAYLOAD=$(jq -n \
             --arg model "$MISTRAL_MODEL" \
             --rawfile sys .github/release-highlights-prompt.md \
@@ -469,6 +470,21 @@ jobs:
           if [ -z "$CONTENT" ]; then
             echo "::warning::Mistral returned empty content; skipping best-effort Highlights."
             echo "status=empty completion" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # A thinking chunk competes with the visible answer for the same
+          # max_tokens budget, so a response that ran out of room mid-answer
+          # is no longer just a theoretical edge case. finish_reason "length"
+          # names that outcome explicitly; the emptiness check above cannot
+          # catch it, since a truncated answer is non-empty. Publishing a cut-
+          # off summary is worse than skipping it, and letting it carry
+          # status=ok would tell close-highlights-tracker (further down this
+          # workflow) that generation recovered when it did not.
+          FINISH_REASON=$(printf '%s' "$BODY" | jq -r '.choices[0].finish_reason // empty')
+          if [ "$FINISH_REASON" = "length" ]; then
+            echo "::warning::Mistral response truncated at max_tokens; skipping best-effort Highlights."
+            echo "status=truncated at max_tokens" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
