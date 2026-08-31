@@ -106,6 +106,11 @@ def _init_repo(
         cwd=tmp_path,
         check=True,
     )
+    subprocess.run(
+        ["git", "config", "commit.gpgsign", "false"],  # noqa: S607
+        cwd=tmp_path,
+        check=True,
+    )
     return tmp_path
 
 
