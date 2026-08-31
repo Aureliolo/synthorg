@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestReportExecuteError_Interrupted covers the branch Execute relies on to
@@ -100,28 +102,78 @@ func TestReportExecuteError_ExitErrorPassthroughEvenWhenCancelled(t *testing.T) 
 	}
 }
 
-// TestForceExitOnSecondInterrupt_WaitsForCancellation verifies the
-// force-exit goroutine's guard: it must not act (and must not itself be
-// tested past this point, since it calls os.Exit) until ctx is done. This
-// only exercises the "no signal yet" half -- the os.Exit(ExitInterrupted)
-// tail is exactly what the exported constant documents and is not
-// exercised here, since calling it would terminate the test binary.
-func TestForceExitOnSecondInterrupt_WaitsForCancellation(t *testing.T) {
+// TestArmSecondSignal_WaitsForCancellation verifies armSecondSignal's first
+// guard: it must not act until ctx is done. forceExitOnSecondInterrupt is
+// not exercised directly anywhere in this file since its os.Exit tail would
+// terminate the test binary; armSecondSignal carries all the logic before
+// that tail and is fully testable.
+func TestArmSecondSignal_WaitsForCancellation(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithCancel(context.Background())
+	c := make(chan os.Signal, 1)
 	done := make(chan struct{})
 	go func() {
-		<-ctx.Done()
+		armSecondSignal(ctx, c)
 		close(done)
 	}()
 
 	select {
 	case <-done:
-		t.Fatal("ctx.Done() fired before cancel was called")
-	default:
+		t.Fatal("armSecondSignal returned before ctx was cancelled")
+	case <-time.After(50 * time.Millisecond):
 	}
+
 	cancel()
-	<-done // proves ctx.Done() unblocks a waiter, which is all forceExitOnSecondInterrupt depends on before its os.Exit tail
+	c <- os.Interrupt // the first signal's copy, drained
+	c <- os.Interrupt // the second signal
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("armSecondSignal did not return after ctx cancellation plus a drained signal and a second one")
+	}
+}
+
+// TestArmSecondSignal_DrainsFirstSignalBeforeWaitingForSecond is the
+// regression test for the race forceExitOnSecondInterrupt used to have: c
+// was created and registered only after ctx.Done() fired, so a second
+// signal delivered in that gap went to NotifyContext's own already-spent
+// channel and was silently dropped rather than force-exiting the process.
+//
+// c is now registered by Execute before NotifyContext's listener comes up,
+// so Go's signal package (which fans a delivered signal out to every
+// registered channel in one synchronous step before any consumer observes
+// it) guarantees c already holds a copy of the first signal by the time
+// ctx.Done() fires -- exactly what this test simulates by placing a value
+// in c before calling cancel. armSecondSignal must drain that copy and
+// keep waiting: returning after only it, without a genuinely second signal,
+// would reproduce the original bug in the opposite direction (force-exiting
+// on what is still the first interrupt).
+func TestArmSecondSignal_DrainsFirstSignalBeforeWaitingForSecond(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	c := make(chan os.Signal, 1)
+
+	c <- os.Interrupt // simulates the fan-out copy landing before ctx.Done()
+	cancel()
+
+	done := make(chan struct{})
+	go func() {
+		armSecondSignal(ctx, c)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		t.Fatal("armSecondSignal returned after only the drained first signal; it must wait for a genuinely second one")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	c <- os.Interrupt // the genuinely second signal
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("armSecondSignal did not return after a second signal arrived")
+	}
 }
 
 // TestExitInterrupted_MatchesShellConvention pins the documented 128+SIGINT

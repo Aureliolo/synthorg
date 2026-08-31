@@ -411,9 +411,15 @@ func isTransportError(err error) bool {
 // daemon, a network call whose own timeout has not yet tripped), the
 // operator needs an escape that does not depend on that step unwinding.
 func Execute() error {
+	// Registered before NotifyContext so no signal delivered between the two
+	// listeners coming up can be missed -- see forceExitOnSecondInterrupt.
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(c)
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	go forceExitOnSecondInterrupt(ctx)
+	go forceExitOnSecondInterrupt(ctx, c)
 
 	err := rootCmd.ExecuteContext(ctx)
 	return reportExecuteError(ctx, rootCmd.ErrOrStderr(), err)
@@ -464,22 +470,38 @@ func reportExecuteError(ctx context.Context, errOut io.Writer, err error) error 
 	return err
 }
 
-// forceExitOnSecondInterrupt waits for the first signal to cancel ctx (see
-// Execute), then arms a second, un-cancelled signal listener. A second
-// SIGINT/SIGTERM after that point means the graceful shutdown itself is
+// armSecondSignal blocks until ctx is cancelled by the first signal (see
+// Execute), then waits for a genuinely second SIGINT/SIGTERM on c. c is
+// registered by Execute before NotifyContext's own listener comes up, so no
+// gap exists between "not yet listening for a second signal" and "listening
+// for one" -- the gap forceExitOnSecondInterrupt used to have by creating
+// and registering its own channel only after ctx.Done() fired, during which
+// a second signal was delivered to NotifyContext's already-spent internal
+// channel and silently dropped.
+//
+// Go's signal package fans a delivered signal out to every channel
+// registered via signal.Notify in one synchronous step before any consumer
+// goroutine observes it, so by the time ctx.Done() unblocks here, c already
+// holds a copy of that same first signal; that copy is drained before
+// waiting for the next one.
+func armSecondSignal(ctx context.Context, c chan os.Signal) {
+	<-ctx.Done()
+	<-c
+	<-c
+}
+
+// forceExitOnSecondInterrupt arms the second-signal listener (see
+// armSecondSignal) and exits immediately once it fires. A second
+// SIGINT/SIGTERM after the first means the graceful shutdown itself is
 // stuck, so it exits immediately rather than leaving the operator with no
 // way out short of killing the process externally.
 //
 // Assumes Execute is called at most once per process (true today: only
 // main.go calls it). A second concurrent Execute call would leave this
-// goroutine and its signal.Notify registration running for the life of the
-// process past the first call's own return, since nothing here ever calls
-// signal.Stop on the second listener.
-func forceExitOnSecondInterrupt(ctx context.Context) {
-	<-ctx.Done()
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	<-c
+// goroutine running for the life of the process past the first call's own
+// return, since nothing here ever cancels it independently of ctx.
+func forceExitOnSecondInterrupt(ctx context.Context, c chan os.Signal) {
+	armSecondSignal(ctx, c)
 	os.Exit(ExitInterrupted)
 }
 

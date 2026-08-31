@@ -1053,6 +1053,14 @@ func Save(s State) error {
 // master_key/settings_key/cursor_secret/postgres_password; a truncated file
 // fails Load with a hard parse error rather than degrading gracefully, so
 // this must never observe a partial write.
+//
+// dir and path are derived from the operator's own --data-dir/
+// SYNTHORG_DATA_DIR (SecurePath-cleaned, absolute, but not containment
+// -checked against a base directory): CodeQL flags that as path injection
+// (alerts #617/#618) on a local single-user CLI with no privilege boundary
+// to cross, since the only actor who can steer the path is the user writing
+// to their own install directory -- see Save's own comment on the same
+// tradeoff.
 func writeFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
@@ -1086,5 +1094,23 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
 		return fmt.Errorf("renaming temp file to %s: %w", path, rerr)
 	}
 	cleanup = false // rename succeeded; temp is gone
+	syncDirBestEffort(dir)
 	return nil
+}
+
+// syncDirBestEffort fsyncs dir so the rename's directory-entry update
+// survives a power loss, not just a process crash (tmp.Sync above already
+// covers the renamed file's own content, which os.Rename's atomicity
+// guarantee does not extend to the directory entry itself). Best-effort:
+// not every platform or filesystem supports syncing a directory handle
+// (notably Windows, and some network filesystems), and the rename has
+// already succeeded by the time this runs, so a failure here is not worth
+// turning a completed write into an error over.
+func syncDirBestEffort(dir string) {
+	d, err := os.Open(dir) //nolint:gosec // G304: dir is filepath.Dir(path) for writeFileAtomic's own path argument; same accepted local-single-user-CLI tradeoff documented there and on Save (no privilege boundary to cross)
+	if err != nil {
+		return
+	}
+	_ = d.Sync()
+	_ = d.Close()
 }
