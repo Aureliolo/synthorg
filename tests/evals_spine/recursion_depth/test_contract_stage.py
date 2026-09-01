@@ -38,6 +38,7 @@ from evals.recursion_depth.session import SessionLimits, SweepDeps, session_limi
 from evals.recursion_depth.staffing import _identity
 from evals.recursion_depth.tree import SpecBrief
 from evals.recursion_depth.unit import UnitFingerprint, unit_workspace
+from evals.runner.execution import EVAL_TASK_PROJECT
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskType
@@ -361,7 +362,7 @@ class TestTheContractTreeCannotReachOutOfItself:
 
     @pytest.mark.parametrize(
         "at",
-        ["projects/recursion-depth-suite", "projects"],
+        [f"projects/{EVAL_TASK_PROJECT}", "projects"],
         ids=["final-component", "parent-directory"],
     )
     def test_a_tree_pointing_out_of_its_root_is_refused(
