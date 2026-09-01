@@ -135,11 +135,39 @@ OpenAI-compatible endpoint), so the key is absent, the code falls back to
 declares `supports_tools`, `supports_reasoning`, `family` and
 `max_output_tokens`, and not this one.
 
-With input outweighing output **10 to 1** (74M against 6.7M), this is plausibly
-the largest single cost lever in the system.
+**CORRECTION, measured after this register was first written: turning caching on
+would have saved nothing.** The claim that this was "plausibly the largest single
+cost lever" is withdrawn.
+
+Probed directly, with `cache_control` placed by hand and our own mapper bypassed
+entirely, two calls sharing a 63,899-character prefix:
+
+```
+prompt_tokens_details: null      <- no cached-token breakdown at all
+prompt_tokens: 15270             <- identical on both calls
+```
+
+Nothing cache-shaped anywhere in the response. **Ollama's OpenAI-compatible
+endpoint neither reports nor bills prompt caching**; the markers are accepted and
+ignored. So `model_lacks_caching_support` was a TRUE statement about this
+endpoint, and the run lost no money to it.
+
+**What survives is the mechanism, not the loss.** The capability was decided by a
+silent `Field(default=False)` rather than by knowledge, and it happened to be
+right here by luck. That is still P2 and still worth fixing: a probe would have
+answered this in seconds instead of by assertion. But the case for fixing it is
+correctness, not savings.
+
+**The cost problem itself is untouched.** Input still outweighs output 10 to 1
+(74M against 6.7M). Caching was never the lever; C2 names the real one, and a
+contract stage that shortens the read phase is the only thing that reaches it.
 
 **Same defect class as the `reasoning_effort` drop already on record, and as
-`max_context` having to be hand-probed. Three instances. See I1.**
+`max_context` having to be hand-probed. Three instances. See I1.** Note the
+contrast that makes the probe methodology sound: this same endpoint DOES surface
+`reasoning_content` (measured on every reviewer response in the smoke), so an
+absent cache field is a real answer about caching rather than an endpoint that
+reports nothing at all.
 
 ### C2. Cost is context re-send, so neither `max_tokens` nor budget can help
 
@@ -383,6 +411,7 @@ its own withdrawals is not one.
 | "The noise floor is a 20-point spread" | Refined: it is **bimodal** (39, 40, 19), which needs a different remedy |
 | "R06, R22, R35 are intrinsically hard, they defeated both cells" | **Wrong**, drawn from A and C only. Cell B passes all three. Every one of the 42 is passed by at least one cell |
 | "The smoke is ~15% of a session window" / "62%" | **Withdrawn.** Built on an invented 130M figure. Real: 4.2% of a WEEKLY quota (E3) |
+| "Caching off is plausibly the largest single cost lever" | **Withdrawn (C1).** Probed the endpoint directly: `prompt_tokens_details: null`, identical `prompt_tokens` on a repeated 63,899-char prefix, nothing cache-shaped in the response. Ollama's endpoint does not report or bill prompt caching, so enabling it would have saved nothing. The silent-default MECHANISM is still a defect; the loss was not real |
 | "Cell B used 2 merge attempts" | It used **3**, the cap. Read mid-run and not re-checked |
 | "attempts=2 means two merge attempts" | It counts SESSIONS (merge + review). Cell A ran ONE merge |
 | Looping medians 0.331/0.164/0.209 | Measured the SSE protocol envelope as text. Real medians all 0.000 |
