@@ -205,15 +205,22 @@ def detail(directory: Path) -> str:
             continue
         missing = unit.get("missing_declared_paths") or []
         changed = unit.get("workspace_files_changed")
+        # Guarded per field, as `read` does and for the same reason: a journal
+        # row is whatever survived the run that wrote it, and an unguarded
+        # `int()` on a non-numeric string or `len()` on a scalar ends the whole
+        # --detail report on one damaged row.
+        spent = unit.get("tokens")
+        claimed = unit.get("claimed")
+        ends = unit.get("terminations")
         lines.append(
             f"  {unit.get('kind', '?')!s:8} "
             f"{unit.get('unit_id', '?')!s:32} "
-            f"{int(unit.get('tokens') or 0):9,d}tok "
+            f"{(spent if isinstance(spent, int) else 0):9,d}tok "
             f"turns={unit.get('turns')!s:>3} "
             f"files={changed!s:>4} "
             f"deliv={unit.get('delivered')!s:<5} "
-            f"claims={len(unit.get('claimed') or [])} "
-            f"end={','.join(str(one) for one in unit.get('terminations') or []) or '-'}"
+            f"claims={len(claimed) if isinstance(claimed, list) else 0} "
+            f"end={','.join(str(one) for one in ends) if isinstance(ends, list) and ends else '-'}"
         )
         if missing:
             # A declared path is whatever a planner wrote down, so it reaches

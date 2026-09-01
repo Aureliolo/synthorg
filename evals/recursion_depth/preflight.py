@@ -19,7 +19,8 @@ in the matrix, so the curve's flattest point would carry the load time.
 """
 
 import asyncio
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
+from contextlib import asynccontextmanager
 from typing import Final
 
 import aiodocker
@@ -263,6 +264,43 @@ async def _release(registry: ProviderRegistry, *, already_failing: bool) -> None
             raise HarnessProviderMissingError(msg) from exc
 
 
+@asynccontextmanager
+async def _docker_client() -> AsyncIterator[aiodocker.Docker]:
+    """Open a client, reporting a daemon it cannot reach as unavailable.
+
+    The construction is what needs wrapping, not just the call: aiodocker
+    resolves the host in ``Docker.__init__`` and raises ``ValueError`` when it
+    finds none, so a client built outside a handler escapes as that rather
+    than as the error its caller documents. One owner because both callers
+    need the same answer to the same question, and the second was built
+    without it.
+
+    Yields:
+        The connected client.
+
+    Raises:
+        HarnessDockerUnavailableError: No daemon could be reached.
+    """
+    try:
+        client = aiodocker.Docker()
+    # Only what an absent or unhealthy daemon actually raises: a refused or
+    # timed-out connection (both ``OSError``), the daemon's own error, and the
+    # ``ValueError`` aiodocker raises when it can find no host to talk to.
+    except (aiodocker.DockerError, OSError, ValueError) as exc:
+        logger.error(
+            EVALS_HARNESS_DOCKER_UNAVAILABLE,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        msg = (
+            "the Docker daemon is unreachable, and every unit in the sweep "
+            "builds in a container"
+        )
+        raise HarnessDockerUnavailableError(msg) from exc
+    async with client:
+        yield client
+
+
 async def _check_docker() -> None:
     """Confirm the Docker daemon answers before any unit runs.
 
@@ -270,11 +308,8 @@ async def _check_docker() -> None:
         HarnessDockerUnavailableError: The daemon did not answer.
     """
     try:
-        async with aiodocker.Docker() as client:
+        async with _docker_client() as client:
             await client.version()
-    # Only what an absent or unhealthy daemon actually raises: a refused or
-    # timed-out connection (both ``OSError``), the daemon's own error, and the
-    # ``ValueError`` aiodocker raises when it can find no host to talk to.
     except (aiodocker.DockerError, OSError, ValueError) as exc:
         logger.error(
             EVALS_HARNESS_DOCKER_UNAVAILABLE,
@@ -335,7 +370,7 @@ async def check_images_resolve(references: Sequence[str]) -> None:
         event=EVALS_HARNESS_IMAGE_INSPECT_RETRYING,
         jitter=False,
     )
-    async with aiodocker.Docker() as client:
+    async with _docker_client() as client:
         for reference in references:
 
             async def inspect(reference: str = reference) -> None:

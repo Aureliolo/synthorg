@@ -98,7 +98,7 @@ def unit_workspace(
     if contract is not None:
         return reseed_workspace(
             cell_key=f"{cell_key}/{unit_key}",
-            source_project=contract.project_dir,
+            source=contract,
             work_root=work_root,
         )
     return seed_workspace(

@@ -265,7 +265,12 @@ def measure(unit_trees: Mapping[str, Path]) -> CellDivergence:
                 written[relative][unit] = read_surface(
                     module.read_text(encoding="utf-8", errors="replace")
                 )
-            except SyntaxError:
+            # OSError as well as SyntaxError, because `rglob` matches a
+            # DANGLING symlink named `*.py` and reading one raises rather than
+            # parsing badly. Both mean the same thing to this measure -- a
+            # module nothing can be claimed about -- and letting the second
+            # escape ends the whole report over one broken link in one unit.
+            except SyntaxError, OSError:
                 unreadable.append(f"{unit}:{relative}")
     modules: list[ModuleDivergence] = []
     for path, surfaces in sorted(written.items()):

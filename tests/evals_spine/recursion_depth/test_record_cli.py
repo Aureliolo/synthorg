@@ -743,7 +743,10 @@ class TestThePlanNamesTheTreatment:
 
         plan = record_module.describe_plan(manifest, _spec())
 
-        assert "low" in plan
+        # Label AND value, as the temperature assertion above does: "low" on
+        # its own is a substring of the whole plan text, so a dropped or
+        # renamed leaf-depth row would leave this passing.
+        assert "leaf depth    : low" in plan
 
 
 class TestStaging:

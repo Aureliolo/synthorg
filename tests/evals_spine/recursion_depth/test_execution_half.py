@@ -852,8 +852,10 @@ class TestDeliveryIsAboutWorkNotTheDeclaration:
             monkeypatch: Used to script the session.
             writes: Relative path to content the session writes.
             own_tests: What the grader reports for the unit's own suite.
-            owned: Requirement ids the leaf answers for, ``None`` for a tree no
-                contract seeded.
+            owned: What the leaf answers for, in the three states the tests
+                below turn on: ``UNBOUND`` for a tree no contract seeded, an
+                empty tuple for a contract-seeded tree it claims nothing in,
+                and a non-empty tuple of requirement ids.
 
         Returns:
             The leaf's outcome.

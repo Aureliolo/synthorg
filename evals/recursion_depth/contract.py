@@ -300,34 +300,65 @@ async def _judge(
     if after == baseline:
         return 0, "the contract session left its tree exactly as it found it"
     written = files_changed(baseline, after)
+    if not (workspace.project_dir / CONTRACT_PATH).is_file():
+        # `sound` is defined as a tree that imports AND whose declared file
+        # exists, and nothing else was checking the second half: the session
+        # declares CONTRACT_PATH as an expected artifact, but that governs its
+        # own delivery verdict rather than this one, so a session that wrote
+        # modules and no contract reached the suite check and passed it on
+        # ordinary assertion failures. Every unit of the cell is then seeded
+        # from a tree with no written statement of the shape they share.
+        _unsound(task, reason="contract_absent", written=written)
+        return written, f"the contract session wrote no `{CONTRACT_PATH}`"
     async with graded(deps, workspace, owner=f"contract:{task.id}") as grader:
         passed, report = await grader.own_tests_pass(workspace.project_dir)
+    return written, _suite_verdict(task, passed=passed, report=report, written=written)
+
+
+def _unsound(task: Task, *, reason: str, written: int) -> None:
+    """Log a contract that will be used anyway, while it can still be stopped.
+
+    Recorded AND logged, because a cell whose contract is wrong goes on to
+    build every unit from it: an operator watching a live sweep can stop it,
+    and the persisted detail only reaches a reader once the whole recording is
+    over.
+
+    Args:
+        task: The contract session's task.
+        reason: Which condition it failed.
+        written: How many files it left that the seed did not hold.
+    """
+    logger.warning(
+        EVALS_RECURSION_CONTRACT_UNSOUND,
+        task_id=str(task.id),
+        reason=reason,
+        files_written=written,
+    )
+
+
+def _suite_verdict(task: Task, *, passed: bool, report: str, written: int) -> str:
+    """Why the contract's own suite disqualifies it, empty when it does not.
+
+    Args:
+        task: The contract session's task.
+        passed: Whether the suite ran clean.
+        report: What the grader said when it did not.
+        written: How many files the session left, for the log.
+
+    Returns:
+        The reason, empty for a suite that failed the way a contract's should.
+    """
     if passed:
         # Green is the FAILURE here, and it is not a technicality: a suite that
         # passes against bodies that should all raise means the session
         # implemented the project it was told to leave alone, and every unit
         # after it inherits work it will be graded for not having done.
-        #
-        # Logged as well as recorded, because a cell whose contract is wrong
-        # goes on to build every unit from it: an operator watching a live
-        # sweep can stop it, and the persisted detail only reaches a reader
-        # once the whole recording is over.
-        logger.warning(
-            EVALS_RECURSION_CONTRACT_UNSOUND,
-            task_id=str(task.id),
-            reason="suite_passes",
-            files_written=written,
-        )
-        return written, "the contract's own suite passes, so it was implemented"
+        _unsound(task, reason="suite_passes", written=written)
+        return "the contract's own suite passes, so it was implemented"
     if _uncollectable(report):
-        logger.warning(
-            EVALS_RECURSION_CONTRACT_UNSOUND,
-            task_id=str(task.id),
-            reason="suite_uncollectable",
-            files_written=written,
-        )
-        return written, f"the contract's suite does not collect: {report}"
-    return written, ""
+        _unsound(task, reason="suite_uncollectable", written=written)
+        return f"the contract's suite does not collect: {report}"
+    return ""
 
 
 def _uncollectable(report: str) -> bool:

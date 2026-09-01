@@ -150,7 +150,7 @@ def seed_workspace(
 
 
 def reseed_workspace(
-    *, cell_key: str, source_project: Path, work_root: Path
+    *, cell_key: str, source: CellWorkspace, work_root: Path
 ) -> CellWorkspace:
     """Recreate one unit's workspace from a tree an earlier stage BUILT.
 
@@ -161,20 +161,33 @@ def reseed_workspace(
     tree was written by an agent, so its symlinks are swept the way every other
     agent-authored tree is before being copied somewhere it will be read.
 
+    Takes the WORKSPACE rather than its project path, because the path alone
+    cannot be checked. ``CellWorkspace.project_dir`` is derived by joining, so
+    it names wherever that join now leads: the contract session can write in
+    this tree, and replacing the project subtree (or the ``projects`` directory
+    above it) with a link makes ``is_dir()`` follow it and
+    ``copytree(symlinks=True)`` copy what it reaches. The sweep below would not
+    catch that, because by then the host's files are real files in the copy
+    rather than links to them. Resolving against the source's own root
+    forecloses both shapes, and it is the check
+    :func:`existing_workspace` already applies for the same reason.
+
     Args:
         cell_key: Names the unit's tree under *work_root*. Reaches this from
             authored YAML or from a plan an agent wrote, so it is resolved and
             re-checked against its root like any other untrusted segment.
-        source_project: The project tree to copy, which an agent wrote.
+        source: The workspace whose project tree is copied, which an agent
+            wrote into.
         work_root: Directory per-unit roots are created under.
 
     Returns:
         The provisioned :class:`CellWorkspace`.
 
     Raises:
-        WorkspaceSeedNotFoundError: *source_project* is not a directory.
+        WorkspaceSeedNotFoundError: The source project tree is not a directory.
         WorkspacePathEscapeError: A resolved path escapes its root.
     """
+    source_project = _contained(Path(_PROJECTS_SUBDIR) / EVAL_TASK_PROJECT, source.root)
     if not source_project.is_dir():
         msg = (
             f"unit {cell_key!r} cannot be seeded from {source_project}, which is "

@@ -53,6 +53,12 @@ def main(argv: list[str] | None = None) -> int:
         "--limit", type=int, default=20, help="Most modules to name individually."
     )
     args = parser.parse_args(argv)
+    if args.limit < 0:
+        # A negative limit reaches `render` as a negative slice bound, which
+        # hides modules from the end of the list while the omitted count is
+        # computed against the whole: `--limit -1` names all but one and
+        # reports one more omitted than there are modules.
+        parser.error("--limit must be non-negative")
 
     measured = 0
     for work_root in args.work_roots:

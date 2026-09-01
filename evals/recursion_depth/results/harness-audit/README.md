@@ -12,7 +12,7 @@ point gain" is not evidence for the individual piece.
 
 | Technique | Source | We | Evidence |
 |---|---|---|---|
-| Per-phase reasoning budget | LangChain, **the only real ablation** | **NO** | one global tier |
+| Per-phase reasoning budget | LangChain, **the only real ablation** | YES | `sweep-sandwich-contract` |
 | Context compaction, durable plan block | Letta / MemGPT | **NO** | 225 messages, none evicted |
 | Pre-completion verification gate | LangChain | **NO** | ours is post-session |
 | Environment onboarding at start | LangChain | **NO** | 36% of contract-leaf calls are reads |

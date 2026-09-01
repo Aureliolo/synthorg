@@ -16,28 +16,34 @@ what to do with what it finds, and finding nothing is what the corpus did.
 """
 
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 from scripts.record_recursion_depth import narrow
 
-from evals.errors import WorkspaceSeedNotFoundError
+from evals.errors import WorkspacePathEscapeError, WorkspaceSeedNotFoundError
 from evals.harness.workspace import CellWorkspace, reseed_workspace
 from evals.recursion_depth.claims import RequirementId, criterion_for
-from evals.recursion_depth.contract import _uncollectable, contract_brief
+from evals.recursion_depth.contract import (
+    CONTRACT_PATH,
+    _judge,
+    _uncollectable,
+    contract_brief,
+)
 from evals.recursion_depth.execute import leaf_brief
-from evals.recursion_depth.grading import NOTHING_MEASURED, read_verdict
+from evals.recursion_depth.grading import NOTHING_MEASURED, UnitGrader, read_verdict
 from evals.recursion_depth.manifest import RecursionDepthManifest, Role
 from evals.recursion_depth.merge import AMENDMENT_MARKER, MergePlan, merge_brief
-from evals.recursion_depth.session import SessionLimits, session_limits_for
+from evals.recursion_depth.session import SessionLimits, SweepDeps, session_limits_for
 from evals.recursion_depth.staffing import _identity
 from evals.recursion_depth.tree import SpecBrief
-from evals.recursion_depth.unit import unit_workspace
+from evals.recursion_depth.unit import UnitFingerprint, unit_workspace
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import SubtaskDefinition
-from tests._shared import sid
+from tests._shared import mock_of, sid
 
 pytestmark = pytest.mark.unit
 
@@ -85,6 +91,80 @@ _MANIFEST: dict[str, object] = {
     "projected_branching": 4,
     "expected_sessions_per_cell": {1: 30},
 }
+
+
+#: The baseline a contract session starts from, so everything it writes counts
+#: as written. A fingerprint is a frozenset of (path, digest) pairs.
+_EMPTY_TREE: UnitFingerprint = frozenset()
+
+
+def _contract_task() -> Task:
+    """The task a contract session runs under.
+
+    Returns:
+        The task.
+    """
+    return Task(
+        title=NotBlankStr("Contract"),
+        description=NotBlankStr("fix the shape"),
+        type=TaskType.DEVELOPMENT,
+        project=NotBlankStr(sid("project:contract-stage")),
+        created_by=NotBlankStr("test"),
+    )
+
+
+def _refusing_deps() -> SweepDeps:
+    """Deps whose grader fails the test if anything reaches it.
+
+    The absent-contract branch returns before grading, and grading opens a
+    container: a double that merely answered would leave the ordering untested
+    while a check moved after the grader passed just as well.
+
+    Returns:
+        The deps.
+    """
+
+    graded_anyway = "the contract was graded despite writing no contract"
+
+    def _no_grader(_workspace: object, *, owner: str) -> object:
+        del owner
+        raise AssertionError(graded_anyway)
+
+    return _deps_with(_no_grader)
+
+
+def _grading_deps(*, passed: bool, report: str) -> SweepDeps:
+    """Deps whose grader reports a scripted verdict.
+
+    Returns:
+        The deps.
+    """
+    return _deps_with(
+        lambda _workspace, *, owner: mock_of[UnitGrader](
+            own_tests_pass=AsyncMock(return_value=(passed, report))
+        )
+    )
+
+
+def _deps_with(build_grader: object) -> SweepDeps:
+    """Deps whose provider and sandbox factories are never reached.
+
+    Returns:
+        The deps.
+    """
+
+    async def _no_provider(_binding: object) -> object:
+        raise AssertionError
+
+    def _no_sandbox(_root: Path, *, owner: str) -> object:
+        raise AssertionError
+
+    return SweepDeps(
+        build_provider=_no_provider,  # type: ignore[arg-type]
+        build_tool_registry=lambda _workspace, *, owner: None,
+        build_grader=build_grader,  # type: ignore[arg-type]
+        build_sandbox=_no_sandbox,  # type: ignore[arg-type]
+    )
 
 
 def _owner() -> AgentIdentity:
@@ -246,9 +326,118 @@ class TestTheAgreementIsInTheCheckout:
         with pytest.raises(WorkspaceSeedNotFoundError):
             reseed_workspace(
                 cell_key="d1-gated-r0/leaf-1",
-                source_project=missing.project_dir,
+                source=missing,
                 work_root=tmp_path / "work",
             )
+
+
+class TestTheContractTreeCannotReachOutOfItself:
+    """The source is a tree an agent wrote in, so where it LEADS is its claim.
+
+    The copy happens before the link sweep and copies through a directory
+    symlink, so a redirected project subtree puts host files into the unit
+    workspace and the grading sandbox as ordinary files.
+    """
+
+    @staticmethod
+    def _redirected(tmp_path: Path, *, at: str) -> CellWorkspace:
+        """Build a contract workspace whose tree is a link out of its root.
+
+        Returns:
+            The workspace, or skips when this OS refuses symlinks.
+        """
+        outside = tmp_path / "host-only"
+        outside.mkdir()
+        (outside / "sentinel.txt").write_text("secret\n", encoding="utf-8")
+
+        contract = CellWorkspace(root=tmp_path / "contract")
+        link = contract.root / at
+        link.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            link.symlink_to(outside, target_is_directory=True)
+        except OSError, NotImplementedError:
+            pytest.skip("symlink creation requires elevated privileges on this OS")
+        return contract
+
+    @pytest.mark.parametrize(
+        "at",
+        ["projects/recursion-depth-suite", "projects"],
+        ids=["final-component", "parent-directory"],
+    )
+    def test_a_tree_pointing_out_of_its_root_is_refused(
+        self, tmp_path: Path, at: str
+    ) -> None:
+        contract = self._redirected(tmp_path, at=at)
+
+        with pytest.raises(WorkspacePathEscapeError):
+            reseed_workspace(
+                cell_key="d1-gated-r0/leaf-1",
+                source=contract,
+                work_root=tmp_path / "work",
+            )
+
+        assert not (tmp_path / "work").exists()
+
+
+class TestASoundContractHasToHaveWrittenTheContract:
+    """``sound`` is defined as a tree that imports AND whose file exists.
+
+    Only the first half was checked. The session declares ``CONTRACT.md`` as an
+    expected artifact, but that decides the SESSION's delivery, not this
+    verdict, so a session writing modules and no contract reached the suite
+    check and passed it on the ordinary assertion failures a contract is
+    supposed to produce. Every unit of the cell is then seeded from a tree with
+    no written statement of the shape they are all building against.
+    """
+
+    @staticmethod
+    def _written(tmp_path: Path, *, contract: bool) -> CellWorkspace:
+        """Build a tree a contract session could have left.
+
+        Returns:
+            The workspace.
+        """
+        workspace = CellWorkspace(root=tmp_path / "contract-root")
+        project = workspace.project_dir
+        (project / "sqlcsv").mkdir(parents=True)
+        (project / "sqlcsv" / "lexer.py").write_text(
+            "def tokenize(text: str) -> list[str]:\n    raise NotImplementedError\n",
+            encoding="utf-8",
+        )
+        if contract:
+            (project / CONTRACT_PATH).write_text("the seam\n", encoding="utf-8")
+        return workspace
+
+    async def test_a_tree_without_the_contract_is_not_sound(
+        self, tmp_path: Path
+    ) -> None:
+        """Refused before the grader, so a container is never opened for it."""
+        workspace = self._written(tmp_path, contract=False)
+
+        written, detail = await _judge(
+            _refusing_deps(),
+            _contract_task(),
+            workspace,
+            _EMPTY_TREE,
+            turns=4,
+        )
+
+        assert written > 0
+        assert CONTRACT_PATH in detail
+
+    async def test_a_tree_with_it_reaches_the_suite_check(self, tmp_path: Path) -> None:
+        """The complement: the new gate must not refuse a real contract."""
+        workspace = self._written(tmp_path, contract=True)
+
+        _written_count, detail = await _judge(
+            _grading_deps(passed=False, report="3 failed and 0 errored of 3"),
+            _contract_task(),
+            workspace,
+            _EMPTY_TREE,
+            turns=4,
+        )
+
+        assert detail == ""
 
 
 class TestWhatTheLeafIsTold:
