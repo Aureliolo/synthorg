@@ -1008,6 +1008,30 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
+        key="tool_output_max_chars",
+        type=SettingType.INTEGER,
+        default="24000",
+        description=(
+            "Ceiling on the characters one tool result may put into the"
+            " conversation. A result is resent on every later turn of the"
+            " run, so its size is paid once per turn for the rest of the"
+            " session; abbreviating at the boundary where it enters the"
+            " conversation stops that at source, where compaction would"
+            " only recover it later. The head and tail are kept and an"
+            " elision marker states how much was dropped, so the agent can"
+            " narrow its next call rather than assume it saw everything."
+            " Read live on every tool turn. 0 disables the ceiling."
+        ),
+        group="Execution",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=1_000_000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
         key="max_turns",
         type=SettingType.INTEGER,
         default="300",

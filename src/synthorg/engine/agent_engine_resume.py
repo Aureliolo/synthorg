@@ -24,6 +24,7 @@ from synthorg.engine.loop_turn_budget import (
     resolve_turn_extensions,
     restore_turn_budget,
 )
+from synthorg.engine.mcp_tool_retrieval import task_brief_text
 from synthorg.engine.prompt import SystemPrompt, build_system_prompt
 from synthorg.engine.resume_scope import resumed_run_scope
 from synthorg.engine.routing_policy.capability_policy import (
@@ -270,6 +271,7 @@ class AgentEngineResumeMixin:
             effective_autonomy=effective_autonomy,
             project_id=task.project,
             memory_strategy=self._resolve_memory_strategy(),
+            retrieval_query=task_brief_text(task),
         )
         currency = (
             self._budget_enforcer.currency

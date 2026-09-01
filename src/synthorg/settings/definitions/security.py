@@ -160,6 +160,31 @@ _r.register(
     )
 )
 
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.SECURITY,
+        key="mcp_self_consumer_retrieval_top_k",
+        type=SettingType.INTEGER,
+        default="40",
+        description=(
+            "How many of an agent's SCOPED SynthOrg MCP tools are offered to"
+            " the model for one unit of work, chosen by lexical relevance to"
+            " the task brief (or the chat instruction). Retrieval runs after"
+            " trust scoping and over its result alone, so it can only narrow"
+            " what the agent may reach, never widen it: a tool it drops was"
+            " admissible and is merely not offered this time. Past a few"
+            " dozen offered tools a model's selection accuracy over the whole"
+            " surface collapses, which is why the default is not the surface."
+            " 0 offers every scoped tool. The bridge is composed once per"
+            " engine build, so a change goes live on the next rebuild."
+        ),
+        group="Agent MCP Access",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=1_000,
+    )
+)
+
 # ── Audit retention (CFG-1 audit) ────────────────────────────────
 
 _r.register(

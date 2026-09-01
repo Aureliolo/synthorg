@@ -37,6 +37,7 @@ logger = get_logger(__name__)
 
 _NAMESPACE = SettingNamespace.SECURITY.value
 _MCP_MODE_KEY = "mcp_self_consumer_mode"
+_MCP_TOP_K_KEY = "mcp_self_consumer_retrieval_top_k"
 _WATCHED: frozenset[tuple[str, str]] = frozenset(
     (_NAMESPACE, k)
     for k in (
@@ -45,6 +46,7 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         "post_tool_scanning_enabled",
         "output_scan_policy_type",
         _MCP_MODE_KEY,
+        _MCP_TOP_K_KEY,
     )
 )
 
@@ -99,13 +101,16 @@ class SecurityBridgeSettingsSubscriber:
                 ),
                 # The nested block is replaced rather than mutated: every other
                 # field on it is compose-time, so carrying the base block
-                # forward and swapping only the mode keeps the operator's rate
+                # forward and swapping only the operator keys keeps the rate
                 # limits and allowlists intact.
                 "mcp_self_consumer": base.mcp_self_consumer.model_copy(
                     update={
                         "mode": McpSelfConsumerMode(
                             await resolver.get_str(_NAMESPACE, _MCP_MODE_KEY)
-                        )
+                        ),
+                        "retrieval_top_k": await resolver.get_int(
+                            _NAMESPACE, _MCP_TOP_K_KEY
+                        ),
                     }
                 ),
             }

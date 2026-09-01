@@ -91,6 +91,7 @@ class TestAgentEngineBrainToolWiring:
             _elevated_identity(),
             project_id=_PROJECT_ID,
             memory_strategy=None,
+            retrieval_query=None,
         )
 
         assert invoker is not None
@@ -102,7 +103,10 @@ class TestAgentEngineBrainToolWiring:
         engine = _engine(factory=_brain_factory())
 
         invoker = engine._make_tool_invoker(
-            _elevated_identity(), project_id=None, memory_strategy=None
+            _elevated_identity(),
+            project_id=None,
+            memory_strategy=None,
+            retrieval_query=None,
         )
 
         assert invoker is not None
@@ -117,6 +121,7 @@ class TestAgentEngineBrainToolWiring:
             _elevated_identity(),
             project_id=_PROJECT_ID,
             memory_strategy=None,
+            retrieval_query=None,
         )
 
         assert invoker is not None

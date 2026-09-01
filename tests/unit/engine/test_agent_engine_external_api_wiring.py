@@ -114,7 +114,9 @@ class TestAgentEngineExternalApiWiring:
     def test_external_api_tool_registered_when_runtime_wired(self) -> None:
         engine = _engine(with_runtime=True)
 
-        invoker = engine._make_tool_invoker(make_e2e_identity(), memory_strategy=None)
+        invoker = engine._make_tool_invoker(
+            make_e2e_identity(), memory_strategy=None, retrieval_query=None
+        )
 
         assert invoker is not None
         names = [d.name for d in invoker.get_permitted_definitions()]
@@ -123,7 +125,9 @@ class TestAgentEngineExternalApiWiring:
     def test_no_external_api_tool_when_runtime_absent(self) -> None:
         engine = _engine(with_runtime=False)
 
-        invoker = engine._make_tool_invoker(make_e2e_identity(), memory_strategy=None)
+        invoker = engine._make_tool_invoker(
+            make_e2e_identity(), memory_strategy=None, retrieval_query=None
+        )
 
         assert invoker is not None
         names = [d.name for d in invoker.get_permitted_definitions()]

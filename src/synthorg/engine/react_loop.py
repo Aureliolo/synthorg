@@ -41,6 +41,7 @@ from synthorg.providers.models import (
     ToolDefinition,
 )
 from synthorg.providers.protocol import CompletionProvider
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.tools.protocol import ToolInvokerProtocol
 
 from .context import AgentContext
@@ -87,9 +88,11 @@ from .loop_streaming import (
     run_provider_turn,
 )
 from .loop_tool_execution import (
+    ToolTurnControls,
     clear_last_turn_tool_calls,
     execute_tool_calls,
 )
+from .loop_tool_output_budget import resolve_tool_output_max_chars
 from .loop_turn_budget import ceiling_result, grant_extension
 from .loop_turn_observer import notify_turn_observer
 from .loop_unresolved_tools import unresolved_tools_result
@@ -161,6 +164,9 @@ class ReactLoop:
         background_job_watcher: Optional watcher consulted at turn
             boundaries for stalled background shell jobs; ``None``
             disables the nudge.
+        config_resolver: Optional live settings read for the per-turn
+            controls (the tool-output ceiling); ``None`` runs every one at
+            its registered default.
     """
 
     def __init__(  # noqa: PLR0913 -- one keyword-only param per in-flight control
@@ -174,6 +180,7 @@ class ReactLoop:
         step_classifier: StepQualityClassifier | None = None,
         turn_observer: TurnObserver | None = None,
         background_job_watcher: BackgroundJobWatcher | None = None,
+        config_resolver: ConfigResolverProtocol | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._checkpoint_callback = checkpoint_callback
@@ -184,6 +191,7 @@ class ReactLoop:
         self._step_classifier = step_classifier
         self._turn_observer = turn_observer
         self._background_job_watcher = background_job_watcher
+        self._config_resolver = config_resolver
         self._clock: Clock = clock if clock is not None else SystemClock()
 
     async def _attach_whole_run_signals(
@@ -247,6 +255,7 @@ class ReactLoop:
             step_classifier=self._step_classifier,
             turn_observer=self._turn_observer,
             background_job_watcher=self._background_job_watcher,
+            config_resolver=self._config_resolver,
             clock=self._clock,
         )
 
@@ -604,8 +613,13 @@ class ReactLoop:
             turn_number,
             turns,
             approval_gate=self._approval_gate,
-            clock=self._clock,
-            watch_background_jobs=self._background_job_watcher is not None,
+            controls=ToolTurnControls(
+                clock=self._clock,
+                watch_background_jobs=self._background_job_watcher is not None,
+                tool_output_max_chars=await resolve_tool_output_max_chars(
+                    self._config_resolver
+                ),
+            ),
         )
 
     async def _handle_completion(

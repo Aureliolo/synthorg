@@ -47,6 +47,9 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         # ``chief_of_staff.direct_mcp_enabled`` (whose gate reads
         # ``engine.has_mcp_self_consumer``) stays permanently blocked.
         ("security", "mcp_self_consumer_mode"),
+        # Retrieval's ceiling is read off the same composed config, so it
+        # reaches an agent by the same rebuild.
+        ("security", "mcp_self_consumer_retrieval_top_k"),
         ("coordination", "enable_coordination_middleware"),
         ("engine", "enable_agent_middleware"),
         # The coordinator builds eagerly and hard-requires a non-blank

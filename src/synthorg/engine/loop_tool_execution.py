@@ -6,7 +6,8 @@ helpers module under the project size limit.
 
 import json
 from collections.abc import Sequence
-from typing import Final
+from dataclasses import dataclass
+from typing import Final, Self
 
 from pydantic import TypeAdapter, ValidationError
 
@@ -20,6 +21,10 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
+)
+from synthorg.engine.loop_tool_output_budget import (
+    DEFAULT_TOOL_OUTPUT_MAX_CHARS,
+    abbreviate_tool_output,
 )
 from synthorg.engine.loop_tool_result_fencing import wrap_tool_result
 from synthorg.execution.turn import TurnRecord
@@ -38,6 +43,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_BACKGROUND_JOB_WATCH_STARTED,
     EXECUTION_LOOP_ERROR,
     EXECUTION_LOOP_TOOL_CALLS,
+    EXECUTION_TOOL_OUTPUT_ABBREVIATED,
 )
 from synthorg.observability.events.tool import (
     TOOL_L2_LOADED,
@@ -57,6 +63,41 @@ logger = get_logger(__name__)
 #: The only tool whose result the loop reads for a background job id;
 #: named once so the capture branch and any future reference agree.
 _SHELL_COMMAND_TOOL_NAME: Final[str] = "shell_command"
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ToolTurnControls:
+    """What the loop decided for one tool turn.
+
+    The collaborators a turn needs (the invoker, the approval gate) are
+    passed by name; these are the per-turn decisions, grouped so the loop
+    hands them over as one value and a new decision joins here rather than
+    widening the call.
+
+    Attributes:
+        clock: Stamps the background-job watch when one starts.
+        watch_background_jobs: Whether a backgrounded shell job is watched.
+        tool_output_max_chars: Ceiling on one result's content before it
+            enters the conversation; the loop resolves it live each turn.
+    """
+
+    clock: Clock
+    watch_background_jobs: bool
+    tool_output_max_chars: int
+
+    @classmethod
+    def defaults(cls) -> Self:
+        """The controls a turn runs under when no loop decided them.
+
+        Returns:
+            The wall clock, no job watch, and the registered output ceiling.
+        """
+        return cls(
+            clock=SystemClock(),
+            watch_background_jobs=False,
+            tool_output_max_chars=DEFAULT_TOOL_OUTPUT_MAX_CHARS,
+        )
+
 
 #: Lax-mode ``bool`` coercion, matching how ``ShellCommandArgs.background``
 #: itself validates the same raw tool-call argument (no ``strict=True``
@@ -375,17 +416,38 @@ async def _invoke_tool_calls(
 
 
 def _append_tool_results(
-    ctx: AgentContext, results: Sequence[ToolResult]
+    ctx: AgentContext,
+    results: Sequence[ToolResult],
+    *,
+    tool_output_max_chars: int,
 ) -> AgentContext:
-    """Fence and append every tool result to the conversation.
+    """Abbreviate, fence and append every tool result to the conversation.
+
+    Abbreviation runs first, on the raw result, so the elision marker sits
+    inside the fence with the rest of the tool's bytes and the fence itself
+    is never what gets cut.
 
     Returns:
         The context with one ``TOOL`` message appended per result.
     """
     for result in results:
+        content, elided = abbreviate_tool_output(
+            result.content, max_chars=tool_output_max_chars
+        )
+        bounded = result
+        if elided:
+            logger.info(
+                EXECUTION_TOOL_OUTPUT_ABBREVIATED,
+                execution_id=ctx.execution_id,
+                tool_call_id=result.tool_call_id,
+                original_chars=len(result.content),
+                elided_chars=elided,
+                max_chars=tool_output_max_chars,
+            )
+            bounded = result.model_copy(update={"content": content})
         # Fence the tool output before it enters context so the next
         # LLM turn cannot mistake tool content for instructions.
-        wrapped = wrap_tool_result(result)
+        wrapped = wrap_tool_result(bounded)
         tool_msg = ChatMessage(role=MessageRole.TOOL, tool_result=wrapped)
         ctx = ctx.with_message(tool_msg)
     return ctx
@@ -399,10 +461,19 @@ async def execute_tool_calls(
     turns: list[TurnRecord],
     *,
     approval_gate: ApprovalGate | None = None,
-    clock: Clock | None = None,
-    watch_background_jobs: bool = False,
+    controls: ToolTurnControls | None = None,
 ) -> AgentContext | ExecutionResult:
     """Execute tool calls and append results to context.
+
+    Args:
+        ctx: The context the results are appended to.
+        tool_invoker: What runs the calls; ``None`` ends the run in error.
+        response: The completion carrying the calls.
+        turn_number: The turn the calls belong to.
+        turns: The run's turn records, appended to in place.
+        approval_gate: Parks the run when a call escalates.
+        controls: What the loop decided for this turn; ``None`` runs the
+            turn under :meth:`ToolTurnControls.defaults`.
 
     Returns:
         The updated :class:`AgentContext` when execution should
@@ -410,6 +481,7 @@ async def execute_tool_calls(
         approval-gate escalation, ERROR on missing invoker / tool
         failure).
     """
+    turn_controls = controls if controls is not None else ToolTurnControls.defaults()
     if tool_invoker is None:
         error_msg = (
             f"LLM requested {len(response.tool_calls)} tool "
@@ -440,9 +512,10 @@ async def execute_tool_calls(
     results = results_or_error
 
     record_resolved_tool_calls(turns, results)
-    ctx = _append_tool_results(ctx, results)
+    ctx = _append_tool_results(
+        ctx, results, tool_output_max_chars=turn_controls.tool_output_max_chars
+    )
 
-    effective_clock = clock if clock is not None else SystemClock()
     for tc, result in zip(response.tool_calls, results, strict=True):
         if result.is_error:
             continue
@@ -451,8 +524,8 @@ async def execute_tool_calls(
             tc,
             result,
             turn_number,
-            clock=effective_clock,
-            watch_background_jobs=watch_background_jobs,
+            clock=turn_controls.clock,
+            watch_background_jobs=turn_controls.watch_background_jobs,
         )
 
     if approval_gate is not None:

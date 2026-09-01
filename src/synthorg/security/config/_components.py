@@ -298,6 +298,10 @@ class VisionVerifyConfig(BaseModel):
 # is refused rather than hammering one tool thousands of times a minute.
 _MCP_RATE_PER_MINUTE_DEFAULT: Final[int] = 600
 _MCP_RATE_BURST_DEFAULT: Final[int] = 120
+# Retrieval keeps this many of the scoped MCP tools in front of the model:
+# past a few dozen, selection accuracy over the whole surface collapses,
+# and a task rarely reaches more than one or two domains of it.
+_MCP_RETRIEVAL_TOP_K_DEFAULT: Final[int] = 40
 
 
 class McpSelfConsumerConfig(BaseModel):
@@ -329,6 +333,13 @@ class McpSelfConsumerConfig(BaseModel):
             single tool. ``0`` disables rate limiting.
         rate_limit_burst: Token-bucket capacity (the largest burst of
             calls to one tool allowed before the sustained rate applies).
+        retrieval_top_k: How many of the SCOPED tools reach the model for
+            one unit of work, chosen by lexical relevance to its brief
+            (``engine/mcp_tool_retrieval.py``). Applied after scoping and
+            only ever narrows it: a tool retrieval drops was admissible and
+            is merely not offered, and a tool scoping refused is never
+            offered whatever its relevance. ``0`` offers the whole scoped
+            surface. Mirrors ``security.mcp_self_consumer_retrieval_top_k``.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -339,3 +350,4 @@ class McpSelfConsumerConfig(BaseModel):
     denied_tools: tuple[NotBlankStr, ...] = ()
     rate_limit_per_minute: int = Field(default=_MCP_RATE_PER_MINUTE_DEFAULT, ge=0)
     rate_limit_burst: int = Field(default=_MCP_RATE_BURST_DEFAULT, ge=1)
+    retrieval_top_k: int = Field(default=_MCP_RETRIEVAL_TOP_K_DEFAULT, ge=0)

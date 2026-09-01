@@ -514,6 +514,7 @@ class TestAgentEngineMemoryToolWiring:
         invoker = engine._make_tool_invoker(
             sample_agent,
             memory_strategy=engine._resolve_memory_strategy(),
+            retrieval_query=None,
         )
 
         assert invoker is not None
@@ -551,6 +552,7 @@ class TestAgentEngineMemoryToolWiring:
         invoker = engine._make_tool_invoker(
             sample_agent,
             memory_strategy=engine._resolve_memory_strategy(),
+            retrieval_query=None,
         )
 
         assert invoker is not None

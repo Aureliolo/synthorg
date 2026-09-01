@@ -74,6 +74,7 @@ from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
+from synthorg.engine.mcp_tool_retrieval import task_brief_text
 from synthorg.engine.post_execution.rework_settlement import (
     ScoredRun,
     resolve_rework_bound,
@@ -560,6 +561,7 @@ class AgentEngine(
                     effective_autonomy=effective_autonomy,
                     project_id=task.project,
                     memory_strategy=memory_strategy,
+                    retrieval_query=task_brief_text(task),
                 )
                 # Built before the prompt, not inside the execution span, so
                 # the ceilings it publishes can be stamped on the context the

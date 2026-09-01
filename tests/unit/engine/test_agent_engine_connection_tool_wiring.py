@@ -154,7 +154,9 @@ def _engine(
 
 
 def _permitted_names(engine: AgentEngine) -> set[str]:
-    invoker = engine._make_tool_invoker(make_e2e_identity(), memory_strategy=None)
+    invoker = engine._make_tool_invoker(
+        make_e2e_identity(), memory_strategy=None, retrieval_query=None
+    )
     assert invoker is not None
     return {d.name for d in invoker.get_permitted_definitions()}
 

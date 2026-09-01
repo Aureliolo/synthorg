@@ -31,6 +31,7 @@ from synthorg.engine.loop_protocol import (
     TerminationReason,
     TurnObserver,
 )
+from synthorg.engine.mcp_tool_retrieval import latest_human_turn
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.observability import get_logger
@@ -325,6 +326,7 @@ class AgentEngineChatActionMixin:
             task_id=None,
             effective_autonomy=effective_autonomy,
             memory_strategy=self._resolve_memory_strategy(),
+            retrieval_query=latest_human_turn(ctx.conversation),
         )
         loop = ReactLoop(
             approval_gate=self._approval_gate,

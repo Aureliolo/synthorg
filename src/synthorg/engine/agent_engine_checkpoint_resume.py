@@ -33,6 +33,7 @@ from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
+from synthorg.engine.mcp_tool_retrieval import task_brief_text
 from synthorg.engine.recovery import RecoveryResult, RecoveryStrategy
 from synthorg.engine.task_sync import apply_post_execution_transitions
 from synthorg.observability import get_logger
@@ -237,6 +238,11 @@ class AgentEngineCheckpointResumeMixin:
                 effective_autonomy=effective_autonomy,
                 project_id=project_id,
                 memory_strategy=self._resolve_memory_strategy(),
+                retrieval_query=(
+                    task_brief_text(checkpoint_ctx.task_execution.task)
+                    if checkpoint_ctx.task_execution is not None
+                    else None
+                ),
             ),
             budget_checker=budget_checker,
             shutdown_checker=self._shutdown_checker,

@@ -22,6 +22,7 @@ from synthorg.engine.intervention.inbox import SteeringInbox
 from synthorg.engine.loop_protocol import TurnObserver
 from synthorg.engine.quality.classifier import StepQualityClassifier
 from synthorg.engine.stagnation.protocol import StagnationDetector
+from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 
 class LoopControls(TypedDict):
@@ -38,4 +39,5 @@ class LoopControls(TypedDict):
     step_classifier: StepQualityClassifier | None
     turn_observer: TurnObserver | None
     background_job_watcher: BackgroundJobWatcher | None
+    config_resolver: ConfigResolverProtocol | None
     clock: Clock

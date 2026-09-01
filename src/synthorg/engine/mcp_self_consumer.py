@@ -21,7 +21,10 @@ from typing import TYPE_CHECKING, Final, Protocol, override
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.tool_constraints import ToolAccessLevel
+from synthorg.engine.mcp_tool_retrieval import rank_tools
 from synthorg.meta.mcp.registry import MCPToolDef
+from synthorg.observability import get_logger
+from synthorg.observability.events.mcp import MCP_SELF_CONSUMER_RETRIEVAL_NARROWED
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.config import McpSelfConsumerConfig, McpSelfConsumerMode
 from synthorg.tools.base import BaseTool, ToolExecutionResult
@@ -29,6 +32,8 @@ from synthorg.tools.base import BaseTool, ToolExecutionResult
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
     from synthorg.meta.mcp.invoker import MCPToolInvoker
+
+logger = get_logger(__name__)
 
 # The capability-tag suffix marking a sensitive (admin) MCP tool: the
 # high-blast-radius surface gated behind an explicit per-agent grant.
@@ -94,12 +99,23 @@ class MCPSelfConsumerProvider(Protocol):
         self,
         identity: AgentIdentity,
         access_level: ToolAccessLevel,
+        *,
+        retrieval_query: str | None,
     ) -> tuple[BaseTool, ...]:
-        """Return the MCP tools visible to *identity* at *access_level*.
+        """Return the MCP tools offered to *identity* at *access_level*.
+
+        Args:
+            identity: The agent the tools are built for.
+            access_level: The trust level the surface is scoped by.
+            retrieval_query: The text of the unit of work the surface is
+                for (a task brief, a chat instruction), which retrieval
+                ranks the scoped tools against; ``None`` when the caller
+                has no such text, in which case nothing can be ranked and
+                the whole scoped surface is offered.
 
         Returns:
             Tuple of :class:`BaseTool` adapters scoped to the agent's
-            earned trust level.
+            earned trust level and narrowed to the work at hand.
         """
         ...
 
@@ -215,6 +231,8 @@ def build_mcp_self_consumer(
     def _provide(
         identity: AgentIdentity,
         access_level: ToolAccessLevel,
+        *,
+        retrieval_query: str | None,
     ) -> tuple[BaseTool, ...]:
         if access_level is ToolAccessLevel.ELEVATED:
             # Visible = ambient (always) UNION the sensitive tools this
@@ -236,6 +254,23 @@ def build_mcp_self_consumer(
             allowed=allowed,
             denied=config.denied_tools,
         )
+        # Retrieval runs strictly AFTER scoping and over its result alone, so
+        # it can only drop from what the agent may reach, never add to it.
+        # With no brief there is nothing to rank against, and offering the
+        # scoped surface whole is the honest answer rather than a guess.
+        if retrieval_query is not None:
+            offered = rank_tools(
+                visible, query=retrieval_query, top_k=config.retrieval_top_k
+            )
+            if len(offered) < len(visible):
+                logger.info(
+                    MCP_SELF_CONSUMER_RETRIEVAL_NARROWED,
+                    agent_id=str(identity.id),
+                    scoped=len(visible),
+                    offered=len(offered),
+                    top_k=config.retrieval_top_k,
+                )
+            visible = offered
         return tuple(
             _SynthOrgMCPToolAdapter(
                 mcp_def=tool_def,

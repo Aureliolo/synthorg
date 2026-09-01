@@ -921,6 +921,28 @@ Assistant message snippets included in the summary are sanitized via
 context. Compaction errors are logged but never propagated; compaction is
 advisory, not critical.
 
+### Tool-Output Ceiling
+
+Compaction recovers context late. A tool result is resent on every later
+turn of the run, so a large one is paid once per turn for the rest of the
+session, and by the time the fill level triggers compaction the result has
+already been carried through every turn between. The ceiling is applied
+earlier, at the one boundary where a result enters the conversation
+(`loop_tool_execution.py::_append_tool_results`), before the untrusted-content
+fence is put around it so the marker sits inside the fence with the tool's own
+bytes and the fence is never what gets cut.
+
+`engine.tool_output_max_chars` (default `24000`, `0` disables) is the ceiling
+on one result's characters. Past it the head and the tail are kept, the head
+taking the larger share because a result says what it is first and only needs
+enough room at the end to say how it ended, and an elision marker states how
+many characters were dropped and names the setting, so the agent can narrow
+its next call rather than assume it saw everything. The loop reads the value
+live on every tool turn (`loop_tool_output_budget.py`), so an operator
+lowering it while watching a run drown in output reaches the very next call;
+`EXECUTION_TOOL_OUTPUT_ABBREVIATED` records each elision with the original and
+elided sizes.
+
 ### Compressed Checkpoint Recovery
 
 `CompressionMetadata` is persisted on `AgentContext` and serialised into
