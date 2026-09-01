@@ -138,24 +138,31 @@ class SessionLimits:
 
 
 def session_limits_for(
-    manifest: RecursionDepthManifest, role: Role, *, fan_in: int
+    manifest: RecursionDepthManifest, role: Role, *, fan_in: int, claims: int = 0
 ) -> SessionLimits:
-    """What one session of *role* gets, scaled by how much it has to read.
+    """What one session of *role* gets, scaled by how much it has to do.
 
-    A leaf and a planning session read no sibling's tree, so they take no
-    fan-in scaling and keep their existing flat budgets. A merge must read
-    every child before it can write one line, and a review reads the same
-    pieces plus what the merge produced, so both scale with ``fan_in``, capped
-    so an unusually wide node cannot mint an unbounded session. This is the
-    single owner of that arithmetic: a merge and its review are sized here and
-    nowhere else, so raising one role's base can never silently raise another's.
+    Every role scales on the axis its own work grows along, and the axes are
+    genuinely different. A merge and its review scale on ``fan_in``, because
+    both must read every child before either can write. A leaf reads no
+    sibling's tree, so fan-in says nothing about it; what its work grows along
+    is how many specification requirements it is answerable for, which is
+    ``claims``. A planning session and a contract session scale on neither: the
+    first writes a plan and the second a skeleton of the whole specification,
+    and both are one session per cell.
+
+    This is the single owner of that arithmetic, so raising one role's base can
+    never silently raise another's.
 
     Args:
-        manifest: The recording matrix, for the declared bases, per-piece
-            increments and caps.
+        manifest: The recording matrix, for the declared bases, increments and
+            caps.
         role: Which kind of session is being sized.
-        fan_in: How many pieces the session must read. Zero for a leaf or a
-            planning session, for which this argument changes nothing.
+        fan_in: How many pieces the session must read. Zero for every role but
+            MERGE and REVIEW, for which this argument changes nothing.
+        claims: How many specification requirements the unit is answerable
+            for. LEAF only; zero elsewhere, and zero for a leaf claiming
+            nothing, which then gets the base exactly.
 
     Returns:
         The turn and spend bounds.
@@ -164,7 +171,16 @@ def session_limits_for(
         return SessionLimits(
             max_turns=manifest.unit_max_turns,
             cost_ceiling=manifest.unit_cost_ceiling,
-            token_ceiling=manifest.unit_token_ceiling,
+            token_ceiling=min(
+                manifest.unit_token_ceiling + claims * manifest.unit_token_per_claim,
+                manifest.unit_token_cap,
+            ),
+        )
+    if role is Role.CONTRACT:
+        return SessionLimits(
+            max_turns=manifest.contract_max_turns,
+            cost_ceiling=manifest.unit_cost_ceiling,
+            token_ceiling=manifest.contract_token_ceiling,
         )
     if role is Role.PLAN:
         return SessionLimits(

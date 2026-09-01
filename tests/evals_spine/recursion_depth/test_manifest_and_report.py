@@ -77,6 +77,11 @@ def _manifest_payload(**overrides: object) -> dict[str, object]:
         "planner_max_turns": 40,
         "unit_cost_ceiling": 2.0,
         "unit_token_ceiling": 600000,
+        "unit_token_per_claim": 250000,
+        "unit_token_cap": 4000000,
+        "contract_stage": True,
+        "contract_max_turns": 60,
+        "contract_token_ceiling": 2500000,
         "merge_token_base": 600000,
         "merge_token_per_piece": 100000,
         "merge_token_cap": 2000000,
@@ -880,5 +885,8 @@ class TestTheReportNamesBothPartiesPerMerge:
         # off this table or nowhere.
         rendered = self._markdown(tmp_path)
 
-        assert "| gated | 1 | 4 | 900 | 1.2500 | 0 | 2 |" in rendered
-        assert "| ungated | 1 | 4 | 900 | 1.2500 | 0 | 2 |" in rendered
+        # Columns: Arm, Merges, Sessions, Tokens, Judging, Spend,
+        # Parked escalations, Contract amendments. Judging is 0 here because
+        # these fixtures carry no reviewing spend of their own.
+        assert "| gated | 1 | 4 | 900 | 0 | 1.2500 | 0 | 2 |" in rendered
+        assert "| ungated | 1 | 4 | 900 | 0 | 1.2500 | 0 | 2 |" in rendered

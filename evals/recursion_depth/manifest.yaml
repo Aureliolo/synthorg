@@ -79,13 +79,75 @@ executor:
   # end rather than from three untried points.
   temperature: 0.7
   top_p: 1.0
-  # Deliberately unset while the smoke runs. Those cells sweep ONE axis,
-  # temperature with the top_p that moves alongside it, and a second dial
-  # changing underneath would leave the result attributable to neither. Whether
-  # this family grades reasoning at all is then read off the recorded request
-  # and response bodies rather than asserted here, and the matrix pins what that
-  # shows: a value stated on a vendor's word is a treatment nothing checked.
-  reasoning_effort: null
+  # PINNED from measurement, which is what the previous note here said would
+  # decide it. Unset is not "no treatment": this family documents that
+  # `reasoning_effort` defaults to MAX when the field is absent, and that
+  # thinking cannot be disabled at all, so leaving it null opted the model
+  # that makes roughly 80% of the sweep's calls into the most expensive tier
+  # available.
+  #
+  # READ THE PROBE BELOW WITH ITS CAP IN MIND. It says less than it first
+  # appears, and the first version of this note overstated it.
+  #
+  # On a SHORT prompt at an 8192-token cap the tiers separate cleanly. On the
+  # real workload they do not: measured on live planning sessions against this
+  # same specification, `max` emitted about 81,000 characters of reasoning per
+  # exchange and `high` about 105,000. There is no saving there. What the probe
+  # actually caught is that at `max` the thinking alone EXCEEDS a small cap, so
+  # the reply is all reasoning and carries nothing; at `high` it fits. That is
+  # a difference in whether a bounded reply survives, not a discount.
+  #
+  # So `high` is pinned as a STATED treatment rather than as an economy, and
+  # which tier is actually better on this workload is what
+  # `scripts/sweep_harness_variants.py` records cells to decide.
+  #
+  # What that cost, measured against this endpoint on one identical SHORT
+  # prompt at an 8192-token output cap:
+  #
+  #   unset (max)         120.6s   8192 output tokens (THE CAP)   0 chars of content
+  #   reasoning_effort=low  21.1s  1556 output tokens             6170 chars
+  #   reasoning_effort=high 37.1s  3345 output tokens             8161 chars
+  #
+  # The unset row is the finding, and the cap is part of reading it honestly:
+  # at max the thinking alone exceeded 8192 tokens, so under THAT cap the reply
+  # was entirely reasoning and carried no content at all, which in an agentic
+  # loop is a turn that emits no tool call and accomplishes nothing. Under this
+  # matrix's own 131,072 ceiling the model does get to content eventually; it
+  # just spends enormously first. Observed live before it was probed: a
+  # contract session's first turn spent 71,405 output tokens on 275,649
+  # characters of reasoning and 305 characters of content, and took half an
+  # hour to say what it planned to do.
+  #
+  # So the exposure runs both ways. A generous ceiling buys a very slow, very
+  # expensive turn; a tight one buys an empty turn. Bounding the thinking is
+  # what removes the choice between them.
+  #
+  # `high` rather than `low` because the executor plans as well as builds, and
+  # it is the cheapest setting that both reasons and reliably emits content;
+  # `low` reasoned not at all.
+  #
+  # This is NOT a claim that max reasons worse, and nothing measured here
+  # scored anything. The corpus ran at max and produced this project's two best
+  # recordings, and the vendor recommends max for benchmark reproduction. That
+  # advice fits a single-shot answer, where more thinking is strictly better
+  # because nothing has to fit alongside it. An agentic turn has to leave room
+  # to ACT, and there the evidence is direct: every merge attempt in the corpus
+  # was cut off at 94-99% of its ceiling, so none of them finished whatever the
+  # quality of the thinking that consumed them, and raising
+  # `unit_token_ceiling` to 3,000,000 made a cell strictly WORSE, which is what
+  # buying more thinking looks like. Whether `high` costs any score is untested,
+  # and a cell recorded under it against one recorded at max is what answers it.
+  #
+  # Two nearby dials were probed and do NOT work here, so neither is an
+  # alternative: `think: false` and `chat_template_kwargs.thinking` were both
+  # accepted and ignored, returning the unset row's numbers exactly.
+  #
+  # That this reaches the wire is checked rather than assumed: the reviewer's
+  # recorded request body already carries `reasoning_effort` while the
+  # executor's carried no such key, and the driver declares the parameter
+  # allowed for a model LiteLLM has no entry for, which is the only way it
+  # survives a custom endpoint.
+  reasoning_effort: high
   # Raised beyond reach for the smoke, then MEASURED and pinned from what the
   # transcripts show a response actually uses. A reasoning model spends this
   # budget on hidden reasoning before it can emit content, so a ceiling sized
@@ -150,6 +212,20 @@ independence: cross_family
 # would let it win by spending more attempts rather than by catching anything,
 # so an ungated arm spends the identical budget blindly.
 merge_attempts: 3
+# One session between the plan and the first leaf, fixing what the units build
+# against: the module layout, the signatures that cross between them, and one
+# FAILING test per requirement. Every unit is then recreated from its tree
+# rather than from the seed README, so the shared names are already in each
+# checkout and nothing has to be handed to anybody.
+#
+# Off is the recorded corpus and is the control this is measured against. In
+# three cells under it, EVERY shared module was defined by more than one child
+# and every one of them disagreed on its exports (11 of 11, 10 of 11, 11 of
+# 12). That is not a failure of instruction-following: the seed is a README, so
+# a leaf opening its workspace finds no name to import, and inventing one is
+# the only move available to it. The leaf brief said so in as many words: "the
+# pieces around you are being built at the same time by others".
+contract_stage: true
 # A BASE budget, not a ceiling, and it is the shipped loop's own semantics
 # rather than a looseness introduced here: a run that used a tool in the budget
 # it just spent earns another budget of the same size, up to
@@ -197,6 +273,40 @@ unit_cost_ceiling: 5.0
 # subsystem there, so extra room buys thrashing. The recording of that run is
 # kept under `results/ceiling-3m/` as the evidence for this paragraph.
 unit_token_ceiling: 1500000
+# What a leaf gets ON TOP of the base, per specification requirement it is
+# answerable for. The base above is where a leaf claiming nothing starts, and
+# it is unchanged, so a manifest setting this to 0 reproduces the flat sizing
+# the recorded corpus ran under exactly.
+#
+# Flat was the shipped shape and the corpus says what it cost: 58% of leaves
+# terminated on the ceiling rather than on their work, and the per-leaf token
+# medians across three cells landed within 6% of each other, which is what
+# hitting one wall looks like rather than three trees finishing. A planner is
+# free to make one unit answerable for eighteen requirements and another for
+# two; handing both the same budget prices the plan's own shape at zero and
+# then reads the truncation as the depth effect being measured.
+#
+# 250,000 is a first-cut estimate, not a measurement, and is deliberately
+# smaller than it could be: a claim is one requirement, and the cap-1 leaf that
+# wrote 51 tests for a whole subsystem is the case the CAP below covers rather
+# than this increment. Correct it once a run under this sizing measures what a
+# claim actually costs, the same way `unit_token_ceiling` above carries the
+# history of its own revision.
+unit_token_per_claim: 250000
+# The most one leaf may be sized to. A planner that puts most of the
+# specification behind one unit must not be able to mint an unbounded session
+# out of its own bad decomposition, and the 3,000,000 experiment recorded above
+# is the evidence for keeping this close rather than generous: at that ceiling a
+# cap-1 cell spent 4.3x the tokens per leaf for a strictly worse outcome,
+# because the bound holds TOKENS while a stuck leaf spends TURNS.
+unit_token_cap: 4000000
+# The contract session: one per cell, before any leaf opens. It writes no
+# behaviour, so it needs less room than a leaf; it declares every module the
+# plan named and one failing test per requirement, so it needs more breadth
+# than any one of them. Turns matter more than tokens here because the work is
+# many small files rather than one hard problem.
+contract_max_turns: 60
+contract_token_ceiling: 2500000
 # A merge must read every child before it can write one line; a leaf reads
 # nothing. Sizing both off `unit_token_ceiling` is what starved the recording
 # stopped on 2026-08-30: four merges made 167 tool calls between them, all of

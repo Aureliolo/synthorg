@@ -78,6 +78,26 @@ _OWNERSHIP: Final[str] = (
     "a state somebody assembling it can rely on."
 )
 
+_BOUND_OWNERSHIP: Final[str] = (
+    "This unit is yours end to end. You build it AND you write the tests for "
+    "it: nobody downstream is going to test your work for you.\n\n"
+    "The shape is already fixed and it is already in your checkout. Modules, "
+    "signatures and the types that cross between them were agreed before any "
+    "unit started, and every unit building alongside you has the same ones. "
+    "HONOUR WHAT YOU FIND. Import the names that are there rather than "
+    "declaring your own, and implement against the signatures as written: a "
+    "signature you improve is one every other unit still calls the old way, "
+    "and the improvement is lost in the assembly along with the work either "
+    "side of it.\n\n"
+    "You will also find failing tests naming the requirements. The ones "
+    "covering YOUR requirements are your definition of done: make them pass. "
+    "Leave the others failing, because they belong to units that have not run "
+    "yet, and do not implement behind them to make them go green.\n\n"
+    "If the shape genuinely cannot express what your requirement needs, widen "
+    "it rather than replacing it: add, and leave what is there callable. Say "
+    "so in your report so the assembly knows to look."
+)
+
 
 @dataclass(frozen=True)
 class LeafOutcome:
@@ -133,7 +153,12 @@ class LeafOutcome:
 
 
 def leaf_task(
-    task: Task, *, definition: SubtaskDefinition, spec: SpecBrief, owner: AgentIdentity
+    task: Task,
+    *,
+    definition: SubtaskDefinition,
+    spec: SpecBrief,
+    owner: AgentIdentity,
+    bound: bool = False,
 ) -> Task:
     """Turn a decomposed subtask into the task a leaf session runs.
 
@@ -148,13 +173,19 @@ def leaf_task(
         definition: The planner's own definition, for what it claims.
         spec: The specification, for the requirement text.
         owner: The agent this unit is dispatched to.
+        bound: Whether the cell ran a contract stage, so the unit's checkout
+            already holds the shape it builds against. Changes what the leaf is
+            TOLD, which is the whole of the leaf-side change: without it the
+            brief instructs the unit to leave something an assembler can rely
+            on, which is an instruction to guess, and with it the instruction is
+            to honour what is already there.
 
     Returns:
         The task, briefed and assigned.
     """
     return task.model_copy(
         update={
-            "description": NotBlankStr(leaf_brief(task, definition, spec)),
+            "description": NotBlankStr(leaf_brief(task, definition, spec, bound=bound)),
             "artifacts_expected": (
                 *task.artifacts_expected,
                 ExpectedArtifact(
@@ -167,7 +198,9 @@ def leaf_task(
     )
 
 
-def leaf_brief(task: Task, definition: SubtaskDefinition, spec: SpecBrief) -> str:
+def leaf_brief(
+    task: Task, definition: SubtaskDefinition, spec: SpecBrief, *, bound: bool = False
+) -> str:
     """Compose the brief one leaf is executed against.
 
     The planner's own words are fenced: they are agent-authored text on their
@@ -185,6 +218,7 @@ def leaf_brief(task: Task, definition: SubtaskDefinition, spec: SpecBrief) -> st
         task: The unit's task, for what decomposition wrote into it.
         definition: The planner's definition, for what the unit claims.
         spec: The specification the claims index into.
+        bound: Whether a contract stage put the shape in the unit's checkout.
 
     Returns:
         The brief.
@@ -207,7 +241,7 @@ def leaf_brief(task: Task, definition: SubtaskDefinition, spec: SpecBrief) -> st
         stated.extend(claimed)
     return "\n\n".join(
         [
-            _OWNERSHIP,
+            _BOUND_OWNERSHIP if bound else _OWNERSHIP,
             _ANTI_EXPLOIT,
             (
                 f"Record what you built and how you proved it in "
@@ -232,6 +266,7 @@ async def run_leaf(
     workspace: CellWorkspace,
     execution_id: str,
     limits: SessionLimits,
+    owned: tuple[str, ...] | None = None,
 ) -> LeafOutcome:
     """Run one leaf and decide, from its tree, whether it delivered.
 
@@ -242,6 +277,8 @@ async def run_leaf(
         workspace: Its own recreated tree.
         execution_id: What the ledger keys this unit's spend on.
         limits: The turn and spend bounds this session gets.
+        owned: Requirement ids this leaf answers for, or ``None`` where no
+            contract seeded its tree. See :func:`_delivery`.
 
     Returns:
         The leaf's outcome.
@@ -290,7 +327,7 @@ async def run_leaf(
         attempts = 2
         spent = spent.plus(outcome)
     delivery = await _delivery(
-        deps, task, workspace, outcome, baseline, turns=spent.turns
+        deps, task, workspace, outcome, baseline, turns=spent.turns, owned=owned
     )
     final = await asyncio.to_thread(probe_artifacts, task, workspace)
     return LeafOutcome(
@@ -420,6 +457,7 @@ async def _delivery(
     baseline: UnitFingerprint,
     *,
     turns: int,
+    owned: tuple[str, ...] | None = None,
 ) -> UnitDelivery:
     """Say what *task* produced, and separately whether it stands up.
 
@@ -444,6 +482,16 @@ async def _delivery(
             count alone would file a leaf that built for thirty turns as
             never having started, skipping the artifact and own-test checks
             that decide whether it delivered.
+        owned: Requirement ids this unit answers for, or ``None`` where no
+            contract seeded the tree and the suite in it is therefore all the
+            unit's own. The empty TUPLE is a third state and not the same as
+            ``None``: it says a contract seeded the tree and this unit claims
+            nothing in it, so it owns no test. Under a contract the checkout
+            carries a failing test for EVERY requirement and each unit is told
+            to leave the others failing, so grading one on the whole suite
+            does not misjudge occasionally, it marks every unit undelivered
+            whatever it built (measured: three of three, against six of six
+            delivering in the arm with no contract).
 
     Returns:
         What it produced and why that is or is not a clean delivery. The two
@@ -469,15 +517,53 @@ async def _delivery(
             workspace_files_changed=0,
         )
     changed = files_changed(baseline, after)
-    async with graded(deps, workspace, owner=f"grade:{task.id}") as grader:
-        passed, report = await grader.own_tests_pass(workspace.project_dir)
-    if not passed:
+    if owned is not None and not owned:
         return UnitDelivery(
             produced=True,
-            reason=f"the unit's own tests did not pass: {report}",
+            reason=(
+                "the unit claims no requirement, so under a contract it owns "
+                "no test and its own-test gate decides nothing; only its tree "
+                "is evidence"
+            ),
             workspace_files_changed=changed,
         )
-    return UnitDelivery(produced=True, reason="", workspace_files_changed=changed)
+    async with graded(deps, workspace, owner=f"grade:{task.id}") as grader:
+        passed, report = await grader.own_tests_pass(
+            workspace.project_dir, selecting=owned or ()
+        )
+    return UnitDelivery(
+        produced=True,
+        reason=_why_not(report, passed=passed, owned=owned),
+        workspace_files_changed=changed,
+    )
+
+
+#: What the grader says when a run measured nothing at all. Read off
+#: ``grading._verdict_from``, the only thing that writes it, rather than
+#: guessed at from pytest's own words, which never reach here.
+_COLLECTED_NOTHING: Final[str] = "collected no tests"
+
+
+def _why_not(report: str, *, passed: bool, owned: tuple[str, ...] | None) -> str:
+    """Why the graded run is not a clean delivery, empty when it is.
+
+    Returns:
+        The reason.
+    """
+    if passed:
+        return ""
+    if owned and _COLLECTED_NOTHING in report:
+        # The selection is the CONTRACT's promise, not this unit's: it owed a
+        # test named for every requirement and this unit's ids reached none of
+        # them. Failing the unit for that files a contract defect against the
+        # party that had no say in it, which is the misattribution the whole
+        # ownership branch exists to avoid, so the tree is the evidence left.
+        return (
+            f"no test in the seeded tree is named for any requirement this "
+            f"unit claims ({', '.join(owned)}), so its own-test gate decided "
+            f"nothing and only its tree is evidence"
+        )
+    return f"the unit's own tests did not pass: {report}"
 
 
 __all__ = [

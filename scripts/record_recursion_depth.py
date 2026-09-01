@@ -37,6 +37,7 @@ import asyncio
 import hashlib
 import json
 import shutil
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import Final
@@ -97,6 +98,7 @@ from evals.recursion_depth.tree import SpecBrief, arm_recursion, load_spec_brief
 from evals.runner.execution import EVAL_TASK_PROJECT, seed_eval_project
 from synthorg.config.loader import load_config
 from synthorg.config.schema import RootConfig
+from synthorg.core.completion_enums import REASONING_UNSET, ReasoningEffort
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
@@ -956,6 +958,52 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--executor-reasoning-effort",
+        default=None,
+        choices=(*(member.value for member in ReasoningEffort), REASONING_UNSET),
+        help=(
+            "Override the executor pair's reasoning depth for this run. The "
+            "largest measured lever there is: this family defaults an absent "
+            "value to its most expensive tier, and across three recorded cells "
+            "95-100%% of every session's emitted text was thinking rather than "
+            "content or tool calls. A per-run flag for the same reason "
+            "--executor-temperature is one: the committed value is the "
+            "experimental DESIGN, and two variants must differ by a flag "
+            "rather than by an edit to the file whose digest the journal pins. "
+            f"'{REASONING_UNSET}' omits the parameter, which is how the arm "
+            "reproducing the corpus reaches a tier this vocabulary cannot "
+            "spell. Constrained here rather than left to the manifest, because "
+            "a value it refuses costs a boot of the whole registry before it "
+            "is refused, once per queued cell."
+        ),
+    )
+    parser.add_argument(
+        "--merge-attempts",
+        type=_positive_int,
+        default=None,
+        help=(
+            "Override how many attempts each merge gets, in every arm. Worth "
+            "sweeping because the recorded corpus never converged: every "
+            "attempt ran to 94-99%% of its token ceiling, so more attempts "
+            "bought more truncated tries rather than more repair."
+        ),
+    )
+    parser.add_argument(
+        "--contract-stage",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Run (or skip) the contract stage: one session between the plan "
+            "and the first leaf that fixes the module layout, the signatures "
+            "and one failing test per requirement, which every unit is then "
+            "recreated from. This is the TREATMENT, so it is a per-run lever "
+            "rather than a manifest edit: a cell measuring it and its control "
+            "must differ by this and nothing else, and editing the file "
+            "between them changes the digest the journal pins and makes the "
+            "pair read as two matrices. Left unset, the manifest decides."
+        ),
+    )
+    parser.add_argument(
         "--leaf-concurrency",
         type=_positive_int,
         default=1,
@@ -1154,13 +1202,36 @@ def parse_repetitions(
     return wanted
 
 
+@dataclass(frozen=True, slots=True)
+class PairOverride:
+    """What one run changes about the executor pair, if anything.
+
+    One object rather than three keyword arguments because they describe one
+    thing and grow together: every dial worth probing on this pair belongs
+    here, and threading each separately puts the entry point over the
+    repository's argument cap the moment a third is worth having, which is
+    exactly where a fourth gets left out instead.
+
+    Attributes:
+        temperature: Sampling temperature, or ``None`` to keep the manifest's.
+        top_p: Nucleus threshold, which moves WITH ``temperature`` because a
+            vendor publishes the two as one recommendation.
+        reasoning_effort: Reasoning depth, which moves ALONE: it is a separate
+            axis, and requiring the sampling pair alongside it would make the
+            largest measured lever the hardest to probe.
+    """
+
+    temperature: float | None = None
+    top_p: float | None = None
+    reasoning_effort: str | None = None
+
+
 def _resampled(
-    manifest: RecursionDepthManifest,
     *,
     temperature: float | None,
     top_p: float | None,
 ) -> dict[str, object]:
-    """The executor-pair override a sampling probe asked for, if any.
+    """The executor-pair fields a sampling probe asked for, if any.
 
     The two dials move TOGETHER or not at all, which is the contract the
     manifest and ``ModelConfig.top_p`` both state: a vendor publishes a
@@ -1192,8 +1263,34 @@ def _resampled(
         raise ValueError(msg)
     if temperature is None or top_p is None:
         return {}
-    stated: dict[str, float] = {"temperature": temperature, "top_p": top_p}
-    return {"executor": manifest.executor.model_dump() | stated}
+    return {"temperature": temperature, "top_p": top_p}
+
+
+def _rebound(*, reasoning_effort: str | None) -> dict[str, object]:
+    """The executor-pair field a reasoning probe asked for, if any.
+
+    Its own helper rather than a third argument to :func:`_resampled`, because
+    the two dials are unrelated: temperature and nucleus are one vendor
+    recommendation that must move together, and reasoning depth is a separate
+    axis that moves alone. Folding them would make naming one require the
+    others.
+
+    ``REASONING_UNSET`` is a REQUEST, not the absence of one, and the two must
+    not collapse into each other here: an unnamed flag keeps whatever the
+    manifest pinned, while naming ``none`` asks for the parameter to be OMITTED
+    from the wire. That is the only way to reach a tier the enum cannot spell
+    (this executor family runs at its most expensive setting when the field is
+    absent), so the arm reproducing the corpus is expressed this way and no
+    other.
+
+    Returns:
+        The field to override, or empty when the dial was not named.
+    """
+    if reasoning_effort is None:
+        return {}
+    if reasoning_effort == REASONING_UNSET:
+        return {"reasoning_effort": None}
+    return {"reasoning_effort": reasoning_effort}
 
 
 def narrow(
@@ -1202,8 +1299,9 @@ def narrow(
     max_sessions: int | None = None,
     repetitions: str | None = None,
     *,
-    executor_temperature: float | None = None,
-    executor_top_p: float | None = None,
+    executor: PairOverride | None = None,
+    contract_stage: bool | None = None,
+    merge_attempts: int | None = None,
 ) -> RecursionDepthManifest:
     """Narrow *manifest* to what this run records, and what it may spend.
 
@@ -1228,12 +1326,19 @@ def narrow(
             where ARIES puts the transition), and an operator trading one of
             them for a schedule should not have to edit that design into
             something the next reader inherits.
-        executor_temperature: Sampling override for the executor pair, or
-            ``None`` to keep the manifest's own. The lever for a sampling
-            probe, on the same footing as *repetitions* and for the same
-            reason: the committed value is the design.
-        executor_top_p: Nucleus override for the executor pair, moving with
-            *executor_temperature*.
+        executor: What this run changes about the executor pair, or ``None``
+            to keep the manifest's own on every dial. The lever for a probe,
+            on the same footing as *repetitions* and for the same reason: the
+            committed value is the design.
+        merge_attempts: How many attempts each merge gets, or ``None`` to keep
+            the manifest's own. Equal across arms whatever it is set to, which
+            is the property that makes the arms comparable at all.
+        contract_stage: Whether to run the contract stage, or ``None`` to keep
+            the manifest's own. A per-run lever for the same reason sampling
+            is one, and more so: this is the TREATMENT, so a cell measuring it
+            and the control it is measured against differ by this flag and
+            nothing else, and editing the file between them would change the
+            digest the journal pins and make the pair look like two matrices.
 
     Returns:
         The narrowed matrix.
@@ -1242,12 +1347,33 @@ def narrow(
         ValueError: A named cap is not in the manifest.
     """
     counts = parse_repetitions(repetitions, manifest)
-    sampled = _resampled(
-        manifest, temperature=executor_temperature, top_p=executor_top_p
-    )
-    if depths is None and max_sessions is None and counts is None and not sampled:
+    pair = executor or PairOverride()
+    sampled = _resampled(temperature=pair.temperature, top_p=pair.top_p)
+    reasoned = _rebound(reasoning_effort=pair.reasoning_effort)
+    if (
+        depths is None
+        and max_sessions is None
+        and counts is None
+        and not sampled
+        and not reasoned
+        and contract_stage is None
+        and merge_attempts is None
+    ):
         return manifest
-    override: dict[str, object] = dict(sampled)
+    # Each helper answers only the FIELDS it was asked to change, and they are
+    # merged onto one dump of the pair. Returning a whole pair from each and
+    # applying them in turn is the obvious shape and it silently loses one: the
+    # second dump carries the manifest's own value for the first's field, so a
+    # run naming a temperature AND a reasoning depth records only the reasoning
+    # depth and reports the manifest's temperature back as if it were the
+    # treatment.
+    override: dict[str, object] = {}
+    if sampled or reasoned:
+        override["executor"] = manifest.executor.model_dump() | sampled | reasoned
+    if contract_stage is not None:
+        override["contract_stage"] = contract_stage
+    if merge_attempts is not None:
+        override["merge_attempts"] = merge_attempts
     if max_sessions is not None:
         override["max_sessions"] = max_sessions
     if counts is not None:
@@ -1452,8 +1578,13 @@ def main(argv: list[str] | None = None) -> int:
         args.depths,
         args.max_sessions,
         args.repetitions,
-        executor_temperature=args.executor_temperature,
-        executor_top_p=args.executor_top_p,
+        executor=PairOverride(
+            temperature=args.executor_temperature,
+            top_p=args.executor_top_p,
+            reasoning_effort=args.executor_reasoning_effort,
+        ),
+        contract_stage=args.contract_stage,
+        merge_attempts=args.merge_attempts,
     )
     spec = load_spec_brief(Path(manifest.spec_dir))
     company_config = load_config(args.company_config)

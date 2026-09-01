@@ -10,7 +10,13 @@ from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.emit import assemble_report, write_report
 from evals.recursion_depth.journal import matrix_identity
 from evals.recursion_depth.manifest import Arm, Independence, ModelPair
-from evals.recursion_depth.models import MERGE, CellRecord, Provenance, UnitRecord
+from evals.recursion_depth.models import (
+    MERGE,
+    CellRecord,
+    LoopTreatments,
+    Provenance,
+    UnitRecord,
+)
 from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.types import NotBlankStr
 
@@ -81,6 +87,7 @@ def _provenance(**overrides: object) -> Provenance:
         "reviewer": _REVIEWER,
         "independence": Independence.CROSS_FAMILY,
         "sandbox_image": NotBlankStr("ghcr.io/example/sandbox@sha256:abc"),
+        "loop": LoopTreatments(contract_stage=True, merge_attempts=3),
     }
     return Provenance.model_validate(fields | overrides)
 
@@ -118,8 +125,26 @@ class TestTheTreatmentIsPinnedIntoTheIdentity:
 
         assert matrix_identity(elsewhere) != matrix_identity(_provenance())
 
+    def test_the_loop_the_run_actually_ran_is_a_different_matrix(self) -> None:
+        """The treatment is a FLAG, so the manifest's digest cannot see it.
+
+        ``--contract-stage`` and its opposite leave the file alone by design,
+        so before this the two arms of the experiment stamped byte-identical
+        headers and a resume of one inside the other's directory was accepted.
+        """
+        bare = _provenance(loop=LoopTreatments(contract_stage=False, merge_attempts=3))
+
+        assert matrix_identity(bare) != matrix_identity(_provenance())
+
+    def test_a_changed_repair_budget_is_a_different_matrix(self) -> None:
+        # Equal attempts across arms is what makes them comparable at all, so
+        # a cell recorded under a different budget is not the same experiment.
+        once = _provenance(loop=LoopTreatments(contract_stage=True, merge_attempts=1))
+
+        assert matrix_identity(once) != matrix_identity(_provenance())
+
     def test_the_same_treatment_is_the_same_matrix(self) -> None:
-        # The complement, or the three above would pass on any two stamps.
+        # The complement, or the ones above would pass on any two stamps.
         assert matrix_identity(_provenance()) == matrix_identity(_provenance())
 
 
@@ -142,6 +167,10 @@ class TestTheReportPublishesTheTreatment:
         assert "temperature 1.0, top_p 0.95" in markdown
         assert "reasoning_effort high" in markdown
         assert "ghcr.io/example/sandbox@sha256:abc" in markdown
+        # The arm, which the manifest digest cannot carry: both treatments are
+        # per-run flags that leave the file alone, so without this line two
+        # arms publish identical provenance blocks.
+        assert "contract stage on, 3 merge attempt(s)" in markdown
 
     def test_an_unstated_dial_is_named_rather_than_omitted(self) -> None:
         """An absent dial is reported as unset, never as a provider default.

@@ -217,7 +217,9 @@ def oracle_leftovers(suite_dir: Path) -> tuple[Path, ...]:
 class UnitGrader(Protocol):
     """Whatever decides, from a tree, whether the tests in it pass."""
 
-    async def own_tests_pass(self, project_dir: Path) -> tuple[bool, str]:
+    async def own_tests_pass(
+        self, project_dir: Path, *, selecting: tuple[str, ...] = ()
+    ) -> tuple[bool, str]:
         """Run the tests a unit wrote for itself and report the verdict."""
         ...
 
@@ -255,11 +257,20 @@ class SandboxUnitGrader:
     sandbox: SandboxBackend
     project_id: NotBlankStr
 
-    async def own_tests_pass(self, project_dir: Path) -> tuple[bool, str]:
+    async def own_tests_pass(
+        self, project_dir: Path, *, selecting: tuple[str, ...] = ()
+    ) -> tuple[bool, str]:
         """Run the unit's own suite in a container and read its report.
 
         Args:
             project_dir: The unit's produced tree, on the host.
+            selecting: Requirement ids this unit is answerable for, or empty to
+                run everything the tree holds. Non-empty only where the tree
+                was seeded from a contract, which puts a failing test for every
+                requirement in front of every unit and then tells each one to
+                leave the others failing. Running the whole suite there grades
+                a unit on work it was instructed not to do, and it does not
+                misjudge occasionally: it marks every unit undelivered.
 
         Returns:
             Whether the suite ran clean, and a short report when it did not.
@@ -292,6 +303,7 @@ class SandboxUnitGrader:
                 "no:cacheprovider",
                 "-q",
                 f"--junit-xml={REPORT_NAME}",
+                *selection_args(selecting),
                 ".",
             ),
             cwd=project_dir,
@@ -320,6 +332,30 @@ class SandboxUnitGrader:
         if passed:
             return True, ""
         return False, detail or tail_of(result.stdout + result.stderr)
+
+
+def selection_args(selecting: tuple[str, ...]) -> tuple[str, ...]:
+    """The pytest arguments that narrow a run to the ids a unit answers for.
+
+    ``-k`` matches on the test's NAME, and the contract stage is instructed to
+    name each test for the requirement it covers, so the requirement id is the
+    join. Substring matching is what makes that work without the harness ever
+    seeing the tree: ``R07`` selects ``test_R07_quoted_fields`` whatever the
+    rest of the name turned out to be.
+
+    An empty selection is the whole tree, deliberately and not as a fallback:
+    where no contract seeded the suite, everything in the unit's checkout IS
+    the unit's own work.
+
+    Args:
+        selecting: Requirement ids, or empty for everything.
+
+    Returns:
+        The arguments to splice into the pytest invocation.
+    """
+    if not selecting:
+        return ()
+    return ("-k", " or ".join(selecting))
 
 
 #: What a PROBE runs to establish that the interpreter can run a suite at all.

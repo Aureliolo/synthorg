@@ -15,7 +15,7 @@ from evals.harness.connection_identity import connection_sha256
 from evals.harness.provenance import capture_git_state, manifest_digest
 from evals.recursion_depth.journal import JOURNAL_NAME, PROGRESS_NAME
 from evals.recursion_depth.manifest import ModelPair, RecursionDepthManifest
-from evals.recursion_depth.models import CostBasis, Provenance
+from evals.recursion_depth.models import CostBasis, LoopTreatments, Provenance
 from evals.recursion_depth.tree import SpecBrief
 from synthorg.config.schema import RootConfig
 from synthorg.core.billing_enums import MEASURABLE_BILLING_MODELS
@@ -163,6 +163,13 @@ def capture_provenance(
         reviewer_connection_sha256=reviewer_connection,
         cost_basis=cost_basis,
         sandbox_image=NotBlankStr(sandbox_image) if sandbox_image else None,
+        # Off the NARROWED manifest rather than the file, which is the whole
+        # point: an override leaves the file's digest alone, so without this
+        # two arms of the experiment stamp identical headers.
+        loop=LoopTreatments(
+            contract_stage=manifest.contract_stage,
+            merge_attempts=manifest.merge_attempts,
+        ),
     )
 
 

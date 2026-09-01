@@ -48,6 +48,13 @@ from evals.errors import (
 from evals.harness.journal import RecordedCells
 from evals.harness.workspace import CellWorkspace
 from evals.recursion_depth.claims import requirement_ids_of
+from evals.recursion_depth.contract import (
+    CONTRACT_UNIT_KEY,
+    ContractOutcome,
+    contract_task,
+    run_contract,
+)
+from evals.recursion_depth.divergence import measure
 from evals.recursion_depth.emit import assemble_report, derived_caveats
 from evals.recursion_depth.execute import LeafOutcome, leaf_task, run_leaf
 from evals.recursion_depth.forecast import estimate_sessions
@@ -73,6 +80,7 @@ from evals.recursion_depth.merge import (
 )
 from evals.recursion_depth.models import (
     CEILING_CAVEAT,
+    CONTRACT,
     LEAF,
     MERGE,
     METRIC_CAVEAT,
@@ -428,13 +436,13 @@ class SweepContext:
     budget: SessionBudget
     leaf_concurrency: int = 1
 
-    def limits_for(self, role: Role, *, fan_in: int) -> SessionLimits:
-        """The bounds one session of *role* gets, scaled by *fan_in*.
+    def limits_for(self, role: Role, *, fan_in: int, claims: int = 0) -> SessionLimits:
+        """The bounds one session of *role* gets, on the axis its work grows along.
 
         Returns:
             The turn and spend bounds.
         """
-        return session_limits_for(self.manifest, role, fan_in=fan_in)
+        return session_limits_for(self.manifest, role, fan_in=fan_in, claims=claims)
 
     def reviewer_for(self, arm: Arm) -> MergeReviewer:
         """What looks at a merge in *arm*.
@@ -957,6 +965,10 @@ async def _run_cell(
     started = _continue_cell(context, cell, resumed, units) or await _plan_cell(
         context, cell, units
     )
+    # Between the plan and the first leaf, because that is the only moment at
+    # which what the units agree on can still be decided once and cannot yet
+    # have been decided eight incompatible ways.
+    contract = await _cell_contract(context, cell, started, units)
     assembled = await _build_tree_units(
         context,
         cell,
@@ -965,12 +977,31 @@ async def _run_cell(
         units,
         produced=started.produced,
         delivered=started.delivered,
+        contract=contract,
     )
     merged = await run_oracle(
         build_sandbox=context.deps.build_sandbox,
         release_sandboxes=context.deps.release_tools,
         spec_dir=context.spec_dir,
         tree=assembled.project_dir,
+    )
+    # Off the trees, once, while they are still here: --keep-workspaces is not
+    # the default, so a run that did not ask for it would otherwise have no way
+    # to answer afterwards what its units agreed on.
+    #
+    # LEAVES only, and the filter is the measurement. By this point `produced`
+    # also holds every assembly, and an assembly's tree is built FROM the
+    # children it is being compared against, so including one reports the
+    # agreement it was created to manufacture and buries the disagreement the
+    # leaves actually had.
+    leaves = {record.unit_id for record in units.records if record.kind == LEAF}
+    agreement = await asyncio.to_thread(
+        measure,
+        {
+            key: tree.project_dir
+            for key, tree in started.produced.items()
+            if key in leaves
+        },
     )
     record = CellRecord(
         depth_cap=cell.depth_cap,
@@ -979,6 +1010,8 @@ async def _run_cell(
         achieved_depth=achieved_levels(started.tree),
         units=units.records,
         merged_passing=tuple(sorted(merged.passed)),
+        shared_modules=agreement.shared,
+        diverged_modules=agreement.diverged,
     )
     logger.info(
         EVALS_RECURSION_CELL_RECORDED,
@@ -988,10 +1021,105 @@ async def _run_cell(
         achieved_depth=record.achieved_depth,
         leaf_count=len(record.leaves),
         merged_passing=len(record.merged_passing),
+        shared_modules=record.shared_modules,
+        diverged_modules=record.diverged_modules,
         cost=record.total_cost,
         sessions=record.total_attempts,
     )
     return record
+
+
+async def _cell_contract(
+    context: SweepContext,
+    cell: SweepCell,
+    started: _ContinuedCell,
+    units: CellUnits,
+) -> CellWorkspace | None:
+    """Fix what this cell's units build against, or say it runs without one.
+
+    A tree an earlier attempt left is taken as it stands, on the same terms as
+    any other unit: the contract is a paid session, it is deterministic in
+    nothing but its cost, and re-running it would hand the units a DIFFERENT
+    agreement from the one the leaves already on disk were built against.
+
+    Answers ``None`` when the arm declares no contract stage, which is the
+    control this whole change is measured against: the units then seed from the
+    specification's committed README exactly as the recorded corpus did.
+
+    Args:
+        context: Everything the sweep is driven with.
+        cell: Which run this is.
+        started: The objective and tree the units hang off.
+        units: Sink the record is appended to. Mutated.
+
+    Returns:
+        The tree every unit is then recreated from, or ``None``.
+    """
+    if not context.manifest.contract_stage:
+        return None
+    existing = await asyncio.to_thread(
+        built_unit_workspace,
+        cell_key=cell.key,
+        unit_key=CONTRACT_UNIT_KEY,
+        work_root=context.work_root,
+    )
+    if existing is not None:
+        return existing
+    owner = context.roster.lead
+    workspace = await asyncio.to_thread(
+        unit_workspace,
+        cell_key=cell.key,
+        unit_key=CONTRACT_UNIT_KEY,
+        spec_dir=context.spec_dir,
+        work_root=context.work_root,
+    )
+    titles = tuple(
+        str(task.title)
+        for node in merge_nodes(started.tree)
+        for task in node.created_tasks
+    )
+    outcome = await run_contract(
+        context.deps,
+        task=contract_task(started.root, spec=context.spec, owner=owner, units=titles),
+        owner=owner,
+        workspace=workspace,
+        execution_id=f"{cell.key}-contract",
+        limits=context.limits_for(Role.CONTRACT, fan_in=0),
+    )
+    units.append(_contract_record(cell, outcome))
+    context.budget.spend(1)
+    return outcome.workspace
+
+
+def _contract_record(cell: SweepCell, outcome: ContractOutcome) -> UnitRecord:
+    """Record what the contract stage did.
+
+    Its id is minted from the cell rather than taken from a task, on the
+    planning row's own footing: the stage runs against the objective, so
+    borrowing that task's id would mint a second row under an id the tree
+    already uses for something else.
+
+    Returns:
+        The unit record.
+    """
+    return UnitRecord(
+        unit_id=NotBlankStr(f"{cell.key}-{CONTRACT_UNIT_KEY}"),
+        title=NotBlankStr("Contract: the shape every unit builds against"),
+        kind=CONTRACT,
+        depth=0,
+        delivered=outcome.delivered,
+        produced=outcome.files_written > 0,
+        attempts=1,
+        turns=outcome.turns,
+        cost=outcome.cost,
+        tokens=outcome.tokens,
+        input_tokens=outcome.input_tokens,
+        output_tokens=outcome.output_tokens,
+        executor=outcome.executor,
+        detail=outcome.detail,
+        terminations=(outcome.termination,),
+        workspace_files_changed=outcome.files_written,
+    )
 
 
 async def _build_tree_units(
@@ -1003,6 +1131,7 @@ async def _build_tree_units(
     *,
     produced: dict[str, CellWorkspace],
     delivered: dict[str, UnitDelivery],
+    contract: CellWorkspace | None,
 ) -> CellWorkspace:
     """Build every leaf and assemble every node, children before their parent.
 
@@ -1018,6 +1147,8 @@ async def _build_tree_units(
             fresh run and pre-filled by whatever an earlier attempt left.
             Mutated.
         delivered: The same, for whether each one delivered. Mutated.
+        contract: The tree every unit is recreated from, or ``None`` when this
+            cell runs without a contract stage.
 
     Returns:
         The workspace holding the root's assembled tree.
@@ -1053,6 +1184,7 @@ async def _build_tree_units(
             produced=produced,
             delivered=delivered,
             units=units,
+            contract=contract,
         )
         outcome = await _run_one_merge(
             context,
@@ -1061,6 +1193,7 @@ async def _build_tree_units(
             parent=parent,
             pieces=pieces,
             reviewer=reviewer,
+            contract=contract,
         )
         produced[str(parent.id)] = outcome.workspace
         delivered[str(parent.id)] = UnitDelivery(
@@ -1082,6 +1215,7 @@ async def _leaf_pieces(
     produced: dict[str, CellWorkspace],
     delivered: dict[str, UnitDelivery],
     units: CellUnits,
+    contract: CellWorkspace | None,
 ) -> tuple[MergePiece, ...]:
     """Build each of *node*'s children, and name what the merge assembles.
 
@@ -1100,6 +1234,7 @@ async def _leaf_pieces(
         delivered: Each built id mapped to whether it delivered. Mutated.
         units: Sink the per-unit records are appended to. Mutated, so a run
             that raises partway still reports what it had already paid for.
+        contract: The tree every unit is recreated from, or ``None``.
 
     Returns:
         One piece per child, in the order the level declares them.
@@ -1112,6 +1247,7 @@ async def _leaf_pieces(
         produced=produced,
         delivered=delivered,
         units=units,
+        contract=contract,
     )
     pieces: list[MergePiece] = []
     for index, task in enumerate(node.created_tasks):
@@ -1136,6 +1272,7 @@ async def _build_missing_leaves(
     produced: dict[str, CellWorkspace],
     delivered: dict[str, UnitDelivery],
     units: CellUnits,
+    contract: CellWorkspace | None,
 ) -> None:
     """Build every child of *node* that is not already on disk.
 
@@ -1169,6 +1306,7 @@ async def _build_missing_leaves(
         produced: Each built id mapped to its tree. Mutated.
         delivered: Each built id mapped to whether it delivered. Mutated.
         units: Sink the per-unit records are appended to. Mutated.
+        contract: The tree every unit is recreated from, or ``None``.
 
     Raises:
         BaseException: Whatever the first failing leaf raised, unchanged.
@@ -1181,7 +1319,11 @@ async def _build_missing_leaves(
     async def build(task: Task) -> None:
         async with limiter:
             leaf = await _run_one_leaf(
-                context, cell, task=task, definition=definitions[str(task.id)]
+                context,
+                cell,
+                task=task,
+                definition=definitions[str(task.id)],
+                contract=contract,
             )
         key = str(task.id)
         produced[key] = leaf.workspace
@@ -1250,8 +1392,9 @@ async def _run_one_leaf(
     *,
     task: Task,
     definition: SubtaskDefinition,
+    contract: CellWorkspace | None,
 ) -> LeafOutcome:
-    """Build one leaf in its own recreated tree.
+    """Build one leaf in its own tree, recreated from what the cell agreed on.
 
     Returns:
         The leaf's outcome.
@@ -1263,14 +1406,31 @@ async def _run_one_leaf(
         unit_key=leaf_unit_key(str(task.id)),
         spec_dir=context.spec_dir,
         work_root=context.work_root,
+        contract=contract,
+    )
+    claimed = requirement_ids_of(
+        definition.satisfies,
+        known=context.spec.requirement_ids,
+        unit=str(task.title),
     )
     return await run_leaf(
         context.deps,
-        task=leaf_task(task, definition=definition, spec=context.spec, owner=owner),
+        task=leaf_task(
+            task,
+            definition=definition,
+            spec=context.spec,
+            owner=owner,
+            bound=contract is not None,
+        ),
         owner=owner,
         workspace=workspace,
         execution_id=f"{cell.key}-leaf-{task.id}",
-        limits=context.limits_for(Role.LEAF, fan_in=0),
+        limits=context.limits_for(Role.LEAF, fan_in=0, claims=len(claimed)),
+        # The ids only decide the own-test gate where a contract seeded the
+        # tree, which is also the only arm where the tree holds tests this leaf
+        # did not write. `None` and `()` are different answers and both matter:
+        # no contract, versus a contract this leaf claims nothing under.
+        owned=tuple(claimed) if contract is not None else None,
     )
 
 
@@ -1282,8 +1442,15 @@ async def _run_one_merge(
     parent: Task,
     pieces: tuple[MergePiece, ...],
     reviewer: MergeReviewer,
+    contract: CellWorkspace | None,
 ) -> MergeOutcome:
-    """Assemble one node in its own recreated tree.
+    """Assemble one node in its own tree, recreated from what the cell agreed on.
+
+    The merge seeds from the contract for the same reason its children did, and
+    it is the half that turns the agreement into a saving: its pieces then
+    differ from its own starting tree only by what each child ADDED, so what it
+    has to reconcile is the work rather than eight incompatible restatements of
+    the same interface.
 
     Returns:
         The merge's outcome.
@@ -1294,6 +1461,7 @@ async def _run_one_merge(
         unit_key=merge_unit_key(str(parent.id)),
         spec_dir=context.spec_dir,
         work_root=context.work_root,
+        contract=contract,
     )
     fan_in = len(pieces)
     return await run_merge(
@@ -1308,6 +1476,7 @@ async def _run_one_merge(
             merge_limits=context.limits_for(Role.MERGE, fan_in=fan_in),
             review_limits=context.limits_for(Role.REVIEW, fan_in=fan_in),
             attempts=context.manifest.merge_attempts,
+            bound=contract is not None,
         ),
         reviewer,
     )
@@ -1426,6 +1595,7 @@ def _merge_record(
         tokens=outcome.tokens,
         input_tokens=outcome.input_tokens,
         output_tokens=outcome.output_tokens,
+        review_tokens=outcome.review_tokens,
         executor=outcome.executor,
         reviewer=outcome.reviewer,
         detail=outcome.detail,

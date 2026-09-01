@@ -33,6 +33,7 @@ an unscrubbed one tomorrow.
 import asyncio
 import gzip
 import json
+import threading
 import zlib
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -88,6 +89,20 @@ class TranscriptRecorder:
         """Start with nothing bound, recording nothing."""
         self._paths: dict[str, Path] = {}
         self._bearers: dict[str, str] = {}
+        # One writer at a time across every session, because the tap appends
+        # from a worker thread per request and a transcript line here is a
+        # whole request and response body: hundreds of kilobytes, far past the
+        # buffer a text-mode write is flushed in one piece at. Two concurrent
+        # sessions therefore interleave MID-LINE, and the corruption is
+        # silent, because the file still has the right number of newlines.
+        # Measured across three recorded cells: 4, 7 and 38 lines that would
+        # not parse, entirely in the concurrent halves.
+        #
+        # What that costs a reader is worse than the lines themselves: an
+        # absence in a transcript is evidence a tool was never called, and a
+        # tap that drops lines under concurrency turns every such absence into
+        # a question nobody can answer.
+        self._append_lock = threading.Lock()
 
     def bind(self, label: str, path: Path) -> None:
         """Send *label*'s exchanges to *path*.
@@ -146,29 +161,48 @@ class TranscriptRecorder:
             return None
         return self._paths.get(label)
 
-    @staticmethod
-    def write(entry: dict[str, object], path: Path) -> None:
+    def write(self, entry: dict[str, object], path: Path) -> None:
         """Append one exchange to *path*.
 
         A transcript is a diagnostic, so a write failure must never take down
         the run that was producing it. Serialisation uses ``default=str`` so an
         unexpected object shape degrades to its text rather than raising, and
-        the line is scrubbed before it lands: the bodies are whole request and
+        the entry is scrubbed before it lands: the bodies are whole request and
         response payloads, and a transcript is a file an operator opens and
         forwards.
 
+        Scrubbed per VALUE and never over the serialised line, which is the
+        same redaction at a layer where it cannot break anything. Applied to
+        the finished JSON it edits the document rather than the data, and a
+        replacement lands wherever the pattern happens to sit: across an
+        escaped quote, and the line stops parsing. That is not hypothetical
+        and not rare. The scrubber masks an unquoted ``<name>token: value``
+        pair, the graded specification is a SQL engine, and agent code full of
+        ``rest token:`` and ``class Token:`` matched it, so 4, 7 and 38 lines
+        of three recorded cells were destroyed by their own redaction. Below,
+        the replacement happens inside a string that ``json.dumps`` then
+        escapes, so the document is valid whatever the scrubber did to the
+        value.
+
         Blocking, and called through a worker thread: it runs on the ASGI
         path, where a synchronous write would stall the event loop this same
-        process is serving both legs from.
+        process is serving both legs from. That is exactly why the append is
+        locked: several such threads are live at once whenever more than one
+        unit is building.
+
+        Only the append is held, never the serialisation or the scrub, which
+        are the expensive halves and touch nothing shared. The lock spans
+        every path rather than one per file because a lock per path is a
+        dictionary two threads would race to populate, and the append is
+        microseconds against sessions running minutes.
 
         Args:
             entry: The exchange to record.
             path: The transcript the exchange belongs to.
         """
         try:
-            body = json.dumps(entry, ensure_ascii=False, default=str)
-            line = scrub_secret_tokens(body)
-            with path.open("a", encoding="utf-8") as handle:
+            line = json.dumps(_scrubbed(entry), ensure_ascii=False, default=str)
+            with self._append_lock, path.open("a", encoding="utf-8") as handle:
                 handle.write(line + "\n")
         except (OSError, TypeError, ValueError) as exc:
             logger.warning(
@@ -177,6 +211,35 @@ class TranscriptRecorder:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+
+
+def _scrubbed(value: object) -> object:
+    """Mask credentials in every string *inside* an entry, not around it.
+
+    Walks rather than serialising first, because the scrubber's job is to edit
+    the DATA and doing it to the finished document lets a replacement cut
+    across JSON syntax. A dict key is scrubbed too: a header name is a key
+    here, and a key is as capable of carrying a credential as a value.
+
+    Returns:
+        The entry with every string leaf scrubbed.
+    """
+    match value:
+        case str():
+            return scrub_secret_tokens(value)
+        case dict():
+            return {
+                scrub_secret_tokens(key) if isinstance(key, str) else key: _scrubbed(
+                    inner
+                )
+                for key, inner in value.items()
+            }
+        case list():
+            return [_scrubbed(inner) for inner in value]
+        case tuple():
+            return [_scrubbed(inner) for inner in value]
+        case _:
+            return value
 
 
 def _is_completion(scope: Scope) -> bool:

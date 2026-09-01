@@ -31,10 +31,7 @@ from typing import override
 
 import pytest
 
-from synthorg.tools.sandbox.docker_sandbox_exec import (
-    _HEALTH_SERVER_PATH,
-    _KEEPALIVE_ARGS,
-)
+from synthorg.tools.sandbox.keepalive import HEALTH_SERVER_PATH, KEEPALIVE_ARGS
 
 pytestmark = pytest.mark.unit
 
@@ -181,14 +178,14 @@ class TestSomethingActuallyStartsTheServer:
             "the sandbox Dockerfile no longer installs healthz.py"
         )
 
-        assert any(installed.group(1) in argument for argument in _KEEPALIVE_ARGS), (
+        assert any(installed.group(1) in argument for argument in KEEPALIVE_ARGS), (
             "the keep-alive container replaces the image CMD, so it is the only "
             "thing that can start the health server the HEALTHCHECK dials"
         )
 
     def test_the_keepalive_still_holds_the_container_open(self) -> None:
         """Starting the server must not cost the container its main process."""
-        script = " ".join(_KEEPALIVE_ARGS)
+        script = " ".join(KEEPALIVE_ARGS)
 
         assert "exec tail -f /dev/null" in script
 
@@ -198,9 +195,9 @@ class TestSomethingActuallyStartsTheServer:
         It must report no health rather than fail to start, so the launch is
         guarded on the file existing.
         """
-        script = " ".join(_KEEPALIVE_ARGS)
+        script = " ".join(KEEPALIVE_ARGS)
 
-        assert f"[ -f {_HEALTH_SERVER_PATH} ]" in script
+        assert f"[ -f {HEALTH_SERVER_PATH} ]" in script
 
 
 @pytest.fixture

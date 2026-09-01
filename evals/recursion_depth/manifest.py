@@ -105,9 +105,15 @@ class Role(StrEnum):
             (``planner_max_turns``), because it writes a plan rather than
             software; carried here so one function answers "what does this
             role get" for every session the sweep runs.
-        LEAF: Builds one unit from nothing. Reads no sibling's tree, so it
-            takes no fan-in scaling: ``unit_token_ceiling`` and
-            ``unit_max_turns`` are its whole budget, unchanged.
+        CONTRACT: Fixes the shape every unit of a cell is then built against.
+            Reads no tree at all, and writes a skeleton whose size follows the
+            SPECIFICATION rather than any one unit, so it is sized off the
+            requirement count instead of sharing the leaf's flat ceiling.
+        LEAF: Builds one unit. Reads no sibling's tree, so it takes no fan-in
+            scaling; it is scaled instead by how many requirements it CLAIMS,
+            because a flat ceiling gives a unit answerable for eighteen of them
+            exactly what it gives a unit answerable for two, and 58% of a
+            recorded corpus's leaves ran out on it.
         MERGE: Assembles a node's children into one tree. Must read every
             piece before it can write, so its budget grows with how many
             pieces there are.
@@ -116,6 +122,7 @@ class Role(StrEnum):
     """
 
     PLAN = "plan"
+    CONTRACT = "contract"
     LEAF = "leaf"
     MERGE = "merge"
     REVIEW = "review"
@@ -308,6 +315,16 @@ class RecursionDepthManifest(BaseModel):
         reviewer: The pair every merge review runs on.
         independence: What the manifest claims about those two pairs, checked
             against them at load.
+        contract_stage: Whether one CONTRACT session runs between the plan and
+            the first leaf, fixing the module layout, the signatures and one
+            failing test per requirement that every unit is then recreated
+            from. Off reproduces the recorded corpus exactly: each unit seeds
+            from the specification's committed README, finds no name to import,
+            and invents one. That corpus is why this exists at all, and it is
+            also why the flag exists rather than the stage simply always
+            running: the measured claim is that a cell WITH a contract diverges
+            less than one without, and a treatment nothing can be compared
+            against is not a measurement.
         merge_attempts: How many attempts each merge gets, in BOTH arms. Equal
             by construction: repair only in the gated arm would let it win by
             spending more rather than by catching anything.
@@ -337,8 +354,27 @@ class RecursionDepthManifest(BaseModel):
             there and a runaway unit would be held by nothing but its turn
             cap. Required rather than optional, because the connection a
             manifest will be recorded against is not knowable here. This is
-            also the LEAF's whole budget under :func:`session_limits_for`: a
-            leaf reads no sibling's tree, so it takes no fan-in scaling.
+            also the LEAF's BASE budget under :func:`session_limits_for`: a
+            leaf reads no sibling's tree, so it takes no fan-in scaling, and
+            what it does scale on is ``unit_token_per_claim``.
+        unit_token_per_claim: Tokens added per specification requirement the
+            leaf is answerable for. Flat was the shipped shape and it is the
+            reason 58% of a recorded corpus's leaves terminated on their
+            ceiling rather than on their work: a planner is free to make one
+            unit answerable for eighteen requirements and another for two, and
+            handing both the same budget prices the plan's own shape at zero.
+            Zero restores the flat behaviour exactly, which is what makes the
+            comparison against the recorded corpus a fair one.
+        unit_token_cap: The most one leaf may be sized to, however many
+            requirements it claims. Declared so a planner that puts most of
+            the specification behind a single unit cannot mint an unbounded
+            session out of its own bad decomposition.
+        contract_max_turns: The turn budget the CONTRACT session gets.
+        contract_token_ceiling: What the contract session may spend. Its own
+            field rather than the leaf's, because what it writes follows the
+            SPECIFICATION rather than any one unit: it declares every module
+            the plan named and one failing test per requirement, so a leaf's
+            budget is the wrong size for it in both directions.
         merge_token_base: What one merge session gets before any child is
             counted, on the same footing as ``unit_token_ceiling``: a merge
             with nothing to read still has to write an assembled tree.
@@ -411,11 +447,16 @@ class RecursionDepthManifest(BaseModel):
     executor: ModelPair
     reviewer: ModelPair
     independence: Independence
+    contract_stage: bool
     merge_attempts: int = Field(ge=1, le=10)
     planner_max_turns: int = Field(ge=1, le=_PLANNER_TURN_CAP)
     unit_max_turns: int = Field(ge=1, le=_UNIT_TURN_CAP)
     unit_cost_ceiling: float = Field(gt=0.0)
     unit_token_ceiling: int = Field(gt=0)
+    unit_token_per_claim: int = Field(ge=0)
+    unit_token_cap: int = Field(gt=0)
+    contract_max_turns: int = Field(ge=1, le=_UNIT_TURN_CAP)
+    contract_token_ceiling: int = Field(gt=0)
     merge_token_base: int = Field(gt=0)
     merge_token_per_piece: int = Field(ge=0)
     merge_token_cap: int = Field(gt=0)
@@ -492,7 +533,13 @@ class RecursionDepthManifest(BaseModel):
         # negative, and this one is bounded at one by the caller's own field.
         leaves: int = branching**depth_cap
         planned = (leaves - 1) // (branching - 1)
-        return planned + leaves + _SESSIONS_PER_ASSEMBLY * planned
+        # The contract is ONE session per cell however deep the tree, because
+        # it fixes the shape of the specification rather than of any level.
+        # That is also why it barely moves this figure and must still be in it:
+        # a projection that omits a session the run makes is one an operator
+        # sizes a ceiling from and loses a cell to.
+        contract = 1 if self.contract_stage else 0
+        return contract + planned + leaves + _SESSIONS_PER_ASSEMBLY * planned
 
     @model_validator(mode="after")
     def _validate(self) -> Self:

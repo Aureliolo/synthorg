@@ -9,7 +9,7 @@ a model to answer.
 import itertools
 import shutil
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
@@ -46,6 +46,7 @@ from evals.recursion_depth.grading import (
     UnitGrader,
     read_verdict,
     refuse_without_a_runner,
+    selection_args,
 )
 from evals.recursion_depth.journal import (
     PROGRESS_SPEC,
@@ -835,6 +836,7 @@ class TestDeliveryIsAboutWorkNotTheDeclaration:
         *,
         writes: Mapping[str, str] = MappingProxyType({}),
         own_tests: tuple[bool, str] = (True, ""),
+        owned: tuple[str, ...] | None = None,
     ) -> LeafOutcome:
         """Run one leaf whose session writes *writes* and stops.
 
@@ -848,6 +850,8 @@ class TestDeliveryIsAboutWorkNotTheDeclaration:
             monkeypatch: Used to script the session.
             writes: Relative path to content the session writes.
             own_tests: What the grader reports for the unit's own suite.
+            owned: Requirement ids the leaf answers for, ``None`` for a tree no
+                contract seeded.
 
         Returns:
             The leaf's outcome.
@@ -870,6 +874,7 @@ class TestDeliveryIsAboutWorkNotTheDeclaration:
             workspace=workspace,
             execution_id="d1-gated-r0-leaf",
             limits=SessionLimits(max_turns=8, cost_ceiling=5.0, token_ceiling=100_000),
+            owned=owned,
         )
 
     async def test_a_missing_package_marker_does_not_zero_a_unit(
@@ -1203,6 +1208,138 @@ class TestDeliveryIsAboutWorkNotTheDeclaration:
         assert "3 failed" in outcome.detail
 
 
+class TestAContractSeededLeafIsGradedOnWhatItOwns:
+    """A leaf under a contract inherits a suite it was told to leave failing.
+
+    The contract writes one failing test per requirement, and each leaf is
+    briefed to turn ITS OWN green and leave the others alone. Running the whole
+    suite as that leaf's own-test gate therefore does not misjudge sometimes,
+    it marks every leaf undelivered whatever it built. Measured live: three of
+    three contract leaves undelivered while the control arm, identical but for
+    the contract, delivered six of six.
+    """
+
+    def _capturing(self) -> tuple[SweepDeps, list[tuple[str, ...]]]:
+        """Deps whose grader records what each call selected, and always fails.
+
+        Failing is what makes the selection legible: a passing grader reaches
+        the same delivered verdict whatever it was asked to run, so the test
+        would hold for a loop that stopped selecting.
+
+        Returns:
+            The deps, and the list its grader appends every selection to.
+        """
+        seen: list[tuple[str, ...]] = []
+
+        async def _graded(
+            _project: Path, *, selecting: tuple[str, ...] = ()
+        ) -> tuple[bool, str]:
+            seen.append(selecting)
+            return False, "the suite collected no tests"
+
+        return (
+            replace(
+                _deps(),
+                build_grader=lambda _workspace, *, owner: mock_of[UnitGrader](
+                    own_tests_pass=_graded
+                ),
+            ),
+            seen,
+        )
+
+    async def _run(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        owned: tuple[str, ...] | None,
+    ) -> tuple[LeafOutcome, list[tuple[str, ...]]]:
+        """Run one leaf that writes a module, under *owned*.
+
+        Returns:
+            Its outcome, and every selection its grader was asked for.
+        """
+        workspace = _workspace(tmp_path, "owned")
+        deps, seen = self._capturing()
+
+        async def _writes(_deps: SweepDeps, **_rest: object) -> SessionOutcome:
+            written = workspace.project_dir / "src/inference.py"
+            written.parent.mkdir(parents=True, exist_ok=True)
+            written.write_text("real work", encoding="utf-8")
+            return SessionOutcome(
+                cost=0.5, tokens=1200, turns=3, termination="completed"
+            )
+
+        monkeypatch.setattr(execute_module, "run_session", _writes)
+        outcome = await run_leaf(
+            deps,
+            task=_task("Inference module"),
+            owner=_identity("Builder"),
+            workspace=workspace,
+            execution_id="d1-gated-r0-leaf",
+            limits=SessionLimits(max_turns=8, cost_ceiling=5.0, token_ceiling=100_000),
+            owned=owned,
+        )
+        return outcome, seen
+
+    async def test_only_the_claimed_requirements_are_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _outcome, seen = await self._run(
+            tmp_path, monkeypatch, owned=("R06", "R07", "R08")
+        )
+
+        assert seen == [("R06", "R07", "R08")]
+
+    async def test_no_contract_runs_the_whole_tree(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # `None` is not "claims nothing": where no contract seeded the tree,
+        # everything in the checkout IS this leaf's own work, so narrowing
+        # would grade it on a fraction of what it wrote.
+        _outcome, seen = await self._run(tmp_path, monkeypatch, owned=None)
+
+        assert seen == [()]
+
+    async def test_a_leaf_claiming_nothing_is_not_graded_on_its_siblings(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The empty tuple is a third state, and running the suite is wrong.
+
+        A contract seeded the tree and this leaf claims no requirement in it,
+        so it owns no test. Falling back to the whole suite there is the same
+        defect as never narrowing at all: the tree is full of tests it was
+        instructed to leave failing.
+        """
+        outcome, seen = await self._run(tmp_path, monkeypatch, owned=())
+
+        assert seen == []
+        assert outcome.produced is True
+        assert "claims no requirement" in outcome.detail
+
+    async def test_a_selection_matching_no_test_is_the_contracts_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The contract owed a test named for every requirement; this is it.
+
+        Booking that against the leaf files a contract defect against the one
+        party with no say in it, and the leaf's tree is then the only evidence
+        left about the leaf.
+        """
+        outcome, _seen = await self._run(tmp_path, monkeypatch, owned=("R99",))
+
+        assert outcome.produced is True
+        assert "R99" in outcome.detail
+        assert "decided nothing" in outcome.detail
+
+    def test_the_selection_reaches_pytest_as_a_name_filter(self) -> None:
+        # The join is the requirement id appearing in the test's NAME, which is
+        # what the contract stage is instructed to do, so substring matching is
+        # what lets the harness select without ever reading the tree.
+        assert selection_args(("R06", "R07")) == ("-k", "R06 or R07")
+        assert selection_args(()) == ()
+
+
 def _masked(logs: Sequence[Mapping[str, object]]) -> list[str]:
     """What the masked-failure lines of a captured log reported.
 
@@ -1474,8 +1611,9 @@ def assembled_trees(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         *,
         produced: dict[str, CellWorkspace],
         delivered: dict[str, bool],
+        contract: CellWorkspace | None,
     ) -> CellWorkspace:
-        del produced, delivered
+        del produced, delivered, contract
         return _workspace(tmp_path, "assembled")
 
     monkeypatch.setattr(runner_module, "_build_tree_units", _assembled)
@@ -1515,6 +1653,7 @@ class _BuildsTreeUnits(Protocol):
         *,
         produced: dict[str, CellWorkspace],
         delivered: dict[str, bool],
+        contract: CellWorkspace | None,
     ) -> CellWorkspace:
         """Build every leaf and assemble every node."""
         ...
@@ -1541,9 +1680,10 @@ def _assembles_then_dies(tmp_path: Path, failure: Exception) -> _BuildsTreeUnits
         *,
         produced: dict[str, CellWorkspace],
         delivered: dict[str, bool],
+        contract: CellWorkspace | None,
     ) -> CellWorkspace:
         nonlocal completed
-        del context, cell, root, tree, produced, delivered
+        del context, cell, root, tree, produced, delivered, contract
         units.append(
             UnitRecord(
                 unit_id=NotBlankStr("leaf-1"),
@@ -1587,8 +1727,9 @@ def _builds_one_leaf_then_dies(
         *,
         produced: dict[str, CellWorkspace],
         delivered: dict[str, bool],
+        contract: CellWorkspace | None,
     ) -> CellWorkspace:
-        del root, delivered
+        del root, delivered, contract
         seen.append(dict(produced))
         if produced:
             return _workspace(tmp_path, "assembled")
@@ -1657,6 +1798,15 @@ def _manifest(**overrides: object) -> RecursionDepthManifest:
         "planner_max_turns": 4,
         "unit_cost_ceiling": 1.0,
         "unit_token_ceiling": 1000,
+        "unit_token_per_claim": 0,
+        "unit_token_cap": 4000,
+        # Off, so this suite keeps measuring the walk it was written against.
+        # The stage is a paid session with its own record, and turning it on
+        # here would add one to every cell's unit count and shift every
+        # spend assertion in the module.
+        "contract_stage": False,
+        "contract_max_turns": 60,
+        "contract_token_ceiling": 2000,
         "merge_token_base": 1000,
         "merge_token_per_piece": 200,
         "merge_token_cap": 5000,

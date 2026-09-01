@@ -147,6 +147,58 @@ def seed_workspace(
     return workspace
 
 
+def reseed_workspace(
+    *, cell_key: str, source_project: Path, work_root: Path
+) -> CellWorkspace:
+    """Recreate one unit's workspace from a tree an earlier stage BUILT.
+
+    The counterpart to :func:`seed_workspace` for the contract stage, whose
+    output is what every unit of its cell is then recreated from. Separate
+    rather than a parameter on the seeder because the two copy sources differ
+    in the one way that matters: a committed fixture is ours and a contract
+    tree was written by an agent, so its symlinks are swept the way every other
+    agent-authored tree is before being copied somewhere it will be read.
+
+    Args:
+        cell_key: Names the unit's tree under *work_root*. Reaches this from
+            authored YAML or from a plan an agent wrote, so it is resolved and
+            re-checked against its root like any other untrusted segment.
+        source_project: The project tree to copy, which an agent wrote.
+        work_root: Directory per-unit roots are created under.
+
+    Returns:
+        The provisioned :class:`CellWorkspace`.
+
+    Raises:
+        WorkspaceSeedNotFoundError: *source_project* is not a directory.
+        WorkspacePathEscapeError: A resolved path escapes its root.
+    """
+    if not source_project.is_dir():
+        msg = (
+            f"unit {cell_key!r} cannot be seeded from {source_project}, which is "
+            f"not a directory; the stage that was to build it produced no tree"
+        )
+        raise WorkspaceSeedNotFoundError(msg)
+
+    work_root.mkdir(parents=True, exist_ok=True)
+    root = _contained(Path(cell_key), work_root)
+    if root.exists():
+        shutil.rmtree(root)
+    project_dir = _contained(Path(_PROJECTS_SUBDIR) / EVAL_TASK_PROJECT, root)
+    shutil.copytree(
+        source_project, project_dir, symlinks=True, ignore_dangling_symlinks=True
+    )
+    drop_escaping_links(project_dir, anchor=source_project)
+
+    logger.info(
+        EVALS_WORKSPACE_SEEDED,
+        cell_key=cell_key,
+        seed_dir=str(source_project),
+        project=EVAL_TASK_PROJECT,
+    )
+    return CellWorkspace(root=root)
+
+
 def existing_workspace(*, cell_key: str, work_root: Path) -> CellWorkspace | None:
     """The tree a previous run left at *cell_key*, if it is still there.
 
@@ -258,4 +310,9 @@ def detach_workspace(source: CellWorkspace, root: Path) -> CellWorkspace:
     return CellWorkspace(root=root)
 
 
-__all__ = ["CellWorkspace", "detach_workspace", "seed_workspace"]
+__all__ = [
+    "CellWorkspace",
+    "detach_workspace",
+    "reseed_workspace",
+    "seed_workspace",
+]

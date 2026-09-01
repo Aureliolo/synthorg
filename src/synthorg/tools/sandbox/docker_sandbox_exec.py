@@ -70,6 +70,7 @@ from synthorg.tools.sandbox.credential_manager import (
 )
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.errors import SandboxStartError
+from synthorg.tools.sandbox.keepalive import KEEPALIVE_ARGS, KEEPALIVE_COMMAND
 from synthorg.tools.sandbox.lifecycle.protocol import (
     ContainerHandle,
     SandboxLifecycleStrategy,
@@ -78,31 +79,6 @@ from synthorg.tools.sandbox.result import SandboxResult
 
 logger = get_logger(__name__)
 
-#: Where the sandbox image puts its health server. Started by the keep-alive
-#: below rather than left to the image's own CMD, because that CMD is REPLACED
-#: here and an ``image_override`` devcontainer has no such file.
-_HEALTH_SERVER_PATH: Final[str] = "/usr/local/bin/healthz.py"
-
-#: What a keep-alive container runs. A plain ``tail -f /dev/null`` kept the
-#: container alive and silently disabled its own health check: the sandbox
-#: image's CMD is what starts ``healthz.py`` on the port its ``HEALTHCHECK``
-#: dials, and passing a command replaces that CMD outright. Measured on a live
-#: merge sandbox, every container reported ``unhealthy`` for its whole life with
-#: a FailingStreak of 107, and the image's own probe had already been fixed once
-#: for a different cause without anyone noticing it still never passed.
-#:
-#: The server is started only when the file is there, so an operator's
-#: devcontainer (which has no health server, and whose image the caller may
-#: substitute) keeps working and simply reports no health. ``exec`` replaces the
-#: shell so the container's main process is still what holds it open, and both
-#: ``sh`` and ``tail`` were already required here: the image's own CMD is an
-#: ``sh -c``, and the previous keep-alive was ``tail``.
-_KEEPALIVE_COMMAND: Final[str] = "sh"
-_KEEPALIVE_SCRIPT: Final[str] = (
-    f"[ -f {_HEALTH_SERVER_PATH} ] && python3 {_HEALTH_SERVER_PATH} & "
-    "exec tail -f /dev/null"
-)
-_KEEPALIVE_ARGS: Final[tuple[str, ...]] = ("-c", _KEEPALIVE_SCRIPT)
 
 # aiodocker exec stream frame identifiers (non-TTY multiplexed stream).
 _EXEC_STREAM_STDOUT: Final[int] = 1
@@ -594,8 +570,8 @@ class DockerSandboxExecMixin:
         # Nothing here needs the sidecar except `network_mode`, which is
         # injected afterwards.
         config = self._build_container_config(
-            command=_KEEPALIVE_COMMAND,
-            args=_KEEPALIVE_ARGS,
+            command=KEEPALIVE_COMMAND,
+            args=KEEPALIVE_ARGS,
             container_cwd=container_cwd,
             env_overrides=env_overrides,
             effective_root=effective_root,

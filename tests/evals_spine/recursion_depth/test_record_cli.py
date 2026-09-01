@@ -9,6 +9,8 @@ import pytest
 from pydantic import ValidationError
 from scripts import record_recursion_depth as record_module
 from scripts.record_recursion_depth import (
+    PairOverride,
+    _parse_args,
     _reclaim_workspaces,
     _recording_slug,
     check_declared_families,
@@ -29,6 +31,7 @@ from evals.recursion_depth.tree import SpecBrief, load_spec_brief
 from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.config.schema import RootConfig
+from synthorg.core.completion_enums import REASONING_UNSET
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.enums import AuthType
 from tests._shared import mock_of
@@ -418,15 +421,41 @@ class TestSamplingIsStatedBeforeAnythingIsSpent:
         assert "exec declared : temperature 0.7" in plan
         assert "revw declared : temperature 0.6" in plan
 
-    def test_the_plan_names_a_dial_the_manifest_leaves_open(self) -> None:
+    def test_a_dial_a_manifest_leaves_open_reads_as_unset(self) -> None:
         """An unstated dial reads as unset rather than vanishing.
 
         Omitting it would tell the operator the pair pins nothing there, when
-        three of the four resolve downstream to a value this system supplies.
-        """
-        plan = describe_plan(load_manifest(_MANIFEST), _spec())
+        the value resolves downstream to whatever the vendor supplies.
 
-        assert "reasoning_effort unset" in plan
+        Built by unsetting the dial rather than read off the committed
+        manifest, which now states it: the property under test is how the plan
+        RENDERS an open dial, and tying that to a value the matrix pins for a
+        measured reason makes a deliberate change look like a regression.
+        """
+        manifest = load_manifest(_MANIFEST)
+        opened = manifest.model_copy(
+            update={
+                "executor": manifest.executor.model_copy(
+                    update={"reasoning_effort": None}
+                )
+            }
+        )
+
+        assert "reasoning_effort unset" in describe_plan(opened, _spec())
+
+    def test_the_committed_matrix_leaves_no_reasoning_dial_open(self) -> None:
+        """Unset is not "no treatment" for either pair this matrix binds.
+
+        Both families default an absent ``reasoning_effort`` to their most
+        expensive tier, so an unstated dial is an expensive choice nobody
+        recorded. Measured on the executor's own endpoint at an 8192-token
+        cap: unset spent the whole cap on reasoning and returned no content at
+        all, against 1,556 tokens at ``low`` and 3,345 at ``high``.
+        """
+        manifest = load_manifest(_MANIFEST)
+
+        assert manifest.executor.reasoning_effort is not None
+        assert manifest.reviewer.reasoning_effort is not None
 
     def test_an_override_reaches_the_plan_not_just_the_run(self) -> None:
         # A value applied downstream of the plan prints the manifest's own
@@ -437,8 +466,7 @@ class TestSamplingIsStatedBeforeAnythingIsSpent:
             None,
             None,
             None,
-            executor_temperature=1.0,
-            executor_top_p=0.95,
+            executor=PairOverride(temperature=1.0, top_p=0.95),
         )
 
         assert probed.executor.temperature == pytest.approx(1.0)
@@ -454,8 +482,7 @@ class TestSamplingIsStatedBeforeAnythingIsSpent:
             None,
             None,
             None,
-            executor_temperature=1.0,
-            executor_top_p=0.95,
+            executor=PairOverride(temperature=1.0, top_p=0.95),
         )
 
         assert probed.reviewer == shipped.reviewer
@@ -470,15 +497,56 @@ class TestSamplingIsStatedBeforeAnythingIsSpent:
         shipped = load_manifest(_MANIFEST)
 
         with pytest.raises(ValueError, match="probed together"):
-            narrow(shipped, None, None, None, executor_temperature=1.0)
+            narrow(shipped, None, None, None, executor=PairOverride(temperature=1.0))
 
         with pytest.raises(ValueError, match="probed together"):
-            narrow(shipped, None, None, None, executor_top_p=0.95)
+            narrow(shipped, None, None, None, executor=PairOverride(top_p=0.95))
 
     def test_naming_no_dial_changes_nothing(self) -> None:
         shipped = load_manifest(_MANIFEST)
 
         assert narrow(shipped, None, None, None) == shipped
+
+    def test_the_top_tier_is_reachable_only_by_omitting_the_parameter(self) -> None:
+        """The arm reproducing the corpus asks for the field to be ABSENT.
+
+        This executor's family dials low / high / max, the vocabulary the
+        product emits is minimal / low / medium / high, and the two overlap on
+        two values. So the tier the corpus actually ran at cannot be named, and
+        the only way back to it is the one the corpus took without deciding to:
+        send no ``reasoning_effort`` at all.
+        """
+        unset = narrow(
+            load_manifest(_MANIFEST),
+            None,
+            None,
+            None,
+            executor=PairOverride(reasoning_effort=REASONING_UNSET),
+        )
+
+        assert unset.executor.reasoning_effort is None
+        assert "reasoning_effort unset" in describe_plan(unset, _spec())
+
+    def test_asking_for_no_override_is_not_asking_for_no_reasoning(self) -> None:
+        # The two arrive one character apart on a command line and mean
+        # opposite things: an unnamed flag keeps the pinned tier, and `none`
+        # asks for the most expensive one there is.
+        shipped = load_manifest(_MANIFEST)
+
+        assert narrow(shipped, None, None, None).executor == shipped.executor
+
+    def test_the_flag_refuses_a_tier_this_vocabulary_cannot_spell(self) -> None:
+        """A value the manifest would reject is rejected before the boot.
+
+        Left to the manifest, a mistyped tier costs a full registry build per
+        queued cell before anything refuses it, which is how a queue of six
+        variants reported four failures with no cell attempted.
+        """
+        with pytest.raises(SystemExit):
+            _parse_args(["--executor-reasoning-effort", "max"])
+
+        named = _parse_args(["--executor-reasoning-effort", REASONING_UNSET])
+        assert named.executor_reasoning_effort == REASONING_UNSET
 
     def test_an_out_of_range_override_is_refused(self) -> None:
         # Re-validated rather than copied: the value came off a command line.
@@ -492,8 +560,7 @@ class TestSamplingIsStatedBeforeAnythingIsSpent:
                 None,
                 None,
                 None,
-                executor_temperature=1.0,
-                executor_top_p=1.5,
+                executor=PairOverride(temperature=1.0, top_p=1.5),
             )
 
 
