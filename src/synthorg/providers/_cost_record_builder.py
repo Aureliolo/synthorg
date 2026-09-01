@@ -43,25 +43,26 @@ def is_zero_usage(usage: TokenUsage) -> bool:
 
 def extract_provider_metadata(
     metadata: Mapping[str, object] | None,
-) -> tuple[float | None, bool | None, int | None, str | None]:
+) -> tuple[float | None, int | None, str | None]:
     """Extract typed ``_synthorg_*`` metadata fields from a response.
 
-    Returns a tuple of (latency_ms, cache_hit, retry_count, retry_reason)
-    with each value coerced to its expected type or ``None`` when absent
-    or mistyped.  Mirrors the extraction in
-    :func:`synthorg.engine.loop_helpers.make_turn_record`.
+    Returns a tuple of (latency_ms, retry_count, retry_reason) with each
+    value coerced to its expected type or ``None`` when absent or mistyped.
+    Mirrors the extraction in
+    :func:`synthorg.engine.loop_helpers.make_turn_record`. Cache counts are
+    not here: they are usage, carried on ``TokenUsage`` beside the token
+    counts they are a share of.
 
     Args:
         metadata: The response's provider metadata, when it carries any.
 
     Returns:
-        A ``(latency_ms, cache_hit, retry_count, retry_reason)`` tuple,
-        each field coerced to its typed value or ``None`` when absent or
-        of unexpected type.
+        A ``(latency_ms, retry_count, retry_reason)`` tuple, each field
+        coerced to its typed value or ``None`` when absent or of unexpected
+        type.
     """
     md = metadata or {}
     latency_raw = md.get("_synthorg_latency_ms")
-    cache_raw = md.get("_synthorg_cache_hit")
     retry_count_raw = md.get("_synthorg_retry_count")
     retry_reason_raw = md.get("_synthorg_retry_reason")
 
@@ -82,13 +83,12 @@ def extract_provider_metadata(
         latency_ms: float | None = float(latency_raw)
     else:
         latency_ms = None
-    cache_hit = cache_raw if isinstance(cache_raw, bool) else None
     if isinstance(retry_count_raw, int) and not isinstance(retry_count_raw, bool):
         retry_count: int | None = retry_count_raw
     else:
         retry_count = None
     retry_reason = retry_reason_raw if isinstance(retry_reason_raw, str) else None
-    return latency_ms, cache_hit, retry_count, retry_reason
+    return latency_ms, retry_count, retry_reason
 
 
 def is_successful_finish(finish_reason: object) -> bool:
@@ -132,6 +132,8 @@ class _ScopeFields(TypedDict):
     model: NotBlankStr
     input_tokens: int
     output_tokens: int
+    cache_read_input_tokens: int
+    cache_write_input_tokens: int
     cost: float
     currency: CurrencyCode
     timestamp: datetime
@@ -158,6 +160,8 @@ def _scope_fields(
         model=NotBlankStr(model),
         input_tokens=usage.input_tokens,
         output_tokens=usage.output_tokens,
+        cache_read_input_tokens=usage.cache_read_input_tokens,
+        cache_write_input_tokens=usage.cache_write_input_tokens,
         cost=usage.cost,
         currency=ctx.currency,
         timestamp=ctx.clock.now(),
@@ -183,14 +187,13 @@ def build_cost_record(
         A ``CostRecord`` populated from the active context, the response
         usage/cost, and the extracted provider metadata.
     """
-    latency_ms, cache_hit, retry_count, retry_reason = extract_provider_metadata(
+    latency_ms, retry_count, retry_reason = extract_provider_metadata(
         response.provider_metadata,
     )
     return CostRecord(
         **_scope_fields(ctx, response.usage, model=model, provider=provider),
         call_category=ctx.call_category,
         latency_ms=latency_ms,
-        cache_hit=cache_hit,
         retry_count=retry_count,
         retry_reason=retry_reason,
         finish_reason=response.finish_reason,
@@ -230,7 +233,6 @@ def build_cost_record_from_usage(
         **_scope_fields(ctx, usage, model=model, provider=provider),
         call_category=call_category if call_category is not None else ctx.call_category,
         latency_ms=None,
-        cache_hit=None,
         retry_count=None,
         retry_reason=None,
         finish_reason=finish_reason,

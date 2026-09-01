@@ -442,15 +442,15 @@ class TestBaseProviderMetadataEnrichment:
         assert isinstance(response.provider_metadata["_synthorg_latency_ms"], float)
         assert response.provider_metadata["_synthorg_latency_ms"] >= 0.0
 
-    async def test_driver_reported_cache_hit_survives_the_merge(self) -> None:
-        """A driver-set _synthorg_cache_hit is additive, not clobbered.
+    async def test_driver_reported_signal_survives_the_merge(self) -> None:
+        """A driver-set ``_synthorg_*`` key is additive, not clobbered.
 
         ``merge_call_metadata`` only injects latency/retry keys; a driver's
-        own capability signal (set on its response before the base class
-        ever sees it) must still be present afterwards.
+        own signal (set on its response before the base class ever sees it)
+        must still be present afterwards.
         """
 
-        class _CachingProvider(_StubProvider):
+        class _SignallingProvider(_StubProvider):
             @override
             async def _do_complete(
                 self,
@@ -464,12 +464,12 @@ class TestBaseProviderMetadataEnrichment:
                     messages, model, tools=tools, config=config
                 )
                 return result.model_copy(
-                    update={"provider_metadata": {"_synthorg_cache_hit": True}}
+                    update={"provider_metadata": {"_synthorg_driver_signal": True}}
                 )
 
-        provider = _CachingProvider()
+        provider = _SignallingProvider()
         response = await provider.complete([_msg()], "test-model")
-        assert response.provider_metadata["_synthorg_cache_hit"] is True
+        assert response.provider_metadata["_synthorg_driver_signal"] is True
         assert "_synthorg_latency_ms" in response.provider_metadata
 
     async def test_no_retry_handler_no_retry_keys(self) -> None:

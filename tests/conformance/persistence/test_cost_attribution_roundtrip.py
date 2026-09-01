@@ -92,10 +92,12 @@ class TestCostAttributionRoundTrip:
         assert rerank.call_count == 1
         assert rerank.input_tokens == 100
         assert rerank.output_tokens == 50
-        # Latency / cache / success are not columns on cost_records, so a repo
-        # round-trip drops them and the breakdown reports them absent.
+        # Latency / success are not columns on cost_records, so a repo
+        # round-trip drops them and the breakdown reports them absent. The
+        # cached counts ARE columns, so the share is a real zero over the
+        # persisted input tokens rather than an absence.
         assert rerank.avg_latency_ms is None
-        assert rerank.cache_hit_rate is None
+        assert rerank.cached_input_share == pytest.approx(0.0)
         assert rerank.success_rate is None
 
     async def test_subsystem_spend_persists_with_no_owner(

@@ -259,7 +259,8 @@ class TestAnalyticsFieldPropagation:
         self,
         *,
         latency_ms: float | None = None,
-        cache_hit: bool | None = None,
+        cache_read_input_tokens: int = 0,
+        cache_write_input_tokens: int = 0,
         retry_count: int | None = None,
         retry_reason: str | None = None,
     ) -> TurnRecord:
@@ -272,7 +273,8 @@ class TestAnalyticsFieldPropagation:
             cost=0.01,
             finish_reason=FinishReason.STOP,
             latency_ms=latency_ms,
-            cache_hit=cache_hit,
+            cache_read_input_tokens=cache_read_input_tokens,
+            cache_write_input_tokens=cache_write_input_tokens,
             retry_count=retry_count,
             retry_reason=retry_reason,
         )
@@ -290,8 +292,10 @@ class TestAnalyticsFieldPropagation:
         )
         assert tracker.records[0].latency_ms == 250.5
 
-    async def test_cache_hit_propagated(self) -> None:
-        turn = self._turn_with_analytics(cache_hit=True)
+    async def test_cache_tokens_propagated(self) -> None:
+        turn = self._turn_with_analytics(
+            cache_read_input_tokens=40, cache_write_input_tokens=12
+        )
         tracker = _FakeTracker()
         await record_execution_costs(
             _result((turn,)),
@@ -300,7 +304,8 @@ class TestAnalyticsFieldPropagation:
             "task-1",
             tracker=tracker,
         )
-        assert tracker.records[0].cache_hit is True
+        assert tracker.records[0].cache_read_input_tokens == 40
+        assert tracker.records[0].cache_write_input_tokens == 12
 
     async def test_retry_count_propagated(self) -> None:
         turn = self._turn_with_analytics(retry_count=2)
@@ -359,7 +364,7 @@ class TestAnalyticsFieldPropagation:
             tracker=tracker,
         )
         assert tracker.records[0].latency_ms is None
-        assert tracker.records[0].cache_hit is None
+        assert tracker.records[0].cache_read_input_tokens == 0
         assert tracker.records[0].retry_count is None
         assert tracker.records[0].retry_reason is None
 

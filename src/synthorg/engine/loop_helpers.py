@@ -304,9 +304,10 @@ def make_turn_record(
         call_category: Optional LLM call category.
         provider_metadata: Optional metadata dict from
             ``CompletionResponse.provider_metadata``. Keys
-            ``_synthorg_latency_ms``, ``_synthorg_cache_hit``,
-            ``_synthorg_retry_count``, and ``_synthorg_retry_reason``
-            are extracted when present.
+            ``_synthorg_latency_ms``, ``_synthorg_retry_count``, and
+            ``_synthorg_retry_reason`` are extracted when present. The
+            cached-token counts are usage rather than metadata and are
+            read off ``response.usage``.
         extra_node_types: Additional node types beyond the
             auto-derived LLM_CALL and TOOL_INVOCATION.
         behavior_tags: Tags inferred by BehaviorTaggerMiddleware.
@@ -322,17 +323,12 @@ def make_turn_record(
     """
     md = provider_metadata or {}
     latency_ms_raw = md.get("_synthorg_latency_ms")
-    cache_hit_raw = md.get("_synthorg_cache_hit")
     retry_count_raw = md.get("_synthorg_retry_count")
     retry_reason_raw = md.get("_synthorg_retry_reason")
 
     latency_ms: float | None = None
     if isinstance(latency_ms_raw, (int, float)):
         latency_ms = float(latency_ms_raw)
-
-    cache_hit: bool | None = None
-    if isinstance(cache_hit_raw, bool):
-        cache_hit = cache_hit_raw
 
     retry_count: int | None = None
     if isinstance(retry_count_raw, int):
@@ -358,7 +354,8 @@ def make_turn_record(
         finish_reason=response.finish_reason,
         call_category=call_category,
         latency_ms=latency_ms,
-        cache_hit=cache_hit,
+        cache_read_input_tokens=response.usage.cache_read_input_tokens,
+        cache_write_input_tokens=response.usage.cache_write_input_tokens,
         retry_count=retry_count,
         retry_reason=retry_reason,
         node_types=node_types,

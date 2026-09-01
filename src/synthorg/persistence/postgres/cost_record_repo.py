@@ -72,13 +72,15 @@ class PostgresCostRecordRepository:
                     INSERT INTO cost_records (
                         agent_id, task_id, project_id, provider, model,
                         input_tokens, output_tokens, cost, currency, timestamp,
-                        call_category, prompt_class_id, claim_id, billing_model
+                        call_category, prompt_class_id, claim_id, billing_model,
+                        cache_read_input_tokens, cache_write_input_tokens
                     ) VALUES (
                         %(agent_id)s, %(task_id)s, %(project_id)s, %(provider)s,
                         %(model)s, %(input_tokens)s, %(output_tokens)s,
                         %(cost)s, %(currency)s, %(timestamp)s,
                         %(call_category)s, %(prompt_class_id)s, %(claim_id)s,
-                        %(billing_model)s
+                        %(billing_model)s,
+                        %(cache_read_input_tokens)s, %(cache_write_input_tokens)s
                     )
                     ON CONFLICT (claim_id, timestamp) DO NOTHING
                     """,
@@ -90,6 +92,8 @@ class PostgresCostRecordRepository:
                         "model": event.model,
                         "input_tokens": event.input_tokens,
                         "output_tokens": event.output_tokens,
+                        "cache_read_input_tokens": event.cache_read_input_tokens,
+                        "cache_write_input_tokens": event.cache_write_input_tokens,
                         "cost": event.cost,
                         "currency": event.currency,
                         "timestamp": event.timestamp,
@@ -147,7 +151,8 @@ class PostgresCostRecordRepository:
         sql = (
             "SELECT agent_id, task_id, project_id, provider, model, "
             "input_tokens, output_tokens, cost, currency, timestamp, "
-            "call_category, prompt_class_id, claim_id, billing_model "
+            "call_category, prompt_class_id, claim_id, billing_model, "
+            "cache_read_input_tokens, cache_write_input_tokens "
             "FROM cost_records"
         )
         if clauses:

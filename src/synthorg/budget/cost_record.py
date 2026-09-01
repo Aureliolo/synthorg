@@ -85,7 +85,9 @@ class CostRecord(BaseModel):
             this call belongs to (populated at task completion when
             quality signals are available, ``None`` otherwise).
         latency_ms: Round-trip latency in milliseconds (``None`` if not measured).
-        cache_hit: Whether the provider served this call from cache.
+        cache_read_input_tokens: Input tokens served from a cached prompt
+            prefix; zero when the provider reported no cache data.
+        cache_write_input_tokens: Input tokens written into the prompt cache.
         retry_count: Number of retry attempts before success (0 = first try succeeded).
         retry_reason: Exception type name of the last retried error.
         finish_reason: LLM finish reason for this call.
@@ -155,9 +157,19 @@ class CostRecord(BaseModel):
         ge=0.0,
         description="Round-trip latency in milliseconds",
     )
-    cache_hit: bool | None = Field(
-        default=None,
-        description="Whether the provider served this call from cache",
+    cache_read_input_tokens: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Input tokens the provider served from a cached prompt prefix. A "
+            "count, because the bill is proportional to it; zero when the "
+            "provider reported no cache data, which is also what a miss is"
+        ),
+    )
+    cache_write_input_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Input tokens the provider wrote into its prompt cache",
     )
     retry_count: int | None = Field(
         default=None,

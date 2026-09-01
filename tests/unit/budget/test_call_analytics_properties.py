@@ -19,7 +19,7 @@ from tests._shared import mock_of
 def _record(
     *,
     retry_count: int | None = None,
-    cache_hit: bool | None = None,
+    cache_read_input_tokens: int = 0,
     latency_ms: float | None = None,
     success: bool | None = None,
     finish_reason: FinishReason = FinishReason.STOP,
@@ -35,7 +35,7 @@ def _record(
         currency="EUR",
         timestamp=datetime(2026, 4, 1, tzinfo=UTC),
         retry_count=retry_count,
-        cache_hit=cache_hit,
+        cache_read_input_tokens=cache_read_input_tokens,
         latency_ms=latency_ms,
         success=success,
         finish_reason=finish_reason,
@@ -63,11 +63,11 @@ def _make_service(records: tuple[CostRecord, ...]) -> CallAnalyticsService:
 _record_strategy = st.builds(
     lambda retry, cache, latency: _record(
         retry_count=retry,
-        cache_hit=cache,
+        cache_read_input_tokens=cache,
         latency_ms=latency,
     ),
     retry=st.one_of(st.none(), st.integers(min_value=0, max_value=10)),
-    cache=st.one_of(st.none(), st.booleans()),
+    cache=st.integers(min_value=0, max_value=400),
     latency=st.one_of(
         st.none(), st.floats(min_value=0.0, max_value=10000.0, allow_nan=False)
     ),
@@ -86,14 +86,19 @@ class TestCallAnalyticsProperties:
         assert 0.0 <= agg.retry_rate <= 1.0
 
     @given(st.lists(_record_strategy, max_size=20))
-    async def test_cache_hit_rate_in_unit_interval(
+    async def test_cached_input_share_in_unit_interval(
         self, records: list[CostRecord]
     ) -> None:
-        """cache_hit_rate is None or in [0.0, 1.0]."""
+        """cached_input_share is None or in [0.0, 1.0].
+
+        The strategy draws cached counts past the input count, which a
+        provider can report when it bills a cached read outside the prompt
+        total; the share is capped rather than the model refusing the row.
+        """
         service = _make_service(tuple(records))
         agg = await service.get_aggregation()
-        if agg.cache_hit_rate is not None:
-            assert 0.0 <= agg.cache_hit_rate <= 1.0
+        if agg.cached_input_share is not None:
+            assert 0.0 <= agg.cached_input_share <= 1.0
 
     @given(st.lists(_record_strategy, max_size=20))
     async def test_success_failure_sum_le_total(

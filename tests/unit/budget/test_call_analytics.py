@@ -27,7 +27,7 @@ def _record(  # noqa: PLR0913
     output_tokens: int = 50,
     cost: float = 0.01,
     latency_ms: float | None = None,
-    cache_hit: bool | None = None,
+    cache_read_input_tokens: int = 0,
     retry_count: int | None = None,
     retry_reason: str | None = None,
     finish_reason: FinishReason = FinishReason.STOP,
@@ -47,7 +47,7 @@ def _record(  # noqa: PLR0913
         currency=currency,
         timestamp=datetime(2026, 4, 1, tzinfo=UTC),
         latency_ms=latency_ms,
-        cache_hit=cache_hit,
+        cache_read_input_tokens=cache_read_input_tokens,
         retry_count=retry_count,
         retry_reason=retry_reason,
         finish_reason=finish_reason,
@@ -144,8 +144,8 @@ class TestGetAggregationEmpty:
         assert agg.failure_count == 0
         assert agg.retry_count == 0
         assert agg.retry_rate == 0.0
-        assert agg.cache_hit_count == 0
-        assert agg.cache_hit_rate is None
+        assert agg.cached_input_tokens == 0
+        assert agg.cached_input_share is None
         assert agg.avg_latency_ms is None
         assert agg.p95_latency_ms is None
         assert agg.by_finish_reason == ()
@@ -232,22 +232,23 @@ class TestGetAggregationCounts:
         assert agg.retry_count == 2
         assert agg.retry_rate == pytest.approx(0.5)
 
-    async def test_cache_hit_rate(self) -> None:
+    async def test_cached_input_share_is_over_tokens_not_calls(self) -> None:
+        """Two of three calls hit, but the share reads what the bill reads."""
         records = (
-            _record(cache_hit=True),
-            _record(cache_hit=False),
-            _record(cache_hit=True),
+            _record(cache_read_input_tokens=50),
+            _record(cache_read_input_tokens=0),
+            _record(cache_read_input_tokens=100),
         )
         service = _make_service(records)
         agg = await service.get_aggregation()
-        assert agg.cache_hit_count == 2
-        assert agg.cache_hit_rate == pytest.approx(2 / 3)
+        assert agg.cached_input_tokens == 150
+        assert agg.cached_input_share == pytest.approx(0.5)
 
-    async def test_cache_hit_rate_none_when_no_cache_data(self) -> None:
-        records = (_record(cache_hit=None),)
+    async def test_cached_input_share_none_when_no_input_tokens(self) -> None:
+        records = (_record(input_tokens=0),)
         service = _make_service(records)
         agg = await service.get_aggregation()
-        assert agg.cache_hit_rate is None
+        assert agg.cached_input_share is None
 
     async def test_avg_latency(self) -> None:
         records = (
@@ -342,7 +343,7 @@ class TestPromptClassBreakdown:
                 prompt_class_id="system:cos:chat",
                 cost=0.02,
                 latency_ms=100.0,
-                cache_hit=True,
+                cache_read_input_tokens=100,
                 retry_count=1,
                 success=True,
             ),
@@ -350,7 +351,7 @@ class TestPromptClassBreakdown:
                 prompt_class_id="system:cos:chat",
                 cost=0.03,
                 latency_ms=300.0,
-                cache_hit=False,
+                cache_read_input_tokens=0,
                 retry_count=0,
                 success=False,
             ),
@@ -372,7 +373,7 @@ class TestPromptClassBreakdown:
         assert chat.currency == "EUR"
         assert chat.capability == "capable"
         assert chat.retry_rate == pytest.approx(0.5)
-        assert chat.cache_hit_rate == pytest.approx(0.5)
+        assert chat.cached_input_share == pytest.approx(0.5)
         assert chat.success_rate == pytest.approx(0.5)
         assert chat.avg_latency_ms == pytest.approx(200.0)
 

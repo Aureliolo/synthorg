@@ -27,7 +27,7 @@ const COLUMNS: readonly string[] = [
   'Calls',
   'Avg latency',
   'P95 latency',
-  'Cache hit',
+  'Cached input',
   'Retry',
   'Success',
 ]
@@ -85,7 +85,7 @@ function PromptClassTable({ rows }: { rows: readonly PromptClassBreakdownRow[] }
               </td>
               <td className="py-2 pr-4 text-right tabular-nums">{ms(row.avg_latency_ms)}</td>
               <td className="py-2 pr-4 text-right tabular-nums">{ms(row.p95_latency_ms)}</td>
-              <td className="py-2 pr-4 text-right tabular-nums">{pct(row.cache_hit_rate)}</td>
+              <td className="py-2 pr-4 text-right tabular-nums">{pct(row.cached_input_share)}</td>
               <td className="py-2 pr-4 text-right tabular-nums">{pct(row.retry_rate)}</td>
               <td className="py-2 pr-4 text-right tabular-nums">{pct(row.success_rate)}</td>
             </tr>
@@ -99,7 +99,7 @@ function PromptClassTable({ rows }: { rows: readonly PromptClassBreakdownRow[] }
 /**
  * Cost, latency, and quality sliced by prompt purpose: one row per registered
  * prompt class, so operators see which prompts drive spend and how each
- * performs (latency percentiles, cache-hit, retry, success). Reads
+ * performs (latency percentiles, cached input share, retry, success). Reads
  * ``GET /budget/prompt-class-breakdown``.
  */
 export function PromptClassSection() {

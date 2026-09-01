@@ -379,10 +379,12 @@ class TestCostRecordAnalyticsFields:
                 latency_ms=-1.0,
             )
 
-    def test_cache_hit_default_none(self) -> None:
-        assert self._base().cache_hit is None
+    def test_cache_tokens_default_zero(self) -> None:
+        record = self._base()
+        assert record.cache_read_input_tokens == 0
+        assert record.cache_write_input_tokens == 0
 
-    def test_cache_hit_true(self) -> None:
+    def test_cache_tokens_carried(self) -> None:
         record = CostRecord(
             agent_id="agent-1",
             task_id="task-1",
@@ -393,9 +395,26 @@ class TestCostRecordAnalyticsFields:
             cost=0.01,
             currency="EUR",
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
-            cache_hit=True,
+            cache_read_input_tokens=40,
+            cache_write_input_tokens=12,
         )
-        assert record.cache_hit is True
+        assert record.cache_read_input_tokens == 40
+        assert record.cache_write_input_tokens == 12
+
+    def test_negative_cache_tokens_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            CostRecord(
+                agent_id="agent-1",
+                task_id="task-1",
+                provider="test",
+                model="test-model",
+                input_tokens=100,
+                output_tokens=50,
+                cost=0.01,
+                currency="EUR",
+                timestamp=datetime(2026, 2, 27, tzinfo=UTC),
+                cache_read_input_tokens=-1,
+            )
 
     def test_retry_count_default_none(self) -> None:
         assert self._base().retry_count is None
@@ -519,7 +538,8 @@ class TestCostRecordAnalyticsFields:
             currency="EUR",
             timestamp=datetime(2026, 2, 27, tzinfo=UTC),
             latency_ms=150.0,
-            cache_hit=True,
+            cache_read_input_tokens=40,
+            cache_write_input_tokens=12,
             retry_count=1,
             retry_reason="RateLimitError",
             finish_reason=FinishReason.STOP,
@@ -527,7 +547,8 @@ class TestCostRecordAnalyticsFields:
         )
         restored = CostRecord.model_validate_json(record.model_dump_json())
         assert restored.latency_ms == 150.0
-        assert restored.cache_hit is True
+        assert restored.cache_read_input_tokens == 40
+        assert restored.cache_write_input_tokens == 12
         assert restored.retry_count == 1
         assert restored.retry_reason == "RateLimitError"
         assert restored.finish_reason == FinishReason.STOP

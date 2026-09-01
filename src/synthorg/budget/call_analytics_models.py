@@ -26,9 +26,12 @@ class AnalyticsAggregation(BaseModel):
             (``retry_count >= 1``).
         retry_rate: ``retry_count / total_calls``, or ``0.0`` when
             ``total_calls=0``.
-        cache_hit_count: Calls with ``cache_hit=True``.
-        cache_hit_rate: ``cache_hit_count / calls_with_cache_data``, or
-            ``None`` when no records report cache hit status.
+        cached_input_tokens: Input tokens the provider served from its
+            prompt cache, summed over every call.
+        cached_input_share: ``cached_input_tokens / input_tokens`` over
+            every call, or ``None`` when the calls carried no input tokens.
+            A share of tokens rather than a rate of calls, because the bill
+            moves with the tokens.
         avg_latency_ms: Mean latency over calls with latency data, or
             ``None`` when no records report latency.
         p95_latency_ms: 95th-percentile latency over calls with latency
@@ -49,14 +52,16 @@ class AnalyticsAggregation(BaseModel):
         le=1.0,
         description="Fraction of calls with at least one retry.",
     )
-    cache_hit_count: int = Field(ge=0, description="Calls with cache_hit=True.")
-    cache_hit_rate: float | None = Field(
+    cached_input_tokens: int = Field(
+        ge=0, description="Input tokens served from the prompt cache, summed."
+    )
+    cached_input_share: float | None = Field(
         default=None,
         ge=0.0,
         le=1.0,
         description=(
-            "Fraction of cache-reporting calls that were cache hits, or "
-            "None when no records carry cache hit data."
+            "Share of all input tokens the prompt cache served, or None when "
+            "the calls carried no input tokens."
         ),
     )
     avg_latency_ms: float | None = Field(
@@ -163,7 +168,8 @@ class PromptClassBreakdownRow(BaseModel):
         output_tokens: Sum of output tokens.
         avg_latency_ms: Mean latency over latency-reporting calls, or ``None``.
         p95_latency_ms: 95th-percentile latency, or ``None``.
-        cache_hit_rate: Fraction of cache-reporting calls that hit, or ``None``.
+        cached_input_share: Share of the class's input tokens the prompt
+            cache served, or ``None`` when it carried none.
         retry_rate: Fraction of calls with at least one retry.
         success_rate: Fraction of success-reporting calls that succeeded, or
             ``None`` when no record carries success data.
@@ -199,11 +205,11 @@ class PromptClassBreakdownRow(BaseModel):
     p95_latency_ms: float | None = Field(
         default=None, ge=0.0, description="95th-percentile latency in ms, or None."
     )
-    cache_hit_rate: float | None = Field(
+    cached_input_share: float | None = Field(
         default=None,
         ge=0.0,
         le=1.0,
-        description="Cache-hit fraction over cache-reporting calls, or None.",
+        description="Share of input tokens served from the prompt cache, or None.",
     )
     retry_rate: float = Field(
         ge=0.0, le=1.0, description="Fraction of calls with at least one retry."

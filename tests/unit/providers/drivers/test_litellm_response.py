@@ -14,7 +14,8 @@ import pytest
 
 from synthorg.config.provider_schema import ProviderModelConfig
 from synthorg.core.completion_enums import FinishReason
-from synthorg.providers.drivers.litellm_response import _extract_cache_hit, map_response
+from synthorg.providers._cost import _cache_tokens
+from synthorg.providers.drivers.litellm_response import map_response
 from synthorg.providers.models import CompletionResponse
 from tests.unit.providers.drivers.conftest import (
     make_mock_response,
@@ -114,54 +115,57 @@ class TestDroppedToolCalls:
         assert mapped.dropped_tool_calls is True
 
 
-class TestCacheHit:
-    """``cache_hit`` reports what the response reported, never a guess.
+class TestCacheTokens:
+    """The cached-prefix counts are read as COUNTS, never collapsed to a flag.
 
-    Absent cache data is ``None`` (unknown), not ``False`` (checked, no
-    hit): a provider that never publishes the field must not read as
-    every one of its calls missing the cache.
+    A provider that publishes no cache data reads as zero, which contributes
+    nothing to the cached share rather than reading as every call missing.
     """
 
-    def test_openai_shaped_cached_tokens_report_a_hit(self) -> None:
-        assert (
-            _extract_cache_hit(
-                SimpleNamespace(prompt_tokens_details=SimpleNamespace(cached_tokens=40))
-            )
-            is True
+    def test_openai_shaped_cached_tokens_are_the_read_count(self) -> None:
+        assert _cache_tokens(
+            SimpleNamespace(prompt_tokens_details=SimpleNamespace(cached_tokens=40))
+        ) == (40, 0)
+
+    def test_flat_cache_read_tokens_are_the_fallback_shape(self) -> None:
+        assert _cache_tokens(SimpleNamespace(cache_read_input_tokens=25)) == (25, 0)
+
+    def test_cache_creation_tokens_are_the_write_count(self) -> None:
+        assert _cache_tokens(
+            SimpleNamespace(cache_read_input_tokens=25, cache_creation_input_tokens=7)
+        ) == (25, 7)
+
+    def test_no_cache_shape_reads_as_zero(self) -> None:
+        assert _cache_tokens(SimpleNamespace(prompt_tokens=100)) == (0, 0)
+
+    def test_none_usage_object_reads_as_zero(self) -> None:
+        assert _cache_tokens(None) == (0, 0)
+
+    def test_a_corrupt_count_becomes_a_missing_one(self) -> None:
+        corrupt = SimpleNamespace(
+            cache_read_input_tokens=-3, cache_creation_input_tokens=True
         )
+        assert _cache_tokens(corrupt) == (0, 0)
 
-    def test_openai_shaped_zero_cached_tokens_report_no_hit(self) -> None:
-        assert (
-            _extract_cache_hit(
-                SimpleNamespace(prompt_tokens_details=SimpleNamespace(cached_tokens=0))
-            )
-            is False
-        )
-
-    def test_anthropic_shaped_cache_read_tokens_report_a_hit(self) -> None:
-        assert _extract_cache_hit(SimpleNamespace(cache_read_input_tokens=25)) is True
-
-    def test_no_cache_shape_reported_is_unknown(self) -> None:
-        assert _extract_cache_hit(SimpleNamespace(prompt_tokens=100)) is None
-
-    def test_none_usage_object_is_unknown(self) -> None:
-        assert _extract_cache_hit(None) is None
-
-    def test_map_response_carries_a_reported_hit_into_provider_metadata(self) -> None:
+    def test_map_response_carries_the_counts_on_usage(self) -> None:
         response = make_mock_response(content="done", tool_calls=None)
         response.usage = SimpleNamespace(
             prompt_tokens=100,
             completion_tokens=50,
             prompt_tokens_details=SimpleNamespace(cached_tokens=40),
+            cache_creation_input_tokens=12,
         )
 
         mapped = map_response(response, _MODEL, provider_name="test-provider")
 
-        assert mapped.provider_metadata["_synthorg_cache_hit"] is True
+        assert mapped.usage.cache_read_input_tokens == 40
+        assert mapped.usage.cache_write_input_tokens == 12
 
-    def test_map_response_omits_the_key_when_nothing_was_reported(self) -> None:
+    def test_map_response_reports_zero_when_nothing_was_reported(self) -> None:
         response = make_mock_response(content="done", tool_calls=None)
+        response.usage = SimpleNamespace(prompt_tokens=100, completion_tokens=50)
 
         mapped = map_response(response, _MODEL, provider_name="test-provider")
 
-        assert "_synthorg_cache_hit" not in mapped.provider_metadata
+        assert mapped.usage.cache_read_input_tokens == 0
+        assert mapped.usage.cache_write_input_tokens == 0

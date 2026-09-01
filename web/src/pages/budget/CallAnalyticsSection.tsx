@@ -44,7 +44,7 @@ function AnalyticsMetrics({ data }: { data: AnalyticsAggregation }) {
         }
       />
       <MetricCard label="Retry rate" value={pct(data.retry_rate)} />
-      <MetricCard label="Cache hit rate" value={optionalPct(data.cache_hit_rate)} />
+      <MetricCard label="Cached input share" value={optionalPct(data.cached_input_share)} />
       <MetricCard label="Avg latency" value={optionalMs(data.avg_latency_ms)} />
       <MetricCard label="P95 latency" value={optionalMs(data.p95_latency_ms)} />
       <MetricCard label="Orchestration ratio" value={pct(data.orchestration_ratio.ratio)} />
@@ -79,7 +79,8 @@ function FinishReasonTable({ rows }: { rows: AnalyticsAggregation['by_finish_rea
 
 /**
  * Per-call analytics aggregated over the recorded cost ledger: success /
- * retry / cache rates, latency percentiles, orchestration overhead, and a
+ * retry rates, the cached share of input tokens, latency percentiles,
+ * orchestration overhead, and a
  * finish-reason breakdown. Reads ``GET /budget/call-analytics``.
  */
 export function CallAnalyticsSection() {

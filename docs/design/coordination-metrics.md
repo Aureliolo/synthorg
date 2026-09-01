@@ -107,7 +107,8 @@ The **orchestration ratio** (`coordination / total`) is surfaced in metrics and 
         - retry_reason                     # rate_limit, timeout, internal_error
         - latency_ms                       # wall-clock time for the call
         - finish_reason                    # stop, tool_use, max_tokens, error
-        - cache_hit                        # prompt caching hit/miss (provider-dependent)
+        - cache_read_input_tokens          # input tokens served from the prompt cache
+        - cache_write_input_tokens         # input tokens written into the prompt cache
       aggregation:
         - per_agent_daily                  # agent spending over time
         - per_task                         # total cost per task

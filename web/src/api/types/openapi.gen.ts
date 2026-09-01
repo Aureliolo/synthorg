@@ -6434,10 +6434,10 @@ export type components = {
                 string,
                 number
             ])[];
-            /** @description Calls with cache_hit=True. */
-            readonly cache_hit_count: number;
-            /** @description Fraction of cache-reporting calls that were cache hits, or None when no records carry cache hit data. */
-            readonly cache_hit_rate: number | null;
+            /** @description Share of all input tokens the prompt cache served, or None when the calls carried no input tokens. */
+            readonly cached_input_share: number | null;
+            /** @description Input tokens served from the prompt cache, summed. */
+            readonly cached_input_tokens: number;
             /** @description Calls with success=False. */
             readonly failure_count: number;
             readonly orchestration_ratio: components["schemas"]["OrchestrationRatio"];
@@ -9878,8 +9878,16 @@ export type components = {
             /** @description Owning agent; None for work no agent owns */
             readonly agent_id: string | null;
             readonly billing_model: components["schemas"]["BillingModel"];
-            /** @description Whether the provider served this call from cache */
-            readonly cache_hit: boolean | null;
+            /**
+             * @description Input tokens the provider served from a cached prompt prefix. A count, because the bill is proportional to it; zero when the provider reported no cache data, which is also what a miss is
+             * @default 0
+             */
+            readonly cache_read_input_tokens: number;
+            /**
+             * @description Input tokens the provider wrote into its prompt cache
+             * @default 0
+             */
+            readonly cache_write_input_tokens: number;
             /**
              * @description LLM call category (productive, coordination, system, embedding, image_generation)
              * @enum {string|null}
@@ -14989,8 +14997,8 @@ export type components = {
         readonly PromptClassBreakdownRow: {
             /** @description Mean latency in ms, or None. */
             readonly avg_latency_ms: number | null;
-            /** @description Cache-hit fraction over cache-reporting calls, or None. */
-            readonly cache_hit_rate: number | null;
+            /** @description Share of input tokens served from the prompt cache, or None. */
+            readonly cached_input_share: number | null;
             /** @description Records for this class (a row aggregates at least one). */
             readonly call_count: number;
             /**
