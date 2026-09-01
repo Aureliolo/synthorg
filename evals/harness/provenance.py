@@ -14,6 +14,7 @@ facts are obtained, which is all that lives here.
 import hashlib
 import shutil
 import subprocess
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -95,7 +96,7 @@ def manifest_digest(manifest_path: Path) -> str:
     return f"sha256:{digest}"
 
 
-def _dirty_argv(repo_root: Path, ignoring: Path | None) -> tuple[str, ...]:
+def _dirty_argv(repo_root: Path, ignoring: Sequence[Path]) -> tuple[str, ...]:
     """The status query that asks whether the CODE under test was edited.
 
     A recorder writes its report into a directory it was given, and both
@@ -105,6 +106,15 @@ def _dirty_argv(repo_root: Path, ignoring: Path | None) -> tuple[str, ...]:
     ``--resume`` is refused and every cell already paid for is forfeit. What the
     flag is meant to say is that the commit does not fully describe the code
     that ran, and the recorder's own output is not that.
+
+    Takes a SEQUENCE, because a CONCURRENT SIBLING's output is equally not that
+    and excluding only the caller's own directory does not cover it. Measured on
+    three cells run concurrently, which the recursion-depth plan explicitly
+    endorses: the first read a clean tree and the other two read dirty, on the
+    same commit, solely because the first cell's directory had appeared. The
+    consequence is the one this exclusion exists to prevent, displaced onto a
+    sibling, and it had already happened: the clean cell could no longer be
+    resumed.
 
     Excluded by pathspec rather than by filtering the output, so git does the
     matching: a directory outside the repository, or none at all, excludes
@@ -121,30 +131,39 @@ def _dirty_argv(repo_root: Path, ignoring: Path | None) -> tuple[str, ...]:
 
     Args:
         repo_root: Repository the thing under test was measured from.
-        ignoring: A directory this recording writes into, or ``None``.
+        ignoring: Directories recordings write into. Empty excludes nothing.
 
     Returns:
         The argv after ``git``.
     """
-    if ignoring is None:
+    excludes: list[str] = []
+    for directory in ignoring:
+        try:
+            relative = directory.resolve().relative_to(repo_root.resolve())
+        except ValueError:
+            # Outside the repository, so nothing it holds was ever going to
+            # appear in the status output at all.
+            continue
+        if relative == Path():
+            # ``:(exclude).`` matches every tracked path, so one such entry
+            # would blind the whole query. Dropping it rather than returning
+            # early keeps a genuine sibling exclusion in the same call.
+            continue
+        excludes.append(f":(exclude){relative.as_posix()}")
+    if not excludes:
         return ("status", "--porcelain")
-    try:
-        relative = ignoring.resolve().relative_to(repo_root.resolve())
-    except ValueError:
-        # Outside the repository, so nothing it holds was ever going to appear.
-        return ("status", "--porcelain")
-    if relative == Path():
-        return ("status", "--porcelain")
-    return ("status", "--porcelain", "--", ".", f":(exclude){relative.as_posix()}")
+    return ("status", "--porcelain", "--", ".", *excludes)
 
 
-def capture_git_state(repo_root: Path, *, ignoring: Path | None = None) -> GitState:
+def capture_git_state(repo_root: Path, *, ignoring: Sequence[Path] = ()) -> GitState:
     """Read the commit and tree state a recording is being made from.
 
     Args:
         repo_root: Repository the thing under test was measured from.
-        ignoring: A directory this recording writes its own artifacts into,
-            which is excluded from the dirty check. See :func:`_dirty_argv`.
+        ignoring: Directories recordings write their own artifacts into, which
+            are excluded from the dirty check. A concurrent sibling's output
+            belongs here as much as this recording's own: see
+            :func:`_dirty_argv`.
 
     Returns:
         The :class:`GitState`.

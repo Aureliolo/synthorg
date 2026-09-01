@@ -1,16 +1,22 @@
 # module-kind: tests
-"""The sandbox image's own HEALTHCHECK, run rather than read.
+"""The sandbox image's own HEALTHCHECK: does the probe work, and is anyone there.
 
-The probe that shipped called ``wget``, which the Wolfi base does not carry, so
-every sandbox container reported unhealthy for its whole life (FailingStreak 30
-in a measured run) and nothing noticed, because reading a Dockerfile line tells
-you nothing about whether the binary in it exists.
+Two questions, and the second exists because asking only the first is how this
+broke twice.
 
-So this runs the actual argv. Not against a container, which would need a build
-and a daemon: the probe is a self-contained Python program, and what broke was
-the program, not the container. The port it dials is checked against the port
-the server binds, since two literals in two files is exactly how a probe comes
-to dial nothing.
+**Does the probe work.** The probe that shipped called ``wget``, which the Wolfi
+base does not carry, so every sandbox container reported unhealthy for its whole
+life (FailingStreak 30 in a measured run) and nothing noticed, because reading a
+Dockerfile line tells you nothing about whether the binary in it exists. So this
+runs the actual argv, against a stub server, checking the port it dials against
+the port ``healthz.py`` binds.
+
+**Is anyone there.** Those tests then all passed while every container was STILL
+unhealthy for its whole life, at a measured FailingStreak of 107, because they
+each start the stub server themselves and production never did: the image's CMD
+is what launches ``healthz.py``, and the keep-alive container replaces that CMD.
+A probe verified in isolation says nothing about whether its endpoint exists, so
+the second class asserts the keep-alive starts the file the image installs.
 """
 
 import http.server
@@ -24,6 +30,11 @@ from pathlib import Path
 from typing import override
 
 import pytest
+
+from synthorg.tools.sandbox.docker_sandbox_exec import (
+    _HEALTH_SERVER_PATH,
+    _KEEPALIVE_ARGS,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -146,6 +157,50 @@ class TestTheSandboxHealthProbe:
     def test_it_fails_when_nothing_is_listening(self, unused_port: int) -> None:
         """A probe that passes regardless reports nothing at all."""
         assert _run(_probe_argv(), port=unused_port) != 0
+
+
+class TestSomethingActuallyStartsTheServer:
+    """The question the five tests above cannot ask.
+
+    Every one of them exercises the probe against a stub server the TEST starts,
+    which is precisely the step production never performed. The probe was correct
+    and the endpoint was dead: the sandbox image's CMD is what launches
+    ``healthz.py``, and the keep-alive container replaces that CMD outright, so
+    every container reported unhealthy for its whole life (FailingStreak 107,
+    measured on a live merge sandbox) with all five tests passing.
+    """
+
+    def test_the_keepalive_starts_the_file_the_image_installs(self) -> None:
+        """The probe dials a port; something has to be listening on it."""
+        installed = re.search(
+            r"^COPY\s+.*?\s+docker/sandbox/healthz\.py\s+(\S+)\s*$",
+            _DOCKERFILE.read_text(encoding="utf-8"),
+            re.MULTILINE,
+        )
+        assert installed is not None, (
+            "the sandbox Dockerfile no longer installs healthz.py"
+        )
+
+        assert any(installed.group(1) in argument for argument in _KEEPALIVE_ARGS), (
+            "the keep-alive container replaces the image CMD, so it is the only "
+            "thing that can start the health server the HEALTHCHECK dials"
+        )
+
+    def test_the_keepalive_still_holds_the_container_open(self) -> None:
+        """Starting the server must not cost the container its main process."""
+        script = " ".join(_KEEPALIVE_ARGS)
+
+        assert "exec tail -f /dev/null" in script
+
+    def test_a_foreign_image_without_the_server_still_keeps_alive(self) -> None:
+        """``image_override`` runs an operator devcontainer that has no server.
+
+        It must report no health rather than fail to start, so the launch is
+        guarded on the file existing.
+        """
+        script = " ".join(_KEEPALIVE_ARGS)
+
+        assert f"[ -f {_HEALTH_SERVER_PATH} ]" in script
 
 
 @pytest.fixture
