@@ -1399,7 +1399,7 @@ async def _run_one_leaf(
     Returns:
         The leaf's outcome.
     """
-    owner = _owner_for(context.roster, str(task.id))
+    owner = _owner_for(context.roster, str(task.id), building=True)
     workspace = await asyncio.to_thread(
         unit_workspace,
         cell_key=cell.key,
@@ -1514,7 +1514,9 @@ def _merge_criteria(
     )
 
 
-def _owner_for(roster: SweepRoster, unit_id: str) -> AgentIdentity:
+def _owner_for(
+    roster: SweepRoster, unit_id: str, *, building: bool = False
+) -> AgentIdentity:
     """Pick the builder that owns one unit.
 
     Spread across the roster rather than pinned to one agent, so a plan that
@@ -1522,11 +1524,26 @@ def _owner_for(roster: SweepRoster, unit_id: str) -> AgentIdentity:
     rather than ``hash``, whose string seed is randomised per process, so a
     re-run of the same tree reaches the same owners.
 
+    Args:
+        roster: The sweep's agents.
+        unit_id: What the choice is derived from.
+        building: Whether this session BUILDS a unit, as opposed to planning,
+            fixing the contract or assembling. Only that distinction can route
+            to a pool bound at its own reasoning depth, and it defaults to
+            false so every caller that has not been asked the question keeps
+            the pool it always had.
+
     Returns:
         The owning builder.
     """
+    pool = roster.leaf_builders if building else roster.builders
+    # The digest is taken over the unit id ALONE, so a unit reaches the same
+    # position in whichever pool it is drawn from. Folding the pool into the
+    # seed would re-shuffle every ownership the moment a second pool exists,
+    # which would move the assignment as a side effect of a reasoning change
+    # and leave the two arms differing by more than the treatment.
     digest = zlib.crc32(unit_id.encode("utf-8"))
-    return roster.builders[digest % len(roster.builders)]
+    return pool[digest % len(pool)]
 
 
 def _leaf_record(

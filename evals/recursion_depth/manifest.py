@@ -325,6 +325,24 @@ class RecursionDepthManifest(BaseModel):
             running: the measured claim is that a cell WITH a contract diverges
             less than one without, and a treatment nothing can be compared
             against is not a measurement.
+        leaf_reasoning_effort: Reasoning depth for the agents that BUILD units,
+            or ``None`` to bind them exactly like every other builder, which is
+            what every recording before this field was made under.
+
+            The one published harness ablation with numbers behind it says the
+            win is in the SCHEDULE rather than the level: holding a model
+            fixed, reasoning at the deepest setting throughout scored WORSE
+            than reasoning moderately throughout (53.9% against 63.6%), and
+            reasoning deeply while planning and verifying but moderately while
+            building beat both (66.5%). Implementation is mostly execution of a
+            plan already understood.
+
+            Applies to leaves alone, because everything else this executor pair
+            runs is a planning or an assembly session and the reviewer already
+            carries its own pair. Set BELOW the executor's own depth to buy the
+            sandwich; the ordering is a hypothesis to test here rather than a
+            result to import, since the same source reports its harness gains
+            did not transfer to another model untuned.
         merge_attempts: How many attempts each merge gets, in BOTH arms. Equal
             by construction: repair only in the gated arm would let it win by
             spending more rather than by catching anything.
@@ -448,6 +466,7 @@ class RecursionDepthManifest(BaseModel):
     reviewer: ModelPair
     independence: Independence
     contract_stage: bool
+    leaf_reasoning_effort: ReasoningEffort | None = None
     merge_attempts: int = Field(ge=1, le=10)
     planner_max_turns: int = Field(ge=1, le=_PLANNER_TURN_CAP)
     unit_max_turns: int = Field(ge=1, le=_UNIT_TURN_CAP)

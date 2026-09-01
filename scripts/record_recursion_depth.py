@@ -676,6 +676,7 @@ async def _build_context(
         executor=manifest.executor,
         reviewer=manifest.reviewer,
         capability=capability,
+        leaf_effort=manifest.leaf_reasoning_effort,
     )
     deps = _build_deps(
         host,

@@ -21,6 +21,7 @@ from uuid import UUID, uuid5
 
 from evals.recursion_depth.manifest import ModelPair
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.role_catalog import COMPLETION_REVIEWER_ROLE_NAME
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.context import roster_from_agents
@@ -91,6 +92,7 @@ class SweepRoster:
     staffing: RoleStaffingService
     builders: tuple[AgentIdentity, ...]
     reviewers: tuple[AgentIdentity, ...]
+    unit_builders: tuple[AgentIdentity, ...] = ()
 
     @property
     def lead(self) -> AgentIdentity:
@@ -100,6 +102,27 @@ class SweepRoster:
             The first builder.
         """
         return self.builders[0]
+
+    @property
+    def leaf_builders(self) -> tuple[AgentIdentity, ...]:
+        """The agents a UNIT is dispatched to.
+
+        The same agents as everything else unless the matrix asked for units to
+        reason at their own depth, which is the one published harness ablation
+        with numbers behind it: holding a model fixed, reasoning hard at every
+        phase scored WORSE than reasoning moderately at every phase (53.9%
+        against 63.6%), and reasoning hard while planning and verifying but
+        moderately while building beat both (66.5%). Implementation is mostly
+        execution of a plan already understood; planning and assembly are where
+        the depth is spent well.
+
+        A separate POOL rather than a re-pointed binding, so an agent stays the
+        fixed pair it was registered as.
+
+        Returns:
+            The unit pool when one was built, otherwise the ordinary builders.
+        """
+        return self.unit_builders or self.builders
 
     @property
     def roles(self) -> tuple[NotBlankStr, ...]:
@@ -156,6 +179,7 @@ async def build_roster(
     executor: ModelPair,
     reviewer: ModelPair,
     capability: CapabilityPolicy,
+    leaf_effort: ReasoningEffort | None = None,
 ) -> SweepRoster:
     """Register the sweep's agents and wire the staffing service over them.
 
@@ -165,6 +189,9 @@ async def build_roster(
         capability: The one capability policy, shared by selection and
             dispatch so a reviewer is measured against the bar the work
             itself was measured against.
+        leaf_effort: Reasoning depth for the agents that BUILD units, or
+            ``None`` to bind them exactly as every other builder. See
+            :attr:`SweepRoster.leaf_builders`.
 
     Returns:
         The registered roster.
@@ -179,6 +206,24 @@ async def build_roster(
         )
         for index in range(BUILDER_COUNT)
     )
+    # A SECOND POOL rather than a rewritten binding. An agent is a fixed
+    # (role, model) unit and nothing in a loop may re-point the pair it was
+    # bound to, so "cheaper reasoning while building" has to be a different
+    # agent, which is what the product's own rule says work needing different
+    # capability should reach for.
+    leaf_builders = (
+        ()
+        if leaf_effort is None
+        else tuple(
+            _identity(
+                slug=f"leaf-builder-{index}",
+                name=f"Unit Builder {index + 1}",
+                role=_BUILDER_ROLE,
+                pair=executor.model_copy(update={"reasoning_effort": leaf_effort}),
+            )
+            for index in range(BUILDER_COUNT)
+        )
+    )
     reviewers = tuple(
         _identity(
             slug=f"reviewer-{index}",
@@ -188,13 +233,14 @@ async def build_roster(
         )
         for index in range(REVIEWER_COUNT)
     )
-    for agent in (*builders, *reviewers):
+    for agent in (*builders, *leaf_builders, *reviewers):
         await registry.register(agent)
     return SweepRoster(
         registry=registry,
         staffing=RoleStaffingService(registry=registry, capability=capability),
         builders=builders,
         reviewers=reviewers,
+        unit_builders=leaf_builders,
     )
 
 
