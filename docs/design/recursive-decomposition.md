@@ -592,7 +592,7 @@ things it cannot tell apart. The interval is a seeded percentile bootstrap
 (`evals/recursion_depth/efficiency.py`), seeded from the runs themselves so a
 re-score reproduces it; a bucket under three runs reports the point with no
 interval rather than a fabricated one, and two arms whose intervals overlap
-at a depth are named in the caveats as unrankable there. The depth axis is not
+at a depth are named in the caveats as indistinguishable there. The depth axis is not
 the one the question asks for, and [The metric](#the-metric) below says why it
 stands in.
 

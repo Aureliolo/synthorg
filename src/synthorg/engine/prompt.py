@@ -33,6 +33,7 @@ from synthorg.core.types import CapabilityLevel
 from synthorg.engine._prompt_helpers import build_metadata as _build_metadata
 from synthorg.engine.errors import PromptBuildError
 from synthorg.engine.policy_validation import validate_policy_quality
+from synthorg.engine.prompt_inputs import PromptInputs
 from synthorg.engine.prompt_profiles import get_prompt_profile
 from synthorg.engine.prompt_render import render_with_trimming
 from synthorg.engine.prompt_result import (
@@ -226,19 +227,21 @@ def build_system_prompt(  # noqa: PLR0913
 
         result = render_with_trimming(
             template_str=template_str,
-            agent=agent,
-            role=role,
-            available_tools=available_tools,
-            l1_summaries=l1_summaries,
-            company=company,
-            org_policies=org_policies,
+            inputs=PromptInputs(
+                agent=agent,
+                role=role,
+                available_tools=available_tools,
+                l1_summaries=l1_summaries,
+                company=company,
+                org_policies=org_policies,
+                effective_autonomy=effective_autonomy,
+                context_budget=context_budget_indicator,
+                currency=currency,
+                profile=profile,
+                strategy_config=strategy_config,
+            ),
             max_tokens=trim_budget,
             estimator=estimator,
-            effective_autonomy=effective_autonomy,
-            context_budget_indicator=context_budget_indicator,
-            currency=currency,
-            profile=profile,
-            strategy_config=strategy_config,
         )
     except PromptBuildError:
         raise  # Already logged by inner functions.

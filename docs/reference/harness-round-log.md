@@ -31,7 +31,7 @@ verified rather than a count of arguments.
 | recording | what it measured | why it stopped | wiring |
 | --- | --- | --- | --- |
 | `pilot` | seven cap-1 cells, the first measurement the harness produced; 254 turns and 6.68M tokens on a 1.5M ceiling | the pilot signal a later issue replicated did not survive re-verification: every zero in the kept record is a traced defect | 8 of 51 |
-| `sweep-default-bare-r0`, `sweep-default-contract-r0`, `sweep-default-contract-r1` | the first default-manifest sweeps, with and without the contract stage | each stopped after one or two cells on a harness defect recorded below | 8 of 51 |
+| `sweep-default-bare-r0`, `sweep-default-contract-r0`, `sweep-default-contract-r1` | the first default-manifest sweeps: one bare, two with the contract stage | each stopped after one or two cells on a harness defect recorded below | 8 of 51 |
 | `sandbox-teardown-race` | two cap-1 cells at leaf concurrency 4 | the binder's sandbox list was shared across sessions, so the first leaf to finish tore down the sandboxes of the three still running; the journal measured the harness | 8 of 51 |
 | `pre-transcript-fix` | the first cell where all eight leaves held a working shell: 6 of 8 delivered, 0 of 42 passed | the transcript recorder had the same shared-state race; the fix moved the commit and the journal identity pins it, so it cannot be resumed into | 8 of 51 |
 | `leaf-delivery-false-negative` | one cap-1 cell scoring 41 of 42, abandoned on a sanity pass over its units | three leaves that wrote 4, 8 and 10 modules were recorded as undelivered: delivery asked whether a path the PLANNER guessed had changed | 8 of 51 |
@@ -40,7 +40,7 @@ verified rather than a count of arguments.
 | `contract-a`, `contract-b`, `control-a` | the contract stage against its control; shared modules diverged 11/14, 11/12, 12/13 without it and 0/21 with it | `contract-a` reads every leaf undelivered because the delivery gate ran the whole suite against tests the leaf was briefed to leave failing; the divergence numbers stand | 8 of 51 |
 | `ceiling-3m` | one cap-1 cell at a 3M unit token ceiling against the same tree at 1.5M | 4.3x the cost from a 2x raise and fewer leaves delivered; abandoned after the first cell, kept as the only measurement of the ceiling | 8 of 51 |
 | `reasoning-default` | no recording; the three depth-1 smoke cells re-read plus five probe completions | 95 to 100% of every session's emitted text was hidden reasoning; the executor's family defaults an absent effort to its most expensive tier | 8 of 51 |
-| `loop-flow` | no recording; five earlier recordings read off the wire, request bodies and raw streams | the contract changes the shape of a leaf (reads 3 to 36% of calls, edits 22 to 5%), and 84% of a merge's calls are shell, half of those looking one file at a time | 8 of 51 |
+| `loop-flow` | no recording; five earlier recordings read off the wire (the request bodies and the raw streams) | the contract changes the shape of a leaf (reads 3 to 36% of calls, edits 22 to 5%), and 84% of the calls a merge makes are shell, half of those looking one file at a time | 8 of 51 |
 | `harness-audit` | no recording; the loop scored against four published harness results | three of eleven published techniques absent: context compaction with a pinned plan block, a pre-completion verification gate, and repetitions at the recommended floor | 8 of 51 |
 | `root-causes` | no recording; the verdict over everything above | six root causes and one replacement, then the corrections below | 8 of 51 |
 

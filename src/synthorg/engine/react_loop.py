@@ -7,7 +7,7 @@ check for LLM errors -> update context -> handle completion or
 (check shutdown -> execute tools) -> repeat.
 """
 
-from typing import Self
+from typing import Self, Unpack
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.completion_enums import FinishReason
@@ -41,7 +41,6 @@ from synthorg.providers.models import (
     ToolDefinition,
 )
 from synthorg.providers.protocol import CompletionProvider
-from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.tools.protocol import ToolInvokerProtocol
 
 from .context import AgentContext
@@ -169,29 +168,21 @@ class ReactLoop:
             its registered default.
     """
 
-    def __init__(  # noqa: PLR0913 -- one keyword-only param per in-flight control
+    def __init__(
         self,
         checkpoint_callback: CheckpointCallback | None = None,
-        *,
-        approval_gate: ApprovalGate | None = None,
-        stagnation_detector: StagnationDetector | None = None,
-        compaction_callback: CompactionCallback | None = None,
-        steering_inbox: SteeringInbox | None = None,
-        step_classifier: StepQualityClassifier | None = None,
-        turn_observer: TurnObserver | None = None,
-        background_job_watcher: BackgroundJobWatcher | None = None,
-        config_resolver: ConfigResolverProtocol | None = None,
-        clock: Clock | None = None,
+        **controls: Unpack[LoopControls],
     ) -> None:
         self._checkpoint_callback = checkpoint_callback
-        self._approval_gate = approval_gate
-        self._stagnation_detector = stagnation_detector
-        self._compaction_callback = compaction_callback
-        self._steering_inbox = steering_inbox
-        self._step_classifier = step_classifier
-        self._turn_observer = turn_observer
-        self._background_job_watcher = background_job_watcher
-        self._config_resolver = config_resolver
+        self._approval_gate = controls.get("approval_gate")
+        self._stagnation_detector = controls.get("stagnation_detector")
+        self._compaction_callback = controls.get("compaction_callback")
+        self._steering_inbox = controls.get("steering_inbox")
+        self._step_classifier = controls.get("step_classifier")
+        self._turn_observer = controls.get("turn_observer")
+        self._background_job_watcher = controls.get("background_job_watcher")
+        self._config_resolver = controls.get("config_resolver")
+        clock = controls.get("clock")
         self._clock: Clock = clock if clock is not None else SystemClock()
 
     async def _attach_whole_run_signals(

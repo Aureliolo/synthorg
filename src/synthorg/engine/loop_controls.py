@@ -25,11 +25,13 @@ from synthorg.engine.stagnation.protocol import StagnationDetector
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 
 
-class LoopControls(TypedDict):
+class LoopControls(TypedDict, total=False):
     """Every control a rebuilt loop carries over from the one it copies.
 
     Keyed exactly as the loop constructor accepts them, so the mapping
-    unpacks straight into it.
+    unpacks straight into it. Not total, because the constructor takes
+    these as its keyword arguments and a caller names only the controls it
+    holds; ``rebuild_controls`` still fills every key.
     """
 
     approval_gate: ApprovalGate | None

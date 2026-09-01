@@ -39,7 +39,6 @@ from synthorg.observability.events.workers import (
     WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASED,
     WORKERS_EXECUTION_SERVICE_TASK_NOT_FOUND,
 )
-from synthorg.observability.events.workspace import ENVIRONMENT_PROVISION_SKIPPED
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.tools.sandbox.active_environment import (
     ActiveSandboxEnvironment,
@@ -51,9 +50,11 @@ from synthorg.tools.sandbox.lifecycle.config import (
     STRATEGY_PER_TASK,
 )
 from synthorg.tools.sandbox.protocol import SandboxBackend
-from synthorg.workers.environment_runner import SandboxEnvironmentRunner
 from synthorg.workers.execution_resume import ResumeDispatchMixin
 from synthorg.workers.execution_service._autonomy import read_project_autonomy_mode
+from synthorg.workers.execution_service._environment_provisioning import (
+    provision_environment,
+)
 from synthorg.workers.execution_service._spine_finalisation import (
     finalise_failed_spine_guarded,
 )
@@ -286,9 +287,6 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
     ) -> ActiveSandboxEnvironment | None:
         """Provision the project's environment; return the active sandbox env.
 
-        Fail-loud: a provisioning failure is logged and re-raised so a
-        broken environment never runs silently.
-
         Returns:
             The active sandbox environment (image + env additions), or
             ``None`` when no environment service is wired, the task has no
@@ -297,47 +295,15 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
         if (
             self._environment_service is None
             or self._environment_runner_backend is None
+            or project_id is None
         ):
             return None
-        if project_id is None:
-            return None
-        if workspace_path is None:
-            # The environment subsystem is wired and the task has a
-            # project, but workspace provisioning did not yield a path
-            # (it is best-effort upstream). Surface that the declared
-            # environment is NOT being applied rather than skipping mute.
-            logger.warning(
-                ENVIRONMENT_PROVISION_SKIPPED,
-                task_id=task_id,
-                project_id=project_id,
-                reason="workspace_path_unavailable",
-            )
-            return None
-        runner = SandboxEnvironmentRunner(
-            backend=self._environment_runner_backend,
+        return await provision_environment(
+            environment_service=self._environment_service,
+            runner_backend=self._environment_runner_backend,
+            task_id=task_id,
             project_id=project_id,
-        )
-        try:
-            provisioned = await self._environment_service.get_or_provision(
-                project_id,
-                workspace_path=workspace_path,
-                runner=runner,
-                sandbox_kind=self._environment_runner_backend.get_backend_type(),
-            )
-        except Exception as exc:
-            reraise_critical(exc)
-            log_exception_redacted(
-                logger,
-                WORKERS_EXECUTION_SERVICE_FAILED,
-                exc,
-                task_id=task_id,
-                project_id=project_id,
-                reason="project_environment_provision_failed",
-            )
-            raise
-        return ActiveSandboxEnvironment(
-            image_override=provisioned.image_ref,
-            env_additions=dict(provisioned.env_vars),
+            workspace_path=workspace_path,
         )
 
     @override

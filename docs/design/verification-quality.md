@@ -453,6 +453,7 @@ and output tail. The verdict names what it cited (`build_evidence_cited`,
 `test_evidence_cited`, `test_command`), and the prompt makes an absent or
 failing test run grounds for reject, never for approve. The output tails are
 fenced with the deliverable because the code under review printed them.
+
 - **The verdict tool by name.** `submit_completion_oracle_verdict` is
   `ToolCategory.OTHER`, which only ELEVATED admits, so the one thing a judging
   session exists to do is allowed explicitly. Raising the level instead would

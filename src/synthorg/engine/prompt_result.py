@@ -20,7 +20,7 @@ from synthorg.engine._prompt_helpers import SECTION_STRATEGY as _SECTION_STRATEG
 from synthorg.engine._prompt_helpers import build_metadata as _build_metadata
 from synthorg.engine._prompt_helpers import compute_sections as _compute_sections
 from synthorg.engine.errors import PromptBuildError
-from synthorg.engine.prompt_profiles import PromptProfile
+from synthorg.engine.prompt_inputs import PromptInputs
 from synthorg.engine.prompt_template import (
     PROMPT_TEMPLATE_VERSION,
     TOOL_CATALOGUE_HEADING,
@@ -29,12 +29,9 @@ from synthorg.engine.prompt_validation import (
     inject_async_task_section,
     log_prompt_build_success,
 )
-from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.engine.token_estimation import PromptTokenEstimator
-from synthorg.providers.models import ToolDefinition
 
 if TYPE_CHECKING:
-    from synthorg.core.company import Company
     from synthorg.engine.prompt_providers import PromptAmbientProviders
 
 
@@ -78,21 +75,23 @@ class SystemPrompt(BaseModel):
         return self
 
 
-def build_prompt_result(  # noqa: PLR0913
+def build_prompt_result(
     content: str,
     estimated: int,
     *,
-    available_tools: tuple[ToolDefinition, ...],
-    company: Company | None,
-    org_policies: tuple[str, ...],
-    agent: AgentIdentity,
+    inputs: PromptInputs,
     custom_template: bool = False,
-    context_budget: str | None = None,
-    profile: PromptProfile | None = None,
-    strategy_config: StrategyConfig | None = None,
-    prompt_providers: PromptAmbientProviders,
+    providers: PromptAmbientProviders,
 ) -> SystemPrompt:
     """Assemble the final ``SystemPrompt`` from rendered content.
+
+    Args:
+        content: The rendered prompt text.
+        estimated: Its token estimate.
+        inputs: What *content* was rendered from, after any trimming, so the
+            sections manifest names what the render still holds.
+        custom_template: Whether an operator template replaced the default.
+        providers: The ambient provider snapshot the render used.
 
     Returns:
         The composed :class:`SystemPrompt` with sections, token
@@ -108,26 +107,27 @@ def build_prompt_result(  # noqa: PLR0913
         should_inject_strategy,
     )
 
+    agent = inputs.agent
     injected: set[str] = set()
-    if should_inject_house_style(agent, provider=prompt_providers.house_style):
+    if should_inject_house_style(agent, provider=providers.house_style):
         injected.add(_SECTION_HOUSE_STYLE)
-    if should_inject_ask_policy(provider=prompt_providers.ask_policy):
+    if should_inject_ask_policy(provider=providers.ask_policy):
         injected.add(_SECTION_ASK_POLICY)
-    if should_inject_strategy(agent, strategy_config):
+    if should_inject_strategy(agent, inputs.strategy_config):
         injected.add(_SECTION_STRATEGY)
 
     sections = _compute_sections(
-        available_tools=available_tools,
-        company=company,
-        org_policies=org_policies,
+        available_tools=inputs.available_tools,
+        company=inputs.company,
+        org_policies=inputs.org_policies,
         custom_template=custom_template,
-        context_budget=context_budget,
-        profile=profile,
+        context_budget=inputs.context_budget,
+        profile=inputs.profile,
         injected_sections=frozenset(injected),
     )
     metadata = _build_metadata(agent)
-    if profile is not None:
-        metadata["profile_capability"] = profile.capability
+    if inputs.profile is not None:
+        metadata["profile_capability"] = inputs.profile.capability
     return SystemPrompt(
         content=content,
         template_version=PROMPT_TEMPLATE_VERSION,

@@ -12,7 +12,6 @@ rebuild naming its fields at the call site drops whichever control is added
 next.
 """
 
-import inspect
 from dataclasses import replace
 from typing import cast, override
 
@@ -234,12 +233,10 @@ class TestCheckpointRebuild:
             cast("CheckpointCallback", _callback)
         )
 
-        carried = [
-            name
-            for name in inspect.signature(ReactLoop.__init__).parameters
-            if name not in {"self", "checkpoint_callback"}
-        ]
-        assert carried, "signature introspection found no controls to check"
+        carried = sorted(
+            LoopControls.__required_keys__ | LoopControls.__optional_keys__
+        )
+        assert carried, "the controls type declares no controls to check"
         for name in carried:
             attribute = f"_{name}"
             assert getattr(rebuilt, attribute) is getattr(original, attribute), name

@@ -82,6 +82,8 @@ async def resolve_tool_output_max_chars(
     try:
         return await resolver.get_int("engine", "tool_output_max_chars")
     except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- the registered default stands in for one
+        # turn and the read is asked again on the next
         reraise_critical(exc)
         logger.warning(
             SETTINGS_FETCH_FAILED,

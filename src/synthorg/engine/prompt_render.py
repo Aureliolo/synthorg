@@ -1,29 +1,22 @@
 """Template-context assembly, rendering, and token-budget trimming.
 
 The render engine behind :func:`synthorg.engine.prompt.build_system_prompt`:
-assembles the Jinja2 context from agent + optional inputs, renders and
-estimates tokens, and progressively trims optional sections to fit a
-token budget. Composes the result via :mod:`synthorg.engine.prompt_result`.
+assembles the Jinja2 context from the prompt inputs, renders and estimates
+tokens, and progressively trims optional sections to fit a token budget.
+Composes the result via :mod:`synthorg.engine.prompt_result`.
 """
 
+from dataclasses import replace
 from typing import TYPE_CHECKING, Final
 
-from synthorg.budget.currency import (
-    DEFAULT_CURRENCY,
-    CurrencyCode,
-    format_cost,
-    get_currency_symbol,
-)
-from synthorg.core.agent import AgentIdentity
-from synthorg.core.role import Role
-from synthorg.core.tool_disclosure import ToolL1Metadata
+from synthorg.budget.currency import format_cost, get_currency_symbol
 from synthorg.engine._prompt_helpers import SECTION_COMPANY as _SECTION_COMPANY
 from synthorg.engine._prompt_helpers import (
     SECTION_ORG_POLICIES as _SECTION_ORG_POLICIES,
 )
 from synthorg.engine._prompt_helpers import TRIMMABLE_SECTIONS as _TRIMMABLE_SECTIONS
 from synthorg.engine._prompt_helpers import build_core_context as _build_core_context
-from synthorg.engine.prompt_profiles import PromptProfile
+from synthorg.engine.prompt_inputs import PromptInputs
 from synthorg.engine.prompt_result import SystemPrompt, build_prompt_result
 from synthorg.engine.prompt_safety import (
     TAG_CONFIG_VALUE,
@@ -34,13 +27,9 @@ from synthorg.engine.prompt_validation import (
     log_trim_results,
     render_template,
 )
-from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.engine.token_estimation import PromptTokenEstimator
-from synthorg.providers.models import ToolDefinition
 
 if TYPE_CHECKING:
-    from synthorg.core.company import Company
-    from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine.prompt_providers import PromptAmbientProviders
 
 #: The two discovery tools the progressive-disclosure instruction names.
@@ -56,64 +45,45 @@ _DISCOVERY_INSTRUCTION_TOOLS: Final[frozenset[str]] = frozenset(
 _WEB_RESEARCH_TOOLS: Final[frozenset[str]] = frozenset({"web_search", "web_fetch"})
 
 
-def build_template_context(  # noqa: PLR0913
-    *,
-    agent: AgentIdentity,
-    role: Role | None,
-    available_tools: tuple[ToolDefinition, ...],
-    l1_summaries: tuple[ToolL1Metadata, ...] = (),
-    company: Company | None,
-    org_policies: tuple[str, ...] = (),
-    effective_autonomy: EffectiveAutonomy | None = None,
-    context_budget: str | None = None,
-    currency: CurrencyCode = DEFAULT_CURRENCY,
-    profile: PromptProfile | None = None,
-    strategy_config: StrategyConfig | None = None,
-    prompt_providers: PromptAmbientProviders,
+def build_template_context(
+    inputs: PromptInputs, *, providers: PromptAmbientProviders
 ) -> dict[str, object]:
-    """Assemble the full Jinja2 template context from agent and optional inputs.
+    """Assemble the full Jinja2 template context from the prompt inputs.
 
     Args:
-        agent: Agent identity.
-        role: Optional role with description.
-        available_tools: Tool definitions.
-        l1_summaries: L1 metadata for system prompt injection.
-        company: Optional company context.
-        org_policies: Company-wide policy texts.
-        effective_autonomy: Resolved autonomy for the current run.
-        context_budget: Formatted context budget indicator string.
-        currency: ISO 4217 currency code for budget displays.
-        profile: Prompt profile controlling rendering verbosity.
-        strategy_config: Strategy config for trendslop mitigation.
-        prompt_providers: The ambient provider snapshot, resolved once per
-            prompt build. Required, because a default here would be a second
-            place the ambient globals are read.
+        inputs: What the prompt is rendered from.
+        providers: The ambient provider snapshot, resolved once per prompt
+            build. Required, because a default here would be a second place
+            the ambient globals are read.
 
     Returns:
         The template variables dict.
     """
-    context = _build_core_context(agent, role, effective_autonomy, profile)
+    agent = inputs.agent
+    context = _build_core_context(
+        agent, inputs.role, inputs.effective_autonomy, inputs.profile
+    )
 
-    context["currency_symbol"] = get_currency_symbol(currency)
-    context["currency"] = currency
+    context["currency_symbol"] = get_currency_symbol(inputs.currency)
+    context["currency"] = inputs.currency
     budget_limit = agent.authority.budget_limit
     context["formatted_budget_limit"] = (
-        format_cost(budget_limit, currency) if budget_limit > 0 else ""
+        format_cost(budget_limit, inputs.currency) if budget_limit > 0 else ""
     )
     # Org policies are operator-configured but injected verbatim into the
     # system prompt; fence each so a policy string cannot smuggle
     # instructions, and the appended directive treats the block as data.
     context["org_policies"] = tuple(
-        wrap_untrusted(TAG_CONFIG_VALUE, policy) for policy in org_policies
+        wrap_untrusted(TAG_CONFIG_VALUE, policy) for policy in inputs.org_policies
     )
-    context["context_budget"] = context_budget
+    context["context_budget"] = inputs.context_budget
 
     # Strategic analysis sections (conditional on config + agent eligibility).
     from synthorg.engine.strategy.adapter import (  # noqa: PLC0415
         inject_strategy_context,
     )
 
-    inject_strategy_context(context, agent, strategy_config)
+    inject_strategy_context(context, agent, inputs.strategy_config)
 
     # House-style directives (conditional on the ambient provider + agent scope)
     # and the standing ask directive (conditional on the ambient provider).
@@ -124,15 +94,16 @@ def build_template_context(  # noqa: PLR0913
         inject_house_style_context,
     )
 
-    inject_house_style_context(context, agent, provider=prompt_providers.house_style)
-    inject_ask_policy_context(context, agent, provider=prompt_providers.ask_policy)
+    inject_house_style_context(context, agent, provider=providers.house_style)
+    inject_ask_policy_context(context, agent, provider=providers.ask_policy)
 
+    available_tools = inputs.available_tools
     context["tools"] = (
         tuple({"name": t.name, "description": t.description} for t in available_tools)
         if available_tools
         else None
     )
-    if l1_summaries:
+    if inputs.l1_summaries:
         context["l1_tools"] = tuple(
             {
                 "name": s.name,
@@ -140,14 +111,14 @@ def build_template_context(  # noqa: PLR0913
                 "category": s.category,
                 "cost_tier": s.typical_cost_tier,
             }
-            for s in l1_summaries
+            for s in inputs.l1_summaries
         )
         # Derived from the same registry view the section lists, never
         # assumed: a session whose registry holds only its own tools was
         # still told to call ``list_tools()`` first, and spent its turns
         # on tool-not-found before producing anything.
         context["has_tool_discovery"] = {
-            s.name for s in l1_summaries
+            s.name for s in inputs.l1_summaries
         } >= _DISCOVERY_INSTRUCTION_TOOLS
     else:
         context["l1_tools"] = None
@@ -161,9 +132,11 @@ def build_template_context(  # noqa: PLR0913
         WEB_RESEARCH_GUIDANCE if has_web_research else None
     )
 
-    if company is not None:
-        context["company"] = {"name": company.name}
-        context["company_departments"] = tuple(d.name for d in company.departments)
+    if inputs.company is not None:
+        context["company"] = {"name": inputs.company.name}
+        context["company_departments"] = tuple(
+            d.name for d in inputs.company.departments
+        )
     else:
         context["company"] = None
         context["company_departments"] = None
@@ -171,30 +144,20 @@ def build_template_context(  # noqa: PLR0913
     return context
 
 
-def trim_sections(  # noqa: PLR0913
+def trim_sections(
     *,
     template_str: str,
-    agent: AgentIdentity,
-    role: Role | None,
-    available_tools: tuple[ToolDefinition, ...],
-    l1_summaries: tuple[ToolL1Metadata, ...],
-    company: Company | None,
-    org_policies: tuple[str, ...],
+    inputs: PromptInputs,
     max_tokens: int,
     estimator: PromptTokenEstimator,
-    effective_autonomy: EffectiveAutonomy | None = None,
-    context_budget: str | None = None,
-    currency: CurrencyCode = DEFAULT_CURRENCY,
-    profile: PromptProfile | None = None,
-    strategy_config: StrategyConfig | None = None,
-    prompt_providers: PromptAmbientProviders,
-) -> tuple[str, int, Company | None, tuple[str, ...], StrategyConfig | None]:
+    providers: PromptAmbientProviders,
+) -> tuple[str, int, PromptInputs]:
     """Progressively remove optional sections until under token budget.
 
     Returns:
-        ``(content, estimated, company, org_policies, strategy_config)``
-        so the caller can reuse the final render (each section may be
-        dropped to fit ``max_tokens``).
+        ``(content, estimated, inputs)``: the final render and the inputs it
+        was rendered from, which lack every section dropped to fit
+        ``max_tokens`` so the result is assembled from what survived.
     """
     from synthorg.engine._prompt_helpers import (  # noqa: PLC0415
         SECTION_STRATEGY as _SECTION_STRATEGY_LOCAL,
@@ -204,34 +167,21 @@ def trim_sections(  # noqa: PLR0913
 
     for section in _TRIMMABLE_SECTIONS:
         content, estimated = render_and_estimate(
-            template_str,
-            agent,
-            role=role,
-            available_tools=available_tools,
-            l1_summaries=l1_summaries,
-            company=company,
-            org_policies=org_policies,
-            estimator=estimator,
-            effective_autonomy=effective_autonomy,
-            context_budget=context_budget,
-            currency=currency,
-            profile=profile,
-            strategy_config=strategy_config,
-            prompt_providers=prompt_providers,
+            template_str, inputs, estimator=estimator, providers=providers
         )
         if estimated <= max_tokens:
             break
 
-        if section == _SECTION_STRATEGY_LOCAL and strategy_config is not None:
-            strategy_config = None
-        elif section == _SECTION_COMPANY and company is not None:
-            company = None
+        if section == _SECTION_STRATEGY_LOCAL and inputs.strategy_config is not None:
+            inputs = replace(inputs, strategy_config=None)
+        elif section == _SECTION_COMPANY and inputs.company is not None:
+            inputs = replace(inputs, company=None)
         elif (
             section == _SECTION_ORG_POLICIES
-            and org_policies
-            and (profile is None or profile.include_org_policies)
+            and inputs.org_policies
+            and (inputs.profile is None or inputs.profile.include_org_policies)
         ):
-            org_policies = ()
+            inputs = replace(inputs, org_policies=())
         else:
             continue
 
@@ -239,43 +189,20 @@ def trim_sections(  # noqa: PLR0913
     else:
         # All sections exhausted -- do a final render.
         content, estimated = render_and_estimate(
-            template_str,
-            agent,
-            role=role,
-            available_tools=available_tools,
-            l1_summaries=l1_summaries,
-            company=company,
-            org_policies=org_policies,
-            estimator=estimator,
-            effective_autonomy=effective_autonomy,
-            context_budget=context_budget,
-            currency=currency,
-            profile=profile,
-            strategy_config=strategy_config,
-            prompt_providers=prompt_providers,
+            template_str, inputs, estimator=estimator, providers=providers
         )
 
-    log_trim_results(agent, max_tokens, estimated, trimmed_sections)
+    log_trim_results(inputs.agent, max_tokens, estimated, trimmed_sections)
 
-    return content, estimated, company, org_policies, strategy_config
+    return content, estimated, inputs
 
 
-def render_with_trimming(  # noqa: PLR0913
+def render_with_trimming(
     *,
     template_str: str,
-    agent: AgentIdentity,
-    role: Role | None,
-    available_tools: tuple[ToolDefinition, ...],
-    l1_summaries: tuple[ToolL1Metadata, ...] = (),
-    company: Company | None,
-    org_policies: tuple[str, ...] = (),
+    inputs: PromptInputs,
     max_tokens: int | None,
     estimator: PromptTokenEstimator,
-    effective_autonomy: EffectiveAutonomy | None = None,
-    context_budget_indicator: str | None = None,
-    currency: CurrencyCode = DEFAULT_CURRENCY,
-    profile: PromptProfile | None = None,
-    strategy_config: StrategyConfig | None = None,
 ) -> SystemPrompt:
     """Render the prompt, trimming optional sections if over token budget.
 
@@ -291,111 +218,49 @@ def render_with_trimming(  # noqa: PLR0913
         current_prompt_providers,
     )
 
-    prompt_providers = current_prompt_providers()
+    providers = current_prompt_providers()
 
     content, estimated = render_and_estimate(
-        template_str,
-        agent,
-        role=role,
-        available_tools=available_tools,
-        l1_summaries=l1_summaries,
-        company=company,
-        org_policies=org_policies,
-        estimator=estimator,
-        effective_autonomy=effective_autonomy,
-        context_budget=context_budget_indicator,
-        currency=currency,
-        profile=profile,
-        strategy_config=strategy_config,
-        prompt_providers=prompt_providers,
+        template_str, inputs, estimator=estimator, providers=providers
     )
 
     if max_tokens is not None and estimated > max_tokens:
-        content, estimated, company, org_policies, strategy_config = trim_sections(
+        content, estimated, inputs = trim_sections(
             template_str=template_str,
-            agent=agent,
-            role=role,
-            available_tools=available_tools,
-            l1_summaries=l1_summaries,
-            company=company,
-            org_policies=org_policies,
+            inputs=inputs,
             max_tokens=max_tokens,
             estimator=estimator,
-            effective_autonomy=effective_autonomy,
-            context_budget=context_budget_indicator,
-            currency=currency,
-            profile=profile,
-            strategy_config=strategy_config,
-            prompt_providers=prompt_providers,
+            providers=providers,
         )
 
     return build_prompt_result(
         content,
         estimated,
-        available_tools=available_tools,
-        company=company,
-        org_policies=org_policies,
-        agent=agent,
+        inputs=inputs,
         custom_template=template_str is not DEFAULT_TEMPLATE,
-        context_budget=context_budget_indicator,
-        profile=profile,
-        strategy_config=strategy_config,
-        prompt_providers=prompt_providers,
+        providers=providers,
     )
 
 
-def render_and_estimate(  # noqa: PLR0913
+def render_and_estimate(
     template_str: str,
-    agent: AgentIdentity,
+    inputs: PromptInputs,
     *,
-    role: Role | None,
-    available_tools: tuple[ToolDefinition, ...],
-    l1_summaries: tuple[ToolL1Metadata, ...],
-    company: Company | None,
-    org_policies: tuple[str, ...],
     estimator: PromptTokenEstimator,
-    effective_autonomy: EffectiveAutonomy | None = None,
-    context_budget: str | None = None,
-    currency: CurrencyCode = DEFAULT_CURRENCY,
-    profile: PromptProfile | None = None,
-    strategy_config: StrategyConfig | None = None,
-    prompt_providers: PromptAmbientProviders,
+    providers: PromptAmbientProviders,
 ) -> tuple[str, int]:
     """Render the template and estimate its token count.
 
     Args:
         template_str: Jinja2 template text.
-        agent: Agent identity.
-        role: Optional role.
-        available_tools: Tool definitions.
-        l1_summaries: L1 metadata for system prompt injection.
-        company: Optional company context.
-        org_policies: Company-wide policy texts.
+        inputs: What the prompt is rendered from.
         estimator: Token estimator.
-        effective_autonomy: Resolved autonomy for the current run.
-        context_budget: Formatted context budget indicator string.
-        currency: ISO 4217 currency code for budget displays.
-        profile: Prompt profile controlling rendering verbosity.
-        strategy_config: Strategy config for trendslop mitigation.
-        prompt_providers: The ambient provider snapshot, resolved once per
-            prompt build.
+        providers: The ambient provider snapshot, resolved once per prompt
+            build.
 
     Returns:
         Tuple of (rendered content, estimated token count).
     """
-    context = build_template_context(
-        agent=agent,
-        role=role,
-        available_tools=available_tools,
-        l1_summaries=l1_summaries,
-        company=company,
-        org_policies=org_policies,
-        effective_autonomy=effective_autonomy,
-        context_budget=context_budget,
-        currency=currency,
-        profile=profile,
-        strategy_config=strategy_config,
-        prompt_providers=prompt_providers,
-    )
+    context = build_template_context(inputs, providers=providers)
     content = render_template(template_str, context)
     return content, estimator.estimate_tokens(content)

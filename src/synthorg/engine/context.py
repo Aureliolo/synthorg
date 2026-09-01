@@ -40,7 +40,11 @@ from synthorg.engine.context_snapshot import (
     AgentContextSnapshot,
     build_context_snapshot,
 )
-from synthorg.engine.errors import ExecutionStateError, MaxTurnsExceededError
+from synthorg.engine.context_transitions import (
+    compression_update,
+    task_transition_update,
+    turn_completed_update,
+)
 from synthorg.engine.loop_budget_defaults import (
     DEFAULT_MAX_TURNS,
     DEFAULT_MAX_UNRESOLVED_TOOL_TURNS,
@@ -49,17 +53,13 @@ from synthorg.engine.task_execution import TaskExecution
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_CONTEXT_CREATED,
-    EXECUTION_CONTEXT_NO_TASK,
     EXECUTION_CONTEXT_SNAPSHOT,
-    EXECUTION_CONTEXT_TRANSITION_FAILED,
     EXECUTION_CONTEXT_TURN,
-    EXECUTION_MAX_TURNS_EXCEEDED,
 )
 from synthorg.providers.models import (
     ZERO_TOKEN_USAGE,
     ChatMessage,
     TokenUsage,
-    add_token_usage,
 )
 
 logger = get_logger(__name__)
@@ -359,33 +359,9 @@ class AgentContext(BaseModel):
         Raises:
             MaxTurnsExceededError: If ``max_turns`` has been reached.
         """
-        if not self.has_turns_remaining:
-            msg = (
-                f"Agent {self.identity.id} exceeded max_turns "
-                f"({self.max_turns}) for execution {self.execution_id}"
-            )
-            logger.error(
-                EXECUTION_MAX_TURNS_EXCEEDED,
-                execution_id=self.execution_id,
-                agent_id=str(self.identity.id),
-                max_turns=self.max_turns,
-                turn_count=self.turn_count,
-            )
-            raise MaxTurnsExceededError(msg)
-        conversation = (
-            self.conversation
-            if response_msg is None
-            else (*self.conversation, response_msg)
+        result = self.model_copy(
+            update=turn_completed_update(self, usage, response_msg)
         )
-        updates: dict[str, object] = {
-            "turn_count": self.turn_count + 1,
-            "conversation": conversation,
-            "accumulated_cost": add_token_usage(self.accumulated_cost, usage),
-        }
-        if self.task_execution is not None:
-            updates["task_execution"] = self.task_execution.with_cost(usage)
-
-        result = self.model_copy(update=updates)
         logger.info(
             EXECUTION_CONTEXT_TURN,
             execution_id=self.execution_id,
@@ -491,25 +467,13 @@ class AgentContext(BaseModel):
             ValueError: If ``fill_tokens`` is negative, or a pin falls
                 outside the compressed conversation.
         """
-        if fill_tokens < 0:
-            msg = f"fill_tokens must be >= 0, got {fill_tokens}"
-            raise ValueError(msg)
-        out_of_range = sorted(
-            i for i in pinned if not 0 <= i < len(compressed_conversation)
-        )
-        if out_of_range:
-            msg = (
-                f"pinned indices outside the compressed conversation "
-                f"({len(compressed_conversation)} messages): {out_of_range}"
-            )
-            raise ValueError(msg)
         return self.model_copy(
-            update={
-                "conversation": compressed_conversation,
-                "compression_metadata": metadata,
-                "context_fill_tokens": fill_tokens,
-                "pinned_message_indices": pinned,
-            },
+            update=compression_update(
+                metadata=metadata,
+                compressed_conversation=compressed_conversation,
+                fill_tokens=fill_tokens,
+                pinned=pinned,
+            ),
         )
 
     def with_task_transition(
@@ -535,27 +499,9 @@ class AgentContext(BaseModel):
             ValueError: If the transition is invalid (from
                 ``validate_transition``).
         """
-        if self.task_execution is None:
-            msg = "Cannot transition task status: no task execution is set"
-            logger.error(
-                EXECUTION_CONTEXT_NO_TASK,
-                execution_id=self.execution_id,
-                agent_id=str(self.identity.id),
-                target_status=target.value,
-            )
-            raise ExecutionStateError(msg)
-        try:
-            new_execution = self.task_execution.with_transition(target, reason=reason)
-        except ValueError:
-            logger.warning(
-                EXECUTION_CONTEXT_TRANSITION_FAILED,
-                execution_id=self.execution_id,
-                agent_id=str(self.identity.id),
-                target_status=target.value,
-                current_status=self.task_execution.status.value,
-            )
-            raise
-        return self.model_copy(update={"task_execution": new_execution})
+        return self.model_copy(
+            update=task_transition_update(self, target, reason=reason)
+        )
 
     def to_snapshot(self) -> AgentContextSnapshot:
         """Create a compact snapshot for reporting and logging.

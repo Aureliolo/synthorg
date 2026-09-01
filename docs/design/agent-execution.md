@@ -189,7 +189,7 @@ a silent `None`. Absence is ordinary and still allowed; it is written down
 can question and a missing keyword is a decision nobody made.
 
 Two invariants are shape rather than runtime checks. `CheckpointWiring` carries
-the checkpoint repository, the heartbeat repository and the checkpoint config
+the checkpoint repository, the heartbeat repository, and the checkpoint config
 together, so "one without the other" is unrepresentable; `EngineBudget` keeps its
 `cost_tracker is budget_enforcer.cost_tracker` identity check, which is a
 cross-field invariant a type cannot express.
@@ -691,7 +691,7 @@ present to notice either.
 `resolve_stagnation_config` reads them into the frozen
 `StagnationDetectionConfig` the factory takes. Whether detection runs is that
 one setting's decision and only its own: there is no second `enabled` flag on
-the sub-config, because a detector that is built, held and consulted while
+the sub-config, because a detector that is built, held, and consulted while
 silently answering nothing is the quieter of two authorities winning.
 
 The planning loop reads the same keys and builds its own detector instance,
@@ -911,7 +911,7 @@ value. `resolve_compaction_config` reads them into the frozen
 | `compaction_safety_threshold_percent` | `95.0` | Auto-compaction safety net when `compaction_agent_controlled` is on; must exceed the fill threshold |
 | `compaction_preserve_epistemic_markers` | `true` | Preserve marker-bearing sentences instead of truncating them (see [Agent-Controlled Context Compaction](#agent-controlled-context-compaction)) |
 | `compaction_llm_summarizer_enabled` | `false` | Summarise the archived batch via a completion call instead of concatenation |
-| `compaction_summary_model` | unset | The `(provider, model)` pair the summariser runs on. A `MODEL_REF`, so the client and the model id travel together; unset leaves the summariser unbuilt and compaction keeps its text summary |
+| `compaction_summary_model` | unset | The `(provider, model)` pair the summariser runs on. A `MODEL_REF`, so the client and the model id travel together; unset leaves no summariser built and compaction keeps its text summary |
 | `compaction_summary_temperature` | `0.3` | Sampling temperature for the summary |
 | `compaction_summary_max_tokens` | `500` | Output ceiling for one summary |
 | `compaction_memory_offload_enabled` | `false` | Persist the archived batch to the memory backend so it can be read back later |
@@ -1106,8 +1106,8 @@ Two independent upgrades layer onto the text path, both off by default:
 - **LLM summarisation** (`engine.compaction_llm_summarizer_enabled`, plus a
   `engine.compaction_summary_model` pair): the archived batch is summarised by a completion
   call (`LLMSummarizer`) instead of concatenated; the archived content is fenced with
-  `wrap_untrusted` before it reaches the prompt. The summariser's client and model id arrive
-  together as a `BoundCompletion`, never the engine's own provider paired with a loose id.
+  `wrap_untrusted` before it reaches the prompt. The client and model id of the summariser
+  arrive together as a `BoundCompletion`, never the engine's own provider paired with a loose id.
   With the pair unset the summariser is not built at all, and any provider failure, or empty
   content, falls back to the text summary rather than blocking compaction.
 - **Memory offload** (`engine.compaction_memory_offload_enabled`): the archived batch is persisted to the

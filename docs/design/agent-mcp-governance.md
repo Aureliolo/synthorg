@@ -55,10 +55,11 @@ asked afterwards of the survivors alone: the scoped surface is a couple of
 hundred tools, and past a few dozen offered tools a model's selection
 accuracy over the whole surface collapses. `engine/mcp_tool_retrieval.py`
 ranks the scoped tools against the text of the unit of work (a task's title
-and description; for a chat action, the latest human instruction) by term
-overlap weighted by rarity across the surface, name matches counting double,
-and keeps `security.mcp_self_consumer_retrieval_top_k` of them (default
-`40`, `0` keeps every scoped tool), in the scoper's order. It is lexical on
+and description; for a chat action, the most recent human instruction) by
+term overlap weighted by rarity across the surface, name matches counting
+double, and keeps `security.mcp_self_consumer_retrieval_top_k` of them
+(default `40`, `0` keeps every scoped tool), in the order scoping listed
+them. It is lexical on
 purpose: the vocabulary of a tool name and a task brief is the same, and an
 embedding model would add a network call and a second `(provider, model)`
 binding for nothing.
