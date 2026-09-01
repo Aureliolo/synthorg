@@ -54,7 +54,7 @@ _PRESERVE_MARKERS_INSTRUCTION = (
 
 # Mirror ``CompactionConfig.llm_summary_{temperature,max_tokens}`` so a
 # directly-constructed summariser matches the wired path, which sources
-# these from the compaction domain config (workers/_engine_assembly.py).
+# these from the compaction domain config (workers/engine_assembly.py).
 _DEFAULT_TEMPERATURE: Final[float] = 0.3
 _DEFAULT_MAX_TOKENS: Final[int] = 500
 

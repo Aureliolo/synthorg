@@ -38,6 +38,7 @@ from evals.recursion_depth.grading import (
     UnitGrader,
 )
 from evals.recursion_depth.manifest import ModelPair, RecursionDepthManifest, Role
+from synthorg.api.state import AppState
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker_protocol import collect_all_records
@@ -46,7 +47,6 @@ from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.artifacts.baseline_scope import workspace_run_probe
-from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
     EVALS_RECURSION_SPEND_ALL_DROPPED,
@@ -56,19 +56,18 @@ from synthorg.observability.events.evals import (
     EVALS_RECURSION_UNIT_FAILED_SPEND,
     EVALS_RECURSION_UNIT_STARTED,
 )
-from synthorg.persistence.checkpoint_protocol import (
-    CheckpointRepository,
-    HeartbeatRepository,
-)
-from synthorg.persistence.project_protocol import ProjectRepository
-from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.model_ref import ModelRef
 from synthorg.tools.base import BaseTool
 from synthorg.tools.registry import ToolRegistry
+from synthorg.workers.engine_assembly import (
+    EngineAssemblyInputs,
+    build_agent_engine,
+)
 
 logger = get_logger(__name__)
 
-ProviderFactory = Callable[[RunBinding], Awaitable[CompletionProvider]]
+ProviderRegistryFactory = Callable[[RunBinding], Awaitable[ProviderRegistry]]
 
 
 @runtime_checkable
@@ -220,9 +219,12 @@ class SweepDeps:
     """Runtime collaborators every unit of a sweep is driven with.
 
     Attributes:
-        build_provider: Builds the completion driver one unit dispatches
-            through. At record time it is routed at the hosted gateway and
-            carries that unit's own bearer.
+        build_provider_registry: Builds the registry one unit's pair is
+            resolved through. At record time it is routed at the hosted
+            gateway and carries that unit's own bearer. The registry rather
+            than the bare driver, because the engine re-resolves
+            ``identity.model.provider`` per dispatch and a registry that
+            does not know the pair fails closed there.
         build_tool_registry: Builds the file and shell tools scoped to a
             unit's workspace.
         build_grader: Builds what runs a delivered tree to decide whether it
@@ -251,18 +253,19 @@ class SweepDeps:
             the length of one cell. Present means the swap has already
             happened at the cell boundary, where nothing is concurrent, and a
             session filters its own records out of it by task id.
-        project_repo: Where the engine looks the benchmark project up. Every
-            unit declares an artifact, which makes it a work task, and the
-            engine refuses a work task whose project it cannot validate.
-        checkpoint_repo: Where a session's conversation is persisted, every
-            turn. Without it a provider failure that outlasts the retry ladder
-            discards the whole session: the loop returns a terminal ERROR and
-            nothing can re-enter a conversation nobody wrote down. A sweep unit
-            is hours of work, so the state goes on disk and a retry RESUMES.
-        heartbeat_repo: The liveness half of the same mechanism. Required
-            together with ``checkpoint_repo``: the engine refuses one without
-            the other, because a checkpoint nothing declares stale is a
-            resume point that can be handed to two runners at once.
+        app_state: The live application this sweep serves its gateway from,
+            and the state every engine collaborator is read off. Held here
+            rather than re-derived per session because it is what makes the
+            sweep's engine and a deployment's engine the same construction:
+            the project repository a work task is validated against, the
+            checkpoint repositories a killed session resumes from, the
+            compaction callback, the review pipeline, the approval gate and
+            the budget enforcer all arrive through it. A second copy of any
+            of them here would be a second answer.
+        provider_registry: Where an agent's own bound pair is resolved. The
+            sweep declares its pairs in the manifest, so a unit dispatching
+            on a pair the registry does not know fails closed rather than
+            silently landing on the session's default driver.
         stall_idle_seconds: Idle time after which a unit is reported stalled.
         on_stall: Second channel for that report, alongside the warning the
             watch always logs. A real sweep runs for hours in a terminal.
@@ -281,7 +284,8 @@ class SweepDeps:
             different claim: "unmeasured" is not "free".
     """
 
-    build_provider: ProviderFactory
+    app_state: AppState
+    build_provider_registry: ProviderRegistryFactory
     build_tool_registry: ToolRegistryFactory
     build_grader: GraderFactory
     build_sandbox: SandboxFactory
@@ -290,9 +294,6 @@ class SweepDeps:
     transcript_root: Path | None = None
     open_run_ledger: LedgerFactory | None = None
     cell_ledger: ProgressTrackingLedger | None = None
-    project_repo: ProjectRepository | None = None
-    checkpoint_repo: CheckpointRepository | None = None
-    heartbeat_repo: HeartbeatRepository | None = None
     stall_idle_seconds: float = DEFAULT_STALL_IDLE_SECONDS
     on_stall: StallReporter | None = None
     declared_pairs: tuple[ModelPair, ...] = ()
@@ -607,7 +608,6 @@ async def open_session(
             deps,
             binding=binding,
             workspace=workspace,
-            cost_tracker=fallback,
             extra_tools=extra_tools,
         )
         yield OpenSession(
@@ -786,37 +786,59 @@ async def _build_engine(
     *,
     binding: RunBinding,
     workspace: CellWorkspace,
-    cost_tracker: ProgressTrackingLedger,
     extra_tools: tuple[BaseTool, ...],
 ) -> AgentEngine:
     """Build the engine one session runs on.
 
+    Built through the PRODUCT'S OWN assembly, against the application this
+    sweep already stands up, so what is measured is what a deployment
+    runs. A second assembly here is how a corpus of eight recordings came
+    to measure an engine wired at 8 of the 51 points a deployment supplies,
+    silently, with nothing at any layer able to tell.
+
+    Only what this session genuinely owns is supplied: its gateway-bound
+    provider, its cell-scoped tool registry and the probe rooted at its own
+    workspace. Everything else is read off the live state, so a subsystem
+    absent here is absent because this deployment does not run it.
+
     Returns:
         The configured engine.
     """
-    # No API lifespan runs here, so the ambient prompt layers the product binds
-    # at boot have to be bound explicitly or the sweep measures a prompt the
-    # product never sends.
+    # No API lifespan runs here for the prompt layers specifically: the
+    # application is served, but the ambient layers the product binds at boot
+    # have to be bound explicitly or the sweep measures a prompt the product
+    # never sends.
     bind_default_prompt_layers()
     base = deps.build_tool_registry(workspace, owner=binding.execution_id)
     tools = _with_extra_tools(base, extra_tools)
-    return AgentEngine(
-        provider=await deps.build_provider(binding),
-        tool_registry=tools,
-        cost_tracker=cost_tracker,
-        project_repo=deps.project_repo,
-        # The same post-execution check the deployment runs, and the reason
-        # every unit here declares an artifact: a session that answered in
-        # prose having written nothing terminates NO_OP rather than reading as
-        # a clean success, which would put undelivered work in the survival
-        # denominator.
-        run_probe=workspace_run_probe(workspace.root),
-        recovery_strategy=FailAndReassignStrategy(),
-        # Both or neither, which the engine enforces. With them a session's
-        # conversation is on disk turn by turn, so a failure that outlasts the
-        # retry ladder costs the turns still in flight rather than all of them.
-        checkpoint_repo=deps.checkpoint_repo,
-        heartbeat_repo=deps.heartbeat_repo,
+    registry = await deps.build_provider_registry(binding)
+    return await build_agent_engine(
+        deps.app_state,
+        EngineAssemblyInputs(
+            provider=registry.get(binding.ref.provider),
+            provider_registry=registry,
+            tool_registry=tools,
+            # The same post-execution check the deployment runs, and the
+            # reason every unit here declares an artifact: a session that
+            # answered in prose having written nothing terminates NO_OP
+            # rather than reading as a clean success, which would put
+            # undelivered work in the survival denominator.
+            run_probe=workspace_run_probe(workspace.root),
+            # No coordinator runs here: this sweep dispatches its own waves,
+            # so there are no multi-agent metrics to baseline against.
+            coordination_metrics_collector=None,
+            # The sweep runs offline by construction, and its agents reach
+            # no connection catalog, so neither surface has anything to bind.
+            external_api_runtime=None,
+            connection_tool_runtimes=None,
+            # Every exchange is already captured by the transcript recorder
+            # in front of the gateway, which is a strictly wider record.
+            flight_recorder_sink=None,
+            # Step quality is scored by the oracle against the delivered
+            # tree, which is the measurement this sweep exists to take.
+            step_classifier=None,
+            classification_detector_timeout_seconds=None,
+        ),
     )
 
 
@@ -964,7 +986,7 @@ def ledger_scope(
 __all__ = [
     "LedgerFactory",
     "OpenSession",
-    "ProviderFactory",
+    "ProviderRegistryFactory",
     "SessionLimits",
     "SessionOutcome",
     "StallReporter",

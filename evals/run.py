@@ -53,8 +53,24 @@ from evals.scoring.aggregate import aggregate_brief_score
 from evals.scoring.judged import JudgeProtocol, ScriptedJudge
 from synthorg.config.loader import load_config
 from synthorg.core.agent import AgentIdentity, ModelConfig
+from synthorg.core.clock import SystemClock
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.agent_state_recording import no_agent_state
+from synthorg.engine.dependencies import (
+    EngineBehaviour,
+    EngineBudget,
+    EngineCore,
+    EngineDependencies,
+    EngineGovernance,
+    EngineLoopControls,
+    EngineMemory,
+    EngineObservability,
+    EngineOrg,
+    EngineRecovery,
+    EngineRouting,
+    EngineTooling,
+)
 from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.memory.injection import MemoryInjectionStrategy
 from synthorg.memory.procedural.models import ProceduralMemoryConfig
@@ -69,6 +85,8 @@ from synthorg.observability.events.evals import (
 from synthorg.providers.cassette.provider import CassetteCompletionProvider
 from synthorg.providers.drivers.scripted import ScriptedDriver
 from synthorg.providers.protocol import CompletionProvider
+from synthorg.security.audit import AuditLog
+from synthorg.tools.connection_tool_runtimes import ConnectionToolRuntimes
 
 logger = get_logger(__name__)
 
@@ -530,14 +548,103 @@ async def run_benchmark_async(  # noqa: PLR0913
     # at boot have to be bound explicitly or the benchmark scores a prompt the
     # product never sends.
     bind_default_prompt_layers()
+    # Declared in full rather than assembled from an ``AppState``, because
+    # this benchmark stands up no application: it drives the engine directly
+    # against a cassette or a scripted strategy. Every ``None`` below is
+    # therefore a statement about what this benchmark measures, and reading
+    # them together is the honest answer to "which engine did it score".
     engine = AgentEngine(
-        provider=active_provider,
-        recovery_strategy=FailAndReassignStrategy(),
-        procedural_memory_config=effective_procedural,
-        # Fixed for the run: the benchmark builds its own backend up front and
-        # nothing rewires it mid-suite, so the resolver is a constant here.
-        memory_injection_strategy_provider=lambda: injection_strategy,
-        memory_backend=memory_backend,
+        EngineDependencies(
+            core=EngineCore(
+                provider=active_provider,
+                clock=SystemClock(),
+                config_resolver=None,
+                # The benchmark grades prose against a rubric; nothing here
+                # asks an agent to touch a filesystem.
+                tool_registry=None,
+                execution_loop=None,
+                shutdown_checker=None,
+            ),
+            routing=EngineRouting(
+                provider_registry=None,
+                provider_configs=None,
+                model_resolver=None,
+            ),
+            budget=EngineBudget(
+                cost_tracker=None,
+                budget_enforcer=None,
+                cost_forecast_repo=None,
+                coordination_metrics_collector=None,
+            ),
+            governance=EngineGovernance(
+                policy_engine=None,
+                security_config=None,
+                security_config_provider=None,
+                audit_log=AuditLog(),
+                approval_store=None,
+                approval_gate=None,
+                parked_context_repo=None,
+                approval_interrupt_timeout_seconds=None,
+                review_gate=None,
+                review_pipeline=None,
+            ),
+            loop_controls=EngineLoopControls(
+                stagnation_detector=None,
+                compaction_callback=None,
+                step_classifier=None,
+                steering_inbox=None,
+                background_job_watcher=None,
+            ),
+            memory=EngineMemory(
+                memory_backend=memory_backend,
+                # Fixed for the run: the benchmark builds its own backend up
+                # front and nothing rewires it mid-suite, so the resolver is
+                # a constant here.
+                memory_injection_strategy_provider=lambda: injection_strategy,
+                ontology_injection_strategy=None,
+                procedural_memory_config=effective_procedural,
+                capture_strategy=None,
+                distillation_capture_enabled=False,
+            ),
+            org=EngineOrg(
+                agent_registry=None,
+                capability=None,
+                task_engine=None,
+                project_repo=None,
+                coordinator=None,
+                evolution_service=None,
+                mcp_self_consumer=None,
+            ),
+            tooling=EngineTooling(
+                external_api_runtime=None,
+                connection_tool_runtimes=ConnectionToolRuntimes(),
+                tool_invocation_tracker=None,
+                brain_tool_factory_provider=None,
+                knowledge_tool_factory_provider=None,
+                docs_tool_factory_provider=None,
+                research_tool_factory_provider=None,
+                structure_map_tool_factory_provider=None,
+            ),
+            observability=EngineObservability(
+                event_stream_hub=None,
+                event_reader=None,
+                interrupt_store=None,
+                flight_recorder_sink=None,
+                agent_state_repository_provider=no_agent_state,
+                classification_sinks=(),
+                error_taxonomy_config=None,
+                agent_middleware_chain=None,
+            ),
+            recovery=EngineRecovery(
+                recovery_strategy=FailAndReassignStrategy(),
+                run_probe=None,
+                checkpointing=None,
+            ),
+            behaviour=EngineBehaviour(
+                clarification_enabled=True,
+                scoping_enabled=True,
+            ),
+        )
     )
 
     logger.info(

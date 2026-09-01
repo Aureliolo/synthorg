@@ -1,7 +1,7 @@
 # module-kind: service
 """Memory collaborators the boot ``AgentEngine`` is assembled with.
 
-Kept beside :mod:`synthorg.workers._engine_assembly` rather than inside
+Kept beside :mod:`synthorg.workers.engine_assembly` rather than inside
 it so the engine-assembly module stays within its size budget, and so
 the memory seam, which decides what an agent recalls before it acts, is
 reviewable on its own.

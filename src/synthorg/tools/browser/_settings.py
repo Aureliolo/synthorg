@@ -6,7 +6,7 @@ boot and packages them in a frozen ``BrowserSettings`` model so
 than baked-in module constants.
 
 The resolver runs from
-:func:`synthorg.workers._engine_assembly._build_tool_registry`, so the
+:func:`synthorg.workers.engine_assembly.build_tool_registry`, so the
 audit log fires once at startup and the settings track operator
 overrides for the rest of the process lifetime.
 """

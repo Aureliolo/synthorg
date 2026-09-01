@@ -1,7 +1,7 @@
 # module-kind: orchestrator
 """Boot resolution of the design image provider from settings.
 
-Kept out of ``_engine_assembly`` (size budget) but part of the same boot
+Kept out of ``engine_assembly`` (size budget) but part of the same boot
 assembly: reads the ``design`` namespace settings, resolves the selected
 image model to its serving provider, and wraps it in a
 :class:`ProviderImageProvider` so the ``image_generator`` tool routes image

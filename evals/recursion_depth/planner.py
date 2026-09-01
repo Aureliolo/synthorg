@@ -198,7 +198,9 @@ class AgentSessionPlanner:
         Returns:
             The tree.
         """
-        provider = await self.deps.build_provider(self._binding(task, execution_id))
+        binding = self._binding(task, execution_id)
+        registry = await self.deps.build_provider_registry(binding)
+        provider = registry.get(binding.ref.provider)
         priced = self.executor.provider in self.deps.priced_providers
         fallback = ProgressTrackingLedger()
         async with (

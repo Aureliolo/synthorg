@@ -56,13 +56,10 @@ if TYPE_CHECKING:
         ResolveMemoryStrategy,
         ValidateProject,
     )
+    from synthorg.engine.checkpoint.wiring import CheckpointWiring
     from synthorg.engine.flight_recording import FlightRecorderSink
     from synthorg.engine.loop_protocol import ExecutionLoop, ShutdownChecker
     from synthorg.engine.task_engine import TaskEngine
-    from synthorg.persistence.checkpoint_protocol import (
-        CheckpointRepository,
-        HeartbeatRepository,
-    )
     from synthorg.persistence.project_protocol import ProjectRepository
     from synthorg.settings.resolver import ConfigResolver
 
@@ -97,7 +94,7 @@ class ResumePreparation(BaseModel):
 class AgentEngineCheckpointResumeMixin:
     """Mixin performing a checkpoint resume once recovery has chosen one."""
 
-    _recovery_strategy: RecoveryStrategy | None
+    _recovery_strategy: RecoveryStrategy
     _project_repo: ProjectRepository | None
     _validate_project: ValidateProject
     _build_budget_checker: BuildBudgetChecker
@@ -113,8 +110,7 @@ class AgentEngineCheckpointResumeMixin:
     _task_engine: TaskEngine | None
     _run_probe: RunBaselineProbe | None
     _approval_store: ApprovalStoreProtocol | None
-    _checkpoint_repo: CheckpointRepository | None
-    _heartbeat_repo: HeartbeatRepository | None
+    _checkpointing: CheckpointWiring | None
     _flight_recorder_sink: FlightRecorderSink | None
     _clock: Clock
 
@@ -315,11 +311,6 @@ class AgentEngineCheckpointResumeMixin:
             )
         finally:
             if result.termination_reason != TerminationReason.ERROR:
-                if self._recovery_strategy is not None:
-                    await self._recovery_strategy.finalize(execution_id)
-                await cleanup_checkpoint_artifacts(
-                    self._checkpoint_repo,
-                    self._heartbeat_repo,
-                    execution_id,
-                )
+                await self._recovery_strategy.finalize(execution_id)
+                await cleanup_checkpoint_artifacts(self._checkpointing, execution_id)
         return result

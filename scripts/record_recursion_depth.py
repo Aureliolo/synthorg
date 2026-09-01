@@ -858,7 +858,11 @@ def _build_deps(
         The wired :class:`SweepDeps`.
     """
     return SweepDeps(
-        build_provider=binder.build_provider,
+        # The live application the gateway is served from, and the state every
+        # engine collaborator is read off. Handing it over is what makes the
+        # sweep's engine and a deployment's engine one construction.
+        app_state=host.app_state,
+        build_provider_registry=binder.build_provider_registry,
         build_tool_registry=binder.build_tool_registry,
         # Built per grading, never hoisted. A shared grader would share one
         # lifecycle strategy and therefore one warm container across units,
@@ -877,13 +881,6 @@ def _build_deps(
         transcripts=host.transcripts,
         transcript_root=transcript_root,
         open_run_ledger=binder.open_run_ledger,
-        project_repo=host.project_repo,
-        # A sweep unit is hours of work, so its conversation goes on disk turn
-        # by turn and a session cut off by infrastructure is RESUMED rather
-        # than re-run. Both or neither: the engine refuses one without the
-        # other.
-        checkpoint_repo=host.checkpoint_repo,
-        heartbeat_repo=host.heartbeat_repo,
         stall_idle_seconds=stall_idle_seconds,
         on_stall=_print_stall,
         declared_pairs=declared_pairs,

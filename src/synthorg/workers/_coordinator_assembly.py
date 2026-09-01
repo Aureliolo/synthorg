@@ -71,11 +71,11 @@ from synthorg.settings.model_ref import parse_model_ref
 from synthorg.settings.state import config_resolver_of
 from synthorg.tools.web.providers.http_search_provider import HttpWebSearchProvider
 from synthorg.workers._capability_policy_wiring import build_capability_policy
-from synthorg.workers._engine_assembly import agent_state_repository_provider
 from synthorg.workers._planning_memory import (
     PlanningMemoryGrant,
     build_planning_memory,
 )
+from synthorg.workers.engine_assembly import agent_state_repository_provider
 from synthorg.workers.execution_service import WorkerExecutionService
 
 if TYPE_CHECKING:

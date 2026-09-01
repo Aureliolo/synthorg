@@ -24,7 +24,7 @@ execution AND multi-agent coordination) online without a process
 restart.
 
 Engine-side construction helpers live in
-:mod:`synthorg.workers._engine_assembly`; coordination-side helpers in
+:mod:`synthorg.workers.engine_assembly`; coordination-side helpers in
 :mod:`synthorg.workers._coordinator_assembly`.
 """
 
@@ -36,6 +36,7 @@ from pydantic import ValidationError
 from synthorg.api.state import AppState
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import PersistenceError
+from synthorg.engine.artifacts.baseline_scope import workspace_run_probe
 from synthorg.engine.completion_oracle.builder import (
     build_completion_oracle_tool_seed,
 )
@@ -85,11 +86,6 @@ from synthorg.workers._coordinator_assembly import (
     _build_runtime_coordinator,
     _build_runtime_work_pipeline,
 )
-from synthorg.workers._engine_assembly import (
-    _build_external_api_runtime,
-    _build_tool_registry,
-    _construct_agent_engine,
-)
 from synthorg.workers._mcp_bridge_wiring import build_mcp_bridge_tools
 from synthorg.workers._red_team_runtime import build_red_team_runtime_or_none
 from synthorg.workers._runtime_aux_wiring import (
@@ -102,9 +98,17 @@ from synthorg.workers._web_fetch_rung_wiring import build_web_fetch_rungs_or_non
 from synthorg.workers._web_search_provider_wiring import (
     build_web_search_provider_or_none,
 )
+from synthorg.workers.engine_assembly import (
+    EngineAssemblyInputs,
+    build_agent_engine,
+)
 from synthorg.workers.execution_service import (
     AgentEngineExecutionService,
     NoProviderExecutionService,
+)
+from synthorg.workers.tool_registry_assembly import (
+    build_external_api_runtime,
+    build_tool_registry,
 )
 
 logger = get_logger(__name__)
@@ -324,7 +328,7 @@ async def build_runtime_services(
     # rather than each assembly re-resolving settings and building its own.
     search_provider = await build_web_search_provider_or_none(app_state)
     fetch_rungs = await build_web_fetch_rungs_or_none(app_state)
-    tool_registry, tool_count, sandbox_backends = await _build_tool_registry(
+    tool_registry, tool_count, sandbox_backends = await build_tool_registry(
         app_state,
         workspace_root,
         extra_tools=(
@@ -336,7 +340,7 @@ async def build_runtime_services(
         fetch_rungs=fetch_rungs,
     )
     coordination_metrics_collector = _construct_coordination_collector(app_state)
-    external_api_runtime = await _build_external_api_runtime(app_state)
+    external_api_runtime = await build_external_api_runtime(app_state)
     connection_tool_runtimes = await build_connection_tool_runtimes(app_state)
     flight_recorder_sink = await build_boot_flight_recorder_sink(app_state)
     try:
@@ -359,18 +363,26 @@ async def build_runtime_services(
         rule_matched_confidence=engine_bridge.classifier_rule_matched_confidence,
         fallback_confidence=engine_bridge.classifier_fallback_confidence,
     )
-    engine = await _construct_agent_engine(
+    engine = await build_agent_engine(
         app_state,
-        provider,
-        registry=registry,
-        tool_registry=tool_registry,
-        coordination_metrics_collector=coordination_metrics_collector,
-        external_api_runtime=external_api_runtime,
-        connection_tool_runtimes=connection_tool_runtimes,
-        flight_recorder_sink=flight_recorder_sink,
-        step_classifier=step_classifier,
-        classification_detector_timeout_seconds=(
-            engine_bridge.classification_detector_timeout_seconds
+        EngineAssemblyInputs(
+            provider=provider,
+            provider_registry=registry,
+            tool_registry=tool_registry,
+            # The layout knowledge lives here, where the workspace root is
+            # known, rather than inside the assembly: the engine receives
+            # only the question it can ask, which is whether this project
+            # produced what its task declared, bound to the same root the
+            # agent's file tools write through.
+            run_probe=workspace_run_probe(workspace_root),
+            coordination_metrics_collector=coordination_metrics_collector,
+            external_api_runtime=external_api_runtime,
+            connection_tool_runtimes=connection_tool_runtimes,
+            flight_recorder_sink=flight_recorder_sink,
+            step_classifier=step_classifier,
+            classification_detector_timeout_seconds=(
+                engine_bridge.classification_detector_timeout_seconds
+            ),
         ),
     )
     autonomy_resolver = AutonomyResolver(

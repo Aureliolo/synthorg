@@ -56,8 +56,9 @@ class AgentEngineRecoveryMixin(AgentEngineCheckpointResumeMixin):
             ``(execution_result, recovery_result)`` where
             ``execution_result`` is the (possibly resumed) execution
             and ``recovery_result`` is the strategy's decision (``None``
-            when no strategy is wired or recovery raised a non-typed
-            error that was logged and swallowed).
+            when the run carried no task execution to recover, or
+            recovery raised a non-typed error that was logged and
+            swallowed).
 
         Raises:
             ProjectNotFoundError: Re-raised from the strategy when the
@@ -65,10 +66,7 @@ class AgentEngineRecoveryMixin(AgentEngineCheckpointResumeMixin):
             BudgetExhaustedError: Re-raised from the strategy when
                 resume cost would exceed the remaining budget.
         """
-        if (
-            self._recovery_strategy is None
-            or execution_result.context.task_execution is None
-        ):
+        if execution_result.context.task_execution is None:
             return execution_result, None
         try:
             return await self._run_recovery(
@@ -124,9 +122,9 @@ class AgentEngineRecoveryMixin(AgentEngineCheckpointResumeMixin):
         strategy = self._recovery_strategy
         ctx = execution_result.context
         execution = ctx.task_execution
-        # The caller narrowed both; repeated here because neither narrowing
-        # survives the call boundary.
-        if strategy is None or execution is None:
+        # The caller narrowed this; repeated here because the narrowing does
+        # not survive the call boundary.
+        if execution is None:
             return execution_result, None
         recovery_result = await strategy.recover(
             task_execution=execution,

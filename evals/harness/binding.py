@@ -26,11 +26,14 @@ from evals.errors import HarnessProviderMissingError
 from evals.harness.host import RecordingGatewayHost
 from evals.harness.stall_watch import ProgressTrackingLedger
 from evals.harness.workspace import CellWorkspace
+from synthorg.budget.config import BudgetConfig
 from synthorg.budget.state import BudgetStateSlice
+from synthorg.budget.wiring import build_budget_enforcer
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.config.schema import RootConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.llm.gateway_binding import mint_run_token
+from synthorg.notifications.state import NotificationsStateSlice
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
     EVALS_HARNESS_BEARER_MINTED,
@@ -245,8 +248,14 @@ class HarnessBinder:
             }
         )
 
-    async def build_provider(self, binding: RunBinding) -> CompletionProvider:
-        """Build the completion driver this run dispatches through.
+    async def build_provider_registry(self, binding: RunBinding) -> ProviderRegistry:
+        """Build the registry this run's pair is resolved through.
+
+        The registry rather than the bare driver, because the engine
+        re-resolves ``identity.model.provider`` per dispatch and a registry
+        that does not know the pair fails closed there rather than silently
+        landing on the engine default. Handing over only the driver left the
+        engine with nothing to resolve against at all.
 
         Retry behaviour comes from the company config's own ``retry`` block,
         deliberately not from the live ``providers.retry_max_attempts`` setting
@@ -258,10 +267,19 @@ class HarnessBinder:
         declarative place is what makes that comparable.
 
         Returns:
-            A driver routed and authenticated to the hosted gateway.
+            A registry holding one connection, routed and authenticated to
+            the hosted gateway.
         """
         routed = await self.routed_provider_config(binding)
-        registry = ProviderRegistry.from_config({binding.ref.provider: routed})
+        return ProviderRegistry.from_config({binding.ref.provider: routed})
+
+    async def build_provider(self, binding: RunBinding) -> CompletionProvider:
+        """Build the completion driver this run dispatches through.
+
+        Returns:
+            The driver for this binding's own pair.
+        """
+        registry = await self.build_provider_registry(binding)
         return registry.get(binding.ref.provider)
 
     def track_sandbox(self, sandbox: DockerSandbox, *, owner: str) -> None:
@@ -473,6 +491,12 @@ class HarnessBinder:
         window to lose a swap in, but nothing about this method enforces that,
         and a lost swap would misattribute one run's real spend to another.
 
+        The ENFORCER is rebuilt over the same ledger and swapped alongside it.
+        An enforcer captures its cost tracker, so swapping only the tracker
+        leaves every limit measured against a total nothing writes to, which
+        is a budget that can never fire; the engine refuses that pair rather
+        than running unbounded.
+
         Yields:
             The tracker holding this run's authoritative spend.
         """
@@ -481,14 +505,31 @@ class HarnessBinder:
         # this one sink, which makes it the only place that sees a run go quiet
         # without the loop or the gateway having to report it.
         ledger = ProgressTrackingLedger(clock=app_state.clock)
-        previous = app_state.swap_field_returning_previous(
+        budget = app_state.slice(BudgetStateSlice)
+        enforcer = build_budget_enforcer(
+            budget_config=budget.budget_config or BudgetConfig(),
+            cost_tracker=ledger,
+            quota_tracker=budget.quota_tracker,
+            risk_tracker=budget.risk_tracker,
+            notification_dispatcher=(
+                app_state.slice(NotificationsStateSlice).dispatcher
+            ),
+        )
+        previous_tracker = app_state.swap_field_returning_previous(
             BudgetStateSlice, "cost_tracker", ledger
+        )
+        previous_enforcer = app_state.swap_field_returning_previous(
+            BudgetStateSlice, "budget_enforcer", enforcer
         )
         logger.debug(EVALS_HARNESS_LEDGER_INSTALLED, execution_id=execution_id)
         try:
             yield ledger
         finally:
-            app_state.wire(BudgetStateSlice, cost_tracker=previous)
+            app_state.wire(
+                BudgetStateSlice,
+                cost_tracker=previous_tracker,
+                budget_enforcer=previous_enforcer,
+            )
 
 
 __all__ = ["HarnessBinder", "RunBinding"]

@@ -8,7 +8,7 @@ Used by ``AgentEngine`` to keep resume orchestration concise.
 
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.engine.checkpoint.callback_factory import make_checkpoint_callback
-from synthorg.engine.checkpoint.models import CheckpointConfig
+from synthorg.engine.checkpoint.wiring import CheckpointWiring
 from synthorg.engine.context import AgentContext
 from synthorg.engine.failure_classification import FailureCategory
 from synthorg.engine.loop_protocol import ExecutionLoop
@@ -27,10 +27,6 @@ from synthorg.observability.events.checkpoint import (
     CHECKPOINT_UNSUPPORTED_LOOP,
     HEARTBEAT_DELETE_FAILED,
     HEARTBEAT_DELETED,
-)
-from synthorg.persistence.checkpoint_protocol import (
-    CheckpointRepository,
-    HeartbeatRepository,
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
@@ -123,37 +119,38 @@ def deserialize_and_reconcile(
 def make_loop_with_callback(
     loop: ExecutionLoop,
     *,
-    checkpoint_repo: CheckpointRepository | None,
-    heartbeat_repo: HeartbeatRepository | None,
-    checkpoint_config: CheckpointConfig,
+    wiring: CheckpointWiring | None,
     agent_id: str,
     task_id: str,
 ) -> ExecutionLoop:
     """Return the execution loop with a checkpoint callback if configured.
 
-    If ``checkpoint_repo`` and ``heartbeat_repo`` are both set,
-    creates a checkpoint callback and returns a new loop instance
-    with it injected.  Otherwise returns the original loop unchanged.
-
     The branch here dispatches on an already-built loop instance, never on
     anything a checkpoint persisted: a ``Checkpoint`` stores a serialised
     ``AgentContext``, which carries no loop identity. The engine builds a
-    ``ReactLoop``, so the fallback covers only a loop injected from outside
+    ``ReactLoop``, so the fallback covers only a loop supplied from outside
     (a test double, or an experiment's own), which cannot be asked to carry
     a callback it never declared.
 
+    Args:
+        loop: The loop this run will execute on.
+        wiring: The checkpoint repositories and their config, or ``None``
+            for a run that does not survive its process.
+        agent_id: Who the checkpoints are written for.
+        task_id: What they are written against.
+
     Returns:
-        A new loop instance with the checkpoint callback injected,
-        or the original ``loop`` when either repository is ``None``
-        or the loop was supplied from outside the engine.
+        A new loop instance with the checkpoint callback injected, or the
+        original ``loop`` when nothing is checkpointed or the loop was
+        supplied from outside the engine.
     """
-    if checkpoint_repo is None or heartbeat_repo is None:
+    if wiring is None:
         return loop
 
     callback = make_checkpoint_callback(
-        checkpoint_repo=checkpoint_repo,
-        heartbeat_repo=heartbeat_repo,
-        config=checkpoint_config,
+        checkpoint_repo=wiring.checkpoint_repo,
+        heartbeat_repo=wiring.heartbeat_repo,
+        config=wiring.config,
         agent_id=agent_id,
         task_id=task_id,
     )
@@ -169,8 +166,7 @@ def make_loop_with_callback(
 
 
 async def cleanup_checkpoint_artifacts(
-    checkpoint_repo: CheckpointRepository | None,
-    heartbeat_repo: HeartbeatRepository | None,
+    wiring: CheckpointWiring | None,
     execution_id: str,
 ) -> None:
     """Delete checkpoints and heartbeat for an execution.
@@ -181,41 +177,43 @@ async def cleanup_checkpoint_artifacts(
     Best-effort: errors are logged but never propagated.
 
     Args:
-        checkpoint_repo: Checkpoint repository (may be ``None``).
-        heartbeat_repo: Heartbeat repository (may be ``None``).
+        wiring: The checkpoint repositories, or ``None`` for a run that
+            wrote none. Taken as one value rather than two optionals
+            because a checkpoint whose heartbeat was never written is
+            not half a cleanup, it is a row nothing can declare stale.
         execution_id: The execution whose data should be cleaned up.
     """
-    if checkpoint_repo is not None:
-        try:
-            count = await checkpoint_repo.delete_by_execution(execution_id)
-            logger.debug(
-                CHECKPOINT_DELETED,
-                execution_id=execution_id,
-                deleted_count=count,
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort teardown
-            reraise_critical(exc)
-            logger.warning(
-                CHECKPOINT_DELETE_FAILED,
-                execution_id=execution_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+    if wiring is None:
+        return
+    try:
+        count = await wiring.checkpoint_repo.delete_by_execution(execution_id)
+        logger.debug(
+            CHECKPOINT_DELETED,
+            execution_id=execution_id,
+            deleted_count=count,
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort teardown
+        reraise_critical(exc)
+        logger.warning(
+            CHECKPOINT_DELETE_FAILED,
+            execution_id=execution_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
 
-    if heartbeat_repo is not None:
-        try:
-            await heartbeat_repo.delete(execution_id)
-            logger.debug(
-                HEARTBEAT_DELETED,
-                execution_id=execution_id,
-            )
-        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
-            # lint-allow: swallow-ok -- best-effort teardown
-            reraise_critical(exc)
-            logger.warning(
-                HEARTBEAT_DELETE_FAILED,
-                execution_id=execution_id,
-                error_type=type(exc).__name__,
-                error=safe_error_description(exc),
-            )
+    try:
+        await wiring.heartbeat_repo.delete(execution_id)
+        logger.debug(
+            HEARTBEAT_DELETED,
+            execution_id=execution_id,
+        )
+    except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+        # lint-allow: swallow-ok -- best-effort teardown
+        reraise_critical(exc)
+        logger.warning(
+            HEARTBEAT_DELETE_FAILED,
+            execution_id=execution_id,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )

@@ -66,7 +66,7 @@ def _construct_coordination_collector(
     Requires a live ``CostTracker`` (the collector's only non-optional
     dependency). Without one - the empty/degraded path - no collector
     is built and the metrics pipeline stays a no-op, mirroring the
-    ``_construct_agent_engine`` optional-dependency guards. The single
+    ``build_agent_engine`` optional-dependency guards. The single
     instance returned is threaded into both the single-agent
     ``AgentEngine`` and the multi-agent coordinator so one
     ``BaselineStore`` accumulates the single-agent baselines the

@@ -47,6 +47,20 @@ logger = get_logger(__name__)
 AgentStateRepositoryProvider = Callable[[], AgentStateRepository | None]
 
 
+def no_agent_state() -> AgentStateRepository | None:
+    """Answer "no live-state store" for an engine wired without one.
+
+    Named rather than defaulted: an engine that records no live state is
+    a decision its caller makes, and answering ``None`` is exactly what
+    the wired provider does while persistence is unconnected, so the
+    recording path has one shape either way.
+
+    Returns:
+        Always ``None``.
+    """
+    return None
+
+
 async def _save(
     repository: AgentStateRepository,
     state: AgentRuntimeState,
@@ -369,5 +383,6 @@ __all__ = [
     "make_runtime_state_observer",
     "mark_agent_idle",
     "mark_agent_running",
+    "no_agent_state",
     "release_agent_row",
 ]

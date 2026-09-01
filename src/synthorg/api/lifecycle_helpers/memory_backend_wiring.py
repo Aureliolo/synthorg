@@ -8,7 +8,7 @@ ephemeral or absent here degrades every one of them at once.
 
 Two rules shape this module:
 
-* It runs **before** ``_install_runtime_services``. ``_construct_agent_engine``
+* It runs **before** ``_install_runtime_services``. ``build_agent_engine``
   reads ``MemoryStateSlice.backend`` eagerly, so a backend wired after
   that point would never reach an agent.
 * It **fails loud**. When no embedding model resolves, no backend is

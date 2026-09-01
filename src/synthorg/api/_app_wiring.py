@@ -92,22 +92,18 @@ def _build_budget_enforcer(
     Returns:
         The wired ``BudgetEnforcer`` or ``None`` when no cost tracker.
     """
-    from synthorg.budget.enforcer import BudgetEnforcer  # noqa: PLC0415
     from synthorg.budget.state import BudgetStateSlice  # noqa: PLC0415
+    from synthorg.budget.wiring import build_budget_enforcer  # noqa: PLC0415
     from synthorg.notifications.state import (  # noqa: PLC0415
         NotificationsStateSlice,
     )
-    from synthorg.security.risk_scorer import DefaultRiskScorer  # noqa: PLC0415
 
-    if cost_tracker is None:
-        return None
     budget_slice = app_state.slice(BudgetStateSlice)
-    return BudgetEnforcer(
+    return build_budget_enforcer(
         budget_config=budget_config,
         cost_tracker=cost_tracker,
         quota_tracker=budget_slice.quota_tracker,
         risk_tracker=budget_slice.risk_tracker,
-        risk_scorer=DefaultRiskScorer(),
         notification_dispatcher=app_state.slice(NotificationsStateSlice).dispatcher,
     )
 

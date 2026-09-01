@@ -1,7 +1,7 @@
 # module-kind: orchestrator
 """Boot wiring for the external-MCP bridge tools and their sandbox policy.
 
-Split from ``_engine_assembly`` so the tool-registry orchestrator stays within
+Split from ``engine_assembly`` so the tool-registry orchestrator stays within
 its size budget: this module owns resolving the MCP sandbox policy (fail-secure
 to sandbox-on defaults) and connecting the configured/installed MCP servers via
 :class:`MCPToolFactory`, returning their discovered tools for the boot registry.
