@@ -1,5 +1,147 @@
 # Changelog
 
+## [0.9.4](https://github.com/Aureliolo/synthorg/compare/v0.9.3...v0.9.4) (2026-08-31)
+
+
+### Features
+
+* add Mammouth provider with fail-loud live model discovery ([#2550](https://github.com/Aureliolo/synthorg/issues/2550)) ([851d5c0](https://github.com/Aureliolo/synthorg/commit/851d5c0325186146171c84b7580979ff003c034d))
+* background shell commands ([#2883](https://github.com/Aureliolo/synthorg/issues/2883)) ([685cb81](https://github.com/Aureliolo/synthorg/commit/685cb8134436dab2456f20b3f52db15ebb1dcbf6))
+* build/test/review completion oracle (on by default) ([#2581](https://github.com/Aureliolo/synthorg/issues/2581)) ([a0ca3fa](https://github.com/Aureliolo/synthorg/commit/a0ca3fa3cf14239b1b84f50418a98d40543d7655)), closes [#2576](https://github.com/Aureliolo/synthorg/issues/2576)
+* canonicalise hostnames to A-labels across both SSRF paths ([#2825](https://github.com/Aureliolo/synthorg/issues/2825)) ([3d9240f](https://github.com/Aureliolo/synthorg/commit/3d9240fc728af45443bae507cf4450f465c3725b))
+* commit the contract as code before any unit builds on it ([#2879](https://github.com/Aureliolo/synthorg/issues/2879)) ([3800175](https://github.com/Aureliolo/synthorg/commit/380017512b4a4a539e7da1c867a20d09c2245503))
+* extend a workstream's leaf just-in-time when it ran out of turn ([#2884](https://github.com/Aureliolo/synthorg/issues/2884)) ([e8522e5](https://github.com/Aureliolo/synthorg/commit/e8522e5b00503c908a11b3dcba0f563ceb543e97))
+* first-class durable Plan entity and Plan Review workspace ([#2569](https://github.com/Aureliolo/synthorg/issues/2569)) ([75a9128](https://github.com/Aureliolo/synthorg/commit/75a9128676a85f20082bc64d56205ac4ddbed071))
+* give every loop decision a single owner, from intake to the tail ([b18ecdf](https://github.com/Aureliolo/synthorg/commit/b18ecdff7d986e49dbbe9491d3a4b7e01e0ed55b))
+* give release notes a tagline and make a failed generation visible ([#2889](https://github.com/Aureliolo/synthorg/issues/2889)) ([b6c1428](https://github.com/Aureliolo/synthorg/commit/b6c142877e17074f54a8ebb792dbe0a902a11e53))
+* measure whether gating every merge holds off aggregation collapse as recursion deepens ([#2802](https://github.com/Aureliolo/synthorg/issues/2802)) ([938f482](https://github.com/Aureliolo/synthorg/commit/938f482d6a2859b3faca27df408a3e15c0b55705))
+* native web search provider and MCP-catalog credential + sandbox hardening ([#2597](https://github.com/Aureliolo/synthorg/issues/2597)) ([5c4268c](https://github.com/Aureliolo/synthorg/commit/5c4268ca37fb94cf540055e269527c35d6305ce7))
+* OpenHands as a selectable 4th inner ExecutionLoop ([#2621](https://github.com/Aureliolo/synthorg/issues/2621)) ([5eb5504](https://github.com/Aureliolo/synthorg/commit/5eb550432c7e02c40ccdee5f2db9f096c4e87f10)), closes [#2614](https://github.com/Aureliolo/synthorg/issues/2614)
+* order the org chart by the operator arrangement and flow wide departments in a column ([#2744](https://github.com/Aureliolo/synthorg/issues/2744)) ([d91360f](https://github.com/Aureliolo/synthorg/commit/d91360f1adbfab23d0aeb282685783d3986c72f8))
+* per-initiative operator-set autonomy mode ([#2579](https://github.com/Aureliolo/synthorg/issues/2579)) ([0d8049a](https://github.com/Aureliolo/synthorg/commit/0d8049a5413208b0bae58eeebe5273303eab9793))
+* persist the decomposition tree so recursive plans can execute ([#2850](https://github.com/Aureliolo/synthorg/issues/2850)) ([13897eb](https://github.com/Aureliolo/synthorg/commit/13897eb1ecc56fc78c29a559decbbafb2cfa0620))
+* plan greenlit objectives via an owner-run agent session ([#2573](https://github.com/Aureliolo/synthorg/issues/2573)) ([167e7f5](https://github.com/Aureliolo/synthorg/commit/167e7f565d5f29f4de4daf731d11b8964ddb385e))
+* record the recursion-depth sweep and answer whether depth survives ([#2848](https://github.com/Aureliolo/synthorg/issues/2848)) ([a5e0036](https://github.com/Aureliolo/synthorg/commit/a5e0036f3a4618697a17fc4fc04afad9b021b301)), closes [#2801](https://github.com/Aureliolo/synthorg/issues/2801)
+* require an explicit (provider, model) at every LLM dispatch (no auto-pick) ([#2592](https://github.com/Aureliolo/synthorg/issues/2592)) ([5095a25](https://github.com/Aureliolo/synthorg/commit/5095a252f12498152e5158cea21787cef7e6a2a7))
+* serviceability-aware model health, evidence-graded capability, and operator-declared failover ([#2769](https://github.com/Aureliolo/synthorg/issues/2769)) ([db45295](https://github.com/Aureliolo/synthorg/commit/db45295df9ef637ccea464fd39afa775b92067ee))
+* two-surface approvals — holistic plan review and structural execution-time decisions ([#2584](https://github.com/Aureliolo/synthorg/issues/2584)) ([2968d10](https://github.com/Aureliolo/synthorg/commit/2968d10c7cc82b7842e3cab0955358b1a3b77580)), closes [#2583](https://github.com/Aureliolo/synthorg/issues/2583)
+* wire the memory-consuming tail of the general loop ([#2623](https://github.com/Aureliolo/synthorg/issues/2623)) ([55995c5](https://github.com/Aureliolo/synthorg/commit/55995c558cbd7b21f76e4e7ab235d6de481856a3)), closes [#2611](https://github.com/Aureliolo/synthorg/issues/2611)
+
+
+### Bug Fixes
+
+* a planning session continues past a rejection and books its spend ([#2810](https://github.com/Aureliolo/synthorg/issues/2810)) ([5d1b779](https://github.com/Aureliolo/synthorg/commit/5d1b77980935a8baa93f424d5ff45efd6d86195a))
+* bind vendor presets end to end and stop silent credential, index and keydown failures ([#2670](https://github.com/Aureliolo/synthorg/issues/2670)) ([19054e6](https://github.com/Aureliolo/synthorg/commit/19054e6ad469555dbca12cd2d9c511e9e1d38e55)), closes [#2669](https://github.com/Aureliolo/synthorg/issues/2669)
+* bump apko package pins to newer Wolfi series ([#2901](https://github.com/Aureliolo/synthorg/issues/2901)) ([5384478](https://github.com/Aureliolo/synthorg/commit/538447806aef4a627f769939590fd23d3efc8d96)), closes [#2895](https://github.com/Aureliolo/synthorg/issues/2895)
+* CAS-guard the sprint backlog writes and give the lifecycle tail a level-triggered owner ([#2838](https://github.com/Aureliolo/synthorg/issues/2838)) ([d66f5c6](https://github.com/Aureliolo/synthorg/commit/d66f5c6164b4b74ce53d3516a7b1fc1fe4ae6078))
+* **cli:** follow attestation bundle_url when GitHub returns a null inline bundle ([#2586](https://github.com/Aureliolo/synthorg/issues/2586)) ([4dcaefb](https://github.com/Aureliolo/synthorg/commit/4dcaefb51018f6136eae4cd1b6f2d24f972ae85a)), closes [#2585](https://github.com/Aureliolo/synthorg/issues/2585)
+* **cli:** retry transient GitHub failures on update-check and fail loud instead of warn-and-continue ([#2602](https://github.com/Aureliolo/synthorg/issues/2602)) ([ab30f70](https://github.com/Aureliolo/synthorg/commit/ab30f705bdfa88df4e4fcd0ee46c1b5269cdcdb6))
+* close the collapses round 8 of the general-loop dogfood surfaced ([#2798](https://github.com/Aureliolo/synthorg/issues/2798)) ([f4f7a49](https://github.com/Aureliolo/synthorg/commit/f4f7a49e08b701809ae8eccd122c0da32f225c2e))
+* confine a rejected provider entry to that entry ([#2778](https://github.com/Aureliolo/synthorg/issues/2778)) ([6ef5fee](https://github.com/Aureliolo/synthorg/commit/6ef5feef4ae243b378a7e1e37c113e2ffff612fc))
+* converge plan repair, ground planning in the project workspace, and close dead-end states ([#2800](https://github.com/Aureliolo/synthorg/issues/2800)) ([7895ef2](https://github.com/Aureliolo/synthorg/commit/7895ef2c381ca3d00d1c4b53b1e5ab37e9d7a5b7))
+* decide judge independence by model family, not by connection ([#2806](https://github.com/Aureliolo/synthorg/issues/2806)) ([4e5ca0f](https://github.com/Aureliolo/synthorg/commit/4e5ca0fc5f0771f8f5d270b1916ea5cfe05a9238))
+* delete the sentence_transformer meeting embedder and make protocol config reach the protocol ([#2751](https://github.com/Aureliolo/synthorg/issues/2751)) ([aca428c](https://github.com/Aureliolo/synthorg/commit/aca428c8cc60b20d78663657f1ecc6fb0e7256a0)), closes [#2738](https://github.com/Aureliolo/synthorg/issues/2738) [#2739](https://github.com/Aureliolo/synthorg/issues/2739) [#2740](https://github.com/Aureliolo/synthorg/issues/2740) [#2741](https://github.com/Aureliolo/synthorg/issues/2741) [#2729](https://github.com/Aureliolo/synthorg/issues/2729)
+* eighteen collapses from a live dogfood of the general loop ([#2749](https://github.com/Aureliolo/synthorg/issues/2749)) ([4b332aa](https://github.com/Aureliolo/synthorg/commit/4b332aaf39020ea2114a3c86b572ff94ea293e98))
+* enforce output style where the work is written, and end an initiative that ran out of road ([#2799](https://github.com/Aureliolo/synthorg/issues/2799)) ([4b63ca6](https://github.com/Aureliolo/synthorg/commit/4b63ca6087702127865047e52fc8f0188bb40a24))
+* give a sweep a stable scratch root so --resume can find its trees ([#2808](https://github.com/Aureliolo/synthorg/issues/2808)) ([4723c7b](https://github.com/Aureliolo/synthorg/commit/4723c7bfb0de34beaeaa21fde1e10cc1336e0612)), closes [#2801](https://github.com/Aureliolo/synthorg/issues/2801)
+* give an agent's binding one owner for how its model is sampled ([#2902](https://github.com/Aureliolo/synthorg/issues/2902)) ([39c373b](https://github.com/Aureliolo/synthorg/commit/39c373ba1e11aeb25ce5c774198bb889da463b5b))
+* give every stalled general-loop decision exactly one owner ([#2735](https://github.com/Aureliolo/synthorg/issues/2735)) ([b958671](https://github.com/Aureliolo/synthorg/commit/b958671f07867a7c13307d7ea47443d7aaa21084)), closes [#2728](https://github.com/Aureliolo/synthorg/issues/2728) [#2612](https://github.com/Aureliolo/synthorg/issues/2612)
+* give Highlights generation room past a large digest ([f984290](https://github.com/Aureliolo/synthorg/commit/f984290b00661d5a6048d8895b09e99f7a324cbc))
+* ground Chief of Staff answers in real org state (tasks, projects, approvals) ([#2562](https://github.com/Aureliolo/synthorg/issues/2562)) ([99395df](https://github.com/Aureliolo/synthorg/commit/99395df9ba4708b2d7231bd94fc146d8add9c665)), closes [#2558](https://github.com/Aureliolo/synthorg/issues/2558)
+* hold the pre-push gate inside its five-minute budget ([#2635](https://github.com/Aureliolo/synthorg/issues/2635)) ([227f305](https://github.com/Aureliolo/synthorg/commit/227f3050805a5faf92122b2f4fb43c2d3e5047e9)), closes [#2634](https://github.com/Aureliolo/synthorg/issues/2634)
+* judge delivery on the tree a run produced, not on what it declared ([#2867](https://github.com/Aureliolo/synthorg/issues/2867)) ([9ebe5d5](https://github.com/Aureliolo/synthorg/commit/9ebe5d5b52ac5e9af58fec57a769b860cc6fd13c))
+* judge provider health on recent calls, and make recovery cascade ([#2767](https://github.com/Aureliolo/synthorg/issues/2767)) ([4b16375](https://github.com/Aureliolo/synthorg/commit/4b16375c85f3486f4e7ea97e2b221724cf92b708))
+* let planning_strategy mark a substitution, and arm both decomposition ceilings ([#2813](https://github.com/Aureliolo/synthorg/issues/2813)) ([732ea46](https://github.com/Aureliolo/synthorg/commit/732ea46a434226fba76f553b318f27a820f50657))
+* LLM timeout for Chief-of-Staff chat, direct approval-card reject, and a cancel affordance ([#2582](https://github.com/Aureliolo/synthorg/issues/2582)) ([645a5c6](https://github.com/Aureliolo/synthorg/commit/645a5c68b76c77c38f5a3843c5bd1c4c8684a603))
+* make the apko lockfiles pin what actually gets built ([#2834](https://github.com/Aureliolo/synthorg/issues/2834)) ([30614b5](https://github.com/Aureliolo/synthorg/commit/30614b54be872cda0c1c90b11f76d515777950c6)), closes [#2833](https://github.com/Aureliolo/synthorg/issues/2833)
+* make the docs search and footer usable with a screen reader ([#2746](https://github.com/Aureliolo/synthorg/issues/2746)) ([ca4ef9f](https://github.com/Aureliolo/synthorg/commit/ca4ef9f9e963834db1135a3945d66ffc7e8b45f2))
+* make the general loop able to execute work on a stock deployment ([#2724](https://github.com/Aureliolo/synthorg/issues/2724)) ([291072d](https://github.com/Aureliolo/synthorg/commit/291072ddad8a63254ffc67716246adf34f20b901))
+* make the initiative tail reachable end to end ([#2765](https://github.com/Aureliolo/synthorg/issues/2765)) ([6cdc42a](https://github.com/Aureliolo/synthorg/commit/6cdc42aaced125fd61e1558ffe0d111426d7363d))
+* make the release-notes Highlights publish step actually run ([#2892](https://github.com/Aureliolo/synthorg/issues/2892)) ([a12ec9e](https://github.com/Aureliolo/synthorg/commit/a12ec9e16aea323e5478337925c747942d7eeab1))
+* make the vale prose gate fail on a finding ([#2736](https://github.com/Aureliolo/synthorg/issues/2736)) ([fa08a17](https://github.com/Aureliolo/synthorg/commit/fa08a176e860826c7683b5c476a7944bfb2db6fa))
+* measure the recursion sweep honestly, and stop offering the planner a judge ([#2826](https://github.com/Aureliolo/synthorg/issues/2826)) ([9df56f7](https://github.com/Aureliolo/synthorg/commit/9df56f7e694bc22ca567f227c59932efb4f82989)), closes [#2824](https://github.com/Aureliolo/synthorg/issues/2824)
+* meeting config reaches the ceremony and the strategy ([#2756](https://github.com/Aureliolo/synthorg/issues/2756)) ([3e31ccf](https://github.com/Aureliolo/synthorg/commit/3e31ccfc31c124be3328e1eab7831a9013e3397d))
+* order the Highlights disclaimer above the tagline and give the model a real scratchpad for the bullet count ([#2894](https://github.com/Aureliolo/synthorg/issues/2894)) ([2177b88](https://github.com/Aureliolo/synthorg/commit/2177b886b7ad10250154e943b6e92fab57719053))
+* org chart geometry, an org panel that answers the question, and no identifiers on operator surfaces ([#2790](https://github.com/Aureliolo/synthorg/issues/2790)) ([fc7de9f](https://github.com/Aureliolo/synthorg/commit/fc7de9f115b4fe0ba5be4157465ff3ce3fe22e1d))
+* pin foreground exec timeouts and add background-job stall nudge ([#2885](https://github.com/Aureliolo/synthorg/issues/2885)) ([44b52ae](https://github.com/Aureliolo/synthorg/commit/44b52ae54c8367ecc988cbc55edc714bbd0065ff))
+* port embedding fine-tune stage 3 to SentenceTransformerTrainer ([#2828](https://github.com/Aureliolo/synthorg/issues/2828)) ([8645e2d](https://github.com/Aureliolo/synthorg/commit/8645e2d2b63ae20e123d290af2fe83706d4523a3))
+* publish the healthy fine-tune variant when its sibling cell is stopped ([#2840](https://github.com/Aureliolo/synthorg/issues/2840)) ([82071a9](https://github.com/Aureliolo/synthorg/commit/82071a90eacee88a1a09fc4fdc7c8681735bfd65)), closes [#2839](https://github.com/Aureliolo/synthorg/issues/2839)
+* record an attempt's frames before its review, and make the loop's parks, evidence and live state say what happened ([#2786](https://github.com/Aureliolo/synthorg/issues/2786)) ([55cb552](https://github.com/Aureliolo/synthorg/commit/55cb552b98433df6fcc53c27c97daebbe39f3908))
+* record subsystem LLM spend and stop re-probing fresh connections ([#2677](https://github.com/Aureliolo/synthorg/issues/2677)) ([deb396c](https://github.com/Aureliolo/synthorg/commit/deb396c4019010fb91491b37f1b76bd22392920a))
+* synthorg update leaves compose.yml and config.json desynced on interrupt, and the fallback patch path is broken for sandbox installs ([#2900](https://github.com/Aureliolo/synthorg/issues/2900)) ([2896548](https://github.com/Aureliolo/synthorg/commit/289654883511ce6a4ec3a5bc8d981a37b5d99c36)), closes [#2898](https://github.com/Aureliolo/synthorg/issues/2898)
+* wire budget legibility into the loop and size eval sessions honestly ([#2893](https://github.com/Aureliolo/synthorg/issues/2893)) ([92ff584](https://github.com/Aureliolo/synthorg/commit/92ff584d7c6c5cfd76bea471b85867d18b713fc9)), closes [#2887](https://github.com/Aureliolo/synthorg/issues/2887)
+* wire budget_enforcer into the production AgentEngine ([#2899](https://github.com/Aureliolo/synthorg/issues/2899)) ([cc19381](https://github.com/Aureliolo/synthorg/commit/cc193810bbb26c9a05b86bdf644795a5ee4167d8)), closes [#2891](https://github.com/Aureliolo/synthorg/issues/2891)
+* wire up dead audit-chain verification, chat-inbound logging, and cost-visibility gaps ([#2897](https://github.com/Aureliolo/synthorg/issues/2897)) ([d9be9b0](https://github.com/Aureliolo/synthorg/commit/d9be9b0fdf2806322d3aefc5e6eb690dbc0653aa))
+
+
+### Performance
+
+* fold each MMR selection into a running maximum instead of rescanning ([#2877](https://github.com/Aureliolo/synthorg/issues/2877)) ([917d6ed](https://github.com/Aureliolo/synthorg/commit/917d6edb33592739f9eb46fb85795397c73a2762))
+* measure torch.compile on the local embedder and fix the tokenizers pin that blocked it ([#2743](https://github.com/Aureliolo/synthorg/issues/2743)) ([508833f](https://github.com/Aureliolo/synthorg/commit/508833f5ecd7d782fa492ecc2f2187a5a5187add))
+
+
+### Refactoring
+
+* delete the OpenHands loop, the credentialed-MCP gateway and the meeting task type ([#2849](https://github.com/Aureliolo/synthorg/issues/2849)) ([9a42bc3](https://github.com/Aureliolo/synthorg/commit/9a42bc371bf79526681c6615f5fc958882c1e0d1))
+* grade models by capability rather than by size ([#2766](https://github.com/Aureliolo/synthorg/issues/2766)) ([f32b850](https://github.com/Aureliolo/synthorg/commit/f32b850ca2a2662a4535c2209a2f616028a195a3)), closes [#2758](https://github.com/Aureliolo/synthorg/issues/2758)
+* remove the meeting, ceremony and conflict-resolution stack ([#2830](https://github.com/Aureliolo/synthorg/issues/2830)) ([18eaee6](https://github.com/Aureliolo/synthorg/commit/18eaee69dfbce8f5776bcc112ab4a3be28415cda))
+* remove the personality surface ([#2837](https://github.com/Aureliolo/synthorg/issues/2837)) ([9412671](https://github.com/Aureliolo/synthorg/commit/941267175dd5625f97ee848b619185e5c999fa94))
+* retire the HR eval loop and training, give task quality one owner ([#2832](https://github.com/Aureliolo/synthorg/issues/2832)) ([6ecd0d0](https://github.com/Aureliolo/synthorg/commit/6ecd0d0a71a67c6c5277e66c00455066accdf25e))
+* the two gate roles become roles an agent holds ([#2770](https://github.com/Aureliolo/synthorg/issues/2770)) ([42dc6fe](https://github.com/Aureliolo/synthorg/commit/42dc6fe1020e13ada1ec2bcff03f2ddf08a7e408)), closes [#2764](https://github.com/Aureliolo/synthorg/issues/2764)
+
+
+### Documentation
+
+* design the build loop around a contract, mechanical gates and a finding channel ([#2874](https://github.com/Aureliolo/synthorg/issues/2874)) ([eb07cbe](https://github.com/Aureliolo/synthorg/commit/eb07cbe8c4341b149c1e1ffde5a7ac60090c6ab0))
+* regenerate comparison page timestamp ([#2580](https://github.com/Aureliolo/synthorg/issues/2580)) ([9e23459](https://github.com/Aureliolo/synthorg/commit/9e2345985d12fa791a7135ed4a1f8ec59c8cdfca))
+
+
+### CI/CD
+
+* harden image-publish SBOM steps against timeout cancellation ([#2628](https://github.com/Aureliolo/synthorg/issues/2628)) ([e5fe299](https://github.com/Aureliolo/synthorg/commit/e5fe2995332d26a0b65d886603e3ed96addd52f0)), closes [#2627](https://github.com/Aureliolo/synthorg/issues/2627)
+* install melange via a retrying, checksum-verified local action ([#2632](https://github.com/Aureliolo/synthorg/issues/2632)) ([a38bb28](https://github.com/Aureliolo/synthorg/commit/a38bb28adf177ae22573bdb9ad1df52b0284bafe)), closes [#2631](https://github.com/Aureliolo/synthorg/issues/2631)
+* make every gate actually gate, build both arches natively, and name workflows by purpose ([#2686](https://github.com/Aureliolo/synthorg/issues/2686)) ([5db11db](https://github.com/Aureliolo/synthorg/commit/5db11db88ea0d91ce453512378bcbf8e1d125c96))
+* retry the syft install, emit the tag inventory before the SBOM, and fail signature verification closed ([#2763](https://github.com/Aureliolo/synthorg/issues/2763)) ([b9dced6](https://github.com/Aureliolo/synthorg/commit/b9dced68edab8e194ac0e1af2a630aeea0ba2d42))
+* retry-wrap uv install so a transient blip cannot fail the job ([#2552](https://github.com/Aureliolo/synthorg/issues/2552)) ([3d34dfd](https://github.com/Aureliolo/synthorg/commit/3d34dfd2dcf9976cd93e7830faa2e28bb8b15ab9))
+* run web CodSpeed benchmarks under simulation instrument only ([#2601](https://github.com/Aureliolo/synthorg/issues/2601)) ([9f4c3d7](https://github.com/Aureliolo/synthorg/commit/9f4c3d7165d572bab509dc4b56d6bdfc081f4f2a))
+* update apko lockfiles ([#2574](https://github.com/Aureliolo/synthorg/issues/2574)) ([34a370c](https://github.com/Aureliolo/synthorg/commit/34a370c6a44955c0ddf766c5f2c4fbb82fb04a67))
+* update apko lockfiles ([#2609](https://github.com/Aureliolo/synthorg/issues/2609)) ([8533465](https://github.com/Aureliolo/synthorg/commit/8533465614df02b8c0f9ece1ee3da834d8fe0893))
+* update apko lockfiles ([#2665](https://github.com/Aureliolo/synthorg/issues/2665)) ([2d28275](https://github.com/Aureliolo/synthorg/commit/2d282755ddf68d4636026e6b32c93511953e7bd8))
+* update apko lockfiles ([#2675](https://github.com/Aureliolo/synthorg/issues/2675)) ([909eadf](https://github.com/Aureliolo/synthorg/commit/909eadffbec4e5568e6c563284df9cb7e5233b13))
+* update apko lockfiles ([#2709](https://github.com/Aureliolo/synthorg/issues/2709)) ([ab1d137](https://github.com/Aureliolo/synthorg/commit/ab1d137483c9a350e6f92800ff1db54c73a96425))
+* update apko lockfiles ([#2752](https://github.com/Aureliolo/synthorg/issues/2752)) ([fc7f490](https://github.com/Aureliolo/synthorg/commit/fc7f4900e43a96142b6cef8d246a512f4cfd0f77))
+* update apko lockfiles ([#2784](https://github.com/Aureliolo/synthorg/issues/2784)) ([a01b088](https://github.com/Aureliolo/synthorg/commit/a01b088831c20dff86072c5adae3ef7456851886))
+* update apko lockfiles ([#2829](https://github.com/Aureliolo/synthorg/issues/2829)) ([92486db](https://github.com/Aureliolo/synthorg/commit/92486dbee94ad6ab3b9843303e6d942c81958f01))
+* update apko lockfiles ([#2896](https://github.com/Aureliolo/synthorg/issues/2896)) ([9e706bc](https://github.com/Aureliolo/synthorg/commit/9e706bc6ce47e4813bba235ee4510b87eaa953e1))
+
+
+### Maintenance
+
+* Lock file maintenance ([#2571](https://github.com/Aureliolo/synthorg/issues/2571)) ([ed2720b](https://github.com/Aureliolo/synthorg/commit/ed2720b04265ef4c24a3021ea0d3459097b9fed9))
+* Lock file maintenance ([#2598](https://github.com/Aureliolo/synthorg/issues/2598)) ([d4404fc](https://github.com/Aureliolo/synthorg/commit/d4404fcdd2366554bbb73b7f23b0cf98c3d2168a))
+* Lock file maintenance ([#2654](https://github.com/Aureliolo/synthorg/issues/2654)) ([0043b3a](https://github.com/Aureliolo/synthorg/commit/0043b3a9427791b6bebf4fe72dcf9c919c94cb53))
+* Lock file maintenance ([#2689](https://github.com/Aureliolo/synthorg/issues/2689)) ([83347fc](https://github.com/Aureliolo/synthorg/commit/83347fc63eac309c04078797f4e545fae13564d4))
+* Lock file maintenance ([#2737](https://github.com/Aureliolo/synthorg/issues/2737)) ([c22634f](https://github.com/Aureliolo/synthorg/commit/c22634f2087d3b615a9abe32a151fa33ed0c90e4))
+* Lock file maintenance ([#2779](https://github.com/Aureliolo/synthorg/issues/2779)) ([36c7e73](https://github.com/Aureliolo/synthorg/commit/36c7e73edcf33749fdb20a16a6ac13632060d8c0))
+* Lock file maintenance ([#2811](https://github.com/Aureliolo/synthorg/issues/2811)) ([6166904](https://github.com/Aureliolo/synthorg/commit/6166904565ff7d311489facba9547802a43efddb))
+* Lock file maintenance ([#2882](https://github.com/Aureliolo/synthorg/issues/2882)) ([d32d79a](https://github.com/Aureliolo/synthorg/commit/d32d79a87df3de7fa6f3e452a9af237624c89a16))
+* put worktrees under one root and move skill scratch out of C:/tmp ([#2878](https://github.com/Aureliolo/synthorg/issues/2878)) ([36baeb7](https://github.com/Aureliolo/synthorg/commit/36baeb7a8efb683548c4c6d10c88211c78c393c0))
+* Update Infrastructure dependencies ([#2566](https://github.com/Aureliolo/synthorg/issues/2566)) ([88d8e5f](https://github.com/Aureliolo/synthorg/commit/88d8e5f091f58c5b57ae4ee15ebe21f1dc5908d3))
+* Update Infrastructure dependencies ([#2590](https://github.com/Aureliolo/synthorg/issues/2590)) ([ad74204](https://github.com/Aureliolo/synthorg/commit/ad74204fb482805b0b665d4bd94173c839a12908))
+* Update Infrastructure dependencies ([#2640](https://github.com/Aureliolo/synthorg/issues/2640)) ([482d6a0](https://github.com/Aureliolo/synthorg/commit/482d6a0d1c16b12dbb8596e69fb7df8b385fafbd))
+* Update Infrastructure dependencies ([#2678](https://github.com/Aureliolo/synthorg/issues/2678)) ([204e3d9](https://github.com/Aureliolo/synthorg/commit/204e3d98c0d21fcc565339001b208e15ee451aa0))
+* Update Infrastructure dependencies ([#2725](https://github.com/Aureliolo/synthorg/issues/2725)) ([f213af7](https://github.com/Aureliolo/synthorg/commit/f213af7813f49fc5eb345a11487fd9192c5d1572))
+* Update Infrastructure dependencies ([#2772](https://github.com/Aureliolo/synthorg/issues/2772)) ([0e2452f](https://github.com/Aureliolo/synthorg/commit/0e2452f6e2a8b705d5db768931f0e135b3d68686))
+* Update Infrastructure dependencies ([#2803](https://github.com/Aureliolo/synthorg/issues/2803)) ([4995c18](https://github.com/Aureliolo/synthorg/commit/4995c1841bca94011a2b1c04a84549b104f4d976))
+* Update Python dependencies ([#2567](https://github.com/Aureliolo/synthorg/issues/2567)) ([731d20c](https://github.com/Aureliolo/synthorg/commit/731d20cfa93e8b2c07a29c3924158b9ab5dc59bd))
+* Update Python dependencies ([#2726](https://github.com/Aureliolo/synthorg/issues/2726)) ([e53023e](https://github.com/Aureliolo/synthorg/commit/e53023e964b68ec969d6738317da96a5ba57fe2b))
+* Update Web dependencies ([#2568](https://github.com/Aureliolo/synthorg/issues/2568)) ([9b6b60f](https://github.com/Aureliolo/synthorg/commit/9b6b60fe617b41bb9b8f53314793bcce84e8d77a))
+* Update Web dependencies ([#2591](https://github.com/Aureliolo/synthorg/issues/2591)) ([02d2535](https://github.com/Aureliolo/synthorg/commit/02d253517ae23372d5154f42ebffb8d1b10fcec9))
+* Update Web dependencies ([#2680](https://github.com/Aureliolo/synthorg/issues/2680)) ([8391ddf](https://github.com/Aureliolo/synthorg/commit/8391ddfb98e78e67d108c9b746450fe3a96e3fe9))
+* Update Web dependencies ([#2773](https://github.com/Aureliolo/synthorg/issues/2773)) ([60cdbb2](https://github.com/Aureliolo/synthorg/commit/60cdbb2bac6f90701c42a0a81c6917ca8372d623))
+* Update Web dependencies ([#2804](https://github.com/Aureliolo/synthorg/issues/2804)) ([9716d7c](https://github.com/Aureliolo/synthorg/commit/9716d7c217478c9031e18216c6537fc7758e0876))
+* Update Web dependencies ([#2872](https://github.com/Aureliolo/synthorg/issues/2872)) ([bca0fe6](https://github.com/Aureliolo/synthorg/commit/bca0fe6dd61ea4b79521f21241bdf98ab94e1be5))
+
 ## [0.9.3](https://github.com/Aureliolo/synthorg/compare/v0.9.2...v0.9.3) (2026-07-08)
 
 
