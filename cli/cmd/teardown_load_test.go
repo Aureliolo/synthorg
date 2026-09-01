@@ -38,7 +38,10 @@ var teardownEntryPoints = []teardownEntryPoint{
 		why: "an install that cannot be wiped, which is what wipe exists for",
 	},
 	{
-		file: "uninstall.go", fn: "runUninstall",
+		// The steps function, not the RunE wrapper above it: the wrapper
+		// only classifies a dismissed prompt, and the contract belongs to
+		// whichever function actually reads the config.
+		file: "uninstall.go", fn: "runUninstallSteps",
 		why: "an install that cannot be removed",
 	},
 }

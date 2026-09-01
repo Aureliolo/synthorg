@@ -117,7 +117,32 @@ func validateUpdateTimeoutFlags() error {
 	return nil
 }
 
-func runUpdate(cmd *cobra.Command, _ []string) error {
+func runUpdate(cmd *cobra.Command, args []string) error {
+	return finishUpdate(cmd, runUpdateSteps(cmd, args))
+}
+
+// finishUpdate translates a dismissed confirm prompt into a clean stop:
+// declining to answer is a decision not to update, not a failed update,
+// and a shell wrapping `synthorg update` must not read it as one. The
+// sentinel travels up through however many layers of fmt.Errorf sit
+// between the prompt and here, which differs per prompt, so the test is
+// errors.Is rather than equality.
+//
+// StepAlways, not Step: this is the one line telling a --quiet invocation
+// why it exited 0 without updating anything, so it survives --quiet the
+// same way reportExecuteError's "Interrupted." does. A signal never
+// reaches here at all (runPromptForm hands those back as the context's
+// own error), so the two lines cannot be confused for each other.
+func finishUpdate(cmd *cobra.Command, err error) error {
+	if !errors.Is(err, errUpdateCancelled) {
+		return err
+	}
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), GetGlobalOpts(cmd.Context()).UIOptions())
+	out.StepAlways("Update cancelled.")
+	return nil
+}
+
+func runUpdateSteps(cmd *cobra.Command, _ []string) error {
 	if err := validateUpdateFlags(); err != nil {
 		return fmt.Errorf("validating update flags: %w", err)
 	}
@@ -242,145 +267,6 @@ func updateComposeAndImages(cmd *cobra.Command, recovered bool) error {
 	return updateContainerImages(cmd, state, false, recovered)
 }
 
-// runUpdateCheck checks for available updates and exits with code 0 (current)
-// or 10 (update available).
-func runUpdateCheck(cmd *cobra.Command, state config.State) error {
-	ctx := cmd.Context()
-	opts := GetGlobalOpts(ctx)
-	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
-
-	channel := state.Channel
-	if channel == "" {
-		channel = "stable"
-	}
-	result, err := checkForChannel(ctx, channel)
-	if err != nil {
-		return fmt.Errorf("checking for updates: %w", err)
-	}
-	if result.UpdateAvail {
-		// LatestVersion is a remote tag name, and this is the line `update
-		// --check` exists to print: on the terse path it is the ONLY thing an
-		// operator sees before deciding to run the install.
-		out.Step(fmt.Sprintf("Update available: %s (current: %s)",
-			versionLabel(result.LatestVersion), versionLabel(result.CurrentVersion)))
-		out.HintNextStep("Run 'synthorg update' to apply")
-		return NewExitError(ExitUpdateAvail, nil)
-	}
-	out.Success(fmt.Sprintf("Up to date (%s)", versionLabel(result.CurrentVersion)))
-	out.HintGuidance("Exit code 0 means up to date; exit code 10 means an update is available.")
-	return nil
-}
-
-// runUpdateDryRun shows what an update would do without executing.
-//
-// It runs the same check --check runs, because "would this update anything"
-// is one question and the two preview surfaces have to answer it the same
-// way. They did not: the scope flags decide which HALVES an invocation may
-// touch, and printing them under "CLI update" / "Image update" answered a
-// different question under those labels. On an installation already at the
-// channel head, --check printed "Up to date" and exited 0 while --dry-run
-// seconds later reported both updates as "yes", so the more detailed surface
-// was the wrong one.
-//
-// Both halves are still gated on scope, so --images-only still reports no CLI
-// update. What changed is that being in scope is no longer sufficient.
-func runUpdateDryRun(cmd *cobra.Command, state config.State) error {
-	ctx := cmd.Context()
-	opts := GetGlobalOpts(ctx)
-	out := ui.NewUIWithOptions(cmd.OutOrStdout(), opts.UIOptions())
-
-	channel := state.Channel
-	if channel == "" {
-		channel = "stable"
-	}
-	result, err := checkForChannel(ctx, channel)
-	if err != nil {
-		return fmt.Errorf("checking for updates: %w", err)
-	}
-	// The tag is tracked in the CLI's own config and moves separately from the
-	// binary, so it is compared to the release rather than assumed to share
-	// the binary's answer: an operator who ran --cli-only has one current and
-	// the other behind.
-	imagesBehind := imagesAreBehind(state.ImageTag, result.LatestVersion)
-
-	out.Section("Dry run: update preview")
-	out.KeyValue("Current CLI", version.Version)
-	out.KeyValue("Current images", state.ImageTag)
-	out.KeyValue("Channel", channel)
-	// A remote tag name, so it takes the same scrub every other remote label
-	// on this path takes.
-	out.KeyValue("Latest release", versionLabel(result.LatestVersion))
-	cliDue := !updateImagesOnly && result.UpdateAvail
-	imagesDue := !updateCLIOnly && imagesBehind
-	out.KeyValue("CLI update", updateVerdict(!updateImagesOnly, result.UpdateAvail))
-	out.KeyValue("Image update", updateVerdict(!updateCLIOnly, imagesBehind))
-	// A restart is what pulling images costs, so it follows the pull rather
-	// than the flag alone: promising one on an installation that will pull
-	// nothing tells the operator to expect downtime they will not get.
-	out.KeyValue("Restart after pull", restartVerdict(imagesDue, updateNoRestart))
-	// Judged on the SCOPED verdicts, not the raw ones. Read raw, an operator
-	// who passed --cli-only on a current CLI was told to remove --dry-run and
-	// run an update that would do nothing, because the out-of-scope half was
-	// behind. That is the same two-surfaces-disagreeing defect this function
-	// exists to fix, one level down.
-	if !cliDue && !imagesDue {
-		out.Success("Nothing to update; this installation is current.")
-		return nil
-	}
-	out.HintNextStep("Remove --dry-run to execute the update")
-	return nil
-}
-
-// imagesAreBehind reports whether the installed image tag trails the release.
-//
-// An unorderable tag is "not known to be behind" rather than an error. The tag
-// is an operator-settable config value documented for private registries, and
-// `latest` is what ImageTagForVersion falls back to, so neither is exotic;
-// the update path itself only ever compares it for equality. Refusing the
-// PREVIEW over a value the real command handles would make the read-only
-// surface the stricter of the two.
-func imagesAreBehind(installed, latest string) bool {
-	behind, err := selfupdate.IsNewer(installed, latest)
-	if err != nil {
-		return installed != targetImageTag(latest)
-	}
-	return behind
-}
-
-// updateVerdict renders one half of the preview.
-//
-// Two conditions have to hold for a half to change, and they fail for
-// different reasons an operator acts on differently: out of scope is their own
-// flag, and already current is the installation. Collapsing both to "no" left
-// somebody who passed --images-only unable to tell which one they were seeing.
-func updateVerdict(inScope, available bool) string {
-	if !inScope {
-		return "no (excluded by flags)"
-	}
-	if !available {
-		return "no (already current)"
-	}
-	return "yes"
-}
-
-// restartVerdict renders the restart line, naming which of its two reasons
-// applies. --no-restart is the operator's own choice; having nothing to pull
-// is the installation's state, and only one of them changes if they run the
-// update again tomorrow.
-//
-// Both inputs are parameters, like updateVerdict's: read off the package flag
-// instead, this could only be exercised through the flag-mutating harness its
-// sibling does not need.
-func restartVerdict(pullsImages, noRestart bool) string {
-	if !pullsImages {
-		return "no (nothing to pull)"
-	}
-	if noRestart {
-		return "no (excluded by flags)"
-	}
-	return "yes"
-}
-
 // handleDeclinedCompose warns the user that new images may not work with
 // their current compose configuration and offers to update images anyway.
 func handleDeclinedCompose(cmd *cobra.Command, state config.State, recovered bool) error {
@@ -487,6 +373,25 @@ func downloadAndApplyCLI(ctx context.Context, out *ui.UI, result selfupdate.Chec
 // replaced and the new binary should be re-executed to continue the update.
 // The caller (runUpdate) handles this by spawning the new binary.
 var errReexec = errors.New("cli updated, re-exec required")
+
+// errUpdateCancelled marks a confirm prompt this command's operator
+// dismissed rather than answered. Nothing was consented to, so every
+// prompt in the update flow raises it and runUpdate ends the run cleanly.
+// Answering "No" is a different outcome and keeps its own path: it
+// declines that one step and the run continues to the next.
+var errUpdateCancelled = errors.New("update cancelled by user")
+
+// runUpdateConfirm runs form and folds a dismissal into errUpdateCancelled,
+// the one outcome every confirm prompt in the update flow reports it as.
+func runUpdateConfirm(ctx context.Context, form *huh.Form) error {
+	if err := runPromptForm(ctx, form); err != nil {
+		if promptDismissed(err) {
+			return errUpdateCancelled
+		}
+		return err
+	}
+	return nil
+}
 
 // updateCLI checks for a new CLI release and optionally applies it.
 // Returns errReexec if the binary was replaced (caller must re-exec).
@@ -694,7 +599,7 @@ func confirmUpdateWithDefault(ctx context.Context, title string, defaultVal bool
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().Title(title).Value(&proceed),
 	))
-	if err := form.Run(); err != nil {
+	if err := runUpdateConfirm(ctx, form); err != nil {
 		return false, err
 	}
 	return proceed, nil
@@ -797,7 +702,7 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 		return false, nil
 	}
 
-	restart, err := confirmRestart()
+	restart, err := confirmRestart(ctx)
 	if err != nil {
 		return false, err
 	}

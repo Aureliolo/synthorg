@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/huh/v2"
 	"github.com/Aureliolo/synthorg/cli/internal/compose"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/selfupdate"
@@ -1147,5 +1148,142 @@ func TestUpdateCLI_checkFailureAborts(t *testing.T) {
 	}
 	if !strings.Contains(errOut.String(), "--images-only") {
 		t.Errorf("stderr = %q, want the --images-only recovery hint", errOut.String())
+	}
+}
+
+// updateCmdForTest builds a bare command carrying the global opts the
+// update helpers read, returning it with its stdout buffer.
+func updateCmdForTest(t *testing.T) (*cobra.Command, *bytes.Buffer) {
+	t.Helper()
+	cmd := &cobra.Command{}
+	cmd.SetContext(SetGlobalOpts(context.Background(), &GlobalOpts{Hints: "always", DataDir: t.TempDir()}))
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&bytes.Buffer{})
+	return cmd, &out
+}
+
+// Dismissing a confirm ends the run without an error, whatever each call
+// site wrapped the sentinel in on the way out. The wrappers are the real
+// ones: an equality check here would pass while the command still exited
+// non-zero.
+func TestFinishUpdateTreatsACancelledPromptAsACleanStop(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{"cli update confirm", fmt.Errorf("updating CLI binary: %w", fmt.Errorf("confirming CLI update: %w", errUpdateCancelled))},
+		{"image update confirm", fmt.Errorf("updating compose and images: %w", fmt.Errorf("confirming image update: %w", errUpdateCancelled))},
+		{"compose apply confirm", fmt.Errorf("refreshing compose template: %w", errUpdateCancelled)},
+		{"unwrapped", errUpdateCancelled},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd, out := updateCmdForTest(t)
+			if err := finishUpdate(cmd, tc.err); err != nil {
+				t.Fatalf("finishUpdate = %v, want nil", err)
+			}
+			if !strings.Contains(out.String(), "Update cancelled.") {
+				t.Errorf("stdout = %q, want it to say the update was cancelled", out.String())
+			}
+		})
+	}
+}
+
+func TestFinishUpdatePassesEveryOtherOutcomeThrough(t *testing.T) {
+	genuine := errors.New("pulling updated images: no space left on device")
+	cmd, out := updateCmdForTest(t)
+
+	if err := finishUpdate(cmd, genuine); !errors.Is(err, genuine) {
+		t.Fatalf("finishUpdate = %v, want the original error", err)
+	}
+	if strings.Contains(out.String(), "cancelled") {
+		t.Errorf("stdout = %q, want no cancellation line for a real failure", out.String())
+	}
+	if err := finishUpdate(cmd, nil); err != nil {
+		t.Errorf("finishUpdate(nil) = %v, want nil", err)
+	}
+}
+
+// Dismissing a prompt and being killed mid-prompt arrive as one error, so
+// the context is what separates them. Getting this wrong costs exit 130 on
+// a real signal, which is what makes it worth pinning per outcome.
+func TestClassifyPromptOutcomeSeparatesDismissalFromSignal(t *testing.T) {
+	tests := []struct {
+		name      string
+		err       error
+		cancelled bool
+		want      error
+	}{
+		{"dismissed", huh.ErrUserAborted, false, errPromptDismissed},
+		{"killed mid-prompt", huh.ErrUserAborted, true, context.Canceled},
+		{"unrelated failure", errTerminalUnavailable, false, errTerminalUnavailable},
+		{"unrelated failure while cancelled", errTerminalUnavailable, true, context.Canceled},
+		{"answered", nil, false, nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if tc.cancelled {
+				cancel()
+			}
+			if got := classifyPromptOutcome(ctx, tc.err); !errors.Is(got, tc.want) {
+				t.Errorf("classifyPromptOutcome = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+var errTerminalUnavailable = errors.New("open /dev/tty: no such device")
+
+// A dismissal must not read as an interruption, and an interruption must
+// not read as a dismissal: the first exits 0 through the command's own
+// clean stop, the second exits 130 through Execute's ctx.Err() branch.
+func TestPromptDismissedIgnoresACancelledContextsError(t *testing.T) {
+	if promptDismissed(context.Canceled) {
+		t.Error("a cancelled context must not read as a dismissal")
+	}
+	if !promptDismissed(fmt.Errorf("confirming CLI update: %w", errPromptDismissed)) {
+		t.Error("a wrapped dismissal must still read as one")
+	}
+}
+
+// Declining the CLI update is not cancelling the run: runCLIUpdateStep
+// reports done=false with no error, so runUpdateSteps carries on into the
+// compose and image steps. Asserted on the step's own contract because
+// reaching the image step for real needs a Docker daemon.
+func TestDecliningTheCLIUpdateLetsTheRunContinue(t *testing.T) {
+	prev := checkForChannel
+	checkForChannel = func(_ context.Context, _ string) (selfupdate.CheckResult, error) {
+		return selfupdate.CheckResult{CurrentVersion: "v9.9.9", UpdateAvail: false}, nil
+	}
+	t.Cleanup(func() { checkForChannel = prev })
+
+	cmd, _ := updateCmdForTest(t)
+	cmd.Flags().Bool("skip-cli-update", false, "")
+
+	done, err := runCLIUpdateStep(cmd, config.State{}, false)
+	if err != nil {
+		t.Fatalf("runCLIUpdateStep = %v, want nil", err)
+	}
+	if done {
+		t.Error("done = true, want false so the caller proceeds to compose and images")
+	}
+}
+
+// The cancellation sentinel can only come from a rendered prompt: with
+// prompting off, the confirm answers from the flags and never builds a
+// form.
+func TestConfirmUpdateAnswersWithoutAFormWhenPromptingIsOff(t *testing.T) {
+	ctx := SetGlobalOpts(context.Background(), &GlobalOpts{Yes: true})
+
+	ok, err := confirmUpdateWithDefault(ctx, "Update?", true, false)
+	if err != nil || !ok {
+		t.Errorf("confirmUpdateWithDefault = (%v, %v), want (true, nil)", ok, err)
+	}
+	ok, err = confirmUpdateWithDefault(ctx, "Update?", false, false)
+	if err != nil || ok {
+		t.Errorf("confirmUpdateWithDefault = (%v, %v), want (false, nil)", ok, err)
 	}
 }

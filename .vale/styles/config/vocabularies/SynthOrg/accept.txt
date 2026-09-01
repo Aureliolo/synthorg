@@ -364,6 +364,7 @@ boolean
 breakpoint
 brokerless
 browsable
+bubbletea
 budget_consumed
 budget_driven
 budget_percent
@@ -496,6 +497,7 @@ enums
 env
 envs
 erroring
+esc
 etag
 eval
 event_count
@@ -555,6 +557,7 @@ hostnames
 httpcore
 https
 httpx
+huh
 hyperparameters
 hypertable
 hypertables
@@ -581,6 +584,7 @@ jsdom
 kanban
 keyframes
 keyless
+keypress
 keystore
 knowledge_heavy
 kwarg

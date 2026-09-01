@@ -355,7 +355,13 @@ func confirmReinit(cmd *cobra.Command, oldState config.State, opts *GlobalOpts) 
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().Title("Overwrite existing configuration?").Value(&proceed),
 	))
-	if err := form.Run(); err != nil {
+	if err := runPromptForm(cmd.Context(), form); err != nil {
+		// Nothing has been overwritten yet, and this prompt guards the only
+		// copy of master_key / settings_key / cursor_secret, so a dismissal
+		// takes the answer that preserves them.
+		if promptDismissed(err) {
+			return false, nil
+		}
 		return false, err
 	}
 	return proceed, nil

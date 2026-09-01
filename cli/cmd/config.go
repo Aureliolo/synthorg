@@ -411,7 +411,7 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	val := configGetDisplayValue(state, key)
+	val := configGetValue(state, key)
 	// Apply env var override (same resolution as config list).
 	if envVar := envVarForKey(key); envVar != "" {
 		if envVal := os.Getenv(envVar); envVal != "" {
@@ -420,29 +420,6 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 	}
 	_, _ = fmt.Fprintln(cmd.OutOrStdout(), val)
 	return nil
-}
-
-// configGetDisplays maps keys whose `config get` output should be the
-// EFFECTIVE value (after default-fallback) instead of the raw persisted
-// value runConfigList needs for its "config vs default" source
-// detection. Most keys share the runConfigList reader; only the few
-// with distinct effective/raw semantics live here.
-var configGetDisplays = map[string]configReader{
-	// fine_tuning_variant: raw value is "" when unset, effective is
-	// "gpu". config get should show "gpu" (matches what the runtime
-	// actually uses); config list still uses the raw reader so an
-	// explicit "gpu" can be distinguished from an unset field.
-	"fine_tuning_variant": func(s config.State) string { return s.FineTuneVariantOrDefault() },
-}
-
-// configGetDisplayValue returns the operator-facing display value for a
-// `config get` command. Falls back to configGetValue for keys without
-// a display-only override.
-func configGetDisplayValue(state config.State, key string) string {
-	if r, ok := configGetDisplays[key]; ok {
-		return r(state)
-	}
-	return configGetValue(state, key)
 }
 
 // isKnownGettableKey reports whether key is in the gettableConfigKeys list.
@@ -882,22 +859,25 @@ func runConfigList(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
+	pinned, err := config.PinnedKeys(opts.DataDir)
+	if err != nil {
+		return fmt.Errorf("reading pinned config keys: %w", err)
+	}
 
-	defaults := config.DefaultState()
 	entries := make([]configEntry, 0, len(gettableConfigKeys))
 
 	for _, key := range gettableConfigKeys {
-		val := configGetValue(state, key)
-		defaultVal := configGetValue(defaults, key)
-		source := resolveSource(key, val, defaultVal)
-		effectiveVal := val
-		switch source {
-		case "env":
+		// The loaded state already carries the resolved value for an
+		// unpinned key, since readState unmarshals the file over
+		// DefaultState. Substituting a freshly-computed default here
+		// would overwrite the resolutions Load makes on purpose, such as
+		// the sandbox=false it returns when no config file exists.
+		effectiveVal := configGetValue(state, key)
+		source := resolveSource(key, pinned)
+		if source == "env" {
 			if envVal := os.Getenv(envVarForKey(key)); envVal != "" {
 				effectiveVal = envVal
 			}
-		case "default":
-			effectiveVal = defaultVal
 		}
 		entries = append(entries, configEntry{Key: key, Value: effectiveVal, Source: source})
 	}
@@ -927,14 +907,22 @@ func configGetValue(state config.State, key string) string {
 	return ""
 }
 
-// resolveSource determines where a config value came from.
-func resolveSource(key, currentVal, defaultVal string) string {
+// resolveSource determines where a config value came from, given the set
+// of keys the state file pins (config.PinnedKeys).
+//
+// "config" means the key is written in config.json and its value is
+// therefore fixed against a later change to the compiled-in default;
+// "default" means the key is absent and follows that default. The
+// question is answered from the file rather than by comparing the value
+// to config.DefaultState(), which cannot distinguish a key deliberately
+// set to the same value as its default from one never set at all.
+func resolveSource(key string, pinned map[string]bool) string {
 	if envVar := envVarForKey(key); envVar != "" {
 		if os.Getenv(envVar) != "" {
 			return "env"
 		}
 	}
-	if currentVal != defaultVal {
+	if pinned[key] {
 		return "config"
 	}
 	return "default"

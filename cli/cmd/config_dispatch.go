@@ -7,10 +7,9 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 )
 
-// Map-based dispatchers for the per-key config operations. The original
-// switch-on-string structures had ~25 cases each, all mechanically
-// regular. Map-of-functions reduces each entrypoint to a lookup plus a
-// fallback through the tunables layer.
+// Map-based dispatchers for the per-key config operations: each entrypoint
+// is a lookup, falling through to the tunables layer for a key with no
+// per-key function of its own.
 
 // configSetter applies a parsed value to one field of state.
 type configSetter func(state *config.State, value string) error
@@ -134,13 +133,9 @@ var configReaders = map[string]configReader{
 	"persistence_backend":   func(s config.State) string { return s.PersistenceBackend },
 	"sandbox":               func(s config.State) string { return strconv.FormatBool(s.Sandbox) },
 	"fine_tuning":           func(s config.State) string { return strconv.FormatBool(s.FineTuning) },
-	// fine_tuning_variant returns the raw persisted value so
-	// runConfigList's source comparison ("config" vs "default") can
-	// distinguish an explicit "gpu" from an unset field. Callers that
-	// need the effective variant call FineTuneVariantOrDefault() themselves.
-	"fine_tuning_variant": func(s config.State) string { return s.FineTuningVariant },
-	"telemetry_opt_in":    func(s config.State) string { return strconv.FormatBool(s.TelemetryOptIn) },
-	"timestamps":          func(s config.State) string { return s.TimestampsOrDefault() },
+	"fine_tuning_variant":   func(s config.State) string { return s.FineTuneVariantOrDefault() },
+	"telemetry_opt_in":      func(s config.State) string { return strconv.FormatBool(s.TelemetryOptIn) },
+	"timestamps":            func(s config.State) string { return s.TimestampsOrDefault() },
 }
 
 // setterBool returns a configSetter that parses value as a bool and
