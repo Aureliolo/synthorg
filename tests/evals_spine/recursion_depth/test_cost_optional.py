@@ -253,8 +253,9 @@ class TestTheReportStatesTheBasis:
         assert any(
             line.startswith("- Total spend:") and "unpriced" in line for line in lines
         )
-        curve_row = next(line for line in lines if line.startswith("| 1 | gated |"))
-        assert "unpriced" in curve_row
+        # The headline table has no spend column; the curve table does.
+        curve_rows = [line for line in lines if line.startswith("| 1 | gated |")]
+        assert any("unpriced" in row for row in curve_rows)
 
     def test_a_priced_recording_prints_the_real_figure(self, tmp_path: Path) -> None:
         text = _markdown(tmp_path, cost_basis=CostBasis.PRICED, cost=1.25)

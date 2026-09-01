@@ -35,8 +35,9 @@ class TestAbbreviateToolOutput:
         assert len(kept) <= 1_000
         assert kept.startswith("line 0\n")
         assert kept.endswith("line 1999\n")
-        assert elided == len(content) - (len(kept) - kept.index("\n[...") - 1)
-        assert elided > 0
+        head, marker_and_tail = kept.split("\n[...", maxsplit=1)
+        tail = marker_and_tail.split("...]\n", maxsplit=1)[1]
+        assert elided == len(content) - len(head) - len(tail)
 
     def test_the_marker_states_how_much_was_dropped(self) -> None:
         content = "a" * 500

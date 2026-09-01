@@ -638,6 +638,7 @@ class TestPreflightGuardsTheBoot:
 
         monkeypatch.setattr(record_module, "run_preflight", _refuse)
         monkeypatch.setattr(record_module, "RecordingGatewayHost", _host)
+        _stub_the_smoke(monkeypatch)
 
         with pytest.raises(HarnessProviderMissingError):
             await record_module._record(
@@ -896,6 +897,7 @@ def _record_args(tmp_path: Path) -> argparse.Namespace:
         keep_workspaces=False,
         manifest=_MANIFEST,
         resume=False,
+        smoke=False,
         max_sessions=None,
     )
 
@@ -932,6 +934,16 @@ def _stub_the_host(
     monkeypatch.setattr(record_module, "_host_config", lambda *a, **k: None)
     monkeypatch.setattr(record_module, "_build_context", _built_context)
     monkeypatch.setattr(record_module, "capture_provenance", lambda **_k: None)
+    _stub_the_smoke(monkeypatch)
+
+
+def _stub_the_smoke(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stand in for the passing smoke a recording refuses to start without.
+
+    The gate itself is pinned in ``test_wire_check.py``; what these tests are
+    about lies past it.
+    """
+    monkeypatch.setattr(record_module, "require_passing_smoke", lambda *_a, **_k: None)
 
 
 def _recorded(
@@ -970,7 +982,7 @@ def _recorded(
     async def _swept(*_args: object, **_kwargs: object) -> object:
         if sweep is not None:
             raise sweep
-        return SimpleNamespace(measured_cells=("one",))
+        return SimpleNamespace(measured_cells=("one",), wiring=None)
 
     async def _images_resolve(_references: object) -> None:
         return None

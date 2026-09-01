@@ -51,7 +51,7 @@ pytestmark = pytest.mark.unit
 _MANIFEST: dict[str, object] = {
     "spec_dir": "spec/sqlcsv",
     "depths": (1,),
-    "repetitions": {1: 1},
+    "repetitions": {1: 5},
     "arms": ("gated",),
     "executor": {
         "provider": "example-provider",

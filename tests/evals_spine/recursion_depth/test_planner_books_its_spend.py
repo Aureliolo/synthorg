@@ -38,6 +38,7 @@ from synthorg.observability.events.evals import (
     EVALS_RECURSION_SPEND_ALL_DROPPED,
     EVALS_RECURSION_SPEND_DEDUPED,
 )
+from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.tools.registry import ToolRegistry
 from synthorg.tools.sandbox import SandboxBackend
@@ -151,7 +152,9 @@ def _planner(
         yield ledger
 
     async def _registry(_binding: RunBinding) -> ProviderRegistry:
-        return ProviderRegistry({})
+        # The planner resolves the executor's connection off the registry
+        # before it builds anything; the tree build itself is replaced.
+        return ProviderRegistry({_EXECUTOR.provider: mock_of[BaseCompletionProvider]()})
 
     deps = SweepDeps(
         app_state=make_app_state(),

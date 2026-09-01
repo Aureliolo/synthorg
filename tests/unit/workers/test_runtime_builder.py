@@ -51,6 +51,11 @@ from synthorg.workers.runtime_builder import (
 )
 from synthorg.workers.state import RuntimeStateSlice
 from tests._shared import FakeClock, make_app_state, mock_of
+from tests._shared.registered_defaults import (
+    default_float,
+    default_int,
+    default_str,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -73,8 +78,9 @@ _DEFAULT_PROVIDER = "test-provider"
 async def _get_str(_namespace: str, key: str) -> str:
     """Key-aware ``config_resolver.get_str`` stub.
 
-    ``routing_policy`` selects the work pipeline policy and
-    ``decomposition_strategy`` selects the decomposer; every other key
+    ``routing_policy`` selects the work pipeline policy,
+    ``decomposition_strategy`` selects the decomposer and the stagnation
+    strategy is answered with its registered default; every other key
     yields a bound ``{provider, model_id}`` reference (a bare id would be
     rejected as unbound and leave the coordinator unable to resolve a
     provider).
@@ -83,6 +89,8 @@ async def _get_str(_namespace: str, key: str) -> str:
         return "leaf-threshold"
     if key == "decomposition_strategy":
         return "agent-session"
+    if key == "stagnation_strategy":
+        return await default_str(_namespace, key)
     return serialize_model_ref(
         ModelRef(provider=_DEFAULT_PROVIDER, model_id="example-capable-001")
     )
@@ -147,9 +155,9 @@ def _provider_app_state(  # noqa: PLR0913 -- test builder with keyword-only knob
         provider_registry=registry,
         config=RootConfig(company_name="test-corp"),
         config_resolver=mock_of[ConfigResolver](
-            get_float=AsyncMock(return_value=30.0),
+            get_float=AsyncMock(side_effect=default_float),
             get_str=get_str_mock,
-            get_int=AsyncMock(return_value=1),
+            get_int=AsyncMock(side_effect=default_int),
             get_engine_bridge_config=bridge_mock,
             # The stakes router builds over the live provider set; the boot
             # RootConfig here declares none, so the resolver reports an empty

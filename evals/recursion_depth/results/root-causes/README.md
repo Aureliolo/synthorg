@@ -215,3 +215,37 @@ merge is not re-sending 225 messages.
 RC5 and RC6 are not features, they are the rule that nothing counts until it is
 observed. Every arm from here needs its treatment verified on the wire before
 the cell is paid for.
+
+---
+
+## What this dossier measured, and two corrections
+
+RC5 applied to this dossier itself. Every recording it reads was built by the
+harness's own engine construction, which passed 8 of the 51 collaborators the
+product's boot path passes, and nothing could tell: omitting a keyword argument
+looked exactly like deciding against it. So RC4 measured a harness that passed
+no compaction callback, RC1 measured one that passed no review pipeline, and
+the budget signal counted as delivered was the task's own token ceiling
+standing in for an enforcer that was not there. The verdict above stands as a
+description of what the corpus contained; whether the loop is flawed or the
+harness was is what the next recording, the first built on the product's own
+assembly, exists to answer.
+
+Two figures in the parity analysis were wrong and are corrected here rather
+than silently:
+
+- **The stagnation detector was never a parity gap.** The product's own
+  default strategy was `off`, so a default deployment built no detector
+  either, and the harness omitting one matched the product exactly. That is
+  why the default changed (to `tool_repetition`) rather than the harness: the
+  reviewer that re-ran an identical probe twenty times went undetected in the
+  product too.
+- **The gap was 43 collaborators, not 51 minus 8.** Eleven of the fields the
+  analysis counted as missing (`model_resolver`, `provider_configs`,
+  `coordinator`, `execution_loop`, `shutdown_checker`,
+  `tool_invocation_tracker`, `ontology_injection_strategy`,
+  `capture_strategy`, `event_reader`, `approval_interrupt_timeout_seconds`,
+  `checkpoint_config`) were not passed by the boot path either, and two more
+  (`evolution_service`, `mcp_self_consumer`) are off by default. After the
+  harness switched to the product's assembly the gap is zero by construction,
+  because a partial engine is no longer constructable.

@@ -1046,8 +1046,9 @@ _r.register(
             " budget.run_hard_ceiling, enforced in-loop whenever a budget"
             " enforcer is wired, which the shipped boot path does whenever"
             " persistence connects and cost-dial wiring succeeds; the"
-            " stagnation detector ships off, so do not count on it unless"
-            " you have chosen one."
+            " stagnation detector (engine.stagnation_strategy, tool"
+            " repetition by default) ends a run going in circles earlier"
+            " than this cap does."
         ),
         group="Execution",
         level=SettingLevel.ADVANCED,

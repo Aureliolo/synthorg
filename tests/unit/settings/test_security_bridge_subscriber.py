@@ -60,6 +60,12 @@ def _make_subscriber(
         }[key]
 
     resolver.get_str.side_effect = _get_str
+
+    async def _get_int(namespace: str, key: str) -> int:
+        del namespace
+        return {"mcp_self_consumer_retrieval_top_k": 40}[key]
+
+    resolver.get_int.side_effect = _get_int
     app_state = make_app_state(
         config=RootConfig(company_name="test"),
         config_resolver=resolver,
@@ -85,6 +91,7 @@ class TestProtocol:
                 ("security", "post_tool_scanning_enabled"),
                 ("security", "output_scan_policy_type"),
                 ("security", "mcp_self_consumer_mode"),
+                ("security", "mcp_self_consumer_retrieval_top_k"),
             }
         )
 

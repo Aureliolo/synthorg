@@ -31,6 +31,12 @@ from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import SettingsStateSlice
 from synthorg.workers.engine_assembly import build_agent_engine
 from tests._shared import FakeClock, as_uuid, assembly_inputs, make_app_state, mock_of
+from tests._shared.registered_defaults import (
+    default_bool,
+    default_float,
+    default_int,
+    default_str,
+)
 from tests._shared.scripted_provider import ScriptedProvider
 
 pytestmark = pytest.mark.unit
@@ -47,10 +53,10 @@ def _app_state(
         ``(app_state, None)`` when *wire_enforcer* is ``False``.
     """
     resolver = mock_of[ConfigResolver](
-        get_float=AsyncMock(return_value=0.5),
-        get_int=AsyncMock(return_value=1),
-        get_str=AsyncMock(return_value=""),
-        get_bool=AsyncMock(return_value=False),
+        get_float=AsyncMock(side_effect=default_float),
+        get_int=AsyncMock(side_effect=default_int),
+        get_str=AsyncMock(side_effect=default_str),
+        get_bool=AsyncMock(side_effect=default_bool),
         get_provider_configs=AsyncMock(return_value={}),
     )
     persistence = mock_of[PersistenceBackend](
@@ -121,7 +127,7 @@ class TestBudgetEnforcerBootWiring:
             budget_enforcer=enforcer,
         )
 
-        with pytest.raises(ValueError, match="cost_tracker must match"):
+        with pytest.raises(ValueError, match="cost_tracker must be the same object"):
             await _engine_for(app_state)
 
     async def test_unwired_enforcer_leaves_engine_without_one(self) -> None:

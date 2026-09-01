@@ -1411,6 +1411,7 @@
         "invocation_tracker",
         "tool_execution",
         "sandbox_reconciled_at",
+        "sandbox_reclaim_scheduler",
         "web_research"
       ]
     },
@@ -1473,6 +1474,6 @@
       ]
     }
   ],
-  "generated_at": "2026-08-31T17:40:22.909117Z",
+  "generated_at": "2026-09-01T21:50:01.326381Z",
   "schema_version": 1
 }

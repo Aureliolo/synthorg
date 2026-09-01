@@ -1893,10 +1893,19 @@ async def _context(
     Returns:
         The context.
     """
+    spec_dir = tmp_path / "spec"
+    if not (spec_dir / "requirements.yaml").exists():
+        # The liveness probe reads the specification's own index off disk to
+        # learn what it may probe; one that declares nothing reads every cell
+        # NOT_PROBEABLE, which is the shape these matrix tests are about.
+        spec_dir.mkdir(parents=True, exist_ok=True)
+        (spec_dir / "requirements.yaml").write_text(
+            "requirements: []\n", encoding="utf-8"
+        )
     return SweepContext(
         manifest=manifest or _manifest(),
         spec=_spec(),
-        spec_dir=tmp_path / "spec",
+        spec_dir=spec_dir,
         work_root=tmp_path / "work",
         deps=_deps(),
         roster=await _roster(),

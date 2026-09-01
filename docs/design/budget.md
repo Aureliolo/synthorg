@@ -97,6 +97,17 @@ property on `TokenUsage` (the model embedded in `CompletionResponse`). Spending 
 models (`AgentSpending`, `DepartmentSpending`, `PeriodSpending`) extend a shared
 `_SpendingTotals` base class that also carries the per-aggregation currency.
 
+Beside the two token counts the record carries `cache_read_input_tokens` and
+`cache_write_input_tokens`, the prompt-cache counts a provider reports on each
+response, as COUNTS rather than a boolean: a hit flag says a cache was touched
+and nothing about how much of the input it covered, which is the figure that
+maps to the bill. Both are columns on `cost_records` in both backends, so a
+record read back carries what was recorded rather than a `None` that reads as
+"never cached". Call analytics derives `cached_input_share` from them (cached
+read tokens over input tokens, absent when a slice has no input tokens), and
+that share is what the dashboard's analytics sections show in place of a hit
+rate.
+
 ### Is the money figure measuring anything?
 
 A provider that bills by flat subscription has no per-1k price to attribute, so every

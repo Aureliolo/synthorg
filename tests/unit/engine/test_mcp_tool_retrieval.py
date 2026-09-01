@@ -94,4 +94,4 @@ class TestRankTools:
 
         kept = rank_tools(scoped, query="budget", top_k=1)
 
-        assert set(kept) <= set(scoped)
+        assert {tool.name for tool in kept} <= {tool.name for tool in scoped}

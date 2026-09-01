@@ -33,6 +33,12 @@ from tests._shared import FakeClock, assembly_inputs, make_app_state, mock_of
 from tests._shared.fake_background_job_repo import (
     InMemoryBackgroundJobRepository as _InMemoryBackgroundJobRepository,
 )
+from tests._shared.registered_defaults import (
+    default_bool,
+    default_float,
+    default_int,
+    default_str,
+)
 from tests._shared.scripted_provider import ScriptedProvider
 
 pytestmark = pytest.mark.unit
@@ -53,10 +59,10 @@ def _app_state(
         background_job_staleness=background_job_staleness,
     )
     resolver = mock_of[ConfigResolver](
-        get_float=AsyncMock(return_value=0.5),
-        get_int=AsyncMock(return_value=1),
-        get_str=AsyncMock(return_value=""),
-        get_bool=AsyncMock(return_value=False),
+        get_float=AsyncMock(side_effect=default_float),
+        get_int=AsyncMock(side_effect=default_int),
+        get_str=AsyncMock(side_effect=default_str),
+        get_bool=AsyncMock(side_effect=default_bool),
         get_provider_configs=AsyncMock(return_value={}),
     )
     persistence = mock_of[PersistenceBackend](
