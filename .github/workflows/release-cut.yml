@@ -47,12 +47,17 @@ jobs:
     # Forks don't have those env-scoped secrets; skip cleanly.
     if: ${{ !github.event.repository.fork }}
     runs-on: ubuntu-24.04
-    # Bound total wall time. The retry-wrapped gh calls below (LICENSE
-    # read, PR-body read, head-SHA read, and the four required-status
-    # POSTs) each carry the gh_with_retry.sh ladder (~1m45s worst case);
-    # a black-holed connection is not bounded by the ladder itself. Cap
-    # the job so a stuck API call cannot hold a runner up to the 6h
-    # default and block the cancel-in-progress:false concurrency group.
+    # Bound total wall time. Every retry-wrapped gh call below carries the
+    # gh_with_retry.sh ladder (~1m45s worst case each), and a black-holed
+    # connection is not bounded by the ladder itself. Cap the job so a stuck
+    # API call cannot hold a runner up to the 6h default and block the
+    # cancel-in-progress:false concurrency group.
+    #
+    # This is a CEILING on a stuck job, not a budget every ladder fits
+    # inside: enough of them exhausting at once exceeds it, and being killed
+    # at 15 minutes is the wanted outcome when the API is out that long. The
+    # call sites are deliberately not enumerated here, because a list in a
+    # comment cannot be held to the job below it.
     timeout-minutes: 15
     environment: release
     permissions:
@@ -133,6 +138,12 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
+          # A shorter ladder than the helper's default, because this step is
+          # level-triggered (the next push to main re-asks the same question)
+          # and its exhaustion path already passes with a warning. Two
+          # attempts still ride out a single blip while keeping the step's
+          # contribution to the job's wall-time ceiling near zero.
+          GH_RETRY_ATTEMPTS: "2"
         run: |
           set -euo pipefail
           # The manifest on the merge commit names the version being cut, so

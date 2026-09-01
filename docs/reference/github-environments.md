@@ -156,7 +156,8 @@ installation token (valid ≤1 hour) via the
 `release-runner-setup` composite action, which wraps
 `actions/create-github-app-token@v3.1.1`. Consumers:
 
-- `release-cut.yml`: `release-please-action` token input, so the RP
+- `release-cut.yml`: the `.github/actions/release-please` composite's
+  token input, forwarded to `release-please-action`, so the RP
   tag push on release-PR merge triggers Docker + CLI builds. The
   BSL Change Date Contents API commit keeps `GITHUB_TOKEN` (lands
   on the RP PR branch, not `main`; no recursion concern). One

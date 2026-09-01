@@ -62,8 +62,8 @@ outputs:
   # yields an empty string, and a boolean output arrives as the non-empty
   # string "false", so the chain never falls through a legitimate negative.
   #
-  # ``body`` is deliberately absent: it carries the entire release notes
-  # (26 KB for v0.9.4) and nothing consumes it.
+  # ``body`` is deliberately absent: it carries the entire release notes,
+  # which run to tens of kilobytes, and nothing consumes it.
   pr:
     description: The release pull request that was opened or updated, as JSON.
     value: ${{ steps.attempt1.outputs.pr || steps.attempt2.outputs.pr || steps.attempt3.outputs.pr || steps.attempt4.outputs.pr || steps.attempt5.outputs.pr }}
@@ -131,7 +131,6 @@ runs:
         config-file: ${{ inputs.config-file }}
         manifest-file: ${{ inputs.manifest-file }}
 
-    # Exponential backoff between attempts (5s, 15s, 30s, 60s = 110s total).
     # The short head recovers from a one-off blip on the release call; the
     # longer tail rides out a GitHub degradation lasting more than a moment,
     # which is the window in which the tag is already live and the draft is
