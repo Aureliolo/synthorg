@@ -35,6 +35,17 @@ are what decide it.
 
 ## A merge is a different animal from a leaf
 
+> **Superseded.** The merge row below counts REVIEWERS as merges. A review
+> transcript is named after the merge it judges, so the substring filter that
+> produced it swept every reviewer in; `--kind merge` is the corrected filter
+> and `../root-causes/README.md` carries the corrected table (84% shell, 12%
+> write+edit, 3% read). Re-derived from the same three corpus trees: merge-only
+> is 480 shell, 49 write, 27 edit, 18 read, and the row below is 981 shell
+> against the identical 40/49/27 file-tool counts, which is how the
+> contamination is identifiable at all. Kept rather than deleted because the
+> direction it reports survived the correction, and because a number this file
+> published once should stay findable next to what replaced it.
+
 Eight merge sessions across the corpus:
 
 | | shell | read_file | write_file | edit_file |
@@ -128,8 +139,10 @@ prediction is sharp: input falls, behaviour should not change.
 
 **Tool bloat is not our problem.** The wire offers 8 tools, 5 of them real
 (`shell_command`, `read_file`, `write_file`, `edit_file`, `delete_file`). The
-published result about deleting sixteen specialised tools in favour of one
-general capability describes a place we are already standing.
+published result about collapsing seventeen specialised tools down to two
+describes a place we are already standing. See the corrections section of
+`../harness-audit/README.md` for what that source actually reports: the
+secondary write-up compressed it to "sixteen tools, replaced by one".
 
 **The discovery tax is trivial.** 19 of 466 leaf calls reached `list_tools` or
 `load_tool`. Lazy loading is advisory: tools are called by name without being

@@ -28,6 +28,12 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# `evals` lives at the repository root rather than on the interpreter's path,
+# and this runs as a script.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from evals.harness.rendering import one_line
+
 
 @dataclass
 class SessionCost:
@@ -61,6 +67,11 @@ class SessionCost:
             model may call a tool it never loaded, so a load count measures
             intent and nothing else.
         unreadable: Lines that would not parse.
+        dropped_frames: SSE chunks inside otherwise-readable lines that would
+            not parse. Counted apart from ``unreadable`` because every tally
+            above is computed from the FRAMES: a dropped one removes a real
+            tool call from the counts and leaves the result looking exactly
+            as clean as a session that made fewer.
     """
 
     requests: int = 0
@@ -71,6 +82,7 @@ class SessionCost:
     tools: Counter[str] = field(default_factory=Counter)
     loads: int = 0
     unreadable: int = 0
+    dropped_frames: int = 0
 
 
 def _kind(name: str) -> str:
@@ -136,6 +148,11 @@ def _absorb(cost: SessionCost, response: object) -> None:
         try:
             _absorb_frame(cost, json.loads(body))
         except json.JSONDecodeError, ValueError:
+            # Counted, never skipped, which is what this module's own
+            # docstring promises and what the outer line counter alone does
+            # not deliver: the tallies are built from frames, so a dropped
+            # frame is a missing tool call rather than a missing line.
+            cost.dropped_frames += 1
             continue
 
 
@@ -168,9 +185,13 @@ def _absorb_frame(cost: SessionCost, frame: object) -> None:
             function = call.get("function")
             if not isinstance(function, dict):
                 continue
-            name = function.get("name")
-            if not isinstance(name, str):
+            raw_name = function.get("name")
+            if not isinstance(raw_name, str):
                 continue
+            # Filtered where it is CAPTURED: this name is whatever the model
+            # emitted in its deltas, not one of the tools the harness offered,
+            # and it ends up printed to a terminal.
+            name = one_line(raw_name)
             if name == "load_tool":
                 cost.loads += 1
             else:
@@ -205,6 +226,7 @@ def _report(work_root: Path) -> None:
         into.tools.update(one.tools)
         into.loads += one.loads
         into.unreadable += one.unreadable
+        into.dropped_frames += one.dropped_frames
 
     total = sum(
         cost.prompt_tokens + cost.completion_tokens for cost in by_kind.values()
@@ -241,6 +263,8 @@ def _report(work_root: Path) -> None:
             print(f"            {top}")
         if cost.unreadable:
             print(f"            {cost.unreadable} unreadable lines (tap interleaving)")
+        if cost.dropped_frames:
+            print(f"            {cost.dropped_frames} dropped frames (partial turns)")
 
 
 def main(argv: list[str] | None = None) -> int:

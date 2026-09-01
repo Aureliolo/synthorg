@@ -6,11 +6,18 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 )
 
 // ChildExitError and ChildExitCode are defined in exitcodes.go.
+
+// reexecShutdownGrace is how long the parent waits, after its own context is
+// cancelled, for the re-exec'd child to finish unwinding before forcing it.
+// A second interrupt reaches the child's own forceExitOnSecondInterrupt, so
+// an operator who does not want to wait never has to.
+const reexecShutdownGrace = 30 * time.Second
 
 // reexecUpdate spawns the new binary with the same arguments so the rest
 // of the update (compose refresh, image pull) uses the new embedded template.
@@ -29,6 +36,7 @@ func reexecUpdate(cmd *cobra.Command, recovered bool) error {
 		return err
 	}
 	c := exec.CommandContext(cmd.Context(), execPath, buildReexecArgs(cmd, recovered)...) //nolint:gosec // G204: execPath is the CLI's own resolved binary, args reconstructed from known flags (not raw os.Args)
+	configureReexecShutdown(c)
 	c.Stdin = os.Stdin
 	c.Stdout = cmd.OutOrStdout()
 	c.Stderr = cmd.ErrOrStderr()
@@ -40,6 +48,28 @@ func reexecUpdate(cmd *cobra.Command, recovered bool) error {
 		return fmt.Errorf("re-launching updated CLI: %w", runErr)
 	}
 	return nil
+}
+
+// configureReexecShutdown makes the parent wait out the child's own graceful
+// shutdown instead of killing it.
+//
+// The child runs Execute() too, so on a console interrupt it receives the
+// same signal directly (it shares this process's console and process group)
+// and owns its own unwinding: cancel the pull, roll compose.yml back, leave
+// config.json alone. exec.CommandContext's DEFAULT cancel action defeats
+// exactly that, in the one flow this mechanism exists to protect. Killing is
+// a single syscall and the child's rollback is a pull-cancel followed by an
+// atomic rewrite, so the child loses that race and the operator is left with
+// compose.yml ahead of config.json: the desync `update` is meant to prevent.
+//
+// os.ErrProcessDone says "there is nothing here for you to cancel", so Wait
+// reports the child's own verdict rather than replacing it with the context's
+// error. WaitDelay bounds the patience, and covers what the console does not:
+// a SIGTERM aimed at this process alone never reaches the child, so without a
+// delay the parent would wait on a child that was never told to stop.
+func configureReexecShutdown(c *exec.Cmd) {
+	c.Cancel = func() error { return os.ErrProcessDone }
+	c.WaitDelay = reexecShutdownGrace
 }
 
 // normalizeChildExitCode maps a child's reported exit code onto one the CLI

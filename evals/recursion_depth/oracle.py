@@ -307,9 +307,16 @@ async def run_oracle(
     # probe and the graded run are the harness's, and a key shared with an
     # agent session would let that session's exit tear the grading down.
     owner = f"{_ORACLE_OWNER_PREFIX}{tree}"
+    # `mkdtemp` plus an explicit removal rather than the context manager,
+    # because the manager's teardown is SYNCHRONOUS: it walks and unlinks a
+    # tree that `stage` just filled with the whole graded project plus the
+    # oracle suite, on the event loop this same process is serving the gateway
+    # from. Every other filesystem call in this function is already offloaded
+    # for that reason; the one that ran on the loop was the one nobody wrote.
+    scratch = await asyncio.to_thread(tempfile.mkdtemp)
+    root = Path(scratch)
     try:
-        with tempfile.TemporaryDirectory() as scratch:
-            root = Path(scratch)
+        try:
             await asyncio.to_thread(stage, root, tree=tree, oracle_dir=oracle_dir)
             nonce, staged_before = await _arm_graded_root(
                 root,
@@ -339,6 +346,12 @@ async def run_oracle(
                 returncode=result.returncode,
                 nonce=nonce,
             )
+        finally:
+            # `ignore_errors` because this is the LAST thing a grading does
+            # and a scratch tree it cannot remove is a disk-space problem, not
+            # a verdict. Raising here would replace whatever the grading
+            # concluded with a cleanup failure.
+            await asyncio.to_thread(shutil.rmtree, root, ignore_errors=True)
     finally:
         if release_sandboxes is not None:
             await release_sandboxes(owner)

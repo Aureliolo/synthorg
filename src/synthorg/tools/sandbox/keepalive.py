@@ -1,15 +1,15 @@
 # module-kind: code
 """What a reused sandbox container runs as its main process.
 
-Extracted rather than left inline: passing a command REPLACES the image's CMD,
-and for the sandbox image that CMD is the only thing that starts the health
-server the image's own HEALTHCHECK dials. A plain ``tail -f /dev/null`` kept the
-container alive and silently disabled its health check, so every container
-reported unhealthy for its whole life (FailingStreak 107, measured on a live
-merge sandbox) while the probe itself was correct and fully tested.
+Passing a command REPLACES the image's CMD, and for the sandbox image that CMD
+is the only thing that starts the health server its own HEALTHCHECK dials. So a
+keep-alive that merely holds the container open disables the health check while
+leaving the probe itself correct and fully tested: the container reports
+unhealthy for its whole life and nothing says why (FailingStreak 107, measured
+on a live merge sandbox).
 
-Its own module because the two facts have to agree and neither belongs to the
-exec plumbing: what the image installs, and what the container runs.
+Its own module because two facts have to agree and neither belongs to the exec
+plumbing: what the image installs, and what the container runs.
 """
 
 from typing import Final

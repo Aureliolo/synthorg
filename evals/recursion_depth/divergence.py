@@ -10,8 +10,9 @@ is supposed to explain rather than a witness to it.
 Divergence is counted per MODULE PATH, and only for a path more than one unit
 wrote. A module exactly one unit owns cannot disagree with anybody, and folding
 those in would bury the measurement under the many files each cell writes once:
-in the recorded corpus 11 of 11 SHARED modules disagreed, and the same run's
-per-file agreement rate reads near-perfect because most files are written once.
+the three recorded corpus cells read 11 of 14, 11 of 12 and 12 of 13 SHARED
+modules disagreeing, while the same runs' per-file agreement rate reads
+near-perfect because most files are written once.
 
 What counts as agreement is the module's PUBLIC SURFACE, not its bytes.
 Two units are supposed to write different bodies for a module they share, and
@@ -28,7 +29,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+from evals.harness.rendering import one_line
 from synthorg.observability import get_logger
+from synthorg.observability.events.evals import EVALS_RECURSION_DIVERGENCE_UNREADABLE
 
 logger = get_logger(__name__)
 
@@ -63,8 +66,6 @@ class ModuleDivergence:
     Attributes:
         path: The module, relative to each unit's project tree.
         units: The units that wrote it, sorted.
-        agreed: Whether every copy exposes the same public names with the same
-            signatures.
         missing_names: Names present in some copies and absent from others.
         conflicting_signatures: Functions every copy declares but not with the
             same parameters.
@@ -72,9 +73,24 @@ class ModuleDivergence:
 
     path: str
     units: tuple[str, ...]
-    agreed: bool
     missing_names: tuple[str, ...] = ()
     conflicting_signatures: tuple[str, ...] = ()
+
+    @property
+    def agreed(self) -> bool:
+        """Whether every copy exposes the same public surface.
+
+        Computed rather than stored, the way ``CellDivergence`` computes its
+        own two counts. Held as a field it was settable independently of the
+        two lists it is entirely derived from, so ``agreed=True`` beside a
+        non-empty ``missing_names`` was a representable state, and the only
+        thing keeping it out of the record was that one producer happened to
+        set it consistently.
+
+        Returns:
+            True when nothing is missing and no signature conflicts.
+        """
+        return not self.missing_names and not self.conflicting_signatures
 
 
 @dataclass(frozen=True, slots=True)
@@ -232,10 +248,19 @@ def measure(unit_trees: Mapping[str, Path]) -> CellDivergence:
             ModuleDivergence(
                 path=path,
                 units=tuple(sorted(surfaces)),
-                agreed=not missing and not conflicting,
                 missing_names=missing,
                 conflicting_signatures=conflicting,
             )
+        )
+    if unreadable:
+        # Surfaced live as well as carried in the record: an unparseable
+        # module is a unit that wrote something other than Python where a
+        # module belongs, which is a finding in its own right and one the
+        # agreement ratio below deliberately says nothing about.
+        logger.warning(
+            EVALS_RECURSION_DIVERGENCE_UNREADABLE,
+            count=len(unreadable),
+            modules=tuple(one_line(path) for path in sorted(unreadable)),
         )
     return CellDivergence(modules=tuple(modules), unreadable=tuple(sorted(unreadable)))
 
@@ -281,10 +306,15 @@ def render(divergence: CellDivergence, *, limit: int = 20) -> Sequence[str]:
     Returns:
         The lines to print.
     """
+    # Every value interpolated below is a PATH out of a delivered tree, and a
+    # unit may name a file anything the filesystem accepts. Unlike the names
+    # and signatures beside them, which the AST constrains to identifiers, a
+    # filename can carry an escape sequence straight into the terminal
+    # reading this.
     lines = [divergence.headline()]
     for module in divergence.modules[:limit]:
         mark = "ok  " if module.agreed else "DIFF"
-        lines.append(f"  {mark} {module.path}  ({len(module.units)} units)")
+        lines.append(f"  {mark} {one_line(module.path)}  ({len(module.units)} units)")
         if module.missing_names:
             missing = ", ".join(module.missing_names)
             lines.append(f"         missing from some: {missing}")
@@ -296,7 +326,8 @@ def render(divergence: CellDivergence, *, limit: int = 20) -> Sequence[str]:
     if len(divergence.modules) > limit:
         lines.append(f"  ... and {len(divergence.modules) - limit} more")
     if divergence.unreadable:
-        lines.append(f"  unparseable: {', '.join(divergence.unreadable)}")
+        unreadable = ", ".join(one_line(path) for path in divergence.unreadable)
+        lines.append(f"  unparseable: {unreadable}")
     return lines
 
 

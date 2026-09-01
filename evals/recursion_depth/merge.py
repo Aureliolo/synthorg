@@ -49,7 +49,12 @@ from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
+from synthorg.engine.prompt_safety import (
+    TAG_PEER_CONTRIBUTION,
+    TAG_TASK_DATA,
+    TAG_UNTRUSTED_ARTIFACT,
+    wrap_untrusted,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
     EVALS_RECURSION_MERGE_ATTEMPTED,
@@ -444,17 +449,26 @@ def merge_brief(
     Returns:
         The brief.
     """
-    stated = [f"Objective: {plan.task.title}", "The pieces, and where they are:"]
-    stated.extend(
-        f"- `{CHILDREN_DIR}/{piece.slug}/`: {piece.title}{_piece_state(piece)}"
-        for piece in plan.pieces
-    )
+    # Fenced by PROVENANCE, not in one block. Three different parties author
+    # what follows and the tag is what tells a reader which one a prompt
+    # injection came from: the plan is the task's own brief, the piece states
+    # are other agents' produced work (including verbatim pytest output from a
+    # failed leaf, so a hostile test file's text reaches here), and the
+    # findings are an upstream reviewer's free prose. `completion_oracle` and
+    # `redteam` already draw these apart on the same three kinds.
+    stated = [f"Objective: {plan.task.title}"]
     if plan.criteria:
         stated.append("The whole is only working when all of these hold:")
         stated.extend(f"- {criterion}" for criterion in plan.criteria)
+    produced = ["The pieces, and where they are:"]
+    produced.extend(
+        f"- `{CHILDREN_DIR}/{piece.slug}/`: {piece.title}{_piece_state(piece)}"
+        for piece in plan.pieces
+    )
+    reviewed = []
     if findings:
-        stated.append("An independent reviewer rejected the last attempt:")
-        stated.extend(f"- {finding}" for finding in findings)
+        reviewed.append("An independent reviewer rejected the last attempt:")
+        reviewed.extend(f"- {finding}" for finding in findings)
     sections = [
         _ISOLATION_BOUND if bound else _ISOLATION_FREE,
         (
@@ -485,7 +499,10 @@ def merge_brief(
             "by tests you will never see."
         ),
         wrap_untrusted(TAG_TASK_DATA, "\n".join(stated)),
+        wrap_untrusted(TAG_UNTRUSTED_ARTIFACT, "\n".join(produced)),
     ]
+    if reviewed:
+        sections.append(wrap_untrusted(TAG_PEER_CONTRIBUTION, "\n".join(reviewed)))
     return "\n\n".join(sections)
 
 

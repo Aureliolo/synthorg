@@ -21,7 +21,10 @@ func TestReportExecuteError_Interrupted(t *testing.T) {
 	cancel() // simulates the signal handler firing
 
 	var out bytes.Buffer
-	rawErr := errors.New("exec: signal: killed")
+	// The real shape: docker.ComposeExec returns cmd.Run() unwrapped, so a
+	// killed pull arrives as an *exec.ExitError, not as a string carrying
+	// those words.
+	rawErr := failedChildError(t)
 	err := reportExecuteError(ctx, &out, rawErr)
 
 	exitErr, ok := errors.AsType[*ExitError](err)
@@ -37,8 +40,36 @@ func TestReportExecuteError_Interrupted(t *testing.T) {
 	if !strings.Contains(out.String(), "Interrupted") {
 		t.Errorf("expected an Interrupted message on stderr, got: %s", out.String())
 	}
-	if strings.Contains(out.String(), "signal: killed") {
+	if strings.Contains(out.String(), "exit status") {
 		t.Errorf("raw subprocess error text should not reach the operator, got: %s", out.String())
+	}
+}
+
+// TestReportExecuteError_InterruptDoesNotSwallowAnUnrelatedError covers the
+// window between a command returning its own failure and this handler asking
+// whether the context was cancelled. A signal landing in that window proves a
+// signal arrived, not that it caused the failure, and an ordinary error's
+// text would otherwise never be printed: ExitError's own message is
+// explicitly not user-facing, so the operator would see only "Interrupted."
+// for a genuine, unrelated fault.
+func TestReportExecuteError_InterruptDoesNotSwallowAnUnrelatedError(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var out bytes.Buffer
+	rawErr := errors.New("backend unreachable")
+
+	err := reportExecuteError(ctx, &out, rawErr)
+
+	if !errors.Is(err, rawErr) {
+		t.Errorf("expected the original error to be wrapped, got: %v", err)
+	}
+	if !strings.Contains(out.String(), "Interrupted") {
+		t.Errorf("the interrupt should still be reported, got: %s", out.String())
+	}
+	if !strings.Contains(out.String(), "backend unreachable") {
+		t.Errorf("an error the interrupt does not explain must still be shown, got: %s", out.String())
 	}
 }
 

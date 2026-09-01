@@ -597,16 +597,45 @@ anything, and `make recursion-depth-record` to measure for real.
    specification down to this run's cap, through the real
    `DecompositionService` with the settings written through the real settings
    service. One session per node that plans.
-2. **Build every leaf.** One agent owns a unit end to end, its own tests
-   included, in a workspace recreated from the committed seed. A leaf
-   **delivered** when it changed something it declared and its own tests pass
-   in its own tree (below).
-3. **Assemble every node, deepest first.** The children are copied under
+2. **Fix the contract.** One forced-leaf session per cell, between the plan and
+   the first unit, writing module layout, cross-module signatures and one
+   FAILING test per requirement. Its tree, not the committed seed, is what
+   every later unit and merge is recreated from, so the agreement is already in
+   each checkout and nothing has to be handed to anybody. Governed by
+   `contract_stage` in the manifest and by `--contract-stage` /
+   `--no-contract-stage`; with it off, step 3 seeds from the committed README
+   as it always did.
+
+   It exists because the seed alone fixes nothing: measured across the three
+   corpus cells recorded without it, 11 of 14, 11 of 12, and 12 of 13 of the
+   modules more than one child wrote disagreed on their exports, against 0 of
+   21 in a cell recorded with it. Re-derivable from the kept trees with
+   `scripts/report_interface_divergence.py`.
+3. **Build every leaf.** One agent owns a unit end to end, its own tests
+   included, in a workspace recreated from the contract's tree (or from the
+   committed seed where no contract ran). A leaf **delivered** when it changed
+   something it declared and its own tests pass in its own tree (below).
+
+   Under a contract, "its own tests" narrows to the tests naming the
+   requirements that unit CLAIMS, because the seeded checkout carries a failing
+   test for every requirement and each unit is told to leave the others
+   failing. Grading a unit on the whole suite there does not misjudge
+   occasionally: it marks every unit undelivered whatever it built.
+4. **Assemble every node, deepest first.** The children are copied under
    `.children/<slug>/` and the deliverable is the tree at the workspace root.
    The merging agent is told it may change a child's interface and is asked to
    record each time it does.
-4. **Judge, or spend the same budget without judging.** See below.
-5. **Grade.** The held-out oracle runs against the root's assembled tree.
+5. **Judge, or spend the same budget without judging.** See below.
+6. **Grade.** The held-out oracle runs against the root's assembled tree.
+
+Preflight settles what it can before any of this: provider coverage, a
+reachable daemon, a one-token completion on both pairs, and, once the host has
+resolved it, that the sandbox image the run will need actually exists. That
+last one runs after the boot because unless `--sandbox-image` names one the
+reference comes from the running instance's own settings resolver; it still
+beats the first session, which is what matters, since planning runs entirely
+through the gateway and a cell that can never be graded would otherwise buy a
+whole plan first.
 
 ### The metric
 
@@ -679,6 +708,19 @@ actually recorded rather than one describing neither of two. The absent-point
 rule applies per RUN there: a run whose delivered leaves claimed nothing has no
 survival rate and is left out of the range rather than folded in as a zero,
 which would report a collapse nobody measured.
+
+**A third column, which is not a curve.** `shared_modules` and
+`diverged_modules` on each cell record how many module paths more than one unit
+wrote, and how many of those the units disagreed on. It is reported beside the
+score rather than folded into it, because it measures the CAUSE the contract
+stage addresses rather than the outcome the oracle grades, and the two move for
+different reasons. Counted per module path and only where more than one unit
+wrote it: a module one unit owns cannot disagree with anybody, and folding those
+in buries the reading under the many files each cell writes once. Agreement is
+the module's public surface, never its bytes, since two units are SUPPOSED to
+write different bodies for a module they share. `evals/recursion_depth/
+divergence.py` owns it and `scripts/report_interface_divergence.py` re-derives
+it from any kept recording without a provider call.
 
 ### What delivery is decided by, and what it is not
 
@@ -874,6 +916,16 @@ COMMIT does, because the identity pins that too, and that is the constraint that
 actually governs a staged recording: fix everything before the first stage, and
 carry the tree unchanged until the last one.
 
+That reasoning holds only for a SCHEDULE lever, and the distinction is load
+-bearing. `--max-sessions` and `--repetitions` decide how much of the matrix
+runs; `--contract-stage` and `--leaf-reasoning-effort` decide what running it
+MEANS. A treatment that changed the loop while leaving the file alone would
+leave two arms with byte-identical headers, and the identity check would then
+accept a resume of one inside the other's directory and splice two loops into
+one curve. So `Provenance.loop` carries the treatments a run actually resolved
+(`LoopTreatments`) alongside the file digest, and `Provenance.sandbox_image`
+carries the image it resolved, both inside `matrix_identity`.
+
 `--leaf-concurrency` is the only lever that changes wall clock rather than the
 bill: sibling leaves at one level have no dependency on each other, so they
 build together. Merges never overlap, and the cell loop stays sequential, which
@@ -993,6 +1045,24 @@ nothing but its turn cap. Tokens are counted on every provider, so the plan
 states the token bound as the one that holds without the reader first knowing
 how they are billed.
 
+Those bounds are per ROLE and scaled, not one flat number for every session.
+`session_limits_for` sizes each role from a base the manifest declares plus
+what that particular session is being asked to do, under a cap:
+
+| role | base | scaled by | cap |
+|---|---|---|---|
+| leaf | `unit_token_ceiling` | requirements claimed, at `unit_token_per_claim` | `unit_token_cap` |
+| merge | `merge_token_base` | pieces to assemble, at `merge_token_per_piece` | `merge_token_cap` |
+| review | `review_token_base` | the same fan-in | `review_token_cap` |
+| contract | `contract_token_ceiling` | nothing: one session per cell | itself |
+
+Flat was the earlier shape and it is what starved the corpus: a leaf claiming
+eighteen requirements got what a leaf claiming two got, and 58% of leaves
+stopped on their ceiling rather than finishing. Every base and cap pair is
+checked at manifest load, because a cap below its own base makes `min(base,
+cap)` size every session of that role to the smaller number, which is
+indistinguishable at runtime from the matrix legitimately needing less.
+
 Every cap is repeated, which the first recording did not do: it ran one cell
 per point and so could report no spread anywhere. Spread is only reportable
 where there is a population, and a matrix that repeats only the caps it expects
@@ -1024,6 +1094,17 @@ and retried again on the far side. A bad key fails identically every time, so
 all of that is latency. The probe is also the warm-up, which matters because a
 cold model load would otherwise land entirely on whichever cell is recorded
 first, and that is depth 1: the flattest, cheapest point on the curve.
+
+The sandbox image is checked separately and one step later, because unless
+`--sandbox-image` names one the reference comes from the running instance's
+own settings resolver and there is nothing to check until the host is up. It
+still lands before the first session, which is the boundary that costs money:
+a cell plans entirely through the gateway, so an image that does not resolve
+would otherwise be discovered by the first container, with a plan already
+bought (measured at 85,555 tokens). The daemon's own 404 is the only answer
+read as "no such image": a 500 or a dropped socket is the daemon failing to
+answer, is retried, and if it persists is reported as the daemon being
+unavailable rather than sending an operator to rebuild an image that is fine.
 
 ### Two things to read the results against
 

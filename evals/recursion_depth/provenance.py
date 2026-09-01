@@ -169,11 +169,7 @@ def capture_provenance(
         loop=LoopTreatments(
             contract_stage=manifest.contract_stage,
             merge_attempts=manifest.merge_attempts,
-            leaf_reasoning_effort=(
-                manifest.leaf_reasoning_effort.value
-                if manifest.leaf_reasoning_effort
-                else None
-            ),
+            leaf_reasoning_effort=manifest.leaf_reasoning_effort,
         ),
     )
 

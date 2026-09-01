@@ -103,15 +103,27 @@ class TranscriptRecorder:
         # tap that drops lines under concurrency turns every such absence into
         # a question nobody can answer.
         self._append_lock = threading.Lock()
+        #: Parents `bind` has already created, so a wave of sessions writing
+        #: into one root pays for the directory once rather than per member.
+        self._created: set[Path] = set()
 
     def bind(self, label: str, path: Path) -> None:
         """Send *label*'s exchanges to *path*.
+
+        The directory is created once per distinct parent rather than once
+        per session. Every session of a recording writes into one root, so
+        the repeat was a blocking syscall on the event loop this process
+        serves both legs of every completion from, paid by each member of
+        every concurrent wave, to learn something the first one established.
 
         Args:
             label: The session's execution id.
             path: JSONL file to append to; parents are created.
         """
-        path.parent.mkdir(parents=True, exist_ok=True)
+        parent = path.parent
+        if parent not in self._created:
+            parent.mkdir(parents=True, exist_ok=True)
+            self._created.add(parent)
         self._paths[label] = path
 
     def attach(self, bearer: str, label: str) -> None:

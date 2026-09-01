@@ -37,12 +37,15 @@ import asyncio
 import hashlib
 import json
 import shutil
+from collections.abc import Coroutine
+from contextlib import suppress
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import Final
 
 from evals.errors import (
+    HarnessGatewayUnavailableError,
     RecursionDepthCapabilityUnresolvedError,
     RecursionDepthJudgeNotIndependentError,
     RecursionDepthNoCellsMeasuredError,
@@ -453,6 +456,14 @@ def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
         # unstated.
         f"  independence  : {manifest.independence.value}",
         f"  merge attempts: {manifest.merge_attempts} (the SAME in every arm)",
+        # The two treatments that decide what the loop DOES, on the same
+        # screen as the pairs and the projection. Without them an operator
+        # previewing a plan can read every dial that affects how a session
+        # samples and none of the ones that affect which sessions run: two
+        # arms of the same experiment print identically right up to the point
+        # of spending on them.
+        f"  contract stage: {'on' if manifest.contract_stage else 'off'}",
+        f"  leaf depth    : {_leaf_depth(manifest)}",
         "",
         f"  runs          : {len(cells)}",
         *_projection_lines(manifest, projected),
@@ -463,6 +474,18 @@ def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
         lines.extend(["", f"  CAVEAT: {caveat}"])
     lines.extend(["", "Each session spends real provider tokens. Pass --record."])
     return "\n".join(lines)
+
+
+def _leaf_depth(manifest: RecursionDepthManifest) -> str:
+    """How the plan should describe the depth units build at.
+
+    Returns:
+        The declared depth, or a phrase saying they inherit the executor's,
+        which is not the same claim as "unset" and must not read like one.
+    """
+    if manifest.leaf_reasoning_effort is None:
+        return "the executor's own"
+    return f"{manifest.leaf_reasoning_effort.value} (a second builder pool)"
 
 
 async def _release(
@@ -493,6 +516,54 @@ async def _release(
             await binder.release_all_sandboxes()
     finally:
         await _reclaim_workspaces(run_work_root, keep=keep)
+
+
+async def _while_the_gateway_serves(
+    sweep: Coroutine[object, object, RecursionDepthReport],
+    *,
+    serving: asyncio.Task[None] | None,
+) -> RecursionDepthReport:
+    """Run *sweep*, but stop if the gateway it dispatches through dies.
+
+    Every completion the matrix measures goes through this host, so a serving
+    task that ends mid-run turns each remaining cell into a connection error
+    recorded as that cell's own unavailable row: real money spent measuring
+    nothing, under a reason naming the wrong subsystem. The host has always
+    exposed the task for this, and nothing read it, so the failure surfaced
+    only at teardown, after the whole matrix had run against a dead socket.
+
+    Args:
+        sweep: The matrix to run.
+        serving: The host's accept loop, or ``None`` if it was never started.
+
+    Returns:
+        What the sweep produced.
+
+    Raises:
+        HarnessGatewayUnavailableError: The serving task ended first.
+    """
+    running = asyncio.ensure_future(sweep)
+    if serving is None:
+        return await running
+    done, _pending = await asyncio.wait(
+        (running, serving), return_when=asyncio.FIRST_COMPLETED
+    )
+    if running in done:
+        return await running
+    # The gateway went first. Stop the sweep before it books another cell
+    # against a socket that is gone.
+    running.cancel()
+    with suppress(asyncio.CancelledError):
+        await running
+    detail = "it ended without raising"
+    if (failure := serving.exception()) is not None:
+        detail = f"{type(failure).__name__}: {safe_error_description(failure)}"
+    msg = (
+        f"the recording gateway stopped serving mid-matrix, so every cell "
+        f"after it would have been recorded unavailable against a dead "
+        f"socket: {detail}"
+    )
+    raise HarnessGatewayUnavailableError(msg)
 
 
 async def _sweep_under(
@@ -588,18 +659,27 @@ async def _record(
             # for. It cannot be asked earlier: unless `--sandbox-image` names
             # one, the reference comes from the running instance's own settings
             # resolver, which needs a booted app. It must not be asked later:
-            # planning and the contract stage open no container, so an absent
-            # image first shows up at GRADING, with every session already
-            # spent and every unit recorded unavailable.
+            # planning runs entirely through the gateway, so a cell buys a
+            # whole plan before anything opens a container (measured at 85,555
+            # tokens for a cell that then died on `[404] No such image`).
+            #
+            # The sandbox image only. The sidecar is deliberately not checked:
+            # every sandbox this harness builds is created with `network:
+            # none`, under which `DockerSandbox._needs_sidecar()` is
+            # unconditionally False, so no sidecar container is ever created
+            # and its reference reaches nothing but a provenance field.
             await check_images_resolve((host.sandbox_image,))
             _log_record_start(args, manifest=manifest, host=host)
-            report = await _sweep_under(
-                context,
-                args=args,
-                manifest=manifest,
-                spec=spec,
-                company_config=company_config,
-                sandbox_image=host.sandbox_image,
+            report = await _while_the_gateway_serves(
+                _sweep_under(
+                    context,
+                    args=args,
+                    manifest=manifest,
+                    spec=spec,
+                    company_config=company_config,
+                    sandbox_image=host.sandbox_image,
+                ),
+                serving=host.serving,
             )
             # Written inside the host's lifetime so a teardown that overruns
             # cannot discard a sweep that already cost real money to produce.
@@ -1354,6 +1434,12 @@ def narrow(
             to keep the manifest's own on every dial. The lever for a probe,
             on the same footing as *repetitions* and for the same reason: the
             committed value is the design.
+        contract_stage: Whether to run the contract stage, or ``None`` to keep
+            the manifest's own. A per-run lever for the same reason sampling
+            is one, and more so: this is the TREATMENT, so a cell measuring it
+            and the control it is measured against differ by this flag and
+            nothing else, and editing the file between them would change the
+            digest the journal pins and make the pair look like two matrices.
         merge_attempts: How many attempts each merge gets, or ``None`` to keep
             the manifest's own. Equal across arms whatever it is set to, which
             is the property that makes the arms comparable at all.
@@ -1364,12 +1450,6 @@ def narrow(
             schedule lever, so it reaches the journal identity: the published
             ablation puts the win in which phases reason deeply, not in how
             deeply any of them does.
-        contract_stage: Whether to run the contract stage, or ``None`` to keep
-            the manifest's own. A per-run lever for the same reason sampling
-            is one, and more so: this is the TREATMENT, so a cell measuring it
-            and the control it is measured against differ by this flag and
-            nothing else, and editing the file between them would change the
-            digest the journal pins and make the pair look like two matrices.
 
     Returns:
         The narrowed matrix.

@@ -8,12 +8,13 @@ turn grew. That is the harness, and the harness is the thing being redesigned.
 
 Published work makes the questions concrete. Holding one model fixed and
 changing only the scaffolding moved a coding agent 13.7 points on
-Terminal-Bench 2.0 (LangChain, 52.8% -> 66.5%); replacing sixteen specialised
-tools with one general capability took an agent from 80% to 100% success, cut
-latency 3.5x and dropped token use by a third (Vercel). Both say the same
-thing: what the model is offered per turn, and what it must do to reach a
-capability, is a first-order cost. This reads OUR answer to that off the wire
-rather than off the configuration, because the two disagreed before.
+Terminal-Bench 2.0 (LangChain, 52.8% -> 66.5%, across five combined changes
+they do not isolate); collapsing seventeen specialised tools down to two, a
+sandboxed shell plus a retained SQL executor, took an agent from 80% to 100%
+success, cut latency 3.5x and dropped token use by a third (Vercel). Both say
+the same thing: what the model is offered per turn, and what it must do to
+reach a capability, is a first-order cost. This reads OUR answer to that off
+the wire rather than off the configuration, because the two disagreed before.
 
     python scripts/report_session_flow.py --run run-b54ca36adaa1
     python scripts/report_session_flow.py --run run-b54ca36adaa1 --calls
@@ -34,9 +35,15 @@ import json
 import re
 import sys
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
+
+# `evals` lives at the repository root rather than on the interpreter's path,
+# and this runs as a script.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from evals.harness.rendering import one_line
 
 #: Where each recording keeps its per-session transcripts.
 WORK_ROOT: Final[Path] = Path(".recursion-depth/work")
@@ -72,7 +79,7 @@ class Call:
     arguments: str
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class Turn:
     """One request/response exchange.
 
@@ -89,7 +96,7 @@ class Turn:
     index: int
     messages: int
     offered: tuple[str, ...]
-    called: list[Call] = field(default_factory=list)
+    called: tuple[Call, ...] = ()
     reasoning: int = 0
     content: int = 0
 
@@ -115,7 +122,20 @@ class Turn:
         return self.reasoning / total if total else 0.0
 
 
-@dataclass
+#: Phase markers, in the order they must be TESTED, which is not alphabetical
+#: and not arbitrary. A review of a merge is named for both, so ``-review``
+#: has to be asked first or every reviewer is filed as the merge it reviewed:
+#: that misattribution is what made a reviewer's 25-call repeat loop read as
+#: the merge's own.
+_PHASES: Final[tuple[tuple[str, str], ...]] = (
+    ("-review", "review"),
+    ("-merge", "merge"),
+    ("-contract", "contract"),
+    ("-plan", "plan"),
+)
+
+
+@dataclass(frozen=True, slots=True)
 class SessionFlow:
     """What one session's loop did.
 
@@ -123,6 +143,11 @@ class SessionFlow:
         name: The session's transcript name, which is its unit id.
         turns: Every exchange, in order.
         unreadable: Transcript lines that could not be parsed.
+        dropped_frames: SSE chunks inside otherwise-readable lines that could
+            not be parsed. Counted apart from ``unreadable`` because the two
+            lose different things: a lost line drops a whole turn, a lost
+            frame drops part of one, and every count below is computed from
+            the frames rather than from the lines.
         reasoning: What each turn's request carried in ``reasoning_effort``,
             in order, with ``None`` where the key was absent. Read off the
             REQUEST because a parameter that is accepted and dropped looks
@@ -132,9 +157,10 @@ class SessionFlow:
     """
 
     name: str
-    turns: list[Turn]
+    turns: tuple[Turn, ...]
     unreadable: int
-    reasoning: list[str | None] = field(default_factory=list)
+    dropped_frames: int = 0
+    reasoning: tuple[str | None, ...] = ()
 
     @property
     def kind(self) -> str:
@@ -143,12 +169,7 @@ class SessionFlow:
         Returns:
             The phase name, derived from the unit key the recorder wrote.
         """
-        for marker, phase in (
-            ("-review", "review"),
-            ("-merge", "merge"),
-            ("-contract", "contract"),
-            ("-plan", "plan"),
-        ):
+        for marker, phase in _PHASES:
             if marker in self.name:
                 return phase
         return "leaf"
@@ -218,7 +239,7 @@ class SessionFlow:
         return repeats
 
 
-def _stream_totals(raw: str) -> tuple[int, int, list[Call]]:
+def _stream_totals(raw: str) -> tuple[int, int, tuple[Call, ...], int]:
     """Read one SSE response for what the model emitted.
 
     Tool calls stream as fragments keyed by index: the name arrives once and
@@ -228,19 +249,26 @@ def _stream_totals(raw: str) -> tuple[int, int, list[Call]]:
     arguments as they arrive would compare half-written JSON against itself.
 
     Returns:
-        Reasoning characters, content characters, and the calls it made in
-        index order. Names come off the deltas rather than off the request, so
-        a tool the harness never advertised is still counted: this loop
-        advertises three and calls more.
+        Reasoning characters, content characters, the calls it made in index
+        order, and how many chunks would not parse. Names come off the deltas
+        rather than off the request, so a tool the harness never advertised is
+        still counted: this loop advertises three and calls more.
     """
     reasoning = 0
     content = 0
+    dropped = 0
     names: dict[int, str] = {}
     arguments: dict[int, list[str]] = {}
     for payload in _DATA.findall(raw):
         try:
             chunk = json.loads(payload)
         except json.JSONDecodeError:
+            # Counted, not skipped. Every figure this script reports is
+            # computed from these chunks rather than from the lines around
+            # them, so a silently dropped one takes a real tool call out of
+            # the tally and leaves the result looking exactly as clean as a
+            # session that made fewer.
+            dropped += 1
             continue
         for choice in chunk.get("choices") or []:
             delta = choice.get("delta") or {}
@@ -250,16 +278,22 @@ def _stream_totals(raw: str) -> tuple[int, int, list[Call]]:
                 index = int(call.get("index", 0))
                 function = call.get("function") or {}
                 if function.get("name"):
-                    names[index] = str(function["name"])
+                    # Filtered where it is CAPTURED, not where it is printed.
+                    # This name comes off the model's own deltas rather than
+                    # off the tools the harness offered, so it is arbitrary
+                    # text; stripping it once here covers every consumer,
+                    # including the ones that only key on it.
+                    names[index] = one_line(str(function["name"]))
                 if function.get("arguments"):
                     arguments.setdefault(index, []).append(str(function["arguments"]))
     return (
         reasoning,
         content,
-        [
+        tuple(
             Call(name=names[index], arguments="".join(arguments.get(index, ())))
             for index in sorted(names)
-        ],
+        ),
+        dropped,
     )
 
 
@@ -271,6 +305,7 @@ def read_session(path: Path) -> SessionFlow:
     """
     turns: list[Turn] = []
     unreadable = 0
+    dropped = 0
     # NOT `reasoning`: the loop below unpacks a reasoning CHARACTER COUNT into
     # that name, and the collision silently turned this list into an int.
     efforts: list[str | None] = []
@@ -285,7 +320,10 @@ def read_session(path: Path) -> SessionFlow:
         request = record.get("request") or {}
         sent = request.get("reasoning_effort")
         efforts.append(str(sent) if sent is not None else None)
-        reasoning, content, called = _stream_totals(str(record.get("response") or ""))
+        reasoning, content, called, lost = _stream_totals(
+            str(record.get("response") or "")
+        )
+        dropped += lost
         turns.append(
             Turn(
                 index=index,
@@ -300,7 +338,11 @@ def read_session(path: Path) -> SessionFlow:
             )
         )
     return SessionFlow(
-        name=path.stem, turns=turns, unreadable=unreadable, reasoning=efforts
+        name=path.stem,
+        turns=tuple(turns),
+        unreadable=unreadable,
+        dropped_frames=dropped,
+        reasoning=tuple(efforts),
     )
 
 
@@ -353,7 +395,16 @@ def render(flows: list[SessionFlow]) -> str:
         thinking = sum(turn.reasoning for turn in flow.turns)
         emitted = thinking + sum(turn.content for turn in flow.turns)
         context = max((turn.messages for turn in flow.turns), default=0)
-        note = f"  [{flow.unreadable} unreadable]" if flow.unreadable else ""
+        # Both losses are reported, and separately: a lost LINE drops a whole
+        # turn from the counts to its left, a lost FRAME drops part of one.
+        # Reporting either as zero would let a partial measurement read as a
+        # clean measurement of a smaller loop.
+        losses = []
+        if flow.unreadable:
+            losses.append(f"{flow.unreadable} unreadable")
+        if flow.dropped_frames:
+            losses.append(f"{flow.dropped_frames} dropped frames")
+        note = f"  [{', '.join(losses)}]" if losses else ""
         lines.append(
             f"{flow.name[:46]:46} {len(flow.turns):5d} {offered:5d} "
             f"{flow.discovery_calls:5d} {flow.work_calls:5d} {flow.idle_turns:5d} "
@@ -445,7 +496,9 @@ def render_shell(flows: list[SessionFlow], *, top: int) -> str:
             for call in turn.called:
                 if call.name != "shell_command":
                     continue
-                verbs[_leading_program(call.arguments)] += 1
+                # The first word of a command the MODEL wrote, so it carries
+                # whatever that command carried.
+                verbs[one_line(_leading_program(call.arguments))] += 1
     if not verbs:
         return "no shell call was recorded"
     total = sum(verbs.values())
@@ -478,10 +531,20 @@ def _leading_program(arguments: str) -> str:
     return _verb(command)
 
 
+#: Wrappers that take the real program as an ARGUMENT, so `timeout 60 pytest`
+#: is a pytest call. Walked through even with no shell operator after them.
+_WRAPPERS: Final[frozenset[str]] = frozenset({"timeout", "env", "nohup", "exec"})
+
+#: Prefixes that do NOT take a program: whatever follows is their own argument.
+#: `cd` is the whole set and the reason the split exists. Treated like a
+#: wrapper it walks into its own destination and reports a DIRECTORY as the
+#: program that ran, so `cd /work` tallies under `work`.
+_POSITIONAL_PREFIXES: Final[frozenset[str]] = frozenset({"cd"})
+
 #: Words that PREFIX the program rather than being it. Reading the literal
 #: first word filed 62% of a corpus of merge calls under `cd`, which is the one
 #: verb that says nothing at all about what the session was doing.
-_PREFIXES: Final[frozenset[str]] = frozenset({"cd", "timeout", "env", "nohup", "exec"})
+_PREFIXES: Final[frozenset[str]] = _WRAPPERS | _POSITIONAL_PREFIXES
 
 
 def _verb(command: str) -> str:
@@ -509,6 +572,11 @@ def _verb(command: str) -> str:
                 text = rest.lstrip("( \t")
                 break
         else:
+            if head in _POSITIONAL_PREFIXES:
+                # Nothing follows but this prefix's own argument, so the
+                # command really is what it says. Walking on would report the
+                # destination directory as the program.
+                return head
             # A wrapper with no operator after it takes its program as an
             # argument (`timeout 60 pytest`), so drop the wrapper and any
             # bare-number or assignment argument it carries.

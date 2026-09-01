@@ -71,6 +71,12 @@ _SESSIONS_PER_ASSEMBLY: Final[int] = 2
 #: has booted and against a matrix nobody can record until it is corrected.
 _PLANNER_TURN_CAP: Final[int] = 50
 
+#: The most attempts a merge may be granted. Exported because the recorded
+#: provenance carries the same bound: a record claiming more attempts than the
+#: matrix could ever have granted is a record nothing produced, and a second
+#: literal is how the two come to disagree.
+MAX_MERGE_ATTEMPTS: Final[int] = 10
+
 #: A sanity bound on a unit's turns. The unit loop takes its cap as a plain
 #: argument with no ceiling of its own, so nothing but this refuses a typo, and
 #: a unit is bounded in practice by ``unit_token_ceiling`` instead: turns are a
@@ -467,7 +473,7 @@ class RecursionDepthManifest(BaseModel):
     independence: Independence
     contract_stage: bool
     leaf_reasoning_effort: ReasoningEffort | None = None
-    merge_attempts: int = Field(ge=1, le=10)
+    merge_attempts: int = Field(ge=1, le=MAX_MERGE_ATTEMPTS)
     planner_max_turns: int = Field(ge=1, le=_PLANNER_TURN_CAP)
     unit_max_turns: int = Field(ge=1, le=_UNIT_TURN_CAP)
     unit_cost_ceiling: float = Field(gt=0.0)
@@ -670,6 +676,16 @@ class RecursionDepthManifest(BaseModel):
             ValueError: A role's base sizing exceeds its own cap.
         """
         bounds = (
+            (
+                # The leaf pair. Its base is scaled by the unit's claimed
+                # requirement count before the cap applies, so a cap below the
+                # base does not merely clamp the largest units, it sizes EVERY
+                # leaf in the sweep to the undersized value.
+                "unit_token_ceiling",
+                self.unit_token_ceiling,
+                "unit_token_cap",
+                self.unit_token_cap,
+            ),
             (
                 "merge_token_base",
                 self.merge_token_base,

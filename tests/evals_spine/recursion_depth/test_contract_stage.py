@@ -447,10 +447,11 @@ class TestAContractsSuiteMustFailForTheRightReason:
     @pytest.mark.parametrize(
         "report",
         [
-            # Every string here is one `grading.read_verdict` actually emits.
-            # An earlier version of this check matched pytest's own words
-            # ("collection error", "ModuleNotFoundError") which the grader
-            # never produces, so it matched nothing and passed every contract.
+            # Every string here is one `grading.read_verdict` actually emits,
+            # never a pytest phrase. The grader reads a junit report and
+            # writes its own vocabulary, so matching on "collection error" or
+            # "ModuleNotFoundError" would match nothing it ever produces and
+            # pass every contract silently.
             "the suite collected no tests",
             "the suite wrote no report, so it never reached session end",
             "the suite's report was not readable",

@@ -56,7 +56,12 @@ from evals.recursion_depth.contract import (
 )
 from evals.recursion_depth.divergence import measure
 from evals.recursion_depth.emit import assemble_report, derived_caveats
-from evals.recursion_depth.execute import LeafOutcome, leaf_task, run_leaf
+from evals.recursion_depth.execute import (
+    UNBOUND,
+    LeafOutcome,
+    leaf_task,
+    run_leaf,
+)
 from evals.recursion_depth.forecast import estimate_sessions
 from evals.recursion_depth.gate import (
     BlindMergeReviewer,
@@ -1107,7 +1112,7 @@ def _contract_record(cell: SweepCell, outcome: ContractOutcome) -> UnitRecord:
         title=NotBlankStr("Contract: the shape every unit builds against"),
         kind=CONTRACT,
         depth=0,
-        delivered=outcome.delivered,
+        delivered=outcome.sound,
         produced=outcome.files_written > 0,
         attempts=1,
         turns=outcome.turns,
@@ -1428,9 +1433,10 @@ async def _run_one_leaf(
         limits=context.limits_for(Role.LEAF, fan_in=0, claims=len(claimed)),
         # The ids only decide the own-test gate where a contract seeded the
         # tree, which is also the only arm where the tree holds tests this leaf
-        # did not write. `None` and `()` are different answers and both matter:
-        # no contract, versus a contract this leaf claims nothing under.
-        owned=tuple(claimed) if contract is not None else None,
+        # did not write. `UNBOUND` and `()` are different answers and both
+        # matter: no contract, versus a contract this leaf claims nothing
+        # under.
+        owned=tuple(claimed) if contract is not None else UNBOUND,
     )
 
 

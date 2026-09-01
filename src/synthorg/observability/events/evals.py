@@ -47,6 +47,16 @@ own ephemeral bootstrap secrets, so booting onto it fails while reading
 ``providers.configs`` rather than producing anything readable."""
 EVALS_HARNESS_HOST_IMAGES_INSTALLED: Final[str] = "evals.harness.host_images_installed"
 EVALS_HARNESS_IMAGE_UNRESOLVED: Final[str] = "evals.harness.image_unresolved"
+EVALS_HARNESS_IMAGE_INSPECT_RETRYING: Final[str] = (
+    "evals.harness.image_inspect_retrying"
+)
+"""One image inspect failed on something other than the daemon's own 404 and is
+being re-asked. A 404 is a definitive answer and is never retried; everything
+else is the daemon failing to answer, which a moment later it may do."""
+EVALS_HARNESS_DOCKER_UNAVAILABLE: Final[str] = "evals.harness.docker_unavailable"
+"""The daemon did not answer at preflight. Logged before the raise because the
+raise leaves through a script's own entry point, where an uncaught exception
+produces a traceback and no structured record of what was actually tried."""
 EVALS_HARNESS_HOST_ADMIN_SEEDED: Final[str] = "evals.harness.host_admin_seeded"
 EVALS_HARNESS_HOST_ADMIN_PRESENT: Final[str] = "evals.harness.host_admin_present"
 EVALS_HARNESS_BIND_HOST_RESOLVED: Final[str] = "evals.harness.bind_host_resolved"
@@ -91,6 +101,19 @@ learns that a session did not run in one piece. The spend is real either way
 and the unit reports one turn count, so without this line a resumed unit is
 indistinguishable from a unit that simply took longer, and a provider having a
 bad hour looks like a model that reasons at length."""
+EVALS_RECURSION_CONTRACT_UNSOUND: Final[str] = "evals.recursion_depth.contract_unsound"
+"""The contract stage produced a tree that does not stand up as a contract:
+its suite passes when every body should raise, or it does not collect at all.
+Live rather than only persisted, because every unit of the cell is recreated
+from this tree, so an operator watching a running sweep can stop it before it
+buys eight units built against a broken seed."""
+EVALS_RECURSION_DIVERGENCE_UNREADABLE: Final[str] = (
+    "evals.recursion_depth.divergence_unreadable"
+)
+"""A delivered module could not be parsed while measuring interface agreement,
+so nothing is claimed about it either way. Reported rather than skipped: a
+unit that left prose where a module belongs is itself a finding, and dropping
+it silently would report better agreement than the trees hold."""
 EVALS_RECURSION_UNIT_FAILED_SPEND: Final[str] = (
     "evals.recursion_depth.unit_failed_spend"
 )

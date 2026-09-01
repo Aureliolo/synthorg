@@ -32,8 +32,12 @@ from evals.errors import (
 from evals.recursion_depth.manifest import ModelPair, RecursionDepthManifest
 from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
+    EVALS_HARNESS_DOCKER_UNAVAILABLE,
+    EVALS_HARNESS_IMAGE_INSPECT_RETRYING,
+    EVALS_HARNESS_IMAGE_UNRESOLVED,
     EVALS_HARNESS_PROBE_CLEANUP_FAILED,
     EVALS_HARNESS_PROVIDER_MISSING,
     EVALS_RECURSION_PREFLIGHT_PASSED,
@@ -58,6 +62,25 @@ _PROBE_MAX_TOKENS: Final[int] = 1
 #: up. Generous, because a cold model load is the expected slow case here and
 #: this is not a latency judgement, only a liveness one.
 _PROBE_TIMEOUT_SECONDS: Final[float] = 180.0
+
+#: The daemon's own definitive "I hold nothing under this name". Every other
+#: status is it failing to answer.
+_NOT_FOUND_STATUS: Final[int] = 404
+
+#: Seconds one image inspect may take. A local daemon answers this in
+#: milliseconds; a wedged one never answers at all, and without a bound the
+#: preflight that exists to fail fast is the thing that hangs.
+_INSPECT_TIMEOUT_SECONDS: Final[float] = 30.0
+
+#: Attempts per reference. Small: this is a local socket, so the failures worth
+#: re-asking about are a daemon mid-restart or a momentary stall, neither of
+#: which needs many tries. What it buys is not tearing down a booted host over
+#: a blip.
+_INSPECT_RETRY_ATTEMPTS: Final[int] = 3
+
+#: Backoff between those attempts.
+_INSPECT_RETRY_BASE_SECONDS: Final[float] = 0.5
+_INSPECT_RETRY_CAP_SECONDS: Final[float] = 2.0
 
 
 async def run_preflight(
@@ -160,6 +183,13 @@ async def _probe_pair(
     # anything the sweep does, so both are reported here rather than once per
     # cell as a failure of whichever subsystem happened to make the call.
     except (ProviderError, TimeoutError) as exc:
+        logger.error(
+            EVALS_HARNESS_PROVIDER_MISSING,
+            role=role,
+            pair=pair.label,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         # The upstream's own words, redacted, rather than only our summary of
         # them. "Could not complete" does not separate a bad credential from an
         # unknown model id from an unreachable endpoint, and those have three
@@ -246,6 +276,11 @@ async def _check_docker() -> None:
     # timed-out connection (both ``OSError``), the daemon's own error, and the
     # ``ValueError`` aiodocker raises when it can find no host to talk to.
     except (aiodocker.DockerError, OSError, ValueError) as exc:
+        logger.error(
+            EVALS_HARNESS_DOCKER_UNAVAILABLE,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
         msg = (
             "the Docker daemon is unreachable, and every unit in the sweep "
             "builds in a container"
@@ -256,20 +291,27 @@ async def _check_docker() -> None:
 async def check_images_resolve(references: Sequence[str]) -> None:
     """Refuse to spend when a declared image is not on the daemon.
 
-    The daemon already answers this question at boot and the answer was
-    LOGGED rather than acted on, on the reasoning that a recording naming an
-    absent image "fails on its first container, which is a better place to
-    learn it". It does not. A cell plans and writes its contract through the
-    gateway, touching no container at all, so an unresolvable image surfaces
-    only when the first GRADING runs. Measured: two cells each booted clean,
-    ran a 74-turn contract session, and died at
-    ``the sweep measured no cells`` having spent real money on a run that could
-    never have been graded. The reference was a published TAG that upstream no
-    longer carries, which a digest would have made obvious and a tag never
-    does.
+    The daemon answers this at boot and the answer was LOGGED rather than
+    acted on, on the reasoning that a recording naming an absent image "fails
+    on its first container, which is a better place to learn it". It does fail
+    there, and that place is not better: measured on a queued cell, the run
+    booted clean, planned, spent 85,555 tokens, and then died at the first
+    container it opened with ``[404] No such image``, having bought a plan for
+    a cell that could never be graded. The reference was a published TAG that
+    upstream no longer carries, which a digest would have made obvious and a
+    tag never does.
 
-    Asked here, before the host boots, because this is the last point at which
-    refusing costs nothing.
+    Asked as early as the reference is KNOWN, which is after the host boots:
+    unless ``--sandbox-image`` names one, it comes from the running instance's
+    own settings resolver. That is later than free, so the caller's comment
+    says so; what it buys is refusing before the first SESSION rather than
+    before the first container, which is where the money is.
+
+    A daemon that cannot answer is a different condition from an image it does
+    not hold, and only the second is this function's verdict. The distinction
+    is the one ``workspace_mount`` already draws for the same call: folding a
+    timeout or a 500 into "no such image" would tell an operator to rebuild an
+    image that is fine, after tearing down a booted host to say it.
 
     Args:
         references: Image references the run will need, in the order a reader
@@ -278,16 +320,50 @@ async def check_images_resolve(references: Sequence[str]) -> None:
     Raises:
         HarnessImageUnresolvedError: The daemon holds no image under one of
             them.
+        HarnessDockerUnavailableError: The daemon could not answer, so
+            nothing was determined either way.
     """
     missing: list[str] = []
+    retry = GeneralRetryHandler(
+        # A 404 is the daemon's definitive answer and re-asking cannot change
+        # it. Everything else is the daemon failing to answer, which a moment
+        # later it may well do.
+        retryable=lambda exc: not _is_absent(exc),
+        max_attempts=_INSPECT_RETRY_ATTEMPTS,
+        base=_INSPECT_RETRY_BASE_SECONDS,
+        cap=_INSPECT_RETRY_CAP_SECONDS,
+        event=EVALS_HARNESS_IMAGE_INSPECT_RETRYING,
+        jitter=False,
+    )
     async with aiodocker.Docker() as client:
         for reference in references:
+
+            async def inspect(reference: str = reference) -> None:
+                async with asyncio.timeout(_INSPECT_TIMEOUT_SECONDS):
+                    await client.images.inspect(reference)
+
             try:
-                await client.images.inspect(reference)
-            except aiodocker.DockerError, OSError:
+                await retry.execute(inspect, reference=reference)
+            except Exception as exc:
+                reraise_critical(exc)
+                if not _is_absent(exc):
+                    logger.error(
+                        EVALS_HARNESS_IMAGE_UNRESOLVED,
+                        image=reference,
+                        error_type=type(exc).__name__,
+                        error=safe_error_description(exc),
+                    )
+                    msg = (
+                        f"the Docker daemon could not answer whether it holds "
+                        f"{reference}, so nothing about it was determined and "
+                        f"a sweep would be gambling its whole spend on the "
+                        f"answer: {safe_error_description(exc)}"
+                    )
+                    raise HarnessDockerUnavailableError(msg) from exc
                 missing.append(reference)
     if not missing:
         return
+    logger.error(EVALS_HARNESS_IMAGE_UNRESOLVED, missing=tuple(missing))
     msg = (
         f"the Docker daemon holds no image under {', '.join(missing)}, and a "
         f"cell that cannot open a container cannot be graded, so every unit "
@@ -297,6 +373,18 @@ async def check_images_resolve(references: Sequence[str]) -> None:
         f"stop resolving without anything in this repository changing"
     )
     raise HarnessImageUnresolvedError(msg)
+
+
+def _is_absent(exc: BaseException) -> bool:
+    """Whether *exc* is the daemon SAYING it holds no such image.
+
+    Args:
+        exc: What the inspect raised.
+
+    Returns:
+        True only for the daemon's own definitive negative.
+    """
+    return isinstance(exc, aiodocker.DockerError) and exc.status == _NOT_FOUND_STATUS
 
 
 __all__ = ["check_images_resolve", "run_preflight"]

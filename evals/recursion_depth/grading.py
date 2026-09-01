@@ -61,6 +61,7 @@ from typing import Final, Protocol, runtime_checkable
 from xml.etree import ElementTree as ET
 
 from evals.errors import EvalToolMissingError
+from evals.harness.rendering import tail
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import EVALS_RECURSION_GRADED
@@ -484,17 +485,8 @@ def _count(raw: str | None) -> int:
         return 0
 
 
-#: How much of a failing run's output travels with the record. Bounded because
-#: this is agent-authored text on its way into a committed artifact.
-_TAIL_CHARS: Final[int] = 800
-
-
 def tail_of(output: str) -> str:
     """Bound and flatten agent-authored output for the record.
-
-    Control characters are stripped rather than escaped: this ends up in a
-    committed JSON artifact and in a terminal, and an escape sequence from a
-    delivered tree has no business reaching either.
 
     Args:
         output: The captured output.
@@ -502,8 +494,7 @@ def tail_of(output: str) -> str:
     Returns:
         The trailing extract, printable characters only.
     """
-    printable = "".join(char for char in output if char.isprintable() or char == "\n")
-    return printable[-_TAIL_CHARS:].strip()
+    return tail(output)
 
 
 __all__ = [

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -467,6 +468,15 @@ func reportExecuteError(ctx context.Context, errOut io.Writer, err error) error 
 		// unsuppressibleWarner's callers do.
 		errUI := ui.NewUIWithOptions(errOut, globalUIOptions())
 		errUI.WarnAlways("Interrupted.")
+		// A cancelled context proves a signal arrived, not that it caused
+		// THIS error. An ordinary failure returning in the window before the
+		// check would otherwise be reclassified as a clean interrupt and its
+		// text never printed, since ExitError's own message is not
+		// user-facing. So an error the interrupt does not explain is still
+		// shown, under the interrupt line rather than instead of it.
+		if !interruptExplains(err) {
+			_, _ = fmt.Fprintln(errOut, err)
+		}
 		return NewExitError(ExitInterrupted, err)
 	}
 	// ChildExitError / ExitError: main.go handles exit code propagation;
@@ -482,6 +492,25 @@ func reportExecuteError(ctx context.Context, errOut io.Writer, err error) error 
 		errUI.HintError(hint)
 	}
 	return err
+}
+
+// interruptExplains reports whether err is the shape a cancelled command
+// actually produces, so reportExecuteError can tell "this failed because you
+// pressed Ctrl+C" from "this failed, and you also pressed Ctrl+C".
+//
+// A cancelled step reaches here three ways: the context's own error, a child
+// process killed by the signal (exec.ExitError, e.g. `docker compose pull`
+// reporting "signal: killed"), or our own wrapper around a child's exit code.
+// Anything else is a failure the interrupt does not account for.
+func interruptExplains(err error) bool {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	if _, ok := errors.AsType[*exec.ExitError](err); ok {
+		return true
+	}
+	_, ok := errors.AsType[*ChildExitError](err)
+	return ok
 }
 
 // armSecondSignal blocks until ctx is cancelled by the first signal (see

@@ -79,15 +79,14 @@ executor:
   # end rather than from three untried points.
   temperature: 0.7
   top_p: 1.0
-  # PINNED from measurement, which is what the previous note here said would
-  # decide it. Unset is not "no treatment": this family documents that
-  # `reasoning_effort` defaults to MAX when the field is absent, and that
-  # thinking cannot be disabled at all, so leaving it null opted the model
-  # that makes roughly 80% of the sweep's calls into the most expensive tier
-  # available.
+  # PINNED from measurement. Unset is not "no treatment": this family
+  # documents that `reasoning_effort` defaults to MAX when the field is
+  # absent, and that thinking cannot be disabled at all, so leaving it null
+  # opts the model making roughly 80% of the sweep's calls into the most
+  # expensive tier available.
   #
-  # READ THE PROBE BELOW WITH ITS CAP IN MIND. It says less than it first
-  # appears, and the first version of this note overstated it.
+  # READ THE PROBE BELOW WITH ITS CAP IN MIND: it says less than it first
+  # appears.
   #
   # On a SHORT prompt at an 8192-token cap the tiers separate cleanly. On the
   # real workload they do not: measured on live planning sessions against this
@@ -218,13 +217,15 @@ merge_attempts: 3
 # rather than from the seed README, so the shared names are already in each
 # checkout and nothing has to be handed to anybody.
 #
-# Off is the recorded corpus and is the control this is measured against. In
-# three cells under it, EVERY shared module was defined by more than one child
-# and every one of them disagreed on its exports (11 of 11, 10 of 11, 11 of
-# 12). That is not a failure of instruction-following: the seed is a README, so
-# a leaf opening its workspace finds no name to import, and inventing one is
-# the only move available to it. The leaf brief said so in as many words: "the
-# pieces around you are being built at the same time by others".
+# Off is the recorded corpus and is the control this is measured against. Its
+# three cells read 11 of 14, 11 of 12 and 12 of 13 shared modules disagreeing
+# on their exports, re-derivable from the kept trees with
+# `scripts/report_interface_divergence.py`; one cell recorded WITH the stage
+# read 0 of 21. That is not a failure of instruction-following: the seed is a
+# README, so a leaf opening its workspace finds no name to import, and
+# inventing one is the only move available to it. The leaf brief said so in as
+# many words: "the pieces around you are being built at the same time by
+# others".
 contract_stage: true
 # A BASE budget, not a ceiling, and it is the shipped loop's own semantics
 # rather than a looseness introduced here: a run that used a tool in the budget

@@ -26,14 +26,21 @@ import type {
   DispatchProfile,
 } from '@/api/types/agents'
 import type { AutonomyLevel } from '@/api/types/enums'
+import { AUTONOMY_LEVEL_VALUES } from '@/api/types/enums'
 import { apiError, apiSuccess, emptyPage, emptyPageEnvelope, paginatedFor, successFor } from './helpers'
 
-const ALLOWED_AUTONOMY_LEVELS: readonly AutonomyLevel[] = [
-  'full',
-  'semi',
-  'supervised',
-  'locked',
-]
+/**
+ * Narrow to a level the backend enum actually declares.
+ *
+ * Reads the generated constant rather than a hand-written copy: a mock that
+ * lists the members itself goes stale the moment one is added or renamed, and
+ * then rejects a value the real API accepts while every test still passes. A
+ * predicate rather than a membership check plus a cast, so the narrowing is
+ * structural.
+ */
+function isAutonomyLevel(value: string): value is AutonomyLevel {
+  return (AUTONOMY_LEVEL_VALUES as readonly string[]).includes(value)
+}
 
 interface AutonomyValidationError {
   readonly status: number
@@ -66,11 +73,20 @@ function _validateAutonomyBody(
   if (reason.length < 3) {
     return { status: 422, message: "Field 'reason' is required" }
   }
-  if (!(ALLOWED_AUTONOMY_LEVELS as readonly string[]).includes(body.level)) {
+  if (!isAutonomyLevel(body.level)) {
     return { status: 400, message: 'Unsupported autonomy level' }
   }
-  return { level: body.level as AutonomyLevel, reason }
+  return { level: body.level, reason }
 }
+
+/**
+ * The one hiring date both stubs use.
+ *
+ * Date-only, matching the `format: date` the wire carries. Written twice with
+ * two shapes, the same conceptual field described two different ways in one
+ * file, which is a mock teaching a reader the wrong contract.
+ */
+const STUB_HIRING_DATE = '2026-01-01'
 
 /** Minimal AgentConfig stub used when tests do not override. */
 export function buildAgent(
@@ -92,7 +108,7 @@ export function buildAgent(
     model_requirement: null,
     model_capabilities: null,
     model_capability_status: 'unresolved',
-    hiring_date: '2026-01-01T00:00:00Z',
+    hiring_date: STUB_HIRING_DATE,
     ...overrides,
   }
 }
@@ -109,7 +125,7 @@ function buildAgentIdentity(
     status: 'active',
     autonomy_level: 'supervised',
     strategic_output_mode: null,
-    hiring_date: '2026-01-01',
+    hiring_date: STUB_HIRING_DATE,
     authority: {
       budget_limit: 0,
       can_approve: [],

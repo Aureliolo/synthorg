@@ -33,7 +33,9 @@ from evals.recursion_depth import merge as merge_module
 from evals.recursion_depth import runner as runner_module
 from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.execute import (
+    UNBOUND,
     UNIT_REPORT_PATH,
+    ContractClaim,
     LeafOutcome,
     leaf_brief,
     leaf_task,
@@ -836,7 +838,7 @@ class TestDeliveryIsAboutWorkNotTheDeclaration:
         *,
         writes: Mapping[str, str] = MappingProxyType({}),
         own_tests: tuple[bool, str] = (True, ""),
-        owned: tuple[str, ...] | None = None,
+        owned: ContractClaim = UNBOUND,
     ) -> LeafOutcome:
         """Run one leaf whose session writes *writes* and stops.
 
@@ -1252,7 +1254,7 @@ class TestAContractSeededLeafIsGradedOnWhatItOwns:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         *,
-        owned: tuple[str, ...] | None,
+        owned: ContractClaim,
     ) -> tuple[LeafOutcome, list[tuple[str, ...]]]:
         """Run one leaf that writes a module, under *owned*.
 
@@ -1294,10 +1296,10 @@ class TestAContractSeededLeafIsGradedOnWhatItOwns:
     async def test_no_contract_runs_the_whole_tree(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # `None` is not "claims nothing": where no contract seeded the tree,
-        # everything in the checkout IS this leaf's own work, so narrowing
-        # would grade it on a fraction of what it wrote.
-        _outcome, seen = await self._run(tmp_path, monkeypatch, owned=None)
+        # `UNBOUND` is not "claims nothing": where no contract seeded the
+        # tree, everything in the checkout IS this leaf's own work, so
+        # narrowing would grade it on a fraction of what it wrote.
+        _outcome, seen = await self._run(tmp_path, monkeypatch, owned=UNBOUND)
 
         assert seen == [()]
 

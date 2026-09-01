@@ -27,9 +27,18 @@ happened.
 
 This is precisely the failure mode the one published harness ablation was built
 against, in their words: *"the agent wrote a solution, re-read its own code,
-confirmed it looks ok, and stopped."* Holding the model fixed and adding
-per-unit Build→Verify→Fix against the ORIGINAL SPEC (not the agent's paraphrase)
-moved a coding agent 52.8% -> 66.5% on Terminal-Bench 2.0.
+confirmed it looks ok, and stopped."* Their answer to it included per-unit
+Build→Verify→Fix against the ORIGINAL SPEC rather than the agent's paraphrase.
+
+**What that source does and does not license.** Holding the model fixed and
+changing only the harness moved a coding agent 52.8% -> 66.5% on
+Terminal-Bench 2.0, but that is the baseline-to-final figure across FIVE
+combined changes, and the source says it does not isolate their individual
+contributions. Only one of the five carries a published isolated ablation, and
+it is the reasoning schedule rather than this. So the citation supports "a
+harness without self-verification is the shape they set out to fix" and does
+not support any number attached to fixing it here. The case for RC1 rests on
+what the corpus shows, below, not on borrowing that 13.7 points.
 
 **Not tunable.** No amount of budget, prompting or reviewer quality converts a
 one-shot pipeline into a feedback loop.

@@ -22,7 +22,7 @@ delivered was dead outside the tested paths.
 
 import asyncio
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Literal
 
 from evals.harness.workspace import CellWorkspace
 from evals.recursion_depth.claims import requirement_ids_of
@@ -55,6 +55,25 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.evals import EVALS_RECURSION_UNIT_RESUMED
 
 logger = get_logger(__name__)
+
+#: What a unit owns under a contract, in the three states that are genuinely
+#: different and were previously encoded as two.
+#:
+#: ``UNBOUND`` means no contract stage ran, so the unit's whole suite is the
+#: evidence. An EMPTY tuple means one did run and this unit claims nothing
+#: under it, so its own-test gate decides nothing and only its tree counts. A
+#: non-empty tuple names the requirements to grade it on.
+#:
+#: A sentinel rather than ``None`` because the first two states decide who a
+#: failure is filed against, and as ``tuple | None`` they were both ordinary
+#: values of one type: swapping them type-checks, reads plausibly, and
+#: silently files a contract's defect against a leaf that had no say in it.
+type ContractClaim = Literal["unbound"] | tuple[str, ...]
+
+#: The no-contract state. Compared by EQUALITY, never by truthiness: a
+#: non-empty string is truthy and an empty tuple is not, which is exactly the
+#: distinction being drawn.
+UNBOUND: Final[Literal["unbound"]] = "unbound"
 
 #: Where a unit records what it built and how it proved it, relative to the
 #: project workspace. A path rather than prose because the workspace probe can
@@ -266,7 +285,7 @@ async def run_leaf(
     workspace: CellWorkspace,
     execution_id: str,
     limits: SessionLimits,
-    owned: tuple[str, ...] | None = None,
+    owned: ContractClaim = UNBOUND,
 ) -> LeafOutcome:
     """Run one leaf and decide, from its tree, whether it delivered.
 
@@ -277,7 +296,7 @@ async def run_leaf(
         workspace: Its own recreated tree.
         execution_id: What the ledger keys this unit's spend on.
         limits: The turn and spend bounds this session gets.
-        owned: Requirement ids this leaf answers for, or ``None`` where no
+        owned: Requirement ids this leaf answers for, or ``UNBOUND`` where no
             contract seeded its tree. See :func:`_delivery`.
 
     Returns:
@@ -457,7 +476,7 @@ async def _delivery(
     baseline: UnitFingerprint,
     *,
     turns: int,
-    owned: tuple[str, ...] | None = None,
+    owned: ContractClaim = UNBOUND,
 ) -> UnitDelivery:
     """Say what *task* produced, and separately whether it stands up.
 
@@ -482,11 +501,12 @@ async def _delivery(
             count alone would file a leaf that built for thirty turns as
             never having started, skipping the artifact and own-test checks
             that decide whether it delivered.
-        owned: Requirement ids this unit answers for, or ``None`` where no
+        owned: Requirement ids this unit answers for, or ``UNBOUND`` where no
             contract seeded the tree and the suite in it is therefore all the
             unit's own. The empty TUPLE is a third state and not the same as
-            ``None``: it says a contract seeded the tree and this unit claims
-            nothing in it, so it owns no test. Under a contract the checkout
+            ``UNBOUND``: it says a contract seeded the tree and this unit
+            claims nothing in it, so it owns no test. Under a contract the
+            checkout
             carries a failing test for EVERY requirement and each unit is told
             to leave the others failing, so grading one on the whole suite
             does not misjudge occasionally, it marks every unit undelivered
@@ -517,7 +537,7 @@ async def _delivery(
             workspace_files_changed=0,
         )
     changed = files_changed(baseline, after)
-    if owned is not None and not owned:
+    if owned != UNBOUND and not owned:
         return UnitDelivery(
             produced=True,
             reason=(
@@ -527,9 +547,10 @@ async def _delivery(
             ),
             workspace_files_changed=changed,
         )
+    selecting: tuple[str, ...] = () if owned == UNBOUND else owned
     async with graded(deps, workspace, owner=f"grade:{task.id}") as grader:
         passed, report = await grader.own_tests_pass(
-            workspace.project_dir, selecting=owned or ()
+            workspace.project_dir, selecting=selecting
         )
     return UnitDelivery(
         produced=True,
@@ -544,7 +565,7 @@ async def _delivery(
 _COLLECTED_NOTHING: Final[str] = "collected no tests"
 
 
-def _why_not(report: str, *, passed: bool, owned: tuple[str, ...] | None) -> str:
+def _why_not(report: str, *, passed: bool, owned: ContractClaim) -> str:
     """Why the graded run is not a clean delivery, empty when it is.
 
     Returns:
@@ -552,7 +573,7 @@ def _why_not(report: str, *, passed: bool, owned: tuple[str, ...] | None) -> str
     """
     if passed:
         return ""
-    if owned and _COLLECTED_NOTHING in report:
+    if owned != UNBOUND and owned and _COLLECTED_NOTHING in report:
         # The selection is the CONTRACT's promise, not this unit's: it owed a
         # test named for every requirement and this unit's ids reached none of
         # them. Failing the unit for that files a contract defect against the
@@ -567,7 +588,9 @@ def _why_not(report: str, *, passed: bool, owned: tuple[str, ...] | None) -> str
 
 
 __all__ = [
+    "UNBOUND",
     "UNIT_REPORT_PATH",
+    "ContractClaim",
     "LeafOutcome",
     "leaf_brief",
     "leaf_task",

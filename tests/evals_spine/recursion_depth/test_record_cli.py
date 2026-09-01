@@ -20,6 +20,7 @@ from scripts.record_recursion_depth import (
 )
 
 from evals.errors import (
+    HarnessImageUnresolvedError,
     HarnessProviderMissingError,
     RecursionDepthJudgeNotIndependentError,
 )
@@ -337,10 +338,11 @@ class TestPlanMode:
     def test_a_matrix_the_ceiling_cannot_pay_for_says_so(self) -> None:
         """The comparison is done for the reader, on the one screen it matters.
 
-        The projection and the ceiling used to sit on adjacent lines with
-        nothing relating them, and this is where the spend decision is taken: a
-        run was launched at a ceiling four times too small from exactly that
-        reading, and it bought a whole planned tree, six built units and no
+        The projection and the ceiling are related for the reader rather than
+        left on adjacent lines, because this is where the spend decision is
+        taken: a run was launched at a ceiling four times too small from
+        exactly that reading, and it bought a whole planned tree, six built
+        units and no
         measurement at all.
         """
         starved = narrow(load_manifest(_MANIFEST), None, 200)
@@ -645,6 +647,93 @@ class TestPreflightGuardsTheBoot:
             )
 
         assert not built
+
+    async def test_an_unresolvable_image_stops_before_the_sweep_spends(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """The second ordering, and the one that costs money to get wrong.
+
+        This check cannot run before the host, because unless the operator
+        names an image the reference comes from the booted instance's own
+        settings resolver. What it must still beat is the FIRST SESSION:
+        planning runs entirely through the gateway, so a cell that cannot be
+        graded buys a whole plan before anything opens a container. Asserted
+        on the sweep never being reached, since a refusal after it would type
+        -check identically and read identically in the report.
+        """
+        swept: list[object] = []
+        missing = "no image under that reference"
+        swept_early = "the sweep ran before the image was resolved"
+
+        async def _refuse(_references: object) -> None:
+            raise HarnessImageUnresolvedError(missing)
+
+        async def _sweep(*args: object, **kwargs: object) -> object:
+            del args, kwargs
+            swept.append(True)
+            raise AssertionError(swept_early)
+
+        # The provider probe sits earlier in the same preflight and would
+        # otherwise dial a real endpoint. Its own ordering is pinned by the
+        # sibling test above; what is under test here is the check AFTER it.
+        async def _probe(**kwargs: object) -> None:
+            del kwargs
+
+        monkeypatch.setattr(record_module, "run_preflight", _probe)
+        monkeypatch.setattr(record_module, "check_images_resolve", _refuse)
+        monkeypatch.setattr(record_module, "run_sweep", _sweep)
+
+        with pytest.raises(HarnessImageUnresolvedError):
+            await record_module._record(
+                record_module._parse_args(["--record", "--work-root", str(tmp_path)]),
+                manifest=load_manifest(_MANIFEST),
+                spec=_spec(),
+                company_config=_config(
+                    executor_family="bound-family-a",
+                    reviewer_family="bound-family-b",
+                ),
+            )
+
+        assert not swept
+
+
+class TestThePlanNamesTheTreatment:
+    """An operator deciding to spend can see which arm they are buying.
+
+    Every sampling dial already prints here, on the reasoning that inputs to
+    the result belong on the screen where the decision is taken. The two
+    settings that decide what the LOOP does were the ones missing, so two arms
+    of the same experiment printed identically up to the moment of spending.
+    """
+
+    def test_the_contract_stage_is_named(self) -> None:
+        manifest = load_manifest(_MANIFEST)
+
+        plan = record_module.describe_plan(manifest, _spec())
+
+        assert "contract stage" in plan
+
+    def test_an_inherited_leaf_depth_does_not_read_as_unset(self) -> None:
+        # "unset" elsewhere on this screen means the manifest pins nothing and
+        # the model is asked with the field absent. Leaves inheriting the
+        # executor's depth is a different claim, and printing it in the other
+        # one's vocabulary would misreport what the run is about to do.
+        manifest = record_module.narrow(
+            load_manifest(_MANIFEST), None, None, None, leaf_reasoning_effort=None
+        )
+
+        plan = record_module.describe_plan(manifest, _spec())
+
+        assert "the executor's own" in plan
+
+    def test_a_declared_leaf_depth_is_named(self) -> None:
+        manifest = record_module.narrow(
+            load_manifest(_MANIFEST), None, None, None, leaf_reasoning_effort="low"
+        )
+
+        plan = record_module.describe_plan(manifest, _spec())
+
+        assert "low" in plan
 
 
 class TestStaging:

@@ -34,11 +34,13 @@ from pydantic import (
 
 from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.manifest import (
+    MAX_MERGE_ATTEMPTS,
     SHARED_FAMILY_CAVEAT,
     Arm,
     Independence,
     ModelPair,
 )
+from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import DecompositionResult
@@ -530,6 +532,31 @@ class CellRecord(BaseModel):
             raise ValueError(msg)
         return self
 
+    @model_validator(mode="after")
+    def _divergence_is_a_subset_of_what_is_shared(self) -> Self:
+        """A module can only disagree if more than one unit wrote it.
+
+        ``CellDivergence`` upstream computes both numbers as properties over
+        one list, so they cannot disagree there. Flattening them into two
+        independent integers for the committed report loses that, and this
+        record is DESERIALISED: a resume and a hand-repaired journal both read
+        it back, where nothing else would notice a ratio above one.
+
+        Returns:
+            ``self`` when the two counts are consistent.
+
+        Raises:
+            ValueError: More modules diverged than were shared at all.
+        """
+        if self.diverged_modules > self.shared_modules:
+            msg = (
+                f"cell depth={self.depth_cap} arm={self.arm.value} "
+                f"rep={self.repetition} reports {self.diverged_modules} "
+                f"diverged of only {self.shared_modules} shared modules"
+            )
+            raise ValueError(msg)
+        return self
+
     @property
     def leaves(self) -> tuple[UnitRecord, ...]:
         """The units an agent built rather than assembled.
@@ -991,13 +1018,22 @@ class LoopTreatments(BaseModel):
             built at the executor's own. The published ablation puts the win in
             the schedule rather than the level, so which phases reasoned how
             deeply is a treatment and belongs in the identity beside the others.
+
+    The two typed fields carry the manifest's own types rather than a
+    stringified copy, because this model is READ BACK: the journal header is
+    deserialised on every resume, and journals are hand-repaired. A plain
+    ``str`` here accepts ``Medium`` or ``extreme`` from an edited header and
+    reports it as the treatment that ran, which is the one failure this class
+    exists to make impossible. ``merge_attempts`` carries the manifest's upper
+    bound for the same reason: a record must not be able to claim more
+    attempts than the matrix could have granted.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     contract_stage: bool
-    merge_attempts: int = Field(ge=1)
-    leaf_reasoning_effort: str | None = None
+    merge_attempts: int = Field(ge=1, le=MAX_MERGE_ATTEMPTS)
+    leaf_reasoning_effort: ReasoningEffort | None = None
 
 
 class Provenance(BaseModel):

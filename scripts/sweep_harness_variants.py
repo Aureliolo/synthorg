@@ -34,6 +34,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Final
 
 # `evals` lives at the repository root rather than on the interpreter's path,
 # and this runs as a script. The same fact is why the child gets PYTHONPATH.
@@ -42,32 +43,40 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from evals.recursion_depth.emit import REPORT_JSON_NAME
 
 #: Where each variant's journal and report are written, one directory each.
-RESULTS = Path("evals/recursion_depth/results")
+RESULTS: Final[Path] = Path("evals/recursion_depth/results")
 
 #: The recorder this drives. Invoked as a subprocess rather than imported,
 #: because a cell boots a whole backend and a failure in one variant must not
 #: take the queue down with it.
-RECORDER = Path("scripts/record_recursion_depth.py")
+RECORDER: Final[Path] = Path("scripts/record_recursion_depth.py")
+
+#: Where the provider connections live, when nothing says otherwise. A path
+#: outside the repository because it holds credentials, and one nobody's home
+#: directory is baked into: an absolute path under one operator's account is
+#: not a default, it is that operator's machine written down.
+DEFAULT_COMPANY_CONFIG: Final[Path] = Path("providers.local.yaml")
+
+#: The environment variable that supplies it, so a queue can be launched
+#: without repeating the flag.
+COMPANY_CONFIG_ENV: Final[str] = "SYNTHORG_COMPANY_CONFIG"
 
 #: What every variant shares. Anything here that differed between variants
 #: would be a second treatment nobody declared.
 #: The sandbox every unit builds in and every grading runs in, BY DIGEST.
 #:
 #: A digest rather than the settings default, which is a published tag that
-#: upstream no longer carries: every cell of the first queue booted clean,
-#: planned, wrote a 74-turn contract through the gateway (which opens no
-#: container), and then died at grading with "the sweep measured no cells",
-#: having spent real money on a run that could never have been graded. The
-#: recorder now refuses before the first session rather than after, but a
-#: queue that runs unattended for hours should not be relying on that.
-SANDBOX_IMAGE: str = (
+#: upstream no longer carries. A queued cell booted clean, planned, spent
+#: 85,555 tokens, and died on the first container it opened with `[404] No
+#: such image`, having bought a plan for a cell that could never be graded.
+#: The recorder's own preflight refuses that before the first session, but a
+#: queue running unattended for hours should not depend on a single check:
+#: a digest cannot stop resolving on somebody else's release schedule.
+SANDBOX_IMAGE: Final[str] = (
     "ghcr.io/aureliolo/synthorg-sandbox"
     "@sha256:af8996364caca94ba07b98b593a091afe4a11208d1f8c7cbe8966b35ca700e81"
 )
 
-COMMON: tuple[str, ...] = (
-    "--company-config",
-    "C:/Users/Aurelio/synthorg/providers.local.yaml",
+COMMON: Final[tuple[str, ...]] = (
     "--sandbox-image",
     SANDBOX_IMAGE,
     "--work-root",
@@ -127,7 +136,7 @@ class Variant:
 #: ablation with numbers behind it says reasoning deeply at every phase and
 #: reasoning moderately at every phase are the two arms that LOSE, and varying
 #: one global tier can only ever pick between them.
-MATRIX: tuple[Variant, ...] = (
+MATRIX: Final[tuple[Variant, ...]] = (
     Variant(
         name="sweep-default-contract",
         flags=("--executor-reasoning-effort", "none", "--contract-stage"),
@@ -231,7 +240,7 @@ def _has_journal(out_dir: Path) -> bool:
     return out_dir.is_dir() and any(out_dir.glob("*.jsonl"))
 
 
-def _run(name: str, variant: Variant, *, logs: Path) -> Outcome:
+def _run(name: str, variant: Variant, *, logs: Path, company_config: Path) -> Outcome:
     """Record one variant, capturing its output.
 
     Returns:
@@ -253,6 +262,8 @@ def _run(name: str, variant: Variant, *, logs: Path) -> Outcome:
             [
                 sys.executable,
                 str(RECORDER),
+                "--company-config",
+                str(company_config),
                 *COMMON,
                 "--out-dir",
                 str(out_dir),
@@ -309,6 +320,16 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Record only variants whose name contains this substring.",
     )
+    parser.add_argument(
+        "--company-config",
+        type=Path,
+        default=Path(os.environ.get(COMPANY_CONFIG_ENV) or DEFAULT_COMPANY_CONFIG),
+        help=(
+            "The config carrying the provider connections both pairs dispatch "
+            f"through. Falls back to ${COMPANY_CONFIG_ENV}, then to "
+            f"{DEFAULT_COMPANY_CONFIG}."
+        ),
+    )
     args = parser.parse_args(argv)
 
     queue = [
@@ -325,11 +346,28 @@ def main(argv: list[str] | None = None) -> int:
         print("\nEach cell spends real provider tokens. Pass --record.")
         return 0
 
+    # Checked before the queue starts, not once per cell: a missing config is
+    # a mistake in the invocation, and finding it out an hour in, per cell, is
+    # ten identical failures instead of one message.
+    if not args.company_config.is_file():
+        print(
+            f"no provider config at {args.company_config}. Pass "
+            f"--company-config, or set ${COMPANY_CONFIG_ENV}.",
+            file=sys.stderr,
+        )
+        return 1
+
     print()
     outcomes: list[Outcome] = []
     with ThreadPoolExecutor(max_workers=max(1, args.concurrency)) as pool:
         for outcome in pool.map(
-            lambda pair: _run(pair[0], pair[1], logs=args.logs), queue
+            lambda pair: _run(
+                pair[0],
+                pair[1],
+                logs=args.logs,
+                company_config=args.company_config,
+            ),
+            queue,
         ):
             outcomes.append(outcome)
             print(

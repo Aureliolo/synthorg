@@ -5,11 +5,12 @@ An approved plan says what the units ARE. It does not say what they build
 AGAINST, and prose cannot: a brief describing a seam in paragraphs leaves each
 unit to invent its own reading of it, and the first thing that reconciles those
 readings is the merge at the very end, which is where a measured corpus lost its
-work. Every shared module in three recorded cells was defined by more than one
-child and every one of them disagreed on its exports (11 of 11, 10 of 11, 11 of
-12), because the seed fixture is a README and nothing else: a leaf opening its
-workspace finds no name to import and no signature to honour, so inventing one
-is not a failure of instruction-following, it is the only move available.
+work. Across the three recorded cells, most of the modules more than one child
+wrote disagreed on their exports: 11 of 14, 11 of 12 and 12 of 13, re-derivable
+from the kept trees with ``scripts/report_interface_divergence.py``. The seed
+fixture is a README and nothing else, so a leaf opening its workspace finds no
+name to import and no signature to honour: inventing one is not a failure of
+instruction-following, it is the only move available.
 
 The contract runs ONCE per cell, before any leaf opens, and its tree becomes the
 seed every unit is recreated from. So the agreement does not have to be handed
@@ -49,6 +50,7 @@ from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.observability import get_logger
+from synthorg.observability.events.evals import EVALS_RECURSION_CONTRACT_UNSOUND
 
 logger = get_logger(__name__)
 
@@ -118,11 +120,18 @@ class ContractOutcome:
 
     Attributes:
         workspace: The tree every unit of this cell is then recreated from.
-        delivered: Whether it left a tree that imports and whose declared file
+        sound: Whether it left a tree that imports and whose declared file
             exists. A contract that failed this is still USED, because the
             alternative is seeding every unit from the bare README the run was
             already shown to diverge from; the flag is what tells a reader
             which of those two a cell got.
+
+            Deliberately NOT ``delivered``, which is what the adjacent
+            ``LeafOutcome`` calls a structurally different claim: a leaf's
+            delivery says its own requirement was built and tested, and a
+            contract that is unsound is still handed to every unit. Two
+            neighbouring records sharing one name and one type for two
+            meanings is how a branch on the wrong one gets written.
         turns: Agent turns it took.
         cost: What it spent, ``None`` on a connection that does not price.
         tokens: What it spent in tokens.
@@ -135,7 +144,7 @@ class ContractOutcome:
     """
 
     workspace: CellWorkspace
-    delivered: bool
+    sound: bool
     turns: int
     cost: float | None
     tokens: int = 0
@@ -258,7 +267,7 @@ async def run_contract(
     written, detail = await _judge(deps, task, workspace, baseline, turns=outcome.turns)
     return ContractOutcome(
         workspace=workspace,
-        delivered=not detail,
+        sound=not detail,
         turns=outcome.turns,
         cost=outcome.cost,
         tokens=outcome.tokens,
@@ -298,8 +307,25 @@ async def _judge(
         # passes against bodies that should all raise means the session
         # implemented the project it was told to leave alone, and every unit
         # after it inherits work it will be graded for not having done.
+        #
+        # Logged as well as recorded, because a cell whose contract is wrong
+        # goes on to build every unit from it: an operator watching a live
+        # sweep can stop it, and the persisted detail only reaches a reader
+        # once the whole recording is over.
+        logger.warning(
+            EVALS_RECURSION_CONTRACT_UNSOUND,
+            task_id=str(task.id),
+            reason="suite_passes",
+            files_written=written,
+        )
         return written, "the contract's own suite passes, so it was implemented"
     if _uncollectable(report):
+        logger.warning(
+            EVALS_RECURSION_CONTRACT_UNSOUND,
+            task_id=str(task.id),
+            reason="suite_uncollectable",
+            files_written=written,
+        )
         return written, f"the contract's suite does not collect: {report}"
     return written, ""
 

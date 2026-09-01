@@ -5,11 +5,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.emit import assemble_report, write_report
 from evals.recursion_depth.journal import matrix_identity
-from evals.recursion_depth.manifest import Arm, Independence, ModelPair
+from evals.recursion_depth.manifest import (
+    MAX_MERGE_ATTEMPTS,
+    Arm,
+    Independence,
+    ModelPair,
+)
 from evals.recursion_depth.models import (
     MERGE,
     CellRecord,
@@ -152,7 +158,9 @@ class TestTheTreatmentIsPinnedIntoTheIdentity:
         """
         shallow = _provenance(
             loop=LoopTreatments(
-                contract_stage=True, merge_attempts=3, leaf_reasoning_effort="low"
+                contract_stage=True,
+                merge_attempts=3,
+                leaf_reasoning_effort=ReasoningEffort.LOW,
             )
         )
 
@@ -161,6 +169,56 @@ class TestTheTreatmentIsPinnedIntoTheIdentity:
     def test_the_same_treatment_is_the_same_matrix(self) -> None:
         # The complement, or the ones above would pass on any two stamps.
         assert matrix_identity(_provenance()) == matrix_identity(_provenance())
+
+
+class TestAHandEditedHeaderCannotInventATreatment:
+    """The header is READ BACK, so its fields validate on the way in.
+
+    A resume deserialises this from a journal, and journals get hand-repaired
+    (``spend_repair`` exists for exactly that). A field typed loosely enough
+    to accept whatever the file says would report an invented treatment as the
+    one that ran, which is the failure this model exists to prevent rather
+    than a shape it should tolerate.
+    """
+
+    def test_a_depth_no_model_offers_is_refused(self) -> None:
+        with pytest.raises(ValidationError):
+            LoopTreatments.model_validate(
+                {
+                    "contract_stage": True,
+                    "merge_attempts": 3,
+                    "leaf_reasoning_effort": "extreme",
+                }
+            )
+
+    def test_a_depth_spelled_differently_is_refused(self) -> None:
+        # An enum member's own spelling, not a case-insensitive match for it.
+        with pytest.raises(ValidationError):
+            LoopTreatments.model_validate(
+                {
+                    "contract_stage": True,
+                    "merge_attempts": 3,
+                    "leaf_reasoning_effort": "Medium",
+                }
+            )
+
+    def test_more_attempts_than_the_matrix_can_grant_is_refused(self) -> None:
+        with pytest.raises(ValidationError):
+            LoopTreatments.model_validate(
+                {"contract_stage": True, "merge_attempts": MAX_MERGE_ATTEMPTS + 1}
+            )
+
+    def test_a_depth_the_manifest_offers_round_trips(self) -> None:
+        # The complement: refusing everything would pass all three above.
+        loop = LoopTreatments.model_validate(
+            {
+                "contract_stage": True,
+                "merge_attempts": 3,
+                "leaf_reasoning_effort": "low",
+            }
+        )
+
+        assert loop.leaf_reasoning_effort is ReasoningEffort.LOW
 
 
 class TestTheReportPublishesTheTreatment:

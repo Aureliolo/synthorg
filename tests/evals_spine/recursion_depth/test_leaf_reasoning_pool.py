@@ -9,6 +9,8 @@ protects the two properties that makes safe to test: an agent is still a fixed
 pair, and a matrix that asks for nothing gets exactly what it got before.
 """
 
+import zlib
+
 import pytest
 
 from evals.recursion_depth.manifest import ModelPair
@@ -76,14 +78,40 @@ class TestAMatrixThatAsksForNothingIsUnchanged:
             ReasoningEffort.HIGH
         }
 
-    async def test_a_unit_reaches_the_same_agent_it_always_did(self) -> None:
-        # The selector gained a parameter, and a digest that folded the pool
-        # into its seed would re-shuffle every ownership the moment a second
-        # pool existed. Both spellings must land on one agent.
+    async def test_a_unit_reaches_the_agent_the_digest_names(self) -> None:
+        """Pinned against the derivation, not against the other spelling.
+
+        Comparing ``building=True`` with ``building=False`` proves nothing
+        while the two pools are the same object: both sides read one list at
+        one index, so the assertion holds for ANY selection rule applied
+        consistently, including a rule that changed. What has to stay fixed
+        is WHICH agent a unit id reaches, so the expectation is computed here
+        from the documented digest rather than from the code under test.
+        """
         roster = await _roster(leaf_effort=None)
 
         for unit in ("unit-a", "unit-b", "unit-c", "unit-d", "unit-e"):
-            assert _owner_for(roster, unit, building=True) == _owner_for(roster, unit)
+            wanted = roster.builders[
+                zlib.crc32(unit.encode("utf-8")) % len(roster.builders)
+            ]
+
+            assert _owner_for(roster, unit) == wanted
+            assert _owner_for(roster, unit, building=True) == wanted
+
+    async def test_the_pools_are_indexed_alike_when_a_second_one_exists(self) -> None:
+        # The complement, and the reason the digest is taken over the unit id
+        # ALONE: a seed folding in the pool would re-shuffle every ownership
+        # the moment a second pool appeared, moving assignments as a side
+        # effect of a reasoning change and leaving the arms differing by more
+        # than the treatment.
+        roster = await _roster(leaf_effort=ReasoningEffort.LOW)
+
+        for unit in ("unit-a", "unit-b", "unit-c", "unit-d", "unit-e"):
+            index = zlib.crc32(unit.encode("utf-8")) % len(roster.builders)
+
+            assert _owner_for(roster, unit) == roster.builders[index]
+            built_by = _owner_for(roster, unit, building=True)
+            assert built_by == roster.leaf_builders[index]
 
 
 class TestAskingForItBindsASecondPool:

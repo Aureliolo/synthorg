@@ -79,10 +79,21 @@ def _rows(path: Path) -> tuple[list[dict[str, object]], int]:
         LAST line is a kill landing mid-write and is not counted; a broken line
         anywhere earlier is corruption and is.
     """
+    # ``errors="replace"`` because the tolerance this function promises is
+    # per-LINE and a strict decode is per-FILE. A kill lands mid-write, so the
+    # expected damage is a truncated multi-byte character at EOF, which a
+    # strict read raises on for the whole file: every row already paid for is
+    # discarded, and the caller cannot tell that from a journal that has yet
+    # to record anything. Replaced, the damage stays confined to the last
+    # line, where the rule below already handles it.
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError, UnicodeDecodeError:
-        return [], 0
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as exc:
+        # Counted, never returned as an empty journal: a recording with hours
+        # behind it must not render as a clean row of zeros because the reader
+        # could not open it.
+        print(f"warning: cannot read {path}: {exc}", file=sys.stderr)
+        return [], 1
     rows: list[dict[str, object]] = []
     broken = 0
     for index, line in enumerate(lines[1:], start=1):
@@ -92,8 +103,12 @@ def _rows(path: Path) -> tuple[list[dict[str, object]], int]:
             if index != len(lines) - 1:
                 broken += 1
             continue
+        # A line that parses to something other than an object is schema
+        # drift, not a truncated write, so it is counted wherever it sits.
         if isinstance(parsed, dict):
             rows.append(parsed)
+        else:
+            broken += 1
     return rows, broken
 
 
@@ -114,6 +129,9 @@ def read(directory: Path) -> Recording | None:
     for row in rows:
         unit = row.get("unit")
         if not isinstance(unit, dict):
+            # A row the reader cannot interpret is a session it cannot report,
+            # and silently dropping it understates a recording's spend.
+            broken += 1
             continue
         kind = str(unit.get("kind", "?"))
         kinds[kind] = kinds.get(kind, 0) + 1
