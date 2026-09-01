@@ -157,6 +157,26 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
         self._environment_runner_backend = environment_runner_backend
 
     @property
+    def sandbox_backend(self) -> SandboxBackend | None:
+        """The backend whose lifecycle owner this service releases per task.
+
+        Read by the reclamation sweep, which releases what a run forgot to.
+
+        Returns:
+            The backend, or ``None`` when no reusable one is wired.
+        """
+        return self._sandbox_backend
+
+    @property
+    def lifecycle_strategy_kind(self) -> str:
+        """Which lifecycle the sandbox backend reuses containers under.
+
+        Returns:
+            The strategy name.
+        """
+        return self._lifecycle_strategy_kind
+
+    @property
     def engine(self) -> AgentEngine:
         """The boot ``AgentEngine`` this service runs.
 

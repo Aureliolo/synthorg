@@ -470,6 +470,15 @@ class PerAgentStrategy:
             destroyed_count=count,
         )
 
+    async def tracked_owners(self) -> tuple[str, ...]:
+        """The owner keys currently holding a warm container.
+
+        Returns:
+            The keys, including those inside their grace window.
+        """
+        async with self._lock:
+            return tuple(self._containers)
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

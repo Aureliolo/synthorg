@@ -489,3 +489,12 @@ class PerTaskStrategy:
             strategy="per-task",
             destroyed_count=count,
         )
+
+    async def tracked_owners(self) -> tuple[str, ...]:
+        """The owner keys currently holding a container.
+
+        Returns:
+            The keys.
+        """
+        async with self._lock:
+            return tuple(self._containers)

@@ -38,6 +38,46 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.TOOLS,
+        key="sandbox_reclaim_interval_seconds",
+        type=SettingType.FLOAT,
+        default="300.0",
+        description=(
+            "Cadence of the sandbox reclamation sweep, which releases a"
+            " reusable container (per-agent or per-task lifecycle) once the"
+            " run that owns it has finished: a task no longer assigned, in"
+            " progress or in review, or an agent with no such task. Boot"
+            " reconciliation handles what a dead process left behind; this"
+            " handles what a live one forgot to release. Re-read per tick, so"
+            " a change applies with no restart."
+        ),
+        group="Docker Sandbox",
+        level=SettingLevel.ADVANCED,
+        min_value=60.0,
+        max_value=86400.0,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
+        key="sandbox_reclaim_paused",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description=(
+            "Pause flag for the sandbox reclamation sweep. When True the"
+            " scheduler stays resident but every tick short-circuits, so no"
+            " container is released by the sweep; the lifecycle's own grace"
+            " and idle teardown are unaffected. Read per tick, so it applies"
+            " with no restart."
+        ),
+        group="Docker Sandbox",
+        level=SettingLevel.ADVANCED,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.TOOLS,
         key="docker_sidecar_health_poll_interval_seconds",
         type=SettingType.FLOAT,
         default="0.2",

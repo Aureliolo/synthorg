@@ -396,6 +396,31 @@ class DockerSandboxExecMixin:
                 destroy_fn=self._destroy_handle,
             )
 
+    async def tracked_owners(self) -> tuple[str, ...]:
+        """The qualified keys the lifecycle strategy holds a container for.
+
+        Returns:
+            The keys, as the strategy holds them.
+        """
+        return await self._lifecycle_strategy.tracked_owners()
+
+    async def release_key(self, owner_key: str) -> None:
+        """Release one qualified key through the lifecycle strategy.
+
+        Args:
+            owner_key: A key :meth:`tracked_owners` returned.
+        """
+        logger.info(
+            SANDBOX_LIFECYCLE_RELEASE,
+            strategy=self._config.lifecycle.strategy,
+            owner_id=owner_key,
+            action="release_key",
+        )
+        await self._lifecycle_strategy.release(
+            owner_id=owner_key,
+            destroy_fn=self._destroy_handle,
+        )
+
     # ------------------------------------------------------------------
     # Keep-alive container creation
     # ------------------------------------------------------------------

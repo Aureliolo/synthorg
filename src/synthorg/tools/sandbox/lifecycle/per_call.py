@@ -78,3 +78,11 @@ class PerCallStrategy:
             strategy="per-call",
             action="noop",
         )
+
+    async def tracked_owners(self) -> tuple[str, ...]:
+        """Nothing outlives a call, so nothing is held.
+
+        Returns:
+            The empty tuple.
+        """
+        return ()

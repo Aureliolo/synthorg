@@ -126,3 +126,14 @@ class SandboxLifecycleStrategy(Protocol):
                 container (and its sidecar, if any).
         """
         ...
+
+    async def tracked_owners(self) -> tuple[str, ...]:
+        """The owner keys this strategy currently holds a container for.
+
+        Read by the reclamation sweep, which asks of each owner whether its
+        run has finished; a strategy that reuses nothing answers empty.
+
+        Returns:
+            The keys, in no particular order.
+        """
+        ...

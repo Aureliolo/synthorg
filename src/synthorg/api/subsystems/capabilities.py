@@ -182,6 +182,12 @@ CAPABILITIES: tuple[Capability, ...] = (
         present=lambda s: s.slice(ToolsStateSlice).sandbox_reconciled_at is not None,
     ),
     Capability(
+        id=CapabilityId.SANDBOX_RECLAIM,
+        present=lambda s: (
+            s.slice(ToolsStateSlice).sandbox_reclaim_scheduler is not None
+        ),
+    ),
+    Capability(
         id=CapabilityId.ORG_MEMORY_BACKEND,
         present=lambda s: s.slice(MemoryStateSlice).org_memory_backend is not None,
     ),
