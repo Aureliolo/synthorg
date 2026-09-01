@@ -101,7 +101,7 @@ func TestLineDiff(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := lineDiff(tt.old, tt.updated)
+			got := lineDiff(tt.old, tt.updated, nil)
 			if tt.wantEmpty && got != "" {
 				t.Errorf("expected empty diff, got %q", got)
 			}
@@ -126,7 +126,7 @@ func FuzzLineDiff(f *testing.F) {
 	f.Add("", "")
 	f.Fuzz(func(t *testing.T, old, updated string) {
 		// Should not panic on any input.
-		_ = lineDiff(old, updated)
+		_ = lineDiff(old, updated, nil)
 	})
 }
 
@@ -225,11 +225,106 @@ func TestRedactSecret(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := redactSecret(tt.line)
+			got := redactSecret(tt.line, nil)
 			if got != tt.want {
 				t.Errorf("redactSecret(%q) = %q, want %q", tt.line, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestRedactSecret_byValue covers the keys the name pattern above cannot
+// reach. Both of these are rendered by compose.yml.tmpl and neither contains
+// any alternative secretKeyPattern lists, so before value-based redaction
+// existed both printed their secret in full to the operator's terminal.
+func TestRedactSecret_byValue(t *testing.T) {
+	const masterKey = "kZ9vQ2mR7tL4wX1yB6nC3hJ8dF5gS0aE2pU7iO9kM4s="
+	const pgPassword = "s3cret-postgres-password"
+	secrets := []string{masterKey, pgPassword}
+
+	tests := []struct {
+		name       string
+		line       string
+		want       string
+		wantAbsent string
+	}{
+		{
+			name:       "master key is not matched by any key-name alternative",
+			line:       `      SYNTHORG_MASTER_KEY: "` + masterKey + `"`,
+			want:       `      SYNTHORG_MASTER_KEY: "[REDACTED]"`,
+			wantAbsent: masterKey,
+		},
+		{
+			name:       "postgres password embedded in a database URL",
+			line:       `      SYNTHORG_DATABASE_URL: "postgresql://synthorg:` + pgPassword + `@postgres:5432/synthorg"`,
+			want:       `      SYNTHORG_DATABASE_URL: "postgresql://synthorg:[REDACTED]@postgres:5432/synthorg"`,
+			wantAbsent: pgPassword,
+		},
+		{
+			name: "an ordinary line is untouched",
+			line: `      SYNTHORG_LOG_DIR: "/data/logs"`,
+			want: `      SYNTHORG_LOG_DIR: "/data/logs"`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := redactSecret(tt.line, secrets)
+			if got != tt.want {
+				t.Errorf("redactSecret(%q) = %q, want %q", tt.line, got, tt.want)
+			}
+			if tt.wantAbsent != "" && strings.Contains(got, tt.wantAbsent) {
+				t.Errorf("redactSecret leaked %q in %q", tt.wantAbsent, got)
+			}
+		})
+	}
+}
+
+// TestSecretValues_dropsShortValues pins the guard that stops a trivially
+// short configured value turning every occurrence of those characters
+// elsewhere in the diff into [REDACTED].
+func TestSecretValues_dropsShortValues(t *testing.T) {
+	state := config.State{
+		MasterKey:        "long-enough-to-redact",
+		PostgresPassword: "short",
+	}
+
+	values := secretValues(state)
+
+	if len(values) != 1 || values[0] != "long-enough-to-redact" {
+		t.Errorf("secretValues = %q, want only the long value", values)
+	}
+}
+
+// TestSecretValues_longestFirst pins the ordering: a value that contains
+// another must be replaced whole rather than leaving the shorter one's tail
+// behind as readable ciphertext-adjacent material.
+func TestSecretValues_longestFirst(t *testing.T) {
+	state := config.State{
+		JWTSecret:   "abcdefgh",
+		SettingsKey: "abcdefghijklmnop",
+	}
+
+	values := secretValues(state)
+
+	if len(values) != 2 || values[0] != "abcdefghijklmnop" {
+		t.Errorf("secretValues = %q, want the longer value first", values)
+	}
+}
+
+// TestLineDiff_redactsByValue proves the two layers meet where it matters:
+// the diff an operator approves during `synthorg update`.
+func TestLineDiff_redactsByValue(t *testing.T) {
+	const masterKey = "kZ9vQ2mR7tL4wX1yB6nC3hJ8dF5gS0aE2pU7iO9kM4s="
+	old := "services:\n  backend:\n"
+	updated := "services:\n  backend:\n    environment:\n      SYNTHORG_MASTER_KEY: \"" + masterKey + "\"\n"
+
+	got := lineDiff(old, updated, []string{masterKey})
+
+	if strings.Contains(got, masterKey) {
+		t.Errorf("lineDiff leaked the master key: %q", got)
+	}
+	if !strings.Contains(got, redactedMarker) {
+		t.Errorf("lineDiff should have redacted the added line, got %q", got)
 	}
 }
 

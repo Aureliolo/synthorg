@@ -104,6 +104,6 @@ class TestParkedEscalationsSurviveRecovery:
 
         row = _gate_table_row(text, "gated")
         columns = [c.strip() for c in row.strip("|").split("|")]
-        # Columns: Arm, Merges, Sessions, Tokens, Spend, Parked escalations,
-        # Contract amendments.
-        assert columns[5] == "1"
+        # Columns: Arm, Merges, Sessions, Tokens, Judging, Spend,
+        # Parked escalations, Contract amendments.
+        assert columns[6] == "1"

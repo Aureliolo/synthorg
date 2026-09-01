@@ -70,6 +70,7 @@ from synthorg.tools.sandbox.credential_manager import (
 )
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.errors import SandboxStartError
+from synthorg.tools.sandbox.keepalive import KEEPALIVE_ARGS, KEEPALIVE_COMMAND
 from synthorg.tools.sandbox.lifecycle.protocol import (
     ContainerHandle,
     SandboxLifecycleStrategy,
@@ -78,8 +79,6 @@ from synthorg.tools.sandbox.result import SandboxResult
 
 logger = get_logger(__name__)
 
-_KEEPALIVE_COMMAND: Final[str] = "tail"
-_KEEPALIVE_ARGS: Final[tuple[str, ...]] = ("-f", "/dev/null")
 
 # aiodocker exec stream frame identifiers (non-TTY multiplexed stream).
 _EXEC_STREAM_STDOUT: Final[int] = 1
@@ -571,8 +570,8 @@ class DockerSandboxExecMixin:
         # Nothing here needs the sidecar except `network_mode`, which is
         # injected afterwards.
         config = self._build_container_config(
-            command=_KEEPALIVE_COMMAND,
-            args=_KEEPALIVE_ARGS,
+            command=KEEPALIVE_COMMAND,
+            args=KEEPALIVE_ARGS,
             container_cwd=container_cwd,
             env_overrides=env_overrides,
             effective_root=effective_root,

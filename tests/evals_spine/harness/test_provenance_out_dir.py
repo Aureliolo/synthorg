@@ -49,7 +49,7 @@ def repo(tmp_path: Path) -> Path:
 
 def test_a_clean_tree_reads_clean(repo: Path) -> None:
     """The baseline the other two are read against."""
-    assert capture_git_state(repo, ignoring=repo / "results").dirty is False
+    assert capture_git_state(repo, ignoring=[repo / "results"]).dirty is False
 
 
 def test_the_recorders_own_output_does_not_dirty_the_tree(repo: Path) -> None:
@@ -59,7 +59,7 @@ def test_the_recorders_own_output_does_not_dirty_the_tree(repo: Path) -> None:
     (results / "chart.svg").write_text("<svg/>", encoding="utf-8")
     (results / "cells.jsonl").write_text("{}\n", encoding="utf-8")
 
-    assert capture_git_state(repo, ignoring=results).dirty is False
+    assert capture_git_state(repo, ignoring=[results]).dirty is False
 
 
 def test_a_real_source_edit_still_reads_dirty(repo: Path) -> None:
@@ -71,7 +71,7 @@ def test_a_real_source_edit_still_reads_dirty(repo: Path) -> None:
     """
     (repo / "source.py").write_text("value = 2\n", encoding="utf-8")
 
-    assert capture_git_state(repo, ignoring=repo / "results").dirty is True
+    assert capture_git_state(repo, ignoring=[repo / "results"]).dirty is True
 
 
 def test_an_out_dir_outside_the_repository_excludes_nothing(
@@ -85,7 +85,7 @@ def test_an_out_dir_outside_the_repository_excludes_nothing(
     (repo / "source.py").write_text("value = 3\n", encoding="utf-8")
     elsewhere = tmp_path_factory.mktemp("outside")
 
-    assert capture_git_state(repo, ignoring=elsewhere).dirty is True
+    assert capture_git_state(repo, ignoring=[elsewhere]).dirty is True
 
 
 def test_an_out_dir_at_the_repository_root_excludes_nothing(repo: Path) -> None:
@@ -99,7 +99,7 @@ def test_an_out_dir_at_the_repository_root_excludes_nothing(repo: Path) -> None:
     """
     (repo / "source.py").write_text("value = 4\n", encoding="utf-8")
 
-    assert capture_git_state(repo, ignoring=repo).dirty is True
+    assert capture_git_state(repo, ignoring=[repo]).dirty is True
 
 
 def test_no_out_dir_reads_the_whole_tree(repo: Path) -> None:
@@ -108,3 +108,37 @@ def test_no_out_dir_reads_the_whole_tree(repo: Path) -> None:
     (repo / "results" / "chart.svg").write_text("<svg/>", encoding="utf-8")
 
     assert capture_git_state(repo).dirty is True
+
+
+def test_a_concurrent_siblings_output_does_not_dirty_the_tree(repo: Path) -> None:
+    """The case that made a paid-for cell unresumable.
+
+    Three cells run concurrently, which the recursion-depth plan explicitly
+    endorses. Each excludes only its OWN directory, so the first read a clean
+    tree and the other two read dirty on the same commit, purely because the
+    first cell's directory had appeared. ``git_dirty`` is in the resume identity,
+    so the clean cell could then never be resumed.
+    """
+    mine = repo / "results" / "smoke-b"
+    sibling = repo / "results" / "smoke-a"
+    for directory in (mine, sibling):
+        directory.mkdir(parents=True)
+        (directory / "cells.jsonl").write_text("{}\n", encoding="utf-8")
+
+    assert capture_git_state(repo, ignoring=[mine, sibling]).dirty is False
+
+
+def test_excluding_one_directory_does_not_blind_the_whole_query(repo: Path) -> None:
+    """A root exclusion is dropped, and the siblings beside it still apply.
+
+    ``:(exclude).`` matches every tracked path, so mixing the repository root
+    into a list must not silence the check; the earlier behaviour returned the
+    plain query on seeing it, which would equally have discarded a genuine
+    sibling exclusion standing next to it.
+    """
+    results = repo / "results"
+    results.mkdir()
+    (results / "cells.jsonl").write_text("{}\n", encoding="utf-8")
+    (repo / "source.py").write_text("value = 5\n", encoding="utf-8")
+
+    assert capture_git_state(repo, ignoring=[repo, results]).dirty is True

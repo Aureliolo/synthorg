@@ -1063,6 +1063,16 @@ func Save(s State) error {
 // tradeoff.
 func writeFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
 	dir := filepath.Dir(path)
+	// A forced exit (cmd.forceExitOnSecondInterrupt's os.Exit) skips this
+	// function's own deferred cleanup on a temp file it was mid-write on,
+	// orphaning a sibling holding a full copy of config.json: master_key,
+	// settings_key, cursor_secret and postgres_password, in cleartext, at
+	// 0600 but readable by anything running as this user and by anything
+	// that treats the data dir as a backup source. Nothing else sweeps
+	// these, so each write clears out whatever is old enough to be an
+	// orphan rather than a live concurrent writer.
+	sweepStaleTemps(dir, filepath.Base(path))
+
 	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return fmt.Errorf("creating temp file: %w", err)
@@ -1096,6 +1106,48 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
 	cleanup = false // rename succeeded; temp is gone
 	syncDirBestEffort(dir)
 	return nil
+}
+
+// StaleAtomicTempAge is how old an atomic-write temp sibling must be before a
+// sweep will remove it. Exported because both writers that mint these files
+// share it: writeFileAtomic here and compose.atomicWriteRooted next door.
+// Two ages would drift, and the shorter one would start deleting a live
+// concurrent writer's temp file, which is the whole reason those names carry
+// a pid and a nonce. Must comfortably exceed how long any single write can
+// legitimately take; these are small JSON and YAML files.
+const StaleAtomicTempAge = time.Hour
+
+// sweepStaleTemps best-effort removes `base`.tmp-* siblings in dir older than
+// StaleAtomicTempAge. The only way one of these outlives its own write is a
+// process killed between creation and rename. Errors are swallowed
+// throughout: this is opportunistic cleanup riding along on every write, not
+// a correctness requirement of the write it accompanies.
+//
+// dir carries the same accepted path-injection tradeoff as writeFileAtomic
+// above (alerts #620/#621, dismissed alongside #617/#618): it is the
+// operator's own data dir on a local single-user CLI with no privilege
+// boundary to cross. What the sweep adds beyond that is bounded rather than
+// new -- entry.Name() from ReadDir is a bare filename, the prefix and
+// IsDir tests confine removal to this write's own temp siblings, and
+// os.Remove unlinks a symlink rather than following it -- so nothing here
+// can reach outside dir even when dir itself is somewhere surprising.
+func sweepStaleTemps(dir, base string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	prefix := base + ".tmp-"
+	now := time.Now()
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), prefix) {
+			continue
+		}
+		info, infoErr := entry.Info()
+		if infoErr != nil || now.Sub(info.ModTime()) < StaleAtomicTempAge {
+			continue
+		}
+		_ = os.Remove(filepath.Join(dir, entry.Name()))
+	}
 }
 
 // syncDirBestEffort fsyncs dir so the rename's directory-entry update

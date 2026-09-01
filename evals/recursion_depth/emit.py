@@ -290,6 +290,21 @@ def _provenance_lines(report: RecursionDepthReport) -> list[str]:
             if provenance.sandbox_image is not None
             else []
         ),
+        # The loop the run RAN, which the manifest digest above cannot carry:
+        # both treatments are per-run flags that leave the file alone, so
+        # without this line two arms of one experiment publish reports whose
+        # provenance blocks are identical.
+        *(
+            [
+                (
+                    f"- Loop: contract stage "
+                    f"{'on' if provenance.loop.contract_stage else 'off'}, "
+                    f"{provenance.loop.merge_attempts} merge attempt(s)"
+                )
+            ]
+            if provenance.loop is not None
+            else []
+        ),
         (
             f"- Total spend: {_cost_cell(report.total_cost)} across "
             f"{report.total_tokens} tokens "
@@ -537,8 +552,11 @@ def _cell_table(report: RecursionDepthReport) -> list[str]:
         The table lines.
     """
     table = [
-        "| Cell | Achieved | Satisfied | Required | Sessions | Tokens | Spend |",
-        "|---|---|---:|---:|---:|---:|---:|",
+        (
+            "| Cell | Achieved | Satisfied | Required | Diverged | Sessions "
+            "| Tokens | Spend |"
+        ),
+        "|---|---|---:|---:|---:|---:|---:|---:|",
     ]
     required = report.provenance.requirement_count
     for cell in report.cells:
@@ -551,10 +569,26 @@ def _cell_table(report: RecursionDepthReport) -> list[str]:
         )
         table.append(
             f"| {key} | {achieved} | {satisfied} | {required} "
+            f"| {_diverged_cell(cell)} "
             f"| {cell.total_attempts} | {cell.total_tokens} "
             f"| {_cost_cell(cell.total_cost)} |"
         )
     return table
+
+
+def _diverged_cell(cell: CellRecord) -> str:
+    """Render how many shared modules a cell's leaves disagreed on.
+
+    As a pair rather than a ratio, because the denominator carries its own
+    finding: a cell where no module was written twice had nothing to agree
+    about, and reporting that as 0% would read as perfect agreement.
+
+    Returns:
+        The cell's contents.
+    """
+    if not cell.shared_modules:
+        return "none shared"
+    return f"{cell.diverged_modules}/{cell.shared_modules}"
 
 
 def _histogram_table(report: RecursionDepthReport) -> list[str]:
@@ -599,6 +633,13 @@ def _gate_table(report: RecursionDepthReport) -> list[str]:
     let it win by spending more rather than by catching anything, and the
     equal-budget claim is read here or nowhere.
 
+    ``Judging`` is the share of ``Tokens`` the reviewing sessions took, and it
+    is a column rather than a footnote because it is what actually varies. On
+    byte-identical configuration three recorded cells' gate sessions made 85,
+    159 and 257 shell calls; summed into the merge's own figure that spread is
+    invisible, and a reader comparing arms cannot tell a gate that worked from
+    one that barely looked.
+
     Returns:
         The table lines.
     """
@@ -607,9 +648,11 @@ def _gate_table(report: RecursionDepthReport) -> list[str]:
     merges = dict.fromkeys(Arm, 0)
     attempts = dict.fromkeys(Arm, 0)
     tokens = dict.fromkeys(Arm, 0)
+    judging = dict.fromkeys(Arm, 0)
     cost: dict[Arm, list[float | None]] = {arm: [] for arm in Arm}
     for cell, unit in _merges_of(report):
         merges[cell.arm] += 1
+        judging[cell.arm] += unit.review_tokens
         # unit.parked reads only the LAST review, so a merge parked on
         # attempt 1 and approved on attempt 2 reads False there even though
         # a round genuinely escalated. parked_attempts counts every round
@@ -622,14 +665,15 @@ def _gate_table(report: RecursionDepthReport) -> list[str]:
         cost[cell.arm].append(unit.cost)
     rows = [
         (
-            "| Arm | Merges | Sessions | Tokens | Spend | Parked escalations "
-            "| Contract amendments |"
+            "| Arm | Merges | Sessions | Tokens | Judging | Spend "
+            "| Parked escalations | Contract amendments |"
         ),
-        "|---|---:|---:|---:|---:|---:|---:|",
+        "|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     rows.extend(
         f"| {arm.value} | {merges[arm]} | {attempts[arm]} | {tokens[arm]} "
-        f"| {_cost_cell(sum_costs(cost[arm]))} | {parked[arm]} | {amendments[arm]} |"
+        f"| {judging[arm]} | {_cost_cell(sum_costs(cost[arm]))} "
+        f"| {parked[arm]} | {amendments[arm]} |"
         for arm in Arm
     )
     return rows

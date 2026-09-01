@@ -34,11 +34,13 @@ from pydantic import (
 
 from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.manifest import (
+    MAX_MERGE_ATTEMPTS,
     SHARED_FAMILY_CAVEAT,
     Arm,
     Independence,
     ModelPair,
 )
+from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import DecompositionResult
@@ -68,10 +70,18 @@ RECURSION_DEPTH_SCHEMA_VERSION: Final[int] = 3
 #: misspelled leaf out of the survival denominator, and ``_gate_table`` in
 #: :mod:`evals.recursion_depth.emit` would drop it out of the gate table, both
 #: silently. A closed set moves that to load time.
-type UnitKind = Literal["leaf", "merge", "plan"]
+type UnitKind = Literal["leaf", "merge", "plan", "contract"]
 
 #: A unit an agent built end to end, its own tests included.
 LEAF: Final[Literal["leaf"]] = "leaf"
+
+#: The one session per cell that fixes what the units build against. Neither
+#: work nor an assembly: it claims no requirement and is graded against none,
+#: and its own tests are supposed to FAIL. Carried as its own kind rather than
+#: folded into ``LEAF`` because every consumer that reads a leaf reads it to
+#: ask about delivery, and a stage whose success looks exactly like a leaf's
+#: failure would be counted as one in the survival denominator.
+CONTRACT: Final[Literal["contract"]] = "contract"
 
 #: A unit that assembled the units below it.
 MERGE: Final[Literal["merge"]] = "merge"
@@ -311,6 +321,13 @@ class UnitRecord(BaseModel):
             figure and a computed field would demand both halves to answer
             it.
         output_tokens: The output half of ``tokens``, on the same terms.
+        review_tokens: For a MERGE, the share of ``tokens`` its reviewing
+            sessions spent; zero for every other kind. Held apart because
+            assembling and judging are different work and the judging half is
+            the one that floats between otherwise identical cells: three
+            recorded gate sessions made 85, 159 and 257 shell calls on
+            byte-identical configuration, and folded into one figure that
+            variance is invisible to anything reading the artifact.
         executor: The pair this unit was actually built on.
         reviewer: The pair that JUDGED it, on a gated merge. Recorded per unit
             rather than once per sweep because the gate is the treatment: a
@@ -389,6 +406,7 @@ class UnitRecord(BaseModel):
     tokens: int = Field(default=0, ge=0)
     input_tokens: int | None = Field(default=None, ge=0)
     output_tokens: int | None = Field(default=None, ge=0)
+    review_tokens: int = Field(default=0, ge=0)
     executor: ModelPair | None = None
     reviewer: ModelPair | None = None
     detail: str = ""
@@ -467,6 +485,17 @@ class CellRecord(BaseModel):
             cap of three read as one that stopped a level short.
         units: Every unit of the run, leaves and merges.
         merged_passing: The spec requirements the final merged tree satisfies.
+        shared_modules: How many module paths more than one leaf wrote. The
+            denominator ``diverged_modules`` is read against, and it has to be
+            reported beside it: a cell where nothing was shared has nothing to
+            agree about, which is a different fact from perfect agreement and
+            reads identically once the ratio is taken.
+        diverged_modules: How many of those the leaves disagreed on, by public
+            surface. Carried on the RECORD rather than left to a script,
+            because it is what the contract stage exists to move and a
+            measurement nobody remembers to take is one the next reader will
+            not have. Measured off the trees, since no unit can see a sibling
+            and so no unit can report it.
         unavailable_reason: Why this cell has no measurement.
     """
 
@@ -478,6 +507,8 @@ class CellRecord(BaseModel):
     achieved_depth: int | None = None
     units: tuple[UnitRecord, ...] = ()
     merged_passing: tuple[RequirementId, ...] = ()
+    shared_modules: int = Field(default=0, ge=0)
+    diverged_modules: int = Field(default=0, ge=0)
     unavailable_reason: str | None = None
 
     @model_validator(mode="after")
@@ -497,6 +528,31 @@ class CellRecord(BaseModel):
                 f"cell depth={self.depth_cap} arm={self.arm.value} "
                 f"rep={self.repetition} must be either measured or unavailable, "
                 f"got measured={measured}, reason={self.unavailable_reason!r}"
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _divergence_is_a_subset_of_what_is_shared(self) -> Self:
+        """A module can only disagree if more than one unit wrote it.
+
+        ``CellDivergence`` upstream computes both numbers as properties over
+        one list, so they cannot disagree there. Flattening them into two
+        independent integers for the committed report loses that, and this
+        record is DESERIALISED: a resume and a hand-repaired journal both read
+        it back, where nothing else would notice a ratio above one.
+
+        Returns:
+            ``self`` when the two counts are consistent.
+
+        Raises:
+            ValueError: More modules diverged than were shared at all.
+        """
+        if self.diverged_modules > self.shared_modules:
+            msg = (
+                f"cell depth={self.depth_cap} arm={self.arm.value} "
+                f"rep={self.repetition} reports {self.diverged_modules} "
+                f"diverged of only {self.shared_modules} shared modules"
             )
             raise ValueError(msg)
         return self
@@ -936,6 +992,50 @@ class CostBasis(StrEnum):
     UNPRICED = "unpriced"
 
 
+class LoopTreatments(BaseModel):
+    """The settings that change what the loop DOES, as this run resolved them.
+
+    Separate from the manifest's digest because that digests the FILE, and a
+    per-run override deliberately leaves the file alone: two cells recorded an
+    hour apart with opposite `--contract-stage` flags produced byte-identical
+    journal headers, so the identity check would accept a resume of one arm
+    inside the other's directory and splice two loops into one curve. That is
+    exactly what pinning an identity exists to refuse.
+
+    A treatment, never a SCHEDULE lever. ``max_sessions`` and ``repetitions``
+    also override the file and deliberately stay out: they decide how much of
+    the matrix runs, not what running it means, so an operator trading one of
+    them for an evening must still be able to resume.
+
+    Resolved from the NARROWED manifest, which is the one that drove the run,
+    so a field here cannot report something other than what ran.
+
+    Attributes:
+        contract_stage: Whether one contract session ran between the plan and
+            the units, fixing the shape every unit is then recreated from.
+        merge_attempts: How many attempts each merge got.
+        leaf_reasoning_effort: The depth units BUILT at, or ``None`` when they
+            built at the executor's own. The published ablation puts the win in
+            the schedule rather than the level, so which phases reasoned how
+            deeply is a treatment and belongs in the identity beside the others.
+
+    The two typed fields carry the manifest's own types rather than a
+    stringified copy, because this model is READ BACK: the journal header is
+    deserialised on every resume, and journals are hand-repaired. A plain
+    ``str`` here accepts ``Medium`` or ``extreme`` from an edited header and
+    reports it as the treatment that ran, which is the one failure this class
+    exists to make impossible. ``merge_attempts`` carries the manifest's upper
+    bound for the same reason: a record must not be able to claim more
+    attempts than the matrix could have granted.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    contract_stage: bool
+    merge_attempts: int = Field(ge=1, le=MAX_MERGE_ATTEMPTS)
+    leaf_reasoning_effort: ReasoningEffort | None = None
+
+
 class Provenance(BaseModel):
     """What this sweep was measured against.
 
@@ -943,7 +1043,11 @@ class Provenance(BaseModel):
         generated_at: When the report was written.
         git_commit: The commit the recursion point and the gate were built at.
         git_dirty: Whether the tree carried uncommitted changes.
-        manifest_sha256: Digest of the matrix that drove the sweep.
+        manifest_sha256: Digest of the matrix FILE. Not of what drove the
+            sweep, because a per-run override never touches the file: see
+            ``loop``, which carries the treatments it can change.
+        loop: What this run made the loop do, as opposed to what the file on
+            disk says. ``None`` on a recording made before this field existed.
         spec_id: Which specification was built.
         requirement_count: How many requirements it declares.
         executor: The pair every unit was built on.
@@ -1002,6 +1106,7 @@ class Provenance(BaseModel):
     reviewer_connection_sha256: NotBlankStr | None = None
     cost_basis: CostBasis = CostBasis.PRICED
     sandbox_image: NotBlankStr | None = None
+    loop: LoopTreatments | None = None
 
     @field_validator("generated_at")
     @classmethod
@@ -1144,6 +1249,7 @@ __all__ = [
     "CostBasis",
     "DepthPoint",
     "DepthSpread",
+    "LoopTreatments",
     "Provenance",
     "RecursionDepthReport",
     "SpendSource",

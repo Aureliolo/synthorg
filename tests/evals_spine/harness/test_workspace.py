@@ -16,6 +16,7 @@ from evals.errors import WorkspacePathEscapeError, WorkspaceSeedNotFoundError
 from evals.harness.workspace import (
     CellWorkspace,
     _contained,
+    drop_escaping_links,
     existing_workspace,
     seed_workspace,
 )
@@ -166,3 +167,67 @@ def test_a_project_subtree_symlinked_out_of_the_root_is_refused(
 
     with pytest.raises(WorkspacePathEscapeError):
         existing_workspace(cell_key="unit-a", work_root=work)
+
+
+def _copied_tree(tmp_path: Path) -> tuple[Path, Path]:
+    """An agent-authored tree and a copy of it, the shape every reader gets.
+
+    Returns:
+        The original and the copy.
+    """
+    original = tmp_path / "authored"
+    (original / "pkg").mkdir(parents=True)
+    (original / "pkg" / "widget.py").write_text("VALUE = 1\n", encoding="utf-8")
+    copy = tmp_path / "mounted"
+    shutil.copytree(original, copy, symlinks=True, ignore_dangling_symlinks=True)
+    return original, copy
+
+
+class TestALinkSurvivesTheCopyItIsSweptIn:
+    """What a link means has to be true where the reader will read it."""
+
+    def test_an_absolute_internal_link_is_rebased_onto_the_copy(
+        self, tmp_path: Path
+    ) -> None:
+        """Kept but unrewritten, it named the original tree nothing mounts."""
+        original, copy = _copied_tree(tmp_path)
+        try:
+            (copy / "alias.py").symlink_to(original / "pkg" / "widget.py")
+        except OSError, NotImplementedError:
+            pytest.skip("symlink creation requires elevated privileges on this OS")
+
+        drop_escaping_links(copy, anchor=original)
+
+        assert (copy / "alias.py").is_symlink()
+        assert not (copy / "alias.py").readlink().is_absolute()
+        assert (copy / "alias.py").read_text(encoding="utf-8") == "VALUE = 1\n"
+        assert (copy / "alias.py").resolve() == (copy / "pkg" / "widget.py").resolve()
+
+    def test_a_relative_internal_link_is_left_exactly_as_authored(
+        self, tmp_path: Path
+    ) -> None:
+        """It already means the same thing in the copy; rewriting is churn."""
+        original, copy = _copied_tree(tmp_path)
+        try:
+            (copy / "alias.py").symlink_to(Path("pkg") / "widget.py")
+        except OSError, NotImplementedError:
+            pytest.skip("symlink creation requires elevated privileges on this OS")
+
+        drop_escaping_links(copy, anchor=original)
+
+        assert (copy / "alias.py").readlink() == Path("pkg") / "widget.py"
+
+    def test_a_link_out_of_the_tree_is_still_dropped(self, tmp_path: Path) -> None:
+        """Rebasing must not become a way to keep an escape."""
+        original, copy = _copied_tree(tmp_path)
+        outside = tmp_path / "elsewhere.txt"
+        outside.write_text("host\n", encoding="utf-8")
+        try:
+            (copy / "alias.py").symlink_to(outside)
+        except OSError, NotImplementedError:
+            pytest.skip("symlink creation requires elevated privileges on this OS")
+
+        drop_escaping_links(copy, anchor=original)
+
+        assert not (copy / "alias.py").exists()
+        assert not (copy / "alias.py").is_symlink()

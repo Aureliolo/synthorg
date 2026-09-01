@@ -5,12 +5,24 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.emit import assemble_report, write_report
 from evals.recursion_depth.journal import matrix_identity
-from evals.recursion_depth.manifest import Arm, Independence, ModelPair
-from evals.recursion_depth.models import MERGE, CellRecord, Provenance, UnitRecord
+from evals.recursion_depth.manifest import (
+    MAX_MERGE_ATTEMPTS,
+    Arm,
+    Independence,
+    ModelPair,
+)
+from evals.recursion_depth.models import (
+    MERGE,
+    CellRecord,
+    LoopTreatments,
+    Provenance,
+    UnitRecord,
+)
 from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.types import NotBlankStr
 
@@ -81,6 +93,7 @@ def _provenance(**overrides: object) -> Provenance:
         "reviewer": _REVIEWER,
         "independence": Independence.CROSS_FAMILY,
         "sandbox_image": NotBlankStr("ghcr.io/example/sandbox@sha256:abc"),
+        "loop": LoopTreatments(contract_stage=True, merge_attempts=3),
     }
     return Provenance.model_validate(fields | overrides)
 
@@ -118,9 +131,94 @@ class TestTheTreatmentIsPinnedIntoTheIdentity:
 
         assert matrix_identity(elsewhere) != matrix_identity(_provenance())
 
+    def test_the_loop_the_run_actually_ran_is_a_different_matrix(self) -> None:
+        """The treatment is a FLAG, so the manifest's digest cannot see it.
+
+        ``--contract-stage`` and its opposite leave the file alone by design,
+        so before this the two arms of the experiment stamped byte-identical
+        headers and a resume of one inside the other's directory was accepted.
+        """
+        bare = _provenance(loop=LoopTreatments(contract_stage=False, merge_attempts=3))
+
+        assert matrix_identity(bare) != matrix_identity(_provenance())
+
+    def test_a_changed_repair_budget_is_a_different_matrix(self) -> None:
+        # Equal attempts across arms is what makes them comparable at all, so
+        # a cell recorded under a different budget is not the same experiment.
+        once = _provenance(loop=LoopTreatments(contract_stage=True, merge_attempts=1))
+
+        assert matrix_identity(once) != matrix_identity(_provenance())
+
+    def test_the_depth_units_built_at_is_a_different_matrix(self) -> None:
+        """The schedule IS the treatment, so it cannot ride outside the id.
+
+        Two cells whose leaves reasoned at different depths are two arms of the
+        only published harness ablation with numbers behind it. A header that
+        cannot tell them apart would let a resume splice them.
+        """
+        shallow = _provenance(
+            loop=LoopTreatments(
+                contract_stage=True,
+                merge_attempts=3,
+                leaf_reasoning_effort=ReasoningEffort.LOW,
+            )
+        )
+
+        assert matrix_identity(shallow) != matrix_identity(_provenance())
+
     def test_the_same_treatment_is_the_same_matrix(self) -> None:
-        # The complement, or the three above would pass on any two stamps.
+        # The complement, or the ones above would pass on any two stamps.
         assert matrix_identity(_provenance()) == matrix_identity(_provenance())
+
+
+class TestAHandEditedHeaderCannotInventATreatment:
+    """The header is READ BACK, so its fields validate on the way in.
+
+    A resume deserialises this from a journal, and journals get hand-repaired
+    (``spend_repair`` exists for exactly that). A field typed loosely enough
+    to accept whatever the file says would report an invented treatment as the
+    one that ran, which is the failure this model exists to prevent rather
+    than a shape it should tolerate.
+    """
+
+    def test_a_depth_no_model_offers_is_refused(self) -> None:
+        with pytest.raises(ValidationError):
+            LoopTreatments.model_validate(
+                {
+                    "contract_stage": True,
+                    "merge_attempts": 3,
+                    "leaf_reasoning_effort": "extreme",
+                }
+            )
+
+    def test_a_depth_spelled_differently_is_refused(self) -> None:
+        # An enum member's own spelling, not a case-insensitive match for it.
+        with pytest.raises(ValidationError):
+            LoopTreatments.model_validate(
+                {
+                    "contract_stage": True,
+                    "merge_attempts": 3,
+                    "leaf_reasoning_effort": "Medium",
+                }
+            )
+
+    def test_more_attempts_than_the_matrix_can_grant_is_refused(self) -> None:
+        with pytest.raises(ValidationError):
+            LoopTreatments.model_validate(
+                {"contract_stage": True, "merge_attempts": MAX_MERGE_ATTEMPTS + 1}
+            )
+
+    def test_a_depth_the_manifest_offers_round_trips(self) -> None:
+        # The complement: refusing everything would pass all three above.
+        loop = LoopTreatments.model_validate(
+            {
+                "contract_stage": True,
+                "merge_attempts": 3,
+                "leaf_reasoning_effort": "low",
+            }
+        )
+
+        assert loop.leaf_reasoning_effort is ReasoningEffort.LOW
 
 
 class TestTheReportPublishesTheTreatment:
@@ -142,6 +240,10 @@ class TestTheReportPublishesTheTreatment:
         assert "temperature 1.0, top_p 0.95" in markdown
         assert "reasoning_effort high" in markdown
         assert "ghcr.io/example/sandbox@sha256:abc" in markdown
+        # The arm, which the manifest digest cannot carry: both treatments are
+        # per-run flags that leave the file alone, so without this line two
+        # arms publish identical provenance blocks.
+        assert "contract stage on, 3 merge attempt(s)" in markdown
 
     def test_an_unstated_dial_is_named_rather_than_omitted(self) -> None:
         """An absent dial is reported as unset, never as a provider default.

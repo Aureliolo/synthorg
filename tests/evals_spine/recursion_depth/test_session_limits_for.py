@@ -49,6 +49,11 @@ def _manifest(**overrides: object) -> RecursionDepthManifest:
         "planner_max_turns": 40,
         "unit_cost_ceiling": 2.0,
         "unit_token_ceiling": 1_000_000,
+        "unit_token_per_claim": 0,
+        "unit_token_cap": 4_000_000,
+        "contract_stage": True,
+        "contract_max_turns": 60,
+        "contract_token_ceiling": 2_500_000,
         "merge_token_base": 1_500_000,
         "merge_token_per_piece": 500_000,
         "merge_token_cap": 8_000_000,
@@ -154,3 +159,15 @@ class TestSizingBoundsAreValidatedAtLoad:
     def test_a_review_turn_cap_below_its_base_is_refused(self) -> None:
         with pytest.raises(ValueError, match="review_max_turns_base"):
             _manifest(review_max_turns_base=100, review_max_turns_cap=60)
+
+    def test_a_leaf_cap_below_its_ceiling_is_refused(self) -> None:
+        """The leaf pair is the one where the clamp reaches every session.
+
+        A merge or review cap sits above a base that is scaled by fan-in, so
+        an undersized cap clamps the largest of them. The leaf ceiling is the
+        floor its per-claim scaling starts from, so a cap below it sizes every
+        leaf in the sweep to the smaller number, including the ones claiming
+        nothing at all.
+        """
+        with pytest.raises(ValueError, match="unit_token_ceiling"):
+            _manifest(unit_token_ceiling=4_000_000, unit_token_cap=1_500_000)

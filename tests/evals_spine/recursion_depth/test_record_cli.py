@@ -9,6 +9,8 @@ import pytest
 from pydantic import ValidationError
 from scripts import record_recursion_depth as record_module
 from scripts.record_recursion_depth import (
+    PairOverride,
+    _parse_args,
     _reclaim_workspaces,
     _recording_slug,
     check_declared_families,
@@ -18,6 +20,7 @@ from scripts.record_recursion_depth import (
 )
 
 from evals.errors import (
+    HarnessImageUnresolvedError,
     HarnessProviderMissingError,
     RecursionDepthJudgeNotIndependentError,
 )
@@ -29,6 +32,7 @@ from evals.recursion_depth.tree import SpecBrief, load_spec_brief
 from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.config.schema import RootConfig
+from synthorg.core.completion_enums import REASONING_UNSET, ReasoningEffort
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.enums import AuthType
 from tests._shared import mock_of
@@ -334,10 +338,11 @@ class TestPlanMode:
     def test_a_matrix_the_ceiling_cannot_pay_for_says_so(self) -> None:
         """The comparison is done for the reader, on the one screen it matters.
 
-        The projection and the ceiling used to sit on adjacent lines with
-        nothing relating them, and this is where the spend decision is taken: a
-        run was launched at a ceiling four times too small from exactly that
-        reading, and it bought a whole planned tree, six built units and no
+        The projection and the ceiling are related for the reader rather than
+        left on adjacent lines, because this is where the spend decision is
+        taken: a run was launched at a ceiling four times too small from
+        exactly that reading, and it bought a whole planned tree, six built
+        units and no
         measurement at all.
         """
         starved = narrow(load_manifest(_MANIFEST), None, 200)
@@ -418,15 +423,41 @@ class TestSamplingIsStatedBeforeAnythingIsSpent:
         assert "exec declared : temperature 0.7" in plan
         assert "revw declared : temperature 0.6" in plan
 
-    def test_the_plan_names_a_dial_the_manifest_leaves_open(self) -> None:
+    def test_a_dial_a_manifest_leaves_open_reads_as_unset(self) -> None:
         """An unstated dial reads as unset rather than vanishing.
 
         Omitting it would tell the operator the pair pins nothing there, when
-        three of the four resolve downstream to a value this system supplies.
-        """
-        plan = describe_plan(load_manifest(_MANIFEST), _spec())
+        the value resolves downstream to whatever the vendor supplies.
 
-        assert "reasoning_effort unset" in plan
+        Built by unsetting the dial rather than read off the committed
+        manifest, which now states it: the property under test is how the plan
+        RENDERS an open dial, and tying that to a value the matrix pins for a
+        measured reason makes a deliberate change look like a regression.
+        """
+        manifest = load_manifest(_MANIFEST)
+        opened = manifest.model_copy(
+            update={
+                "executor": manifest.executor.model_copy(
+                    update={"reasoning_effort": None}
+                )
+            }
+        )
+
+        assert "reasoning_effort unset" in describe_plan(opened, _spec())
+
+    def test_the_committed_matrix_leaves_no_reasoning_dial_open(self) -> None:
+        """Unset is not "no treatment" for either pair this matrix binds.
+
+        Both families default an absent ``reasoning_effort`` to their most
+        expensive tier, so an unstated dial is an expensive choice nobody
+        recorded. Measured on the executor's own endpoint at an 8192-token
+        cap: unset spent the whole cap on reasoning and returned no content at
+        all, against 1,556 tokens at ``low`` and 3,345 at ``high``.
+        """
+        manifest = load_manifest(_MANIFEST)
+
+        assert manifest.executor.reasoning_effort is not None
+        assert manifest.reviewer.reasoning_effort is not None
 
     def test_an_override_reaches_the_plan_not_just_the_run(self) -> None:
         # A value applied downstream of the plan prints the manifest's own
@@ -437,8 +468,7 @@ class TestSamplingIsStatedBeforeAnythingIsSpent:
             None,
             None,
             None,
-            executor_temperature=1.0,
-            executor_top_p=0.95,
+            executor=PairOverride(temperature=1.0, top_p=0.95),
         )
 
         assert probed.executor.temperature == pytest.approx(1.0)
@@ -454,8 +484,7 @@ class TestSamplingIsStatedBeforeAnythingIsSpent:
             None,
             None,
             None,
-            executor_temperature=1.0,
-            executor_top_p=0.95,
+            executor=PairOverride(temperature=1.0, top_p=0.95),
         )
 
         assert probed.reviewer == shipped.reviewer
@@ -470,15 +499,99 @@ class TestSamplingIsStatedBeforeAnythingIsSpent:
         shipped = load_manifest(_MANIFEST)
 
         with pytest.raises(ValueError, match="probed together"):
-            narrow(shipped, None, None, None, executor_temperature=1.0)
+            narrow(shipped, None, None, None, executor=PairOverride(temperature=1.0))
 
         with pytest.raises(ValueError, match="probed together"):
-            narrow(shipped, None, None, None, executor_top_p=0.95)
+            narrow(shipped, None, None, None, executor=PairOverride(top_p=0.95))
 
     def test_naming_no_dial_changes_nothing(self) -> None:
         shipped = load_manifest(_MANIFEST)
 
         assert narrow(shipped, None, None, None) == shipped
+
+    def test_the_top_tier_is_reachable_only_by_omitting_the_parameter(self) -> None:
+        """The arm reproducing the corpus asks for the field to be ABSENT.
+
+        This executor's family dials low / high / max, the vocabulary the
+        product emits is minimal / low / medium / high, and the two overlap on
+        two values. So the tier the corpus actually ran at cannot be named, and
+        the only way back to it is the one the corpus took without deciding to:
+        send no ``reasoning_effort`` at all.
+        """
+        unset = narrow(
+            load_manifest(_MANIFEST),
+            None,
+            None,
+            None,
+            executor=PairOverride(reasoning_effort=REASONING_UNSET),
+        )
+
+        assert unset.executor.reasoning_effort is None
+        assert "reasoning_effort unset" in describe_plan(unset, _spec())
+
+    def test_asking_for_no_override_is_not_asking_for_no_reasoning(self) -> None:
+        # The two arrive one character apart on a command line and mean
+        # opposite things: an unnamed flag keeps the pinned tier, and `none`
+        # asks for the most expensive one there is.
+        shipped = load_manifest(_MANIFEST)
+
+        assert narrow(shipped, None, None, None).executor == shipped.executor
+
+    def test_units_can_be_bound_below_the_pair_that_plans_and_assembles(
+        self,
+    ) -> None:
+        """The sandwich: deep to plan and assemble, shallow to build.
+
+        The only published harness ablation with numbers behind it reports
+        reasoning deeply everywhere and reasoning moderately everywhere as the
+        two arms that LOSE, so a matrix that can only move one global tier
+        cannot express the arm that won.
+        """
+        sandwiched = narrow(
+            load_manifest(_MANIFEST),
+            None,
+            None,
+            None,
+            leaf_reasoning_effort="low",
+        )
+
+        assert sandwiched.leaf_reasoning_effort is ReasoningEffort.LOW
+        # The outer phases must NOT move with it, or the arm is the losing
+        # uniform one wearing the winning arm's name.
+        assert (
+            sandwiched.executor.reasoning_effort
+            == load_manifest(_MANIFEST).executor.reasoning_effort
+        )
+
+    def test_asking_units_for_no_override_leaves_them_on_the_pair(self) -> None:
+        # `none` is the third state and means "build at whatever the pair
+        # carries", which is what every recording before the flag existed did.
+        #
+        # Started from a manifest that PINS a depth, because the committed one
+        # leaves it unset: asserting `None` against that manifest holds whether
+        # or not the sentinel branch runs at all, so the clearing is what has
+        # to be observed rather than the absence.
+        pinned = narrow(
+            load_manifest(_MANIFEST), None, None, None, leaf_reasoning_effort="low"
+        )
+        assert pinned.leaf_reasoning_effort is ReasoningEffort.LOW
+
+        bound = narrow(pinned, None, None, None, leaf_reasoning_effort=REASONING_UNSET)
+
+        assert bound.leaf_reasoning_effort is None
+
+    def test_the_flag_refuses_a_tier_this_vocabulary_cannot_spell(self) -> None:
+        """A value the manifest would reject is rejected before the boot.
+
+        Left to the manifest, a mistyped tier costs a full registry build per
+        queued cell before anything refuses it, which is how a queue of six
+        variants reported four failures with no cell attempted.
+        """
+        with pytest.raises(SystemExit):
+            _parse_args(["--executor-reasoning-effort", "max"])
+
+        named = _parse_args(["--executor-reasoning-effort", REASONING_UNSET])
+        assert named.executor_reasoning_effort == REASONING_UNSET
 
     def test_an_out_of_range_override_is_refused(self) -> None:
         # Re-validated rather than copied: the value came off a command line.
@@ -492,8 +605,7 @@ class TestSamplingIsStatedBeforeAnythingIsSpent:
                 None,
                 None,
                 None,
-                executor_temperature=1.0,
-                executor_top_p=1.5,
+                executor=PairOverride(temperature=1.0, top_p=1.5),
             )
 
 
@@ -539,6 +651,102 @@ class TestPreflightGuardsTheBoot:
             )
 
         assert not built
+
+    async def test_an_unresolvable_image_stops_before_the_sweep_spends(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """The second ordering, and the one that costs money to get wrong.
+
+        This check cannot run before the host, because unless the operator
+        names an image the reference comes from the booted instance's own
+        settings resolver. What it must still beat is the FIRST SESSION:
+        planning runs entirely through the gateway, so a cell that cannot be
+        graded buys a whole plan before anything opens a container. Asserted
+        on the sweep never being reached, since a refusal after it would type
+        -check identically and read identically in the report.
+        """
+        swept: list[object] = []
+        missing = "no image under that reference"
+        swept_early = "the sweep ran before the image was resolved"
+
+        async def _refuse(_references: object) -> None:
+            raise HarnessImageUnresolvedError(missing)
+
+        async def _sweep(*args: object, **kwargs: object) -> object:
+            del args, kwargs
+            swept.append(True)
+            raise AssertionError(swept_early)
+
+        # The provider probe sits earlier in the same preflight and would
+        # otherwise dial a real endpoint. Its own ordering is pinned by the
+        # sibling test above; what is under test here is the check AFTER it.
+        async def _probe(**kwargs: object) -> None:
+            del kwargs
+
+        monkeypatch.setattr(record_module, "run_preflight", _probe)
+        monkeypatch.setattr(record_module, "check_images_resolve", _refuse)
+        monkeypatch.setattr(record_module, "run_sweep", _sweep)
+        # `_record` ENTERS the host before it asks about the image, so leaving
+        # these real made this ordering assertion connect and migrate a
+        # scratch database, seed the project and serve the gateway on its way
+        # to the one call it is about. The same collaborators `_recorded`
+        # stubs, for the same reason.
+        _stub_the_host(monkeypatch)
+
+        with pytest.raises(HarnessImageUnresolvedError):
+            await record_module._record(
+                record_module._parse_args(["--record", "--work-root", str(tmp_path)]),
+                manifest=load_manifest(_MANIFEST),
+                spec=_spec(),
+                company_config=_config(
+                    executor_family="bound-family-a",
+                    reviewer_family="bound-family-b",
+                ),
+            )
+
+        assert not swept
+
+
+class TestThePlanNamesTheTreatment:
+    """An operator deciding to spend can see which arm they are buying.
+
+    Every sampling dial already prints here, on the reasoning that inputs to
+    the result belong on the screen where the decision is taken. The two
+    settings that decide what the LOOP does were the ones missing, so two arms
+    of the same experiment printed identically up to the moment of spending.
+    """
+
+    def test_the_contract_stage_is_named(self) -> None:
+        manifest = load_manifest(_MANIFEST)
+
+        plan = record_module.describe_plan(manifest, _spec())
+
+        assert "contract stage" in plan
+
+    def test_an_inherited_leaf_depth_does_not_read_as_unset(self) -> None:
+        # "unset" elsewhere on this screen means the manifest pins nothing and
+        # the model is asked with the field absent. Leaves inheriting the
+        # executor's depth is a different claim, and printing it in the other
+        # one's vocabulary would misreport what the run is about to do.
+        manifest = record_module.narrow(
+            load_manifest(_MANIFEST), None, None, None, leaf_reasoning_effort=None
+        )
+
+        plan = record_module.describe_plan(manifest, _spec())
+
+        assert "the executor's own" in plan
+
+    def test_a_declared_leaf_depth_is_named(self) -> None:
+        manifest = record_module.narrow(
+            load_manifest(_MANIFEST), None, None, None, leaf_reasoning_effort="low"
+        )
+
+        plan = record_module.describe_plan(manifest, _spec())
+
+        # Label AND value, as the temperature assertion above does: "low" on
+        # its own is a substring of the whole plan text, so a dropped or
+        # renamed leaf-depth row would leave this passing.
+        assert "leaf depth    : low" in plan
 
 
 class TestStaging:
@@ -677,6 +885,40 @@ def _record_args(tmp_path: Path) -> argparse.Namespace:
     )
 
 
+def _stub_the_host(
+    monkeypatch: pytest.MonkeyPatch, *, release: Exception | None = None
+) -> None:
+    """Stand in for the gateway host and everything its context build needs.
+
+    ``_record`` ENTERS the host before it reaches most of what a test of its
+    ordering is about, and the real one connects and migrates a scratch
+    database, seeds the project and serves a gateway. One owner rather than a
+    set repeated per test, because a second copy is one collaborator away from
+    the older of them quietly booting for real again.
+
+    Args:
+        monkeypatch: Patching seam.
+        release: Raised when the containers are released, or ``None`` for a
+            release that succeeds.
+    """
+    host = mock_of[RecordingGatewayHost](
+        # The addresses the start log states, which is everything the
+        # lifecycle under test reads off a host.
+        container_gateway_url="http://gateway.invalid/v1",
+        port=0,
+    )
+    host.__aenter__.return_value = host
+    host.__aexit__.return_value = False
+    binder = mock_of[HarnessBinder]()
+    binder.release_all_sandboxes.side_effect = release
+
+    monkeypatch.setattr(record_module, "RecordingGatewayHost", lambda _c: host)
+    monkeypatch.setattr(record_module, "HarnessBinder", lambda **_k: binder)
+    monkeypatch.setattr(record_module, "_host_config", lambda *a, **k: None)
+    monkeypatch.setattr(record_module, "_build_context", _built_context)
+    monkeypatch.setattr(record_module, "capture_provenance", lambda **_k: None)
+
+
 def _recorded(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -705,16 +947,7 @@ def _recorded(
     root = tmp_path / "work" / f"run-{_recording_slug(tmp_path / 'out')}"
     (root / "unit").mkdir(parents=True)
 
-    host = mock_of[RecordingGatewayHost](
-        # The addresses the start log states, which is everything the
-        # lifecycle under test reads off a host.
-        container_gateway_url="http://gateway.invalid/v1",
-        port=0,
-    )
-    host.__aenter__.return_value = host
-    host.__aexit__.return_value = False
-    binder = mock_of[HarnessBinder]()
-    binder.release_all_sandboxes.side_effect = release
+    _stub_the_host(monkeypatch, release=release)
 
     async def _no_preflight(**_kwargs: object) -> None:
         return None
@@ -724,12 +957,14 @@ def _recorded(
             raise sweep
         return SimpleNamespace(measured_cells=("one",))
 
+    async def _images_resolve(_references: object) -> None:
+        return None
+
     monkeypatch.setattr(record_module, "run_preflight", _no_preflight)
-    monkeypatch.setattr(record_module, "RecordingGatewayHost", lambda _c: host)
-    monkeypatch.setattr(record_module, "HarnessBinder", lambda **_k: binder)
-    monkeypatch.setattr(record_module, "_host_config", lambda *a, **k: None)
-    monkeypatch.setattr(record_module, "_build_context", _built_context)
-    monkeypatch.setattr(record_module, "capture_provenance", lambda **_k: None)
+    # The image check talks to the daemon, and what is under test here is which
+    # scratch root survives a failure. Its own behaviour is pinned in
+    # `test_image_preflight.py`.
+    monkeypatch.setattr(record_module, "check_images_resolve", _images_resolve)
     monkeypatch.setattr(record_module, "run_sweep", _swept)
     monkeypatch.setattr(record_module, "write_report", lambda *_a: (tmp_path / "r",))
     return root

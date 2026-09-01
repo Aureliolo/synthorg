@@ -49,7 +49,12 @@ from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
+from synthorg.engine.prompt_safety import (
+    TAG_PEER_CONTRIBUTION,
+    TAG_TASK_DATA,
+    TAG_UNTRUSTED_ARTIFACT,
+    wrap_untrusted,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
     EVALS_RECURSION_MERGE_ATTEMPTED,
@@ -127,6 +132,12 @@ class MergePlan:
             handing it the merge's own bound by omission is how the gate
             starved: the review is what actually decides the arm.
         attempts: How many merge attempts this node gets, in either arm.
+        bound: Whether a contract stage fixed the shape, so this workspace and
+            every piece mounted into it start from the same tree. Changes what
+            the assembler is TOLD, which is the half that decides how it
+            reads: told nothing, a measured assembly made 480 shell calls and
+            7 file writes, foraging through pieces it had no reason to expect
+            to match.
     """
 
     task: Task
@@ -138,6 +149,7 @@ class MergePlan:
     merge_limits: SessionLimits
     review_limits: SessionLimits
     attempts: int
+    bound: bool = False
 
 
 @dataclass(frozen=True)
@@ -168,6 +180,11 @@ class MergeOutcome:
         tokens: What they spent in tokens.
         input_tokens: The input half of ``tokens``.
         output_tokens: The output half of ``tokens``.
+        review_tokens: The REVIEWING share of ``tokens``, held apart so a
+            reader can tell assembling from judging. Folded into one figure
+            the two are unrecoverable, and the judging half is the one that
+            floats: three recorded cells' gate sessions made 85, 159 and 257
+            shell calls on byte-identical configuration.
         executor: The pair the assembling sessions ran on.
         reviewer: The pair that JUDGED, absent in the ungated arm. Recorded
             here rather than only in the sweep provenance because the gate is
@@ -214,6 +231,7 @@ class MergeOutcome:
     tokens: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
+    review_tokens: int = 0
     executor: ModelPair | None = None
     reviewer: ModelPair | None = None
     verdict: str | None = None
@@ -245,6 +263,14 @@ class _MergeSpend:
         tokens: Tokens booked across both kinds.
         input_tokens: The input half of ``tokens``.
         output_tokens: The output half of ``tokens``.
+        review_tokens: The REVIEWING half of ``tokens``, on its own. Folded
+            into one figure, the two are not separable afterwards by anything
+            reading the record, and the reviewer's effort is precisely what
+            floats: on byte-identical configuration, three recorded cells' gate
+            sessions made 85, 159 and 257 shell calls, and their spend was 19%,
+            15% and 16% of their cells. A confound that large has to be
+            visible in the artifact rather than recoverable only by somebody
+            who still has the transcripts.
     """
 
     sessions: int = 0
@@ -253,6 +279,7 @@ class _MergeSpend:
     tokens: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
+    review_tokens: int = 0
 
     def plus(
         self,
@@ -262,6 +289,7 @@ class _MergeSpend:
         tokens: int,
         input_tokens: int,
         output_tokens: int,
+        reviewing: bool = False,
     ) -> _MergeSpend:
         """Add one further session's figures.
 
@@ -286,6 +314,7 @@ class _MergeSpend:
             tokens=self.tokens + tokens,
             input_tokens=self.input_tokens + input_tokens,
             output_tokens=self.output_tokens + output_tokens,
+            review_tokens=self.review_tokens + (tokens if reviewing else 0),
         )
 
 
@@ -353,18 +382,72 @@ def _piece_state(piece: MergePiece) -> str:
     first is what made a live root merge, handed 277 modules across seven
     subtrees, write nothing at all across six attempts.
 
+    A piece carrying only a NOTE is in the clean state and reads as one: its
+    own-test gate decided nothing rather than deciding against it, so the
+    note travels as context and never as the not-signed-off mark, which the
+    merge is told to treat as work needing repair.
+
     Returns:
-        The annotation, empty for a piece that arrived clean.
+        The annotation, empty for a piece that arrived clean and unremarked.
     """
     if not piece.delivery.produced:
         return "  [BUILT NOTHING]"
     if piece.delivery.reason:
         return f"  [BUILT, BUT NOT SIGNED OFF: {piece.delivery.reason}]"
+    if piece.delivery.note:
+        return f"  [BUILT; {piece.delivery.note}]"
     return ""
+
+
+_ISOLATION_FREE: Final[str] = (
+    "Each piece was built on its own. Any state noted against a piece above is "
+    "that piece's own, and none of it says whether they work together, which "
+    "is what this job is for. A piece marked as not signed off is still the "
+    "work: assemble it and fix what is wrong with it, rather than writing it "
+    "again."
+)
+
+_ISOLATION_BOUND: Final[str] = (
+    "Every piece was built from the SAME starting tree you are sitting in. "
+    "The modules, the signatures and the types that cross between them were "
+    "agreed before any piece started, and each piece then filled in the part "
+    "it owns.\n\n"
+    "So what separates a piece from your tree is what that piece ADDED, and "
+    "that is the only thing you need to look at. Diff a piece against your own "
+    "tree and read what comes back, rather than reading the piece whole: the "
+    "shared shape is already here, and re-reading it in each piece is how an "
+    "assembly spends its whole budget before it writes anything.\n\n"
+    "Any state noted against a piece above is that piece's own and says "
+    "nothing about whether they work together, which is what this job is for. "
+    "A piece marked as not signed off is still the work: assemble it and fix "
+    "what is wrong with it, rather than writing it again."
+)
+
+_AMENDING_FREE: Final[str] = (
+    "You may change a child's interface to make the pieces fit. That is "
+    "expected: contracts written before the code was written do not survive "
+    "it. Every time you do, record it in the report on its own line beginning "
+    f"`{AMENDMENT_MARKER}` and say what you changed and why."
+)
+
+_AMENDING_BOUND: Final[str] = (
+    "The agreed shape is what the pieces were built against, so changing it "
+    "is the expensive move rather than the routine one: every piece calls it "
+    "as it was written, and a signature you improve here is one you then have "
+    "to chase through all of them. Prefer keeping it and fixing the piece.\n\n"
+    "When a piece genuinely cannot deliver its requirement within the agreed "
+    "shape, change it, and record every such change in the report on its own "
+    f"line beginning `{AMENDMENT_MARKER}`, saying what you changed and why."
+)
 
 
 def merge_brief(plan: MergePlan, findings: tuple[str, ...]) -> str:
     """Compose the brief one merge attempt runs against.
+
+    Whether a contract stage fixed the shape every piece was built from is
+    read off *plan* rather than taken as an argument: it is already the
+    plan's, and a second source for one value is a caller away from rendering
+    a bound brief for an unbound assembly.
 
     Args:
         plan: The node being assembled.
@@ -374,25 +457,28 @@ def merge_brief(plan: MergePlan, findings: tuple[str, ...]) -> str:
     Returns:
         The brief.
     """
-    stated = [f"Objective: {plan.task.title}", "The pieces, and where they are:"]
-    stated.extend(
-        f"- `{CHILDREN_DIR}/{piece.slug}/`: {piece.title}{_piece_state(piece)}"
-        for piece in plan.pieces
-    )
+    # Fenced by PROVENANCE, not in one block. Three different parties author
+    # what follows and the tag is what tells a reader which one a prompt
+    # injection came from: the plan is the task's own brief, the piece states
+    # are other agents' produced work (including verbatim pytest output from a
+    # failed leaf, so a hostile test file's text reaches here), and the
+    # findings are an upstream reviewer's free prose. `completion_oracle` and
+    # `redteam` already draw these apart on the same three kinds.
+    stated = [f"Objective: {plan.task.title}"]
     if plan.criteria:
         stated.append("The whole is only working when all of these hold:")
         stated.extend(f"- {criterion}" for criterion in plan.criteria)
+    produced = ["The pieces, and where they are:"]
+    produced.extend(
+        f"- `{CHILDREN_DIR}/{piece.slug}/`: {piece.title}{_piece_state(piece)}"
+        for piece in plan.pieces
+    )
+    reviewed = []
     if findings:
-        stated.append("An independent reviewer rejected the last attempt:")
-        stated.extend(f"- {finding}" for finding in findings)
+        reviewed.append("An independent reviewer rejected the last attempt:")
+        reviewed.extend(f"- {finding}" for finding in findings)
     sections = [
-        (
-            "Each piece was built on its own. Any state noted against a piece "
-            "above is that piece's own, and none of it says whether they work "
-            "together, which is what this job is for. A piece marked as not "
-            "signed off is still the work: assemble it and fix what is wrong "
-            "with it, rather than writing it again."
-        ),
+        _ISOLATION_BOUND if plan.bound else _ISOLATION_FREE,
         (
             f"The pieces are copies under `{CHILDREN_DIR}/`, for you to read "
             "and take from. The deliverable is the tree at the workspace root: "
@@ -407,13 +493,7 @@ def merge_brief(plan: MergePlan, findings: tuple[str, ...]) -> str:
             "tests up with their code and make them pass against the "
             "assembly."
         ),
-        (
-            "You may change a child's interface to make the pieces fit. That "
-            "is expected: contracts written before the code was written do not "
-            "survive it. Every time you do, record it in the report on its own "
-            f"line beginning `{AMENDMENT_MARKER}` and say what you changed and "
-            "why."
-        ),
+        _AMENDING_BOUND if plan.bound else _AMENDING_FREE,
         (
             f"Record what you did in `{MERGE_REPORT_PATH}` and put the "
             "end-to-end run's own output, verbatim, in "
@@ -427,7 +507,10 @@ def merge_brief(plan: MergePlan, findings: tuple[str, ...]) -> str:
             "by tests you will never see."
         ),
         wrap_untrusted(TAG_TASK_DATA, "\n".join(stated)),
+        wrap_untrusted(TAG_UNTRUSTED_ARTIFACT, "\n".join(produced)),
     ]
+    if reviewed:
+        sections.append(wrap_untrusted(TAG_PEER_CONTRIBUTION, "\n".join(reviewed)))
     return "\n\n".join(sections)
 
 
@@ -480,6 +563,7 @@ async def run_merge(
             tokens=review.tokens,
             input_tokens=review.input_tokens,
             output_tokens=review.output_tokens,
+            reviewing=True,
         )
         logger.info(
             EVALS_RECURSION_MERGE_ATTEMPTED,
@@ -509,6 +593,7 @@ async def run_merge(
         tokens=spend.tokens,
         input_tokens=spend.input_tokens,
         output_tokens=spend.output_tokens,
+        review_tokens=spend.review_tokens,
         executor=ModelPair.of(plan.owner, deps.declared_pairs),
         reviewer=review.reviewer,
         verdict=review.verdict,

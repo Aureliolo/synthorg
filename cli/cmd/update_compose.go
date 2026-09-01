@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/Aureliolo/synthorg/cli/internal/compose"
@@ -212,7 +213,7 @@ func applyComposeDiff(cmd *cobra.Command, _ string, existing, fresh []byte, safe
 	// The diff is multi-line verbatim content; print it through the UI's
 	// passthrough so it still respects quiet mode.
 	if !out.IsQuiet() {
-		out.Plain(lineDiff(string(existing), string(fresh)))
+		out.Plain(lineDiff(string(existing), string(fresh), secretValues(state)))
 	}
 
 	ok, err := confirmUpdate(cmd.Context(), "Apply compose configuration changes?", autoApply)
@@ -231,21 +232,57 @@ func applyComposeDiff(cmd *cobra.Command, _ string, existing, fresh []byte, safe
 	return true, nil
 }
 
-// secretKeyPattern matches YAML lines containing known sensitive keys.
-// Used by lineDiff to redact sensitive values before displaying.
-// Covers common secret naming conventions to prevent leaking credentials
-// in terminal scrollback or CI logs when the compose template changes.
+// secretKeyPattern matches YAML lines whose KEY names a secret. It is the
+// weaker of the two redaction layers and cannot be the only one: it has to
+// anticipate every name the template might ever render, and two of the names
+// it renders today carry a secret while matching none of these alternatives
+// (SYNTHORG_MASTER_KEY, and SYNTHORG_DATABASE_URL, whose DSN embeds the
+// Postgres password). It is kept because it covers a key whose value this
+// process does not hold, and because it redacts to the tidier "KEY: [REDACTED]"
+// form rather than punching a hole in the middle of a line.
 var secretKeyPattern = regexp.MustCompile(
 	`(?i)^\s*\w*(SECRET|PASSWORD|TOKEN|API_KEY|CREDENTIALS|ENCRYPTION_KEY|SETTINGS_KEY|PRIVATE_KEY|CERT)\w*\s*:`,
 )
 
+// redactedMarker replaces a secret wherever one is found.
+const redactedMarker = "[REDACTED]"
+
+// minRedactableSecretLen is the shortest value worth replacing by value.
+// Redaction by value is what covers a key the name pattern cannot anticipate,
+// but a one- or two-character value occurs all over an ordinary compose file,
+// so replacing every occurrence would corrupt the diff rather than protect
+// anything. A short value under a key the pattern does know is still covered
+// by the first layer.
+const minRedactableSecretLen = 8
+
+// secretValues returns the secrets this deployment actually holds, longest
+// first so that a value containing another is replaced whole instead of
+// leaving the shorter one's tail behind.
+func secretValues(state config.State) []string {
+	values := make([]string, 0, 5)
+	for _, candidate := range []string{
+		state.MasterKey,
+		state.PostgresPassword,
+		state.JWTSecret,
+		state.SettingsKey,
+		state.CursorSecret,
+	} {
+		if len(candidate) >= minRedactableSecretLen {
+			values = append(values, candidate)
+		}
+	}
+	slices.SortFunc(values, func(a, b string) int { return len(b) - len(a) })
+	return values
+}
+
 // lineDiff produces a bag-based diff showing added (+) and removed (-) lines
-// between two strings. Lines containing secret keys are redacted.
+// between two strings. Secrets are redacted, both by key name and by the
+// values in `secrets` (see redactSecret).
 //
 // Note: this uses multiset membership, not positional diffing. Reordered
 // lines are not reported as changes. This is acceptable for compose files
 // where the user approves structural additions/removals, not reorderings.
-func lineDiff(oldText, updated string) string {
+func lineDiff(oldText, updated string, secrets []string) string {
 	oldLines := strings.Split(oldText, "\n")
 	newLines := strings.Split(updated, "\n")
 
@@ -266,7 +303,7 @@ func lineDiff(oldText, updated string) string {
 			continue
 		}
 		b.WriteString("  - ")
-		b.WriteString(redactSecret(l))
+		b.WriteString(redactSecret(l, secrets))
 		b.WriteByte('\n')
 	}
 	for _, l := range newLines {
@@ -275,20 +312,27 @@ func lineDiff(oldText, updated string) string {
 			continue
 		}
 		b.WriteString("  + ")
-		b.WriteString(redactSecret(l))
+		b.WriteString(redactSecret(l, secrets))
 		b.WriteByte('\n')
 	}
 	return b.String()
 }
 
-// redactSecret replaces secret values with [REDACTED] in diff output.
-// Uses the regex submatch end position to find the colon reliably,
-// rather than scanning from the start of the line.
-func redactSecret(line string) string {
+// redactSecret replaces secret values with [REDACTED] in diff output, in two
+// layers. The key-name layer runs first and wins the whole line, because it
+// produces the tidier form and covers a key whose value this process does not
+// hold. The value layer then catches what the names cannot: a secret reaches
+// the diff under whatever key the template happens to render it under, and
+// matching the value is the only form of that check which cannot be outrun by
+// a key added later.
+func redactSecret(line string, secrets []string) string {
 	loc := secretKeyPattern.FindStringIndex(line)
 	if loc != nil {
 		// loc[1] is past the trailing ":", so the key + colon is line[:loc[1]].
-		return line[:loc[1]] + " [REDACTED]"
+		return line[:loc[1]] + " " + redactedMarker
+	}
+	for _, secret := range secrets {
+		line = strings.ReplaceAll(line, secret, redactedMarker)
 	}
 	return line
 }
@@ -339,8 +383,14 @@ func imageLinePattern() *regexp.Regexp {
 // `image:` lines silently leaves them at their old digests -- and, when
 // sandbox mode requires them, patchComposeImageRefs must be able to find
 // them to satisfy its own completeness check.
+//
+// The value group admits a backslash escape, because compose.YAMLStr (which
+// renders these lines, and which this file's own patch path re-uses) writes
+// an embedded quote as \". A group that stopped at the first `"` could not
+// re-read what its own writer can produce, so a registry host carrying a
+// literal quote would match nothing and report the line as absent.
 var standaloneImageEnvPattern = regexp.MustCompile(
-	`(?m)^([ \t]*SYNTHORG_(SANDBOX|SIDECAR|FINE_TUNE)_IMAGE:\s+)"[^"\r\n]*"([ \t]*(?:#[^\r\n]*)?)$`,
+	`(?m)^([ \t]*SYNTHORG_(SANDBOX|SIDECAR|FINE_TUNE)_IMAGE:\s+)"(?:[^"\\\r\n]|\\.)*"([ \t]*(?:#[^\r\n]*)?)$`,
 )
 
 // standaloneImageName maps a standaloneImageEnvPattern kind capture

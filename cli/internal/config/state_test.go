@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDefaultState(t *testing.T) {
@@ -400,6 +401,51 @@ func TestSaveCreatesDirectory(t *testing.T) {
 	// Verify the file exists.
 	if _, err := os.Stat(StatePath(nested)); err != nil {
 		t.Fatalf("config file should exist: %v", err)
+	}
+}
+
+// TestSaveSweepsOrphanedTempsHoldingSecrets covers what a forced second
+// Ctrl+C leaves behind. writeFileAtomic's own deferred cleanup does not run
+// through os.Exit, so the temp sibling survives holding a full cleartext copy
+// of master_key, settings_key, cursor_secret and postgres_password.
+func TestSaveSweepsOrphanedTempsHoldingSecrets(t *testing.T) {
+	tmp := t.TempDir()
+	orphan := StatePath(tmp) + ".tmp-4242-deadbeef"
+	if err := os.WriteFile(orphan, []byte(`{"master_key":"leaked"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stale := time.Now().Add(-2 * StaleAtomicTempAge)
+	if err := os.Chtimes(orphan, stale, stale); err != nil {
+		t.Fatal(err)
+	}
+	s := State{DataDir: tmp, ImageTag: "latest", BackendPort: 3001, WebPort: 3000, LogLevel: "info"}
+
+	if err := Save(s); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
+		t.Errorf("orphaned temp holding secrets should have been swept, stat err = %v", err)
+	}
+}
+
+// TestSaveKeepsFreshTemps is the other half: the sweep must not delete a
+// concurrent writer's in-flight temp file, which is the whole reason those
+// names carry a pid and a nonce.
+func TestSaveKeepsFreshTemps(t *testing.T) {
+	tmp := t.TempDir()
+	inFlight := StatePath(tmp) + ".tmp-9999-cafebabe"
+	if err := os.WriteFile(inFlight, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := State{DataDir: tmp, ImageTag: "latest", BackendPort: 3001, WebPort: 3000, LogLevel: "info"}
+
+	if err := Save(s); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	if _, err := os.Stat(inFlight); err != nil {
+		t.Errorf("a fresh temp is a live writer's, not an orphan: %v", err)
 	}
 }
 

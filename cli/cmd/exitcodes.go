@@ -45,8 +45,15 @@ func NewExitError(code int, err error) *ExitError {
 // ChildExitError carries the exit code from a re-exec'd child process.
 // The program entrypoint inspects this via ChildExitCode to call os.Exit
 // with the child's code instead of printing a generic error message.
+//
+// Signaled is kept beside Code because normalizeChildExitCode maps the -1
+// os/exec reports for a signal-terminated child onto ExitRuntime, and after
+// that mapping the code alone can no longer tell a child the operator killed
+// from one that failed on its own and exited 1. interruptExplains needs
+// exactly that distinction.
 type ChildExitError struct {
-	Code int
+	Code     int
+	Signaled bool
 }
 
 func (e *ChildExitError) Error() string {

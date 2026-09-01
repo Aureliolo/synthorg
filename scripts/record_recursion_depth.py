@@ -37,11 +37,15 @@ import asyncio
 import hashlib
 import json
 import shutil
+from collections.abc import Coroutine
+from contextlib import suppress
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import Final
 
 from evals.errors import (
+    HarnessGatewayUnavailableError,
     RecursionDepthCapabilityUnresolvedError,
     RecursionDepthJudgeNotIndependentError,
     RecursionDepthNoCellsMeasuredError,
@@ -78,7 +82,7 @@ from evals.recursion_depth.models import (
     RecursionDepthReport,
 )
 from evals.recursion_depth.planner import AgentSessionPlanner
-from evals.recursion_depth.preflight import run_preflight
+from evals.recursion_depth.preflight import check_images_resolve, run_preflight
 from evals.recursion_depth.provenance import capture_provenance, provider_is_priced
 from evals.recursion_depth.runner import (
     SessionBudget,
@@ -97,6 +101,7 @@ from evals.recursion_depth.tree import SpecBrief, arm_recursion, load_spec_brief
 from evals.runner.execution import EVAL_TASK_PROJECT, seed_eval_project
 from synthorg.config.loader import load_config
 from synthorg.config.schema import RootConfig
+from synthorg.core.completion_enums import REASONING_UNSET, ReasoningEffort
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
@@ -451,6 +456,14 @@ def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
         # unstated.
         f"  independence  : {manifest.independence.value}",
         f"  merge attempts: {manifest.merge_attempts} (the SAME in every arm)",
+        # The two treatments that decide what the loop DOES, on the same
+        # screen as the pairs and the projection. Without them an operator
+        # previewing a plan can read every dial that affects how a session
+        # samples and none of the ones that affect which sessions run: two
+        # arms of the same experiment print identically right up to the point
+        # of spending on them.
+        f"  contract stage: {'on' if manifest.contract_stage else 'off'}",
+        f"  leaf depth    : {_leaf_depth(manifest)}",
         "",
         f"  runs          : {len(cells)}",
         *_projection_lines(manifest, projected),
@@ -461,6 +474,18 @@ def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
         lines.extend(["", f"  CAVEAT: {caveat}"])
     lines.extend(["", "Each session spends real provider tokens. Pass --record."])
     return "\n".join(lines)
+
+
+def _leaf_depth(manifest: RecursionDepthManifest) -> str:
+    """How the plan should describe the depth units build at.
+
+    Returns:
+        The declared depth, or a phrase saying they inherit the executor's,
+        which is not the same claim as "unset" and must not read like one.
+    """
+    if manifest.leaf_reasoning_effort is None:
+        return "the executor's own"
+    return f"{manifest.leaf_reasoning_effort.value} (a second builder pool)"
 
 
 async def _release(
@@ -491,6 +516,62 @@ async def _release(
             await binder.release_all_sandboxes()
     finally:
         await _reclaim_workspaces(run_work_root, keep=keep)
+
+
+async def _while_the_gateway_serves(
+    sweep: Coroutine[object, object, RecursionDepthReport],
+    *,
+    serving: asyncio.Task[None] | None,
+) -> RecursionDepthReport:
+    """Run *sweep*, but stop if the gateway it dispatches through dies.
+
+    Every completion the matrix measures goes through this host, so a serving
+    task that ends mid-run turns each remaining cell into a connection error
+    recorded as that cell's own unavailable row: real money spent measuring
+    nothing, under a reason naming the wrong subsystem. The host has always
+    exposed the task for this, and nothing read it, so the failure surfaced
+    only at teardown, after the whole matrix had run against a dead socket.
+
+    Args:
+        sweep: The matrix to run.
+        serving: The host's accept loop, or ``None`` if it was never started.
+
+    Returns:
+        What the sweep produced.
+
+    Raises:
+        HarnessGatewayUnavailableError: The serving task ended first.
+    """
+    running = asyncio.ensure_future(sweep)
+    if serving is None:
+        return await running
+    done, _pending = await asyncio.wait(
+        (running, serving), return_when=asyncio.FIRST_COMPLETED
+    )
+    if running in done:
+        return await running
+    # The gateway went first. Stop the sweep before it books another cell
+    # against a socket that is gone.
+    running.cancel()
+    with suppress(asyncio.CancelledError):
+        await running
+    detail = "it ended without raising"
+    if serving.cancelled():
+        # Task.exception() RAISES CancelledError for a cancelled task rather
+        # than returning it, and this function does not own `serving`: the
+        # host's own teardown, or an interrupt reaching the task group, can
+        # settle it that way. Asking first is what keeps the documented
+        # HarnessGatewayUnavailableError, naming the matrix that stopped,
+        # from being replaced by a bare CancelledError that names nothing.
+        detail = "it was cancelled"
+    elif (failure := serving.exception()) is not None:
+        detail = f"{type(failure).__name__}: {safe_error_description(failure)}"
+    msg = (
+        f"the recording gateway stopped serving mid-matrix, so every cell "
+        f"after it would have been recorded unavailable against a dead "
+        f"socket: {detail}"
+    )
+    raise HarnessGatewayUnavailableError(msg)
 
 
 async def _sweep_under(
@@ -582,14 +663,31 @@ async def _record(
                 work_root=run_work_root,
                 company_config=company_config,
             )
+            # After the host resolved it and before the first session is paid
+            # for. It cannot be asked earlier: unless `--sandbox-image` names
+            # one, the reference comes from the running instance's own settings
+            # resolver, which needs a booted app. It must not be asked later:
+            # planning runs entirely through the gateway, so a cell buys a
+            # whole plan before anything opens a container (measured at 85,555
+            # tokens for a cell that then died on `[404] No such image`).
+            #
+            # The sandbox image only. The sidecar is deliberately not checked:
+            # every sandbox this harness builds is created with `network:
+            # none`, under which `DockerSandbox._needs_sidecar()` is
+            # unconditionally False, so no sidecar container is ever created
+            # and its reference reaches nothing but a provenance field.
+            await check_images_resolve((host.sandbox_image,))
             _log_record_start(args, manifest=manifest, host=host)
-            report = await _sweep_under(
-                context,
-                args=args,
-                manifest=manifest,
-                spec=spec,
-                company_config=company_config,
-                sandbox_image=host.sandbox_image,
+            report = await _while_the_gateway_serves(
+                _sweep_under(
+                    context,
+                    args=args,
+                    manifest=manifest,
+                    spec=spec,
+                    company_config=company_config,
+                    sandbox_image=host.sandbox_image,
+                ),
+                serving=host.serving,
             )
             # Written inside the host's lifetime so a teardown that overruns
             # cannot discard a sweep that already cost real money to produce.
@@ -674,6 +772,7 @@ async def _build_context(
         executor=manifest.executor,
         reviewer=manifest.reviewer,
         capability=capability,
+        leaf_effort=manifest.leaf_reasoning_effort,
     )
     deps = _build_deps(
         host,
@@ -956,6 +1055,66 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--executor-reasoning-effort",
+        default=None,
+        choices=(*(member.value for member in ReasoningEffort), REASONING_UNSET),
+        help=(
+            "Override the executor pair's reasoning depth for this run. The "
+            "largest measured lever there is: this family defaults an absent "
+            "value to its most expensive tier, and across three recorded cells "
+            "95-100%% of every session's emitted text was thinking rather than "
+            "content or tool calls. A per-run flag for the same reason "
+            "--executor-temperature is one: the committed value is the "
+            "experimental DESIGN, and two variants must differ by a flag "
+            "rather than by an edit to the file whose digest the journal pins. "
+            f"'{REASONING_UNSET}' omits the parameter, which is how the arm "
+            "reproducing the corpus reaches a tier this vocabulary cannot "
+            "spell. Constrained here rather than left to the manifest, because "
+            "a value it refuses costs a boot of the whole registry before it "
+            "is refused, once per queued cell."
+        ),
+    )
+    parser.add_argument(
+        "--leaf-reasoning-effort",
+        default=None,
+        choices=(*(member.value for member in ReasoningEffort), REASONING_UNSET),
+        help=(
+            "Reasoning depth for the agents that BUILD units, leaving planning, "
+            "the contract and assembly at the executor's own. The one published "
+            "harness ablation with numbers behind it puts the win in the "
+            "SCHEDULE rather than the level: reasoning deepest throughout scored "
+            "WORSE than reasoning moderately throughout, and reasoning deeply "
+            "while planning and verifying but moderately while building beat "
+            "both. Set this BELOW the executor's depth to buy that shape."
+        ),
+    )
+    parser.add_argument(
+        "--merge-attempts",
+        type=_positive_int,
+        default=None,
+        help=(
+            "Override how many attempts each merge gets, in every arm. Worth "
+            "sweeping because the recorded corpus never converged: every "
+            "attempt ran to 94-99%% of its token ceiling, so more attempts "
+            "bought more truncated tries rather than more repair."
+        ),
+    )
+    parser.add_argument(
+        "--contract-stage",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Run (or skip) the contract stage: one session between the plan "
+            "and the first leaf that fixes the module layout, the signatures "
+            "and one failing test per requirement, which every unit is then "
+            "recreated from. This is the TREATMENT, so it is a per-run lever "
+            "rather than a manifest edit: a cell measuring it and its control "
+            "must differ by this and nothing else, and editing the file "
+            "between them changes the digest the journal pins and makes the "
+            "pair read as two matrices. Left unset, the manifest decides."
+        ),
+    )
+    parser.add_argument(
         "--leaf-concurrency",
         type=_positive_int,
         default=1,
@@ -1154,13 +1313,36 @@ def parse_repetitions(
     return wanted
 
 
+@dataclass(frozen=True, slots=True)
+class PairOverride:
+    """What one run changes about the executor pair, if anything.
+
+    One object rather than three keyword arguments because they describe one
+    thing and grow together: every dial worth probing on this pair belongs
+    here, and threading each separately puts the entry point over the
+    repository's argument cap the moment a third is worth having, which is
+    exactly where a fourth gets left out instead.
+
+    Attributes:
+        temperature: Sampling temperature, or ``None`` to keep the manifest's.
+        top_p: Nucleus threshold, which moves WITH ``temperature`` because a
+            vendor publishes the two as one recommendation.
+        reasoning_effort: Reasoning depth, which moves ALONE: it is a separate
+            axis, and requiring the sampling pair alongside it would make the
+            largest measured lever the hardest to probe.
+    """
+
+    temperature: float | None = None
+    top_p: float | None = None
+    reasoning_effort: str | None = None
+
+
 def _resampled(
-    manifest: RecursionDepthManifest,
     *,
     temperature: float | None,
     top_p: float | None,
 ) -> dict[str, object]:
-    """The executor-pair override a sampling probe asked for, if any.
+    """The executor-pair fields a sampling probe asked for, if any.
 
     The two dials move TOGETHER or not at all, which is the contract the
     manifest and ``ModelConfig.top_p`` both state: a vendor publishes a
@@ -1192,8 +1374,34 @@ def _resampled(
         raise ValueError(msg)
     if temperature is None or top_p is None:
         return {}
-    stated: dict[str, float] = {"temperature": temperature, "top_p": top_p}
-    return {"executor": manifest.executor.model_dump() | stated}
+    return {"temperature": temperature, "top_p": top_p}
+
+
+def _rebound(*, reasoning_effort: str | None) -> dict[str, object]:
+    """The executor-pair field a reasoning probe asked for, if any.
+
+    Its own helper rather than a third argument to :func:`_resampled`, because
+    the two dials are unrelated: temperature and nucleus are one vendor
+    recommendation that must move together, and reasoning depth is a separate
+    axis that moves alone. Folding them would make naming one require the
+    others.
+
+    ``REASONING_UNSET`` is a REQUEST, not the absence of one, and the two must
+    not collapse into each other here: an unnamed flag keeps whatever the
+    manifest pinned, while naming ``none`` asks for the parameter to be OMITTED
+    from the wire. That is the only way to reach a tier the enum cannot spell
+    (this executor family runs at its most expensive setting when the field is
+    absent), so the arm reproducing the corpus is expressed this way and no
+    other.
+
+    Returns:
+        The field to override, or empty when the dial was not named.
+    """
+    if reasoning_effort is None:
+        return {}
+    if reasoning_effort == REASONING_UNSET:
+        return {"reasoning_effort": None}
+    return {"reasoning_effort": reasoning_effort}
 
 
 def narrow(
@@ -1202,8 +1410,10 @@ def narrow(
     max_sessions: int | None = None,
     repetitions: str | None = None,
     *,
-    executor_temperature: float | None = None,
-    executor_top_p: float | None = None,
+    executor: PairOverride | None = None,
+    contract_stage: bool | None = None,
+    merge_attempts: int | None = None,
+    leaf_reasoning_effort: str | None = None,
 ) -> RecursionDepthManifest:
     """Narrow *manifest* to what this run records, and what it may spend.
 
@@ -1228,12 +1438,26 @@ def narrow(
             where ARIES puts the transition), and an operator trading one of
             them for a schedule should not have to edit that design into
             something the next reader inherits.
-        executor_temperature: Sampling override for the executor pair, or
-            ``None`` to keep the manifest's own. The lever for a sampling
-            probe, on the same footing as *repetitions* and for the same
-            reason: the committed value is the design.
-        executor_top_p: Nucleus override for the executor pair, moving with
-            *executor_temperature*.
+        executor: What this run changes about the executor pair, or ``None``
+            to keep the manifest's own on every dial. The lever for a probe,
+            on the same footing as *repetitions* and for the same reason: the
+            committed value is the design.
+        contract_stage: Whether to run the contract stage, or ``None`` to keep
+            the manifest's own. A per-run lever for the same reason sampling
+            is one, and more so: this is the TREATMENT, so a cell measuring it
+            and the control it is measured against differ by this flag and
+            nothing else, and editing the file between them would change the
+            digest the journal pins and make the pair look like two matrices.
+        merge_attempts: How many attempts each merge gets, or ``None`` to keep
+            the manifest's own. Equal across arms whatever it is set to, which
+            is the property that makes the arms comparable at all.
+        leaf_reasoning_effort: Depth the agents that BUILD units are bound at,
+            or ``None`` to keep the manifest's own. ``REASONING_UNSET`` asks
+            for them to build at the executor's own depth, which is what every
+            recording before this flag existed did. A TREATMENT rather than a
+            schedule lever, so it reaches the journal identity: the published
+            ablation puts the win in which phases reason deeply, not in how
+            deeply any of them does.
 
     Returns:
         The narrowed matrix.
@@ -1242,12 +1466,41 @@ def narrow(
         ValueError: A named cap is not in the manifest.
     """
     counts = parse_repetitions(repetitions, manifest)
-    sampled = _resampled(
-        manifest, temperature=executor_temperature, top_p=executor_top_p
-    )
-    if depths is None and max_sessions is None and counts is None and not sampled:
+    pair = executor or PairOverride()
+    sampled = _resampled(temperature=pair.temperature, top_p=pair.top_p)
+    reasoned = _rebound(reasoning_effort=pair.reasoning_effort)
+    if (
+        depths is None
+        and max_sessions is None
+        and counts is None
+        and not sampled
+        and not reasoned
+        and contract_stage is None
+        and merge_attempts is None
+        and leaf_reasoning_effort is None
+    ):
         return manifest
-    override: dict[str, object] = dict(sampled)
+    # Each helper answers only the FIELDS it was asked to change, and they are
+    # merged onto one dump of the pair. Returning a whole pair from each and
+    # applying them in turn is the obvious shape and it silently loses one: the
+    # second dump carries the manifest's own value for the first's field, so a
+    # run naming a temperature AND a reasoning depth records only the reasoning
+    # depth and reports the manifest's temperature back as if it were the
+    # treatment.
+    override: dict[str, object] = {}
+    if sampled or reasoned:
+        override["executor"] = manifest.executor.model_dump() | sampled | reasoned
+    if contract_stage is not None:
+        override["contract_stage"] = contract_stage
+    if merge_attempts is not None:
+        override["merge_attempts"] = merge_attempts
+    if leaf_reasoning_effort is not None:
+        # Same three-state reading as the executor's own dial: `none` asks for
+        # units to build at whatever the pair already carries, which is what
+        # every recording before this flag existed did.
+        override["leaf_reasoning_effort"] = (
+            None if leaf_reasoning_effort == REASONING_UNSET else leaf_reasoning_effort
+        )
     if max_sessions is not None:
         override["max_sessions"] = max_sessions
     if counts is not None:
@@ -1452,8 +1705,14 @@ def main(argv: list[str] | None = None) -> int:
         args.depths,
         args.max_sessions,
         args.repetitions,
-        executor_temperature=args.executor_temperature,
-        executor_top_p=args.executor_top_p,
+        executor=PairOverride(
+            temperature=args.executor_temperature,
+            top_p=args.executor_top_p,
+            reasoning_effort=args.executor_reasoning_effort,
+        ),
+        contract_stage=args.contract_stage,
+        merge_attempts=args.merge_attempts,
+        leaf_reasoning_effort=args.leaf_reasoning_effort,
     )
     spec = load_spec_brief(Path(manifest.spec_dir))
     company_config = load_config(args.company_config)

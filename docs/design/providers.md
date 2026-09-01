@@ -269,6 +269,23 @@ setting plus the model's streaming capability, not a `CompletionConfig` field:
   agent's `temperature`, `top_p` and `max_tokens` are preserved alongside the
   reasoning dial.
 
+- **`temperature` and `top_p`** come from the agent's binding, and from nowhere
+  else. Four session types previously carried their own task-tuned default
+  (planning at 0.2, plan review at 0.2, retrospective distillation at 0.3,
+  initiative evaluation at 0.1) independent of whatever the operator had bound.
+  Those fields are gone: each of those sessions now resolves through
+  `resolve_sampling` against the identity actually running it, so an unset
+  binding means `ModelConfig`'s own default of 0.7 rather than the session
+  type's opinion.
+
+  The reason is the same one that puts the binding first for reasoning depth: a
+  strategy config does not know which model is bound, and the value a vendor
+  recommends is a property of that model rather than of the task. An operator
+  wanting judgement-shaped sampling for evaluation binds it to the agent that
+  evaluates, where it is visible, rather than inheriting it from a constant
+  nobody can see. This is a behavioural change for a deployment that never
+  bound one: those four session types run warmer than they did.
+
   Resolving a depth is not the same as sending one. LiteLLM validates request
   parameters against its own view of the model before anything leaves the
   process, so `route_reasoning_support` asks what that view actually contains

@@ -79,7 +79,13 @@ def route_reasoning_support(model_id: str, routing_key: str) -> RouteReasoningSu
         # lint-allow: swallow-ok -- a lookup that cannot answer is not evidence
         # the route refuses the parameter, and this must never fail a call.
         reraise_critical(exc)
-        logger.debug(
+        # WARNING rather than DEBUG: the fallback is safe (UNKNOWN forwards
+        # the parameter rather than dropping it), but it changes what goes on
+        # the wire, and it does so on EVERY call for as long as the lookup
+        # keeps failing. At debug level a misconfigured route would rewrite
+        # every request of every model behind it with nobody able to see it at
+        # the levels anyone runs.
+        logger.warning(
             PROVIDER_REASONING_EFFORT_DROPPED,
             model=model_id,
             routing_key=routing_key,

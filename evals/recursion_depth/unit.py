@@ -17,7 +17,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from evals.harness.workspace import CellWorkspace, existing_workspace, seed_workspace
+from evals.harness.workspace import (
+    CellWorkspace,
+    existing_workspace,
+    reseed_workspace,
+    seed_workspace,
+)
 from synthorg.core.task import Task
 from synthorg.engine.artifacts.expected_artifact_check import (
     ArtifactPresence,
@@ -65,19 +70,37 @@ def merge_unit_key(task_id: str) -> str:
 
 
 def unit_workspace(
-    *, cell_key: str, unit_key: str, spec_dir: Path, work_root: Path
+    *,
+    cell_key: str,
+    unit_key: str,
+    spec_dir: Path,
+    work_root: Path,
+    contract: CellWorkspace | None = None,
 ) -> CellWorkspace:
-    """Recreate one unit's workspace from the specification's committed seed.
+    """Recreate one unit's workspace from whatever this cell builds against.
+
+    The contract's tree when the cell ran one, and the specification's committed
+    seed otherwise. Recreating from the contract is the whole mechanism by which
+    a unit finds the shared names already in its checkout: nothing is handed to
+    it, nothing is mounted, and no sibling's workspace is read.
 
     Args:
         cell_key: Names the run this unit belongs to.
         unit_key: Names the unit within that run.
         spec_dir: The specification directory, which holds the seed.
         work_root: Directory per-unit trees are created under.
+        contract: The tree the cell's contract stage left, or ``None`` for an
+            arm that runs without one.
 
     Returns:
         The provisioned workspace.
     """
+    if contract is not None:
+        return reseed_workspace(
+            cell_key=f"{cell_key}/{unit_key}",
+            source=contract,
+            work_root=work_root,
+        )
     return seed_workspace(
         cell_key=f"{cell_key}/{unit_key}",
         seed_dir="seed",
@@ -179,6 +202,12 @@ class UnitDelivery:
         reason: Why this is not a clean delivery, empty when it is. Set with
             ``produced`` false when nothing was built, and with ``produced``
             true when something was built that does not stand up.
+        note: What the parent should know that is NOT a reason to doubt the
+            delivery, empty when there is nothing to say. Held apart from
+            ``reason`` because ``delivered`` reads any reason as a failure,
+            so a branch explaining that a check decided NOTHING was marking
+            the leaf undelivered on the strength of its own explanation. Both
+            such branches say the tree is the evidence, and the tree changed.
         workspace_files_changed: How many files differ between the tree
             before and after, so "turns were spent and nothing changed" is
             readable from the record without opening a transcript. ``None``
@@ -190,6 +219,7 @@ class UnitDelivery:
     produced: bool
     reason: str
     workspace_files_changed: int | None = None
+    note: str = ""
 
     @property
     def delivered(self) -> bool:
@@ -202,6 +232,35 @@ class UnitDelivery:
             input as one that built nothing.
         """
         return self.produced and not self.reason
+
+
+def delivery_of(
+    *, produced: bool, delivered: bool, detail: str, files_changed: int | None
+) -> UnitDelivery:
+    """Rebuild a delivery from a record that flattened its two texts into one.
+
+    A record carries ONE ``detail`` and the verdict beside it, so which field
+    that text came from has to be read back off the verdict rather than
+    guessed: putting a note in ``reason`` would recompute ``delivered`` as
+    false and quietly disagree with the run being replayed. One owner because
+    three call sites rebuild these, and a rule written three times is the
+    shape the note exists to stop.
+
+    Args:
+        produced: Whether the recorded unit's tree changed.
+        delivered: The verdict the run itself reached.
+        detail: Whatever text the record kept beside that verdict.
+        files_changed: The recorded file count, ``None`` before it existed.
+
+    Returns:
+        A delivery whose ``delivered`` matches the record it came from.
+    """
+    return UnitDelivery(
+        produced=produced,
+        reason="" if delivered else detail,
+        note=detail if delivered else "",
+        workspace_files_changed=files_changed,
+    )
 
 
 def produced_tree(workspace: CellWorkspace) -> UnitFingerprint:
@@ -242,6 +301,7 @@ __all__ = [
     "UnitDelivery",
     "UnitFingerprint",
     "built_unit_workspace",
+    "delivery_of",
     "files_changed",
     "leaf_unit_key",
     "merge_unit_key",

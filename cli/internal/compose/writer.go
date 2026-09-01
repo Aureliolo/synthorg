@@ -12,11 +12,10 @@ import (
 )
 
 // staleAtomicTempAge is how old an atomicWriteRooted temp sibling must be
-// before sweepStaleAtomicTemps removes it. Must comfortably exceed how long
-// any single write can legitimately take (these are small YAML/conf files)
-// so an in-flight concurrent writer's own temp file -- the whole reason
-// uniqueTempName exists -- is never mistaken for an orphan.
-const staleAtomicTempAge = time.Hour
+// before sweepStaleAtomicTemps removes it. Read from config rather than
+// declared here: the same policy governs config.json's own atomic writer,
+// and a second literal would drift from it silently.
+const staleAtomicTempAge = config.StaleAtomicTempAge
 
 // WriteComposeAndNATS keeps compose.yml and its bind-mounted nats.conf
 // side-file consistent across every caller that regenerates compose.

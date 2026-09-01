@@ -56,6 +56,10 @@ _INDEX_URL: Final[str] = f"{_WOLFI_REPOSITORY}/{{arch}}/APKINDEX.tar.gz"
 _INDEX_MEMBER: Final[str] = "APKINDEX"
 _NAME_FIELD: Final[str] = "P:"
 _DEFAULT_ARCH: Final[str] = "x86_64"
+
+#: The architectures the manifests in this tree declare. A closed set because
+#: this value becomes a URL path segment.
+_SUPPORTED_ARCHES: Final[tuple[str, ...]] = ("x86_64", "aarch64")
 _TIMEOUT_SECONDS: Final[int] = 60
 # apk indices run to tens of megabytes; anything far past that is not an index.
 _MAX_INDEX_BYTES: Final[int] = 64 * 1024 * 1024
@@ -247,6 +251,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--arch",
         default=_DEFAULT_ARCH,
+        # Constrained rather than free text, because this value is the only
+        # caller-supplied part of a URL path. The scheme and host are fixed
+        # constants, so nothing here is reachable today; a closed set is what
+        # keeps that true when a future caller passes something it was handed.
+        choices=_SUPPORTED_ARCHES,
         help=f"apk architecture index to read (default {_DEFAULT_ARCH}).",
     )
     parser.add_argument(

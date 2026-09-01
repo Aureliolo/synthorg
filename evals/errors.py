@@ -231,6 +231,27 @@ class HarnessDockerUnavailableError(EvalError):
     default_message: ClassVar[str] = "Docker daemon is unreachable"
 
 
+class HarnessImageUnresolvedError(EvalError):
+    """Raised when a declared container image is not on the daemon.
+
+    Its own class rather than a shape of "daemon unavailable", because the
+    remedy is different and the machine is fine: a published TAG stopped
+    resolving without anything in this repository changing, and the reference
+    has to be rebuilt or repointed at a digest.
+
+    Raised after the host has STARTED and before the first paid session,
+    which is the only window the question can be asked in. Not earlier:
+    unless ``--sandbox-image`` names one, the reference comes from the running
+    instance's own settings resolver, so it is not known until the app has
+    booted. Not later: a cell plans and writes its contract through the
+    gateway, touching no container, so an absent image would first surface at
+    grading, by which point the sessions have been paid for and every unit is
+    recorded unavailable.
+    """
+
+    default_message: ClassVar[str] = "a declared container image does not resolve"
+
+
 class HarnessProviderDegradedError(EvalError):
     """Raised when a tier's provider is too slow to measure a matrix against.
 
@@ -472,6 +493,7 @@ __all__ = [
     "HarnessGatewayUnavailableError",
     "HarnessHostAlreadyStartedError",
     "HarnessHostConfigInvalidError",
+    "HarnessImageUnresolvedError",
     "HarnessJournalMismatchError",
     "HarnessJournalUnwritableError",
     "HarnessProviderDegradedError",
