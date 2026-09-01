@@ -134,13 +134,9 @@ var configReaders = map[string]configReader{
 	"persistence_backend":   func(s config.State) string { return s.PersistenceBackend },
 	"sandbox":               func(s config.State) string { return strconv.FormatBool(s.Sandbox) },
 	"fine_tuning":           func(s config.State) string { return strconv.FormatBool(s.FineTuning) },
-	// fine_tuning_variant returns the raw persisted value so
-	// runConfigList's source comparison ("config" vs "default") can
-	// distinguish an explicit "gpu" from an unset field. Callers that
-	// need the effective variant call FineTuneVariantOrDefault() themselves.
-	"fine_tuning_variant": func(s config.State) string { return s.FineTuningVariant },
-	"telemetry_opt_in":    func(s config.State) string { return strconv.FormatBool(s.TelemetryOptIn) },
-	"timestamps":          func(s config.State) string { return s.TimestampsOrDefault() },
+	"fine_tuning_variant":   func(s config.State) string { return s.FineTuneVariantOrDefault() },
+	"telemetry_opt_in":      func(s config.State) string { return strconv.FormatBool(s.TelemetryOptIn) },
+	"timestamps":            func(s config.State) string { return s.TimestampsOrDefault() },
 }
 
 // setterBool returns a configSetter that parses value as a bool and

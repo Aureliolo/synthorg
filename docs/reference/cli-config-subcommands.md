@@ -20,6 +20,20 @@ On-demand reference for `synthorg config` operators. The short summary in `cli/C
 | `path` | Print the config file path |
 | `edit` | Open config file in `$VISUAL` / `$EDITOR` |
 
+### What `list` means by source
+
+`list` answers where each value comes from, in precedence order:
+
+| Source | Meaning |
+|--------|---------|
+| `env` | A `SYNTHORG_*` environment variable is set for this key and overrides everything below it for this invocation. |
+| `config` | The key is written in `config.json`. Its value is fixed there, so a later release changing the built-in default will not move it. |
+| `default` | The key is absent from `config.json` and follows the built-in default, including any future change to it. |
+
+`config` is a statement about the file, not about the value: a key you set to the same value as its default still reports `config`, because setting it pinned it. `synthorg init` writes the keys it prompts for, so those read `config` whether you typed a value or accepted the one offered.
+
+`unset` restores the built-in default value. Whether it also clears the pin depends on the key: one omitted from the file when empty (`color`, `hints`, `output`, `timestamps`, `changelog_view`, `docker_sock`, `fine_tuning_variant` and every tunable) goes back to `default`, while one always serialised (the `auto_*` flags, `sandbox`, `fine_tuning`, `telemetry_opt_in`, the ports, `channel`, `image_tag`, `log_level`) keeps reporting `config` at the default value.
+
 `set` and `import` apply all pairs atomically: if any key or value is invalid, nothing is written. Both also auto-generate the Fernet `master_key` when `encrypt_secrets` is true and none exists (exactly as `init` does on save), so config can be pre-seeded before `synthorg init`. The `import` file format is one `key=value` per line; blank lines and `#` comments are ignored and surrounding whitespace is trimmed.
 
 ### Reading a setting this binary does not recognise

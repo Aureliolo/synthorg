@@ -117,7 +117,30 @@ func validateUpdateTimeoutFlags() error {
 	return nil
 }
 
-func runUpdate(cmd *cobra.Command, _ []string) error {
+func runUpdate(cmd *cobra.Command, args []string) error {
+	return finishUpdate(cmd, runUpdateSteps(cmd, args))
+}
+
+// finishUpdate translates a cancelled confirm prompt into a clean stop:
+// dismissing a prompt is a decision not to update, not a failed update,
+// and a shell wrapping `synthorg update` must not read it as one. Every
+// confirm site wraps the sentinel on its way out, so the test is
+// errors.Is rather than equality.
+//
+// The sentinel can only originate from a rendered prompt, since
+// confirmUpdateWithDefault answers from the flags before it builds a
+// form when prompting is off, so suppressing the line under --quiet
+// loses nothing.
+func finishUpdate(cmd *cobra.Command, err error) error {
+	if !errors.Is(err, errUpdateCancelled) {
+		return err
+	}
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), GetGlobalOpts(cmd.Context()).UIOptions())
+	out.Step("Update cancelled.")
+	return nil
+}
+
+func runUpdateSteps(cmd *cobra.Command, _ []string) error {
 	if err := validateUpdateFlags(); err != nil {
 		return fmt.Errorf("validating update flags: %w", err)
 	}
@@ -488,6 +511,14 @@ func downloadAndApplyCLI(ctx context.Context, out *ui.UI, result selfupdate.Chec
 // The caller (runUpdate) handles this by spawning the new binary.
 var errReexec = errors.New("cli updated, re-exec required")
 
+// errUpdateCancelled is returned by confirmUpdateWithDefault when the
+// operator dismissed the prompt with Esc or Ctrl+C. huh reports both as
+// one error, and either way nothing was consented to, so every confirm
+// site propagates it and runUpdate ends the run cleanly. Answering "No"
+// is a different outcome and keeps its own path: it declines that one
+// step and the run continues to the next.
+var errUpdateCancelled = errors.New("update cancelled by user")
+
 // updateCLI checks for a new CLI release and optionally applies it.
 // Returns errReexec if the binary was replaced (caller must re-exec).
 // autoAcceptCLI is true when auto_update_cli config key is set.
@@ -695,6 +726,9 @@ func confirmUpdateWithDefault(ctx context.Context, title string, defaultVal bool
 		huh.NewConfirm().Title(title).Value(&proceed),
 	))
 	if err := form.Run(); err != nil {
+		if isUserAbort(err) {
+			return false, errUpdateCancelled
+		}
 		return false, err
 	}
 	return proceed, nil

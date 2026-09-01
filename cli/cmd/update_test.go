@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/huh/v2"
 	"github.com/Aureliolo/synthorg/cli/internal/compose"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/selfupdate"
@@ -1052,5 +1053,88 @@ func TestUpdateCLI_checkFailureAborts(t *testing.T) {
 	}
 	if !strings.Contains(errOut.String(), "--images-only") {
 		t.Errorf("stderr = %q, want the --images-only recovery hint", errOut.String())
+	}
+}
+
+// updateCmdForTest builds a bare command carrying the global opts the
+// update helpers read, returning it with its stdout buffer.
+func updateCmdForTest(t *testing.T) (*cobra.Command, *bytes.Buffer) {
+	t.Helper()
+	cmd := &cobra.Command{}
+	cmd.SetContext(SetGlobalOpts(context.Background(), &GlobalOpts{Hints: "always", DataDir: t.TempDir()}))
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&bytes.Buffer{})
+	return cmd, &out
+}
+
+// Dismissing a confirm ends the run without an error, whatever each call
+// site wrapped the sentinel in on the way out. The wrappers are the real
+// ones: an equality check here would pass while the command still exited
+// non-zero.
+func TestFinishUpdateTreatsACancelledPromptAsACleanStop(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{"cli update confirm", fmt.Errorf("updating CLI binary: %w", fmt.Errorf("confirming CLI update: %w", errUpdateCancelled))},
+		{"image update confirm", fmt.Errorf("updating compose and images: %w", fmt.Errorf("confirming image update: %w", errUpdateCancelled))},
+		{"compose apply confirm", fmt.Errorf("refreshing compose template: %w", errUpdateCancelled)},
+		{"unwrapped", errUpdateCancelled},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd, out := updateCmdForTest(t)
+			if err := finishUpdate(cmd, tc.err); err != nil {
+				t.Fatalf("finishUpdate = %v, want nil", err)
+			}
+			if !strings.Contains(out.String(), "Update cancelled.") {
+				t.Errorf("stdout = %q, want it to say the update was cancelled", out.String())
+			}
+		})
+	}
+}
+
+func TestFinishUpdatePassesEveryOtherOutcomeThrough(t *testing.T) {
+	genuine := errors.New("pulling updated images: no space left on device")
+	cmd, out := updateCmdForTest(t)
+
+	if err := finishUpdate(cmd, genuine); !errors.Is(err, genuine) {
+		t.Fatalf("finishUpdate = %v, want the original error", err)
+	}
+	if strings.Contains(out.String(), "cancelled") {
+		t.Errorf("stdout = %q, want no cancellation line for a real failure", out.String())
+	}
+	if err := finishUpdate(cmd, nil); err != nil {
+		t.Errorf("finishUpdate(nil) = %v, want nil", err)
+	}
+}
+
+// huh reports Esc and Ctrl+C as one error, and isUserAbort is what maps
+// it. Pinning the coupling here keeps the abort from silently becoming a
+// raw error again if huh renames its sentinel.
+func TestIsUserAbortRecognisesTheHuhSentinel(t *testing.T) {
+	if !isUserAbort(huh.ErrUserAborted) {
+		t.Error("expected huh.ErrUserAborted to read as a user abort")
+	}
+	if isUserAbort(errors.New("some other failure")) {
+		t.Error("expected an unrelated error not to read as a user abort")
+	}
+}
+
+// The cancellation sentinel can only come from a rendered prompt: with
+// prompting off, the confirm answers from the flags and never builds a
+// form. This is what lets finishUpdate print through the normal (quiet
+// -suppressible) channel rather than stderr.
+func TestConfirmUpdateAnswersWithoutAFormWhenPromptingIsOff(t *testing.T) {
+	ctx := SetGlobalOpts(context.Background(), &GlobalOpts{Yes: true})
+
+	ok, err := confirmUpdateWithDefault(ctx, "Update?", true, false)
+	if err != nil || !ok {
+		t.Errorf("confirmUpdateWithDefault = (%v, %v), want (true, nil)", ok, err)
+	}
+	ok, err = confirmUpdateWithDefault(ctx, "Update?", false, false)
+	if err != nil || ok {
+		t.Errorf("confirmUpdateWithDefault = (%v, %v), want (false, nil)", ok, err)
 	}
 }

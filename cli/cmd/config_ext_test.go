@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -476,8 +477,68 @@ func TestConfigListShowsAllKeys(t *testing.T) {
 	}
 }
 
-func TestConfigListSourceDefault(t *testing.T) {
+// configListEntries runs `config list --json` against dir and indexes the
+// result by key, so a source assertion reads the field rather than the
+// padded text layout.
+func configListEntries(t *testing.T, dir string) map[string]configEntry {
+	t.Helper()
 	sandboxRootCmd(t)
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	rootCmd.SetArgs([]string{"config", "list", "--json", "--data-dir", dir})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var entries []configEntry
+	if err := json.Unmarshal(buf.Bytes(), &entries); err != nil {
+		t.Fatalf("decoding config list output: %v\n%s", err, buf.String())
+	}
+	byKey := make(map[string]configEntry, len(entries))
+	for _, e := range entries {
+		byKey[e.Key] = e
+	}
+	return byKey
+}
+
+func assertSource(t *testing.T, entries map[string]configEntry, key, want string) {
+	t.Helper()
+	entry, ok := entries[key]
+	if !ok {
+		t.Fatalf("%s missing from config list output", key)
+	}
+	if entry.Source != want {
+		t.Errorf("%s: source = %q, want %q (value %q)", key, entry.Source, want, entry.Value)
+	}
+}
+
+// A persisted key is reported as coming from the config file even when its
+// value happens to equal the compiled-in default. Reporting it as "default"
+// says the value would follow a later change to that default, and it would
+// not: readState unmarshals the file over DefaultState, so the file wins.
+func TestConfigListReportsPersistedKeyAtDefaultValueAsConfig(t *testing.T) {
+	dir := t.TempDir()
+	state := config.DefaultState()
+	state.EncryptSecrets = false
+	state.DataDir = dir
+	if err := config.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	if state.AutoStartAfterWipe != config.DefaultState().AutoStartAfterWipe {
+		t.Fatal("fixture must hold auto_start_after_wipe at its default to exercise the regression")
+	}
+
+	entries := configListEntries(t, dir)
+	// Serialised unconditionally, so Save pins them at the default value.
+	for _, key := range []string{"auto_start_after_wipe", "auto_apply_compose", "sandbox", "backend_port", "log_level"} {
+		assertSource(t, entries, key, "config")
+	}
+}
+
+// A key omitted from the file when empty is absent after a default Save,
+// so it still follows the compiled-in default and reports it, rendering
+// the effective value rather than a blank.
+func TestConfigListReportsAbsentKeyAsDefault(t *testing.T) {
 	dir := t.TempDir()
 	state := config.DefaultState()
 	state.EncryptSecrets = false
@@ -486,17 +547,54 @@ func TestConfigListSourceDefault(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var buf bytes.Buffer
-	rootCmd.SetOut(&buf)
-	rootCmd.SetErr(&buf)
-	rootCmd.SetArgs([]string{"config", "list", "--data-dir", dir})
-	if err := rootCmd.Execute(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	entries := configListEntries(t, dir)
+	for _, key := range []string{"color", "hints", "output", "timestamps", "changelog_view", "registry_host"} {
+		assertSource(t, entries, key, "default")
+		if entries[key].Value == "" {
+			t.Errorf("%s: expected the effective default value, got an empty string", key)
+		}
+	}
+}
+
+// Setting a key to the value it already holds still pins it, which is the
+// case the value-against-default comparison could not see.
+func TestConfigListReportsSetKeyAsConfig(t *testing.T) {
+	dir := t.TempDir()
+	state := config.DefaultState()
+	state.EncryptSecrets = false
+	state.DataDir = dir
+	if err := config.Save(state); err != nil {
+		t.Fatal(err)
 	}
 
-	out := buf.String()
-	if !strings.Contains(out, "default") {
-		t.Error("expected 'default' source in config list output for default values")
+	sandboxRootCmd(t)
+	var setBuf bytes.Buffer
+	rootCmd.SetOut(&setBuf)
+	rootCmd.SetErr(&setBuf)
+	rootCmd.SetArgs([]string{"config", "set", "color", config.DefaultState().ColorOrDefault(), "--data-dir", dir})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("config set: %v\n%s", err, setBuf.String())
+	}
+
+	assertSource(t, configListEntries(t, dir), "color", "config")
+}
+
+// An environment override outranks both, since it decides the value this
+// invocation actually uses.
+func TestConfigListReportsEnvOverrideAsEnv(t *testing.T) {
+	dir := t.TempDir()
+	state := config.DefaultState()
+	state.EncryptSecrets = false
+	state.DataDir = dir
+	if err := config.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(EnvLogLevel, "debug")
+
+	entries := configListEntries(t, dir)
+	assertSource(t, entries, "log_level", "env")
+	if entries["log_level"].Value != "debug" {
+		t.Errorf("log_level: value = %q, want the env value %q", entries["log_level"].Value, "debug")
 	}
 }
 
