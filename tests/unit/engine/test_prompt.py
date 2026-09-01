@@ -384,40 +384,48 @@ class TestBuildSystemPrompt:
             assert tool.name in result.content
             assert tool.description in result.content
 
-    def test_task_context_in_prompt(
+    def test_task_brief_has_one_owner(
         self,
         sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
-        """Task title, description, and acceptance criteria appear."""
+        """The system prompt never restates the brief the first user message carries."""
+        from synthorg.engine.prompt_validation import format_task_instruction
+
         result = build_system_prompt(
             agent=sample_agent,
             task=sample_task_with_criteria,
         )
+        brief = format_task_instruction(sample_task_with_criteria)
 
-        assert sample_task_with_criteria.title in result.content
-        assert sample_task_with_criteria.description in result.content
+        assert sample_task_with_criteria.description not in result.content
         for criterion in sample_task_with_criteria.acceptance_criteria:
-            assert criterion.description in result.content
+            assert criterion.description not in result.content
+            assert criterion.description in brief
+        assert sample_task_with_criteria.title in brief
+        assert f"{sample_task_with_criteria.budget_limit:.2f}" in brief
+        assert "task" not in result.sections
 
-    def test_task_budget_in_prompt(
+    def test_task_directives_still_key_on_the_task(
         self,
         sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
-        """Task budget appears in prompt when > 0."""
-        result = build_system_prompt(
+        """A task still switches on the task-data fencing instruction."""
+        with_task = build_system_prompt(
             agent=sample_agent,
             task=sample_task_with_criteria,
         )
+        without = build_system_prompt(agent=sample_agent)
 
-        assert f"{sample_task_with_criteria.budget_limit:.2f}" in result.content
+        assert "task-data" in with_task.content
+        assert "task-data" not in without.content
 
     def test_no_task_section_when_task_is_none(
         self,
         sample_agent: AgentIdentity,
     ) -> None:
-        """No 'Current Task' section when task is None."""
+        """No task section exists at all; the brief is a user message."""
         result = build_system_prompt(agent=sample_agent)
 
         assert "Current Task" not in result.content
@@ -1259,36 +1267,22 @@ class TestPromptProfileIntegration:
         assert "All code must be reviewed" in result.content
         assert "org_policies" in result.sections
 
-    def test_basic_simplifies_acceptance_criteria(
+    @pytest.mark.parametrize("tier", ["expert", "capable", "basic"])
+    def test_no_profile_renders_the_criteria(
         self,
         sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
+        tier: str,
     ) -> None:
-        """The basic profile renders criteria as a flat semicolon line."""
+        """Criteria travel in the brief; no profile restates them in the prompt."""
         result = build_system_prompt(
             agent=sample_agent,
             task=sample_task_with_criteria,
-            capability="basic",
+            capability=tier,  # type: ignore[arg-type]
         )
 
-        # Should NOT have the full "### Acceptance Criteria" heading.
-        assert "### Acceptance Criteria" not in result.content
-        # Should have semicolon-joined flat format.
-        assert "**Criteria**:" in result.content
-
-    def test_expert_full_acceptance_criteria(
-        self,
-        sample_agent: AgentIdentity,
-        sample_task_with_criteria: Task,
-    ) -> None:
-        """The expert profile renders full nested acceptance criteria."""
-        result = build_system_prompt(
-            agent=sample_agent,
-            task=sample_task_with_criteria,
-            capability="expert",
-        )
-
-        assert "### Acceptance Criteria" in result.content
+        assert "Acceptance Criteria" not in result.content
+        assert "**Criteria**:" not in result.content
 
     @pytest.mark.parametrize("tier", ["expert", "capable", "basic"])
     def test_no_profile_renders_a_persona(
@@ -1412,4 +1406,4 @@ class TestBuildCoreContextDefaults:
 
         assert ctx["autonomy_detail_level"] == "full"
         assert ctx["include_org_policies"] is True
-        assert ctx["simplify_acceptance_criteria"] is False
+        assert "simplify_acceptance_criteria" not in ctx

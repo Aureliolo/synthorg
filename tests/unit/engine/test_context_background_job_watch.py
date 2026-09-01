@@ -91,6 +91,7 @@ class TestAgentContextBackgroundJobWatch:
             metadata=metadata,
             compressed_conversation=(),
             fill_tokens=100,
+            pinned=frozenset(),
         )
         assert len(ctx_compressed.background_job_watch.records) == 1
         assert ctx_compressed.background_job_watch.records[0].job_id == "job-1"

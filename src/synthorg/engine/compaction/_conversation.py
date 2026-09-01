@@ -7,6 +7,7 @@ what the rewritten message list looks like), while the callback owns when to
 run, which summariser to ask, and whether to offload.
 """
 
+from dataclasses import dataclass
 from typing import Final
 
 from synthorg.core.execution_identity import current_execution_identity
@@ -35,11 +36,37 @@ from synthorg.providers.models import ZERO_TOKEN_USAGE, ChatMessage, TokenUsage
 
 logger = get_logger(__name__)
 
-type ConversationSplit = tuple[
-    tuple[ChatMessage, ...],
-    tuple[ChatMessage, ...],
-    tuple[ChatMessage, ...],
-]
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ConversationSplit:
+    """One compaction's view of a conversation, with the pins located.
+
+    A pinned message survives compaction wherever it sits, so the split
+    carries WHERE each pin is rather than only which messages move: the
+    compacted conversation is rebuilt in a different order, and a pin set
+    that is not re-mapped alongside it names whatever message happens to
+    land at the old index.
+
+    Attributes:
+        head: Leading SYSTEM messages, preserved verbatim. A prefix of the
+            original conversation, so its indices are unchanged.
+        archivable: What the summary replaces, pins already removed.
+        recent: The trailing window kept verbatim.
+        pinned_head: Indices within ``head`` that are pinned.
+        rescued: Pinned messages that would otherwise have been archived,
+            in their original order. They are re-seated between the head
+            and the summary, so what the agent was told to do outlives the
+            turns in which it was told.
+        pinned_recent: Offsets within ``recent`` that are pinned.
+    """
+
+    head: tuple[ChatMessage, ...]
+    archivable: tuple[ChatMessage, ...]
+    recent: tuple[ChatMessage, ...]
+    pinned_head: frozenset[int]
+    rescued: tuple[ChatMessage, ...]
+    pinned_recent: frozenset[int]
+
 
 _MAX_SUMMARY_CHARS: Final[int] = 500
 """Defensive cap on the snippet-join summary length; prevents bloated
@@ -99,10 +126,8 @@ def build_text_summary(
 
 def finalise(
     ctx: AgentContext,
+    split: ConversationSplit,
     *,
-    head: tuple[ChatMessage, ...],
-    archivable: tuple[ChatMessage, ...],
-    recent: tuple[ChatMessage, ...],
     estimator: PromptTokenEstimator,
     summary_text: str,
     summary_usage: TokenUsage = ZERO_TOKEN_USAGE,
@@ -111,9 +136,7 @@ def finalise(
 
     Args:
         ctx: Current agent context.
-        head: Preserved leading system messages.
-        archivable: The messages being archived.
-        recent: Preserved recent messages.
+        split: What this compaction archives, keeps and re-seats.
         estimator: Token estimator.
         summary_text: The resolved summary text.
         summary_usage: What producing it cost. Zero for the text path,
@@ -122,11 +145,9 @@ def finalise(
     Returns:
         The compacted ``AgentContext``.
     """
-    compressed, metadata, summary_tokens = _compress(
+    compressed, metadata, summary_tokens, pins = _compress(
         ctx,
-        head,
-        archivable,
-        recent,
+        split,
         estimator,
         summary_text=summary_text,
         summary_usage=summary_usage,
@@ -147,21 +168,26 @@ def finalise(
         summary_tokens=summary_tokens,
         compactions_total=metadata.compactions_performed,
     )
-    return ctx.with_compression(metadata, compressed, new_fill)
+    return ctx.with_compression(metadata, compressed, new_fill, pinned=pins)
 
 
 def split_conversation(
     ctx: AgentContext,
     config: CompactionConfig,
 ) -> ConversationSplit | None:
-    """Split conversation into head, archivable, and recent segments.
+    """Split the conversation into head, archivable and recent segments.
+
+    Pinned messages are removed from the archivable span and returned as
+    ``rescued``: a pin is a claim that this message has to be in front of
+    the model on every turn, which is a claim compaction cannot honour by
+    summarising it. The task brief is the one the loop makes.
 
     Returns:
-        ``(head, archivable, recent)`` segments for compaction;
-        ``None`` when nothing can be archived (preserved-window
-        already covers every non-system message).
+        The split, or ``None`` when nothing can be archived (the preserved
+        window already covers every non-system message).
     """
     conversation = ctx.conversation
+    pinned = ctx.pinned_message_indices
     # The correction budget is derived from the trailing run of nudges, so
     # archiving any of them tells the next turn the run has earned fewer
     # corrections than it has. Widen the window rather than trimming the
@@ -191,45 +217,63 @@ def split_conversation(
         )
         return None
 
-    archivable = conversation[start_idx:-preserve_count]
-    recent = conversation[-preserve_count:]
-    return head, archivable, recent
+    archivable_start = start_idx
+    recent_start = len(conversation) - preserve_count
+    span = range(archivable_start, recent_start)
+    archivable = tuple(conversation[i] for i in span if i not in pinned)
+    rescued = tuple(conversation[i] for i in span if i in pinned)
+    return ConversationSplit(
+        head=head,
+        archivable=archivable,
+        recent=conversation[recent_start:],
+        pinned_head=frozenset(i for i in pinned if i < start_idx),
+        rescued=rescued,
+        pinned_recent=frozenset(i - recent_start for i in pinned if i >= recent_start),
+    )
 
 
 def _compress(
     ctx: AgentContext,
-    head: tuple[ChatMessage, ...],
-    archivable: tuple[ChatMessage, ...],
-    recent: tuple[ChatMessage, ...],
+    split: ConversationSplit,
     estimator: PromptTokenEstimator,
     *,
     summary_text: str,
     summary_usage: TokenUsage,
-) -> tuple[tuple[ChatMessage, ...], CompressionMetadata, int]:
+) -> tuple[tuple[ChatMessage, ...], CompressionMetadata, int, frozenset[int]]:
     """Build compressed conversation and metadata from a resolved summary.
 
     Args:
         ctx: Current agent context.
-        head: Preserved leading system messages.
-        archivable: The messages being archived (for turn counting).
-        recent: Preserved recent messages.
+        split: What this compaction archives, keeps and re-seats.
         estimator: Token estimator.
         summary_text: The resolved summary text (text or semantic).
         summary_usage: What producing it cost, added to whatever earlier
             compactions on this context already spent.
 
     Returns:
-        ``(compressed_conversation, metadata, summary_tokens)`` --
-        the rewritten conversation with the summary system message,
-        the cumulative :class:`CompressionMetadata`, and the
-        estimated token count of the summary.
+        ``(compressed_conversation, metadata, summary_tokens, pinned)`` --
+        the rewritten conversation with the summary system message, the
+        cumulative :class:`CompressionMetadata`, the estimated token count
+        of the summary, and where the pins have moved to.
     """
+    head, archivable, recent = split.head, split.archivable, split.recent
     summary_msg = ChatMessage(
         role=MessageRole.SYSTEM,
         content=summary_text,
     )
     summary_tokens = estimator.estimate_tokens(summary_text)
-    compressed = (*head, summary_msg, *recent)
+    compressed = (*head, *split.rescued, summary_msg, *recent)
+    # Re-mapped rather than carried: the compacted list is a different
+    # list, so an index that is not moved with it names whatever message
+    # happens to land there.
+    recent_base = len(head) + len(split.rescued) + 1
+    pins = frozenset(
+        {
+            *split.pinned_head,
+            *range(len(head), len(head) + len(split.rescued)),
+            *(recent_base + offset for offset in split.pinned_recent),
+        }
+    )
 
     prior = ctx.compression_metadata
     compactions_count = prior.compactions_performed + 1 if prior is not None else 1
@@ -248,7 +292,7 @@ def _compress(
         summary_output_tokens=(prior.summary_output_tokens if prior is not None else 0)
         + summary_usage.output_tokens,
     )
-    return compressed, metadata, summary_tokens
+    return compressed, metadata, summary_tokens, pins
 
 
 def extract_task_complexity(ctx: AgentContext) -> Complexity:

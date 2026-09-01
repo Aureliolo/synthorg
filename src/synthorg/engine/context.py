@@ -137,6 +137,20 @@ class AgentContext(BaseModel):
     compression_metadata: CompressionMetadata | None = Field(
         default=None, description="Compression metadata when compacted"
     )
+    pinned_message_indices: frozenset[int] = Field(
+        default=frozenset(),
+        description=(
+            "Conversation indices compaction may never archive. The task"
+            " brief is the one the loop pins: it is a USER message, and"
+            " compaction preserves only leading SYSTEM messages and"
+            " snippets ASSISTANT ones, so without a pin the instruction the"
+            " whole run is answering ages out with nothing left of it."
+            " Held here rather than on ``ChatMessage`` because that is the"
+            " provider wire type and a harness concern has no business"
+            " crossing into a provider payload. Re-mapped on every"
+            " compaction, since the compacted list is a different list."
+        ),
+    )
 
     # ── Async task state channel ────────────────────────────────
     async_task_state: AsyncTaskStateChannel = Field(
@@ -277,6 +291,25 @@ class AgentContext(BaseModel):
             New ``AgentContext`` with the message appended.
         """
         return self.model_copy(update={"conversation": (*self.conversation, msg)})
+
+    def with_pinned_message(self, msg: ChatMessage) -> AgentContext:
+        """Append a message compaction may never archive.
+
+        Args:
+            msg: The chat message to append and pin.
+
+        Returns:
+            New ``AgentContext`` with the message appended and its index
+            recorded, so a later compaction re-seats it rather than
+            summarising it away.
+        """
+        return self.model_copy(
+            update={
+                "conversation": (*self.conversation, msg),
+                "pinned_message_indices": self.pinned_message_indices
+                | {len(self.conversation)},
+            }
+        )
 
     def with_steering_adopted(self, directive_id: NotBlankStr) -> AgentContext:
         """Mark a mid-flight steering directive as adopted by this run.
@@ -437,6 +470,8 @@ class AgentContext(BaseModel):
         metadata: CompressionMetadata,
         compressed_conversation: tuple[ChatMessage, ...],
         fill_tokens: int,
+        *,
+        pinned: frozenset[int],
     ) -> AgentContext:
         """Replace conversation with a compressed version.
 
@@ -444,21 +479,36 @@ class AgentContext(BaseModel):
             metadata: Compression metadata to attach.
             compressed_conversation: The compressed message tuple.
             fill_tokens: Updated fill estimate after compression.
+            pinned: Where the pins are in the COMPRESSED list. Required
+                rather than defaulted: a compaction that rewrites the
+                conversation and leaves the old indices standing points
+                them at whatever moved into those positions.
 
         Returns:
             New ``AgentContext`` with compressed conversation.
 
         Raises:
-            ValueError: If ``fill_tokens`` is negative.
+            ValueError: If ``fill_tokens`` is negative, or a pin falls
+                outside the compressed conversation.
         """
         if fill_tokens < 0:
             msg = f"fill_tokens must be >= 0, got {fill_tokens}"
+            raise ValueError(msg)
+        out_of_range = sorted(
+            i for i in pinned if not 0 <= i < len(compressed_conversation)
+        )
+        if out_of_range:
+            msg = (
+                f"pinned indices outside the compressed conversation "
+                f"({len(compressed_conversation)} messages): {out_of_range}"
+            )
             raise ValueError(msg)
         return self.model_copy(
             update={
                 "conversation": compressed_conversation,
                 "compression_metadata": metadata,
                 "context_fill_tokens": fill_tokens,
+                "pinned_message_indices": pinned,
             },
         )
 

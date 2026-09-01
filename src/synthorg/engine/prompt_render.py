@@ -16,20 +16,17 @@ from synthorg.budget.currency import (
 )
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.role import Role
-from synthorg.core.task import Task
 from synthorg.core.tool_disclosure import ToolL1Metadata
 from synthorg.engine._prompt_helpers import SECTION_COMPANY as _SECTION_COMPANY
 from synthorg.engine._prompt_helpers import (
     SECTION_ORG_POLICIES as _SECTION_ORG_POLICIES,
 )
-from synthorg.engine._prompt_helpers import SECTION_TASK as _SECTION_TASK
 from synthorg.engine._prompt_helpers import TRIMMABLE_SECTIONS as _TRIMMABLE_SECTIONS
 from synthorg.engine._prompt_helpers import build_core_context as _build_core_context
 from synthorg.engine.prompt_profiles import PromptProfile
 from synthorg.engine.prompt_result import SystemPrompt, build_prompt_result
 from synthorg.engine.prompt_safety import (
     TAG_CONFIG_VALUE,
-    TAG_TASK_DATA,
     wrap_untrusted,
 )
 from synthorg.engine.prompt_template import DEFAULT_TEMPLATE, WEB_RESEARCH_GUIDANCE
@@ -63,7 +60,6 @@ def build_template_context(  # noqa: PLR0913
     *,
     agent: AgentIdentity,
     role: Role | None,
-    task: Task | None,
     available_tools: tuple[ToolDefinition, ...],
     l1_summaries: tuple[ToolL1Metadata, ...] = (),
     company: Company | None,
@@ -80,7 +76,6 @@ def build_template_context(  # noqa: PLR0913
     Args:
         agent: Agent identity.
         role: Optional role with description.
-        task: Optional task context.
         available_tools: Tool definitions.
         l1_summaries: L1 metadata for system prompt injection.
         company: Optional company context.
@@ -132,29 +127,6 @@ def build_template_context(  # noqa: PLR0913
     inject_house_style_context(context, agent, provider=prompt_providers.house_style)
     inject_ask_policy_context(context, agent, provider=prompt_providers.ask_policy)
 
-    if task is not None:
-        # Title / description / acceptance criteria are client-supplied
-        # free text injected into the system prompt; fence each with
-        # TAG_TASK_DATA so an injected ``</task-data>`` cannot break out
-        # and the appended directive marks the block as data the model
-        # must not obey as instructions.
-        context["task"] = {
-            "title": wrap_untrusted(TAG_TASK_DATA, task.title),
-            "description": wrap_untrusted(TAG_TASK_DATA, task.description),
-            "acceptance_criteria": tuple(
-                {"description": wrap_untrusted(TAG_TASK_DATA, c.description)}
-                for c in task.acceptance_criteria
-            ),
-            "budget_limit": task.budget_limit,
-            "deadline": task.deadline,
-        }
-        context["formatted_task_budget"] = (
-            format_cost(task.budget_limit, currency) if task.budget_limit > 0 else ""
-        )
-    else:
-        context["task"] = None
-        context["formatted_task_budget"] = ""
-
     context["tools"] = (
         tuple({"name": t.name, "description": t.description} for t in available_tools)
         if available_tools
@@ -204,7 +176,6 @@ def trim_sections(  # noqa: PLR0913
     template_str: str,
     agent: AgentIdentity,
     role: Role | None,
-    task: Task | None,
     available_tools: tuple[ToolDefinition, ...],
     l1_summaries: tuple[ToolL1Metadata, ...],
     company: Company | None,
@@ -217,20 +188,13 @@ def trim_sections(  # noqa: PLR0913
     profile: PromptProfile | None = None,
     strategy_config: StrategyConfig | None = None,
     prompt_providers: PromptAmbientProviders,
-) -> tuple[
-    str,
-    int,
-    Task | None,
-    Company | None,
-    tuple[str, ...],
-    StrategyConfig | None,
-]:
+) -> tuple[str, int, Company | None, tuple[str, ...], StrategyConfig | None]:
     """Progressively remove optional sections until under token budget.
 
     Returns:
-        ``(content, estimated, task, company, org_policies,
-        strategy_config)`` so the caller can reuse the final render
-        (each section may be dropped to fit ``max_tokens``).
+        ``(content, estimated, company, org_policies, strategy_config)``
+        so the caller can reuse the final render (each section may be
+        dropped to fit ``max_tokens``).
     """
     from synthorg.engine._prompt_helpers import (  # noqa: PLC0415
         SECTION_STRATEGY as _SECTION_STRATEGY_LOCAL,
@@ -243,7 +207,6 @@ def trim_sections(  # noqa: PLR0913
             template_str,
             agent,
             role=role,
-            task=task,
             available_tools=available_tools,
             l1_summaries=l1_summaries,
             company=company,
@@ -269,8 +232,6 @@ def trim_sections(  # noqa: PLR0913
             and (profile is None or profile.include_org_policies)
         ):
             org_policies = ()
-        elif section == _SECTION_TASK and task is not None:
-            task = None
         else:
             continue
 
@@ -281,7 +242,6 @@ def trim_sections(  # noqa: PLR0913
             template_str,
             agent,
             role=role,
-            task=task,
             available_tools=available_tools,
             l1_summaries=l1_summaries,
             company=company,
@@ -297,7 +257,7 @@ def trim_sections(  # noqa: PLR0913
 
     log_trim_results(agent, max_tokens, estimated, trimmed_sections)
 
-    return content, estimated, task, company, org_policies, strategy_config
+    return content, estimated, company, org_policies, strategy_config
 
 
 def render_with_trimming(  # noqa: PLR0913
@@ -305,7 +265,6 @@ def render_with_trimming(  # noqa: PLR0913
     template_str: str,
     agent: AgentIdentity,
     role: Role | None,
-    task: Task | None,
     available_tools: tuple[ToolDefinition, ...],
     l1_summaries: tuple[ToolL1Metadata, ...] = (),
     company: Company | None,
@@ -338,7 +297,6 @@ def render_with_trimming(  # noqa: PLR0913
         template_str,
         agent,
         role=role,
-        task=task,
         available_tools=available_tools,
         l1_summaries=l1_summaries,
         company=company,
@@ -353,31 +311,27 @@ def render_with_trimming(  # noqa: PLR0913
     )
 
     if max_tokens is not None and estimated > max_tokens:
-        content, estimated, task, company, org_policies, strategy_config = (
-            trim_sections(
-                template_str=template_str,
-                agent=agent,
-                role=role,
-                task=task,
-                available_tools=available_tools,
-                l1_summaries=l1_summaries,
-                company=company,
-                org_policies=org_policies,
-                max_tokens=max_tokens,
-                estimator=estimator,
-                effective_autonomy=effective_autonomy,
-                context_budget=context_budget_indicator,
-                currency=currency,
-                profile=profile,
-                strategy_config=strategy_config,
-                prompt_providers=prompt_providers,
-            )
+        content, estimated, company, org_policies, strategy_config = trim_sections(
+            template_str=template_str,
+            agent=agent,
+            role=role,
+            available_tools=available_tools,
+            l1_summaries=l1_summaries,
+            company=company,
+            org_policies=org_policies,
+            max_tokens=max_tokens,
+            estimator=estimator,
+            effective_autonomy=effective_autonomy,
+            context_budget=context_budget_indicator,
+            currency=currency,
+            profile=profile,
+            strategy_config=strategy_config,
+            prompt_providers=prompt_providers,
         )
 
     return build_prompt_result(
         content,
         estimated,
-        task=task,
         available_tools=available_tools,
         company=company,
         org_policies=org_policies,
@@ -395,7 +349,6 @@ def render_and_estimate(  # noqa: PLR0913
     agent: AgentIdentity,
     *,
     role: Role | None,
-    task: Task | None,
     available_tools: tuple[ToolDefinition, ...],
     l1_summaries: tuple[ToolL1Metadata, ...],
     company: Company | None,
@@ -414,7 +367,6 @@ def render_and_estimate(  # noqa: PLR0913
         template_str: Jinja2 template text.
         agent: Agent identity.
         role: Optional role.
-        task: Optional task context.
         available_tools: Tool definitions.
         l1_summaries: L1 metadata for system prompt injection.
         company: Optional company context.
@@ -434,7 +386,6 @@ def render_and_estimate(  # noqa: PLR0913
     context = build_template_context(
         agent=agent,
         role=role,
-        task=task,
         available_tools=available_tools,
         l1_summaries=l1_summaries,
         company=company,

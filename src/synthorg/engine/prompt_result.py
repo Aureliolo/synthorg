@@ -14,7 +14,6 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.communication.async_tasks.models import AsyncTaskStateChannel
 from synthorg.core.agent import AgentIdentity
-from synthorg.core.task import Task
 from synthorg.engine._prompt_helpers import SECTION_ASK_POLICY as _SECTION_ASK_POLICY
 from synthorg.engine._prompt_helpers import SECTION_HOUSE_STYLE as _SECTION_HOUSE_STYLE
 from synthorg.engine._prompt_helpers import SECTION_STRATEGY as _SECTION_STRATEGY
@@ -83,7 +82,6 @@ def build_prompt_result(  # noqa: PLR0913
     content: str,
     estimated: int,
     *,
-    task: Task | None,
     available_tools: tuple[ToolDefinition, ...],
     company: Company | None,
     org_policies: tuple[str, ...],
@@ -119,7 +117,6 @@ def build_prompt_result(  # noqa: PLR0913
         injected.add(_SECTION_STRATEGY)
 
     sections = _compute_sections(
-        task=task,
         available_tools=available_tools,
         company=company,
         org_policies=org_policies,

@@ -108,20 +108,19 @@ def _do_compaction(
     Returns:
         New compacted ``AgentContext`` or ``None`` if no compaction needed.
     """
-    prep = _prepare_compaction(ctx, config, force=force)
-    if prep is None:
+    split = _prepare_compaction(ctx, config, force=force)
+    if split is None:
         return None
-    head, archivable, recent = prep
-    summary_text = build_text_summary(
-        ctx, archivable, config, preserve_markers_override=preserve_markers_override
-    )
     return finalise(
         ctx,
-        head=head,
-        archivable=archivable,
-        recent=recent,
+        split,
         estimator=estimator,
-        summary_text=summary_text,
+        summary_text=build_text_summary(
+            ctx,
+            split.archivable,
+            config,
+            preserve_markers_override=preserve_markers_override,
+        ),
     )
 
 
@@ -155,10 +154,10 @@ async def _do_semantic_compaction(
     Returns:
         New compacted ``AgentContext`` or ``None`` if no compaction needed.
     """
-    prep = _prepare_compaction(ctx, config, force=force)
-    if prep is None:
+    split = _prepare_compaction(ctx, config, force=force)
+    if split is None:
         return None
-    head, archivable, recent = prep
+    archivable = split.archivable
     summary_text = build_text_summary(
         ctx, archivable, config, preserve_markers_override=preserve_markers_override
     )
@@ -180,9 +179,7 @@ async def _do_semantic_compaction(
         )
     return finalise(
         ctx,
-        head=head,
-        archivable=archivable,
-        recent=recent,
+        split,
         estimator=estimator,
         summary_text=summary_text,
         summary_usage=summary_usage,

@@ -83,6 +83,7 @@ class TestAgentContextAsyncTaskState:
             metadata=metadata,
             compressed_conversation=(),
             fill_tokens=100,
+            pinned=frozenset(),
         )
         # State channel preserved through compression
         assert len(ctx_compressed.async_task_state.records) == 1

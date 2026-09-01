@@ -100,13 +100,16 @@ def build_system_prompt(  # noqa: PLR0913
     """Build a system prompt from agent identity and optional context.
 
     When ``max_tokens`` is provided and the prompt exceeds it, optional
-    sections are progressively trimmed (strategy, company, task,
-    org_policies).
+    sections are progressively trimmed (strategy, company, org_policies).
 
     Args:
         agent: Agent identity containing role, skills, authority.
         role: Optional role with description and responsibilities.
-        task: Optional task context injected into the prompt.
+        task: The bound task, when there is one. NOT rendered here: the
+            brief has one owner, ``format_task_instruction``, which seeds
+            it as a pinned USER message. What a bound task decides in the
+            system prompt is which untrusted-content fences the standing
+            directive declares.
         available_tools: Tool definitions populated into template context
             for custom templates only; the default template omits tools
             per D22 (non-inferable principle).
@@ -225,7 +228,6 @@ def build_system_prompt(  # noqa: PLR0913
             template_str=template_str,
             agent=agent,
             role=role,
-            task=task,
             available_tools=available_tools,
             l1_summaries=l1_summaries,
             company=company,
@@ -282,9 +284,12 @@ def build_system_prompt(  # noqa: PLR0913
     # longer has fences to govern); the async-task section also fences
     # task-data. Its cost was reserved from the trim budget above.
     directive_tags: tuple[str, ...] = (
+        # The task brief is a pinned USER message rather than a section, so
+        # its fence is governed by whether a task is bound at all: nothing
+        # the trimmer does can remove the message that carries it.
         *(
             (TAG_TASK_DATA,)
-            if "task" in result.sections or "async_tasks" in result.sections
+            if task is not None or "async_tasks" in result.sections
             else ()
         ),
         # Derived from the content, not the section list: the company-policy
@@ -301,7 +306,7 @@ def build_system_prompt(  # noqa: PLR0913
         # the run back quotes the reviewing agent's own prose at it. The
         # prompt is built once and reused across rework rounds, so the tag
         # has to be declared before the turn that carries it exists.
-        *((TAG_PEER_CONTRIBUTION,) if "task" in result.sections else ()),
+        *((TAG_PEER_CONTRIBUTION,) if task is not None else ()),
     )
     result = append_untrusted_content_directive(result, directive_tags, estimator)
 
