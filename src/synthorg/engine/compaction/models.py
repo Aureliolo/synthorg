@@ -8,8 +8,6 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from synthorg.core.types import NotBlankStr
-
 
 class CompactionConfig(BaseModel):
     """Configuration for context compaction behavior.
@@ -45,9 +43,10 @@ class CompactionConfig(BaseModel):
         llm_summarizer_enabled: Use an LLM to summarise the archived turn
             batch (semantic compaction) instead of the snippet-join text
             summary; the text summary remains the fallback on any provider
-            failure.
-        llm_summary_model: Model id for the LLM summariser. Required when
-            ``llm_summarizer_enabled`` is True.
+            failure. WHICH model is not here: the summariser is bound from
+            the ``engine.compaction_summary_model`` reference, so its client
+            and its model id travel together and a caller cannot pair a
+            client for one connection with an id chosen for another.
         llm_summary_temperature: Sampling temperature for the LLM summary.
         llm_summary_max_tokens: Max tokens for the LLM summary response.
         memory_offload_enabled: Persist the archived turn batch to the
@@ -96,10 +95,6 @@ class CompactionConfig(BaseModel):
         default=False,
         description="Use an LLM to summarise the archived turn batch (semantic).",
     )
-    llm_summary_model: NotBlankStr | None = Field(
-        default=None,
-        description="Model id for the LLM summariser (required when enabled).",
-    )
     llm_summary_temperature: float = Field(
         default=0.3,
         ge=0.0,
@@ -115,22 +110,6 @@ class CompactionConfig(BaseModel):
         default=False,
         description="Persist the archived turn batch to the memory backend.",
     )
-
-    @model_validator(mode="after")
-    def _validate_llm_model_present(self) -> Self:
-        """The summariser model is required when the LLM summariser is on.
-
-        Returns:
-            ``self`` unchanged when the invariant holds.
-
-        Raises:
-            ValueError: When ``llm_summarizer_enabled`` is set without a
-                ``llm_summary_model``.
-        """
-        if self.llm_summarizer_enabled and self.llm_summary_model is None:
-            msg = "llm_summary_model is required when llm_summarizer_enabled=True"
-            raise ValueError(msg)
-        return self
 
     @model_validator(mode="after")
     def _validate_safety_above_fill(self) -> Self:
@@ -168,6 +147,14 @@ class CompressionMetadata(BaseModel):
         archived_turns: Number of turns that were archived.
         summary_tokens: Token count of the summary message.
         compactions_performed: Total number of compactions so far.
+        summary_cost: What every semantic summary on this context has cost,
+            cumulative, in the tracker's currency. Compaction buys context
+            back by spending tokens, so this is the only figure that says
+            whether the trade paid; blended into the run's own total it is
+            unreadable. Zero when the text summariser ran, which is what
+            costing nothing looks like.
+        summary_input_tokens: Cumulative input tokens those calls spent.
+        summary_output_tokens: Cumulative output tokens they produced.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -188,4 +175,19 @@ class CompressionMetadata(BaseModel):
         default=1,
         ge=1,
         description="Total compactions performed so far",
+    )
+    summary_cost: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Cumulative cost of the semantic summaries on this context",
+    )
+    summary_input_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Cumulative input tokens spent summarising",
+    )
+    summary_output_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Cumulative output tokens produced summarising",
     )

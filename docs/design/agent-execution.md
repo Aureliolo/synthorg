@@ -678,13 +678,25 @@ class StagnationDetector(Protocol):
 Async protocol; future implementations may consult external services or
 LLM-based analysis.
 
-### Detector selection (`StagnationDetectionConfig.strategy`)
+### Detector selection (`engine.stagnation_strategy`)
 
-Stagnation detection is **off by default**: `StagnationDetectionConfig.strategy`
-defaults to `"off"`, and the factory returns no detector, so a stock boot runs
-the engine without one. Set `stagnation.strategy` to `tool_repetition` or
-`quality_erosion` to activate the matching detector with its co-located
-sub-config.
+Stagnation detection is **on by default**, at `tool_repetition`. It shipped
+`off`, which made it a feature wired to nothing: the corpus this loop was
+measured on holds a reviewer that re-ran an identical probe twenty times and a
+leaf that spent 52 turns and 1.58M tokens delivering nothing, with no detector
+present to notice either.
+
+`engine.stagnation_strategy` selects the detector (`off`, `tool_repetition`,
+`quality_erosion`) and the rest of the `Stagnation` group tunes it;
+`resolve_stagnation_config` reads them into the frozen
+`StagnationDetectionConfig` the factory takes. Whether detection runs is that
+one setting's decision and only its own: there is no second `enabled` flag on
+the sub-config, because a detector that is built, held and consulted while
+silently answering nothing is the quieter of two authorities winning.
+
+The planning loop reads the same keys and builds its own detector instance,
+since the two loops run concurrently and a detector carries per-loop state: one
+owner of the value, two readers of it.
 
 ### `ToolRepetitionDetector` (`strategy: tool_repetition`)
 
@@ -883,18 +895,26 @@ The default implementation (`make_compaction_callback` in
 message when `context_fill_percent` exceeds a configurable threshold (default
 80%).
 
-`CompactionConfig` controls:
+Compaction is configured through settings, in the `engine` namespace under the
+`Compaction` group, so an operator can see and tune it on the dashboard. Every
+key is hot-reloadable: the callback is composed once at engine construction, so
+a write rebuilds the runtime services and the next task runs under the new
+value. `resolve_compaction_config` reads them into the frozen
+`CompactionConfig` the summariser and callback take.
 
-| Field | Default | Description |
+| Setting (`engine.*`) | Default | Description |
 |-------|---------|-------------|
-| `fill_threshold_percent` | `80.0` | Fill percentage that triggers compaction |
-| `min_messages_to_compact` | `4` | Minimum messages before compaction is allowed |
-| `preserve_recent_turns` | `3` | Recent turn pairs to keep uncompressed |
-| `agent_controlled` | `False` | Defer AUTOMATIC compaction to `safety_threshold_percent` as a safety net, giving the agent headroom to compact via the `compact_context` tool first; the tool itself is honoured regardless of this flag |
-| `safety_threshold_percent` | `95.0` | Auto-compaction safety net when `agent_controlled` is on; must exceed `fill_threshold_percent` |
-| `preserve_epistemic_markers` | `True` | Preserve marker-bearing sentences instead of truncating them (see [Agent-Controlled Context Compaction](#agent-controlled-context-compaction)) |
-| `llm_summarizer_enabled` | `False` | Summarise the archived batch via a completion call instead of concatenation; requires `llm_summary_model` |
-| `memory_offload_enabled` | `False` | Persist the archived batch to the memory backend so it can be read back later |
+| `compaction_fill_threshold_percent` | `80.0` | Fill percentage that triggers compaction |
+| `compaction_min_messages` | `4` | Minimum messages before compaction is allowed |
+| `compaction_preserve_recent_turns` | `3` | Recent turn pairs to keep uncompressed |
+| `compaction_agent_controlled` | `false` | Defer AUTOMATIC compaction to the safety threshold as a safety net, giving the agent headroom to compact via the `compact_context` tool first; the tool itself is honoured regardless of this flag |
+| `compaction_safety_threshold_percent` | `95.0` | Auto-compaction safety net when `compaction_agent_controlled` is on; must exceed the fill threshold |
+| `compaction_preserve_epistemic_markers` | `true` | Preserve marker-bearing sentences instead of truncating them (see [Agent-Controlled Context Compaction](#agent-controlled-context-compaction)) |
+| `compaction_llm_summarizer_enabled` | `false` | Summarise the archived batch via a completion call instead of concatenation |
+| `compaction_summary_model` | unset | The `(provider, model)` pair the summariser runs on. A `MODEL_REF`, so the client and the model id travel together; unset leaves the summariser unbuilt and compaction keeps its text summary |
+| `compaction_summary_temperature` | `0.3` | Sampling temperature for the summary |
+| `compaction_summary_max_tokens` | `500` | Output ceiling for one summary |
+| `compaction_memory_offload_enabled` | `false` | Persist the archived batch to the memory backend so it can be read back later |
 
 Assistant message snippets included in the summary are sanitized via
 ``sanitize_message()`` to redact file paths and URLs before injection into LLM
@@ -1061,12 +1081,14 @@ measured property of this compactor.
 
 Two independent upgrades layer onto the text path, both off by default:
 
-- **LLM summarisation** (`llm_summarizer_enabled`, requires `llm_summary_model`): the
-  archived batch is summarised by a completion call (`LLMSummarizer`) instead of
-  concatenated; the archived content is fenced with `wrap_untrusted` before it reaches the
-  prompt. Any provider failure, or empty content, falls back to the text summary rather than
-  blocking compaction.
-- **Memory offload** (`memory_offload_enabled`): the archived batch is persisted to the
+- **LLM summarisation** (`engine.compaction_llm_summarizer_enabled`, plus a
+  `engine.compaction_summary_model` pair): the archived batch is summarised by a completion
+  call (`LLMSummarizer`) instead of concatenated; the archived content is fenced with
+  `wrap_untrusted` before it reaches the prompt. The summariser's client and model id arrive
+  together as a `BoundCompletion`, never the engine's own provider paired with a loose id.
+  With the pair unset the summariser is not built at all, and any provider failure, or empty
+  content, falls back to the text summary rather than blocking compaction.
+- **Memory offload** (`engine.compaction_memory_offload_enabled`): the archived batch is persisted to the
   memory backend as a PROCEDURAL entry tagged `compaction:offloaded` (`MemoryOffloader`),
   scoped to the run's project, so a resume or investigation path can read back detail the
   in-context summary elided. A backend failure is logged and never blocks compaction.

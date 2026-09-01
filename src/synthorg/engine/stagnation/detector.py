@@ -67,9 +67,6 @@ class ToolRepetitionDetector:
         Returns:
             A ``StagnationResult`` with the verdict and data.
         """
-        if not self._config.enabled:
-            return NO_STAGNATION_RESULT
-
         window = self._extract_window(turns)
         if window is None:
             return NO_STAGNATION_RESULT

@@ -30,7 +30,6 @@ class TestStagnationConfig:
 
     def test_defaults(self) -> None:
         config = StagnationConfig()
-        assert config.enabled is True
         assert config.window_size == 5
         assert config.repetition_threshold == 0.6
         assert config.cycle_detection is True
@@ -40,18 +39,16 @@ class TestStagnationConfig:
     def test_frozen(self) -> None:
         config = StagnationConfig()
         with pytest.raises(ValidationError):
-            config.enabled = False  # type: ignore[misc]
+            config.window_size = 9  # type: ignore[misc]
 
     def test_custom_values(self) -> None:
         config = StagnationConfig(
-            enabled=False,
             window_size=10,
             repetition_threshold=0.8,
             cycle_detection=False,
             max_corrections=3,
             min_tool_turns=5,
         )
-        assert config.enabled is False
         assert config.window_size == 10
         assert config.repetition_threshold == 0.8
         assert config.cycle_detection is False

@@ -47,6 +47,7 @@ from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
 from synthorg.engine.recovery import RecoveryStrategy
 from synthorg.engine.recovery_factory import build_recovery_strategy
 from synthorg.engine.stagnation import create_stagnation_detector
+from synthorg.engine.stagnation.settings import resolve_stagnation_config
 from synthorg.engine.state import EngineStateSlice, task_engine_of
 from synthorg.hr.state import HrStateSlice, agent_registry_of
 from synthorg.memory.state import MemoryStateSlice
@@ -55,6 +56,9 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.api import API_APP_STARTUP
+from synthorg.observability.events.context_budget import (
+    CONTEXT_BUDGET_COMPACTION_MODEL_UNSET,
+)
 from synthorg.observability.events.evolution import EVOLUTION_PROPOSER_MODEL_UNSET
 from synthorg.persistence.agent_state_protocol import AgentStateRepository
 from synthorg.persistence.memory_protocol import OrgFactRepository
@@ -113,6 +117,7 @@ _TOOLS_NS: str = "tools"
 _GIT_LOG_MAX_COUNT_KEY: str = "git_log_max_count"
 _CODE_RUNNER_OUTPUT_TAIL_KEY: str = "code_runner_output_tail_limit"
 _EXTERNAL_API_NS: str = SettingNamespace.EXTERNAL_API.value
+_COMPACTION_SUMMARY_MODEL_KEY: str = "compaction_summary_model"
 
 
 async def _build_auto_review_pipeline_or_none(
@@ -293,17 +298,19 @@ def _tracked_container_repo_or_none(
     return persistence.tracked_containers
 
 
-def _build_compaction_callback(
-    app_state: AppState,
-    provider: CompletionProvider,
-) -> CompactionCallback:
-    """Build the boot compaction callback from the live config.
+async def _build_compaction_callback(app_state: AppState) -> CompactionCallback:
+    """Build the boot compaction callback from the operator's settings.
 
     Text compaction is always wired (the callback fires once the context
     fill threshold is reached). The semantic LLM summariser and memory
-    offloader are built only when their config flags are on and their
-    collaborator (provider / memory backend) is present; otherwise the
-    callback degrades to the text summary.
+    offloader are built only when their setting is on and their collaborator
+    is resolvable; otherwise the callback degrades to the text summary.
+
+    The summariser's connection and model arrive together as a
+    ``BoundCompletion`` from ``engine.compaction_summary_model``, never as
+    the engine's own provider paired with a loose id: the same id reached
+    through two connections is two different calls, billed and rate-limited
+    separately.
 
     Returns:
         The compaction callback for the boot ``AgentEngine``.
@@ -312,20 +319,34 @@ def _build_compaction_callback(
     from synthorg.engine.compaction.memory_offload import (  # noqa: PLC0415
         MemoryOffloader,
     )
+    from synthorg.engine.compaction.settings import (  # noqa: PLC0415
+        resolve_compaction_config,
+    )
     from synthorg.engine.compaction.summarizer import (  # noqa: PLC0415
         make_compaction_callback,
     )
+    from synthorg.providers.model_binding import (  # noqa: PLC0415
+        resolve_bound_completion,
+    )
 
-    config = app_state.config.compaction
+    config = await resolve_compaction_config(config_resolver_of(app_state))
     summarizer = None
-    if config.llm_summarizer_enabled and config.llm_summary_model is not None:
-        summarizer = LLMSummarizer(
-            provider=provider,
-            model=config.llm_summary_model,
-            temperature=config.llm_summary_temperature,
-            max_tokens=config.llm_summary_max_tokens,
-            cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
+    if config.llm_summarizer_enabled:
+        bound = await resolve_bound_completion(
+            app_state,
+            namespace=SettingNamespace.ENGINE.value,
+            key=_COMPACTION_SUMMARY_MODEL_KEY,
+            unset_event=CONTEXT_BUDGET_COMPACTION_MODEL_UNSET,
+            subject="compaction summariser",
         )
+        if bound is not None:
+            summarizer = LLMSummarizer(
+                provider=bound.provider,
+                model=bound.model,
+                temperature=config.llm_summary_temperature,
+                max_tokens=config.llm_summary_max_tokens,
+                cost_tracker=app_state.slice(BudgetStateSlice).cost_tracker,
+            )
     offloader = None
     backend = app_state.slice(MemoryStateSlice).backend
     if config.memory_offload_enabled and backend is not None:
@@ -464,9 +485,9 @@ async def build_agent_engine(
             ),
             loop_controls=EngineLoopControls(
                 stagnation_detector=create_stagnation_detector(
-                    app_state.config.stagnation
+                    await resolve_stagnation_config(resolver)
                 ),
-                compaction_callback=_build_compaction_callback(app_state, provider),
+                compaction_callback=await _build_compaction_callback(app_state),
                 step_classifier=inputs.step_classifier,
                 steering_inbox=boot_steering_inbox(app_state),
                 background_job_watcher=create_background_job_watcher(

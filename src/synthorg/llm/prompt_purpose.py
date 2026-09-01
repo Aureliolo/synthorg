@@ -98,6 +98,7 @@ class PromptPurposeId(StrEnum):
     TOOLSMITH_AUTHOR = "system:toolsmith:author"
     META_CODE_MODIFICATION = "system:meta:code_modification"
 
+    COMPACTION_SUMMARY = "system:compaction:summary"
     STEERING_PROPOSE = "system:steering:propose"
     EVOLUTION_PROPOSE = "system:evolution:propose"
     PLAN_REVIEW_ITEM_REPLY = "system:plan_review:item_reply"
@@ -372,6 +373,11 @@ _PROMPT_PURPOSE_SPECS: Final[
         PromptPurposeId.META_CODE_MODIFICATION,
         PromptPurposeCategory.META,
         "Modify code as part of a self-improvement strategy.",
+    ),
+    (
+        PromptPurposeId.COMPACTION_SUMMARY,
+        PromptPurposeCategory.ENGINE,
+        "Summarise the archived turns a context compaction is dropping.",
     ),
     (
         PromptPurposeId.STEERING_PROPOSE,

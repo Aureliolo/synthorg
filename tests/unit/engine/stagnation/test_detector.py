@@ -56,15 +56,6 @@ class TestToolRepetitionDetectorNoStagnation:
         result = await detector.check(turns)
         assert result.verdict == StagnationVerdict.NO_STAGNATION
 
-    async def test_disabled(self) -> None:
-        """Config enabled=False should always return NO_STAGNATION."""
-        turns = tuple(_turn(i + 1, ("search:same_hash_12345",)) for i in range(10))
-        detector = ToolRepetitionDetector(
-            StagnationConfig(enabled=False),
-        )
-        result = await detector.check(turns)
-        assert result.verdict == StagnationVerdict.NO_STAGNATION
-
     async def test_below_threshold(self) -> None:
         """Repetition ratio below threshold."""
         turns = (

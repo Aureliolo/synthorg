@@ -1,4 +1,4 @@
-# module-kind: code
+# module-kind: orchestrator
 """Coordinator and work-pipeline assembly for the runtime-services builder.
 
 Owns the coordination-side construction steps behind
@@ -42,6 +42,7 @@ from synthorg.engine.pipeline.factory import (
 from synthorg.engine.pipeline.policy import build_work_routing_policy
 from synthorg.engine.roster import ServiceabilityFilteredRoster
 from synthorg.engine.routing.scorer import AgentTaskScorer, RoutingScorerConfig
+from synthorg.engine.stagnation.settings import resolve_stagnation_config
 from synthorg.engine.state import task_engine_of
 from synthorg.engine.workspace.config import WorkspaceIsolationConfig
 from synthorg.engine.workspace.disk_quota import DiskQuotaWatcher
@@ -410,6 +411,11 @@ async def _build_runtime_coordinator(
     # shared cost tracker under the owner + objective task, so charter
     # planning is attributed rather than silently unmetered.
     cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
+    resolver = config_resolver_of(app_state)
+    # The same operator settings the work loop's detector is built from. Read
+    # twice rather than shared, because the two loops run concurrently and a
+    # detector carries per-loop state.
+    planning_stagnation = await resolve_stagnation_config(resolver)
     # ``AgentEngineExecutionService`` provisions the per-project workspace
     # lazily on first task; bare construction (no service) keeps the
     # persistence-less dev paths working as before.
@@ -456,13 +462,10 @@ async def _build_runtime_coordinator(
                 max_turns=agent_session_max_turns,
                 ceilings=agent_session_ceilings,
                 memory_digest_budget=planning.digest_budget,
-                # The same deployment config the work loop's detector is built
-                # from. Read twice rather than shared, because the two loops
-                # run concurrently and a detector carries per-loop state.
-                stagnation=app_state.config.stagnation,
+                stagnation=planning_stagnation,
             ),
             planning_memory=planning.planning_memory,
-            config_resolver=config_resolver_of(app_state),
+            config_resolver=resolver,
             # A planning session runs as a staffed agent for turns at a time,
             # so it claims the same live row every other agent run does or the
             # org reads idle for the whole of it.

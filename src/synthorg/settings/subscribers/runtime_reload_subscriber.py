@@ -66,6 +66,33 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         ("memory", "procedural_temperature"),
         ("memory", "procedural_max_tokens"),
         ("memory", "procedural_skill_md_directory"),
+        # Compaction is composed once, at engine construction: the callback,
+        # its thresholds, its summariser and its offloader. An operator
+        # lowering the fill threshold, or naming a summariser model for the
+        # first time, reaches a running agent only through a rebuild.
+        ("engine", "compaction_fill_threshold_percent"),
+        ("engine", "compaction_min_messages"),
+        ("engine", "compaction_preserve_recent_turns"),
+        ("engine", "compaction_agent_controlled"),
+        ("engine", "compaction_safety_threshold_percent"),
+        ("engine", "compaction_preserve_epistemic_markers"),
+        ("engine", "compaction_llm_summarizer_enabled"),
+        ("engine", "compaction_summary_model"),
+        ("engine", "compaction_summary_temperature"),
+        ("engine", "compaction_summary_max_tokens"),
+        ("engine", "compaction_memory_offload_enabled"),
+        # Same shape for the stagnation detector: one instance per loop, built
+        # at construction and held. Switching strategy or retuning the window
+        # is exactly what an operator does while watching a run go in circles,
+        # so it cannot wait for a restart.
+        ("engine", "stagnation_strategy"),
+        ("engine", "stagnation_window_size"),
+        ("engine", "stagnation_repetition_threshold"),
+        ("engine", "stagnation_cycle_detection"),
+        ("engine", "stagnation_max_corrections"),
+        ("engine", "stagnation_min_tool_turns"),
+        ("engine", "stagnation_erosion_threshold"),
+        ("engine", "stagnation_erosion_window_size"),
         ("design", "image_generation_enabled"),
         ("design", "image_model"),
         # The tool registry and the planning-agent grant bake in the native

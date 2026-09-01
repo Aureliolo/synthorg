@@ -35,6 +35,9 @@ CONTEXT_BUDGET_COMPACTION_LLM_COMPLETED: Final[str] = (
 CONTEXT_BUDGET_COMPACTION_LLM_FALLBACK: Final[str] = (
     "context_budget.compaction.llm.fallback"
 )
+CONTEXT_BUDGET_COMPACTION_MODEL_UNSET: Final[str] = (
+    "context_budget.compaction.model_unset"
+)
 
 # Semantic compaction: memory offload of archived turn batches
 CONTEXT_BUDGET_COMPACTION_OFFLOAD_STORED: Final[str] = (
