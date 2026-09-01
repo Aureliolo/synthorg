@@ -502,6 +502,6 @@ func printLinks(out *ui.UI, state config.State) {
 	out.Box("Links", []string{
 		fmt.Sprintf("  %-12s http://localhost:%d", "Dashboard", state.WebPort),
 		fmt.Sprintf("  %-12s http://localhost:%d/api", "API docs", state.BackendPort),
-		fmt.Sprintf("  %-12s http://localhost:%d/api/v1/readyz", "Ready", state.BackendPort),
+		fmt.Sprintf("  %-12s %s", "Ready", config.APIURL(state.BackendPort, "/readyz")),
 	})
 }

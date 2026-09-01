@@ -5,6 +5,7 @@ import {
 } from '@/stores/auth'
 import { apiError, apiSuccess, voidSuccess } from '@/mocks/handlers'
 import { server } from '@/test-setup'
+import { ErrorCategory, ErrorCode } from '@/api/types/errors'
 import type { AuthResponse, UserInfoResponse } from '@/api/types/auth'
 
 // Disable dev auth bypass so the store uses the real auth flow.
@@ -212,7 +213,31 @@ describe('auth store', () => {
       expect(useAuthStore.getState().authStatus).toBe('authenticated')
     })
 
-    it('clears auth on 401 error', async () => {
+    it('reports an expired session using the backend classification', async () => {
+      server.use(
+        http.get('/api/v1/auth/me', () =>
+          HttpResponse.json(
+            apiError('Session expired. Please log in again.', {
+              error_code: ErrorCode.SESSION_EXPIRED,
+              error_category: ErrorCategory.AUTH,
+            }),
+            { status: 401 },
+          ),
+        ),
+      )
+      useAuthStore.setState({ authStatus: 'authenticated' })
+
+      await expect(useAuthStore.getState().fetchUser()).rejects.toThrow(
+        'Session expired',
+      )
+
+      expect(useAuthStore.getState().authStatus).toBe('unauthenticated')
+    })
+
+    // A 401 the backend did NOT classify as an expiry must not be reported as
+    // one: asserting "expired" for a session that never existed is the same
+    // defect the backend's own discriminator was split to fix.
+    it('clears auth on an unclassified 401 without claiming expiry', async () => {
       server.use(
         http.get('/api/v1/auth/me', () =>
           HttpResponse.json(apiError('Unauthorized'), { status: 401 }),
@@ -221,7 +246,7 @@ describe('auth store', () => {
       useAuthStore.setState({ authStatus: 'authenticated' })
 
       await expect(useAuthStore.getState().fetchUser()).rejects.toThrow(
-        'Session expired',
+        'Authentication required',
       )
 
       expect(useAuthStore.getState().authStatus).toBe('unauthenticated')

@@ -15,6 +15,7 @@ import { useToastStore } from '@/stores/toast'
 import { getCrudErrorTitle, getErrorMessage, isAxiosError } from '@/utils/errors'
 import { IS_DEV_AUTH_BYPASS } from '@/utils/dev'
 import { createLogger } from '@/lib/logger'
+import { ErrorCode } from '@/api/types/errors'
 import type { SessionInfo, UserInfoResponse } from '@/api/types/auth'
 import type { HumanRole } from '@/api/types/enums'
 
@@ -119,6 +120,25 @@ async function performAuthFlow(
   }
 }
 
+/**
+ * Describe a 401 using the backend's own classification.
+ *
+ * The backend already decided whether the credential was absent, lapsed, or
+ * rejected, and says so in `error_code`. Asserting "expired" on every 401
+ * instead is a second, independent guess at a question already answered, and
+ * it is wrong for a session that never existed.
+ */
+function unauthorizedMessage(err: unknown): string {
+  const code = isAxiosError(err)
+    ? (err.response?.data as { error_detail?: { error_code?: number } } | undefined)
+        ?.error_detail?.error_code
+    : undefined
+  if (code === ErrorCode.SESSION_EXPIRED) {
+    return 'Session expired. Please log in again.'
+  }
+  return 'Authentication required. Please log in.'
+}
+
 async function fetchUserImpl(
   set: (partial: Partial<AuthState>) => void,
   get: () => AuthState,
@@ -129,9 +149,9 @@ async function fetchUserImpl(
     set({ user, authStatus: 'authenticated' })
   } catch (err) {
     if (isAxiosError(err) && err.response?.status === 401) {
-      log.warn('Session expired or invalid, clearing auth')
+      log.warn('Session rejected, clearing auth')
       get().handleUnauthorized()
-      throw new Error('Session expired. Please log in again.', { cause: err })
+      throw new Error(unauthorizedMessage(err), { cause: err })
     }
     log.error('Failed to fetch user profile:', getErrorMessage(err))
     throw err

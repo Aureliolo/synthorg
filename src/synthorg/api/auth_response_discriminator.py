@@ -1,10 +1,16 @@
 """401 ``NotAuthorizedException`` detail-string discriminator.
 
-Maps the auth middleware's detail strings ("Missing authentication",
-"Invalid session cookie", "Invalid JWT token") to specific RFC 9457
+Maps the auth middleware's five detail strings to specific RFC 9457
 error codes so the dashboard can distinguish "fresh page load, no
 token yet" (silent redirect) from "expired session" (toast +
 redirect).
+
+The five, and where each lands: "Missing authentication" and
+"Invalid session cookie" carry the browser's two cold-start cases;
+"Invalid JWT token" is the Authorization header's own failure;
+"Invalid authorization scheme" and "Invalid credentials" collapse
+into the generic code, deliberately and without the unknown-detail
+warning, because they are recognised rather than unclassified.
 
 The detail string also carries WHICH credential failed, and that
 decides the audience: a cookie failure belongs to a browser with a

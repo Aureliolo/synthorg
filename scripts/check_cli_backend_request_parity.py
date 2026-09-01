@@ -120,20 +120,61 @@ _HEADER_SET_RE: Final[re.Pattern[str]] = re.compile(
 )
 
 _FIELD_DEFAULT_KWARGS: Final[frozenset[str]] = frozenset({"default", "default_factory"})
+_FIELD_CALLABLE: Final[str] = "Field"
+
+
+def _is_field_call(call: ast.Call) -> bool:
+    """Whether a call is Pydantic's ``Field(...)``.
+
+    Requiredness is read off ``Field``'s own argument shape, so applying
+    that reading to some other callable answers a different question with
+    this one's vocabulary.
+
+    Returns:
+        ``True`` when the callee is named ``Field``.
+    """
+    func = call.func
+    if isinstance(func, ast.Attribute):
+        return func.attr == _FIELD_CALLABLE
+    return isinstance(func, ast.Name) and func.id == _FIELD_CALLABLE
 
 
 def _field_call_has_default(call: ast.Call) -> bool:
     """Whether a ``Field(...)`` call supplies a default.
 
     ``iat: int = Field(ge=0)`` is a REQUIRED field despite carrying a
-    value, so presence of an assignment cannot decide requiredness.
+    value, so an assignment being present cannot decide the question. The
+    positional form inverts it once more: ``Field(..., description=...)``
+    passes Ellipsis, which is Pydantic's way of spelling "required" while
+    still attaching keywords, so the one positional argument that means
+    NO default is the one an arity check reads as having one.
 
     Returns:
         ``True`` when the call names a default positionally or by keyword.
     """
     if call.args:
-        return True
+        first = call.args[0]
+        supplies_default = not (
+            isinstance(first, ast.Constant) and first.value is Ellipsis
+        )
+        if supplies_default:
+            return True
     return any(kw.arg in _FIELD_DEFAULT_KWARGS for kw in call.keywords)
+
+
+def _annotation_is_classvar(annotation: ast.expr) -> bool:
+    """Whether an annotation is ``ClassVar[...]``.
+
+    Pydantic excludes a ``ClassVar`` from the model's field set, so
+    counting one as a claim invents a requirement no token can satisfy.
+
+    Returns:
+        ``True`` when the annotation subscripts ``ClassVar``.
+    """
+    target = annotation.value if isinstance(annotation, ast.Subscript) else annotation
+    if isinstance(target, ast.Attribute):
+        return target.attr == "ClassVar"
+    return isinstance(target, ast.Name) and target.id == "ClassVar"
 
 
 def _model_fields(tree: ast.Module, rel: str) -> tuple[frozenset[str], frozenset[str]]:
@@ -156,10 +197,16 @@ def _model_fields(tree: ast.Module, rel: str) -> tuple[frozenset[str], frozenset
             ):
                 continue
             name = stmt.target.id
+            # Neither a private attribute nor a ClassVar is a Pydantic
+            # field, so neither is a claim the wire carries.
+            if name.startswith("_") or _annotation_is_classvar(stmt.annotation):
+                continue
             declared.add(name)
             value = stmt.value
             if value is None or (
-                isinstance(value, ast.Call) and not _field_call_has_default(value)
+                isinstance(value, ast.Call)
+                and _is_field_call(value)
+                and not _field_call_has_default(value)
             ):
                 required.add(name)
         if not declared:
@@ -173,11 +220,17 @@ def _model_fields(tree: ast.Module, rel: str) -> tuple[frozenset[str], frozenset
 def _decode_required(tree: ast.Module, rel: str) -> frozenset[str]:
     """Collect every claim name PyJWT is told to require.
 
+    Every element is read, not just the ones this scan happens to
+    understand: having located a require list is a claim about the SHAPE
+    of the anchor, and treating it as a claim about having understood the
+    contents is how a gate certifies a contract it never read.
+
     Returns:
         The union of every ``options={"require": [...]}`` list in the module.
 
     Raises:
-        GateSourceError: If no decode call carries a require list.
+        GateSourceError: If no decode call carries a require list, or a
+            located list holds an element this scan cannot resolve.
     """
     required: set[str] = set()
     found = False
@@ -190,18 +243,26 @@ def _decode_required(tree: ast.Module, rel: str) -> frozenset[str]:
             for key, value in zip(
                 keyword.value.keys, keyword.value.values, strict=True
             ):
-                if not (
-                    isinstance(key, ast.Constant)
-                    and key.value == _REQUIRE_KEY
-                    and isinstance(value, ast.List)
-                ):
+                if not (isinstance(key, ast.Constant) and key.value == _REQUIRE_KEY):
                     continue
+                if not isinstance(value, ast.List):
+                    msg = (
+                        f"{rel}: a {_REQUIRE_KEY!r} option is not a list literal, "
+                        "so the enforced claim set cannot be read"
+                    )
+                    raise GateSourceError(msg)
                 found = True
                 for element in value.elts:
-                    if isinstance(element, ast.Constant) and isinstance(
-                        element.value, str
+                    if not (
+                        isinstance(element, ast.Constant)
+                        and isinstance(element.value, str)
                     ):
-                        required.add(element.value)
+                        msg = (
+                            f"{rel}: a {_REQUIRE_KEY!r} list holds a non-literal "
+                            "element, so the enforced claim set is incomplete"
+                        )
+                        raise GateSourceError(msg)
+                    required.add(element.value)
     if not found:
         msg = (
             f"{rel}: no jwt.decode options carry a {_REQUIRE_KEY!r} list; "
@@ -222,7 +283,10 @@ def _pinned_values(tree: ast.Module, rel: str) -> dict[str, str]:
     """
     by_constant = {constant: claim for claim, constant in _PINNED_CLAIMS.items()}
     values: dict[str, str] = {}
-    for node in ast.walk(tree):
+    # Module level only. A whole-tree walk would let a same-named
+    # annotated local in any function silently become the expected value
+    # for the three claims this gate exists to pin.
+    for node in tree.body:
         if not (isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)):
             continue
         claim = by_constant.get(node.target.id)
@@ -245,17 +309,23 @@ def _pinned_values(tree: ast.Module, rel: str) -> dict[str, str]:
 def _function_body(source: str, rel: str, func: str) -> str:
     """Slice the Go source down to *func*'s body.
 
+    The header match is anchored at a line start, because these functions
+    carry doc comments that quote their own cross-language contract: an
+    unanchored search would happily read a comment as the definition and
+    then scan whatever followed it.
+
     Returns:
         The text between the function header and its closing brace.
 
     Raises:
         GateSourceError: If the function cannot be located.
     """
-    header = f"func {func}("
-    start = source.find(header)
-    if start < 0:
-        msg = f"{rel}: no {header}...; the CLI request site is gone"
+    header = re.compile(rf"(?m)^func {re.escape(func)}\(")
+    match = header.search(source)
+    if match is None:
+        msg = f"{rel}: no func {func}(...; the CLI request site is gone"
         raise GateSourceError(msg)
+    start = match.start()
     end = source.find("\n}\n", start)
     if end < 0:
         msg = f"{rel}: {func} has no closing brace at column zero"
@@ -268,6 +338,11 @@ def _payload_statement(body: str, rel: str) -> str:
 
     Taking every raw string in the function would sweep in the JOSE header
     literal, whose ``alg`` and ``typ`` keys are not claims.
+
+    Both Go string forms are skipped while balancing, not just the raw
+    one: a parenthesis inside an ordinary quoted literal counts as
+    punctuation to a scanner that cannot see it is inside a string, and
+    the resulting span is silently the wrong one rather than an error.
 
     Returns:
         The text of the payload assignment, brackets balanced.
@@ -291,6 +366,9 @@ def _payload_statement(body: str, rel: str) -> str:
             closing = body.find("`", index + 1)
             index = len(body) if closing < 0 else closing + 1
             continue
+        if char == '"':
+            index = _skip_quoted(body, index)
+            continue
         if char == "(":
             depth += 1
             opened = True
@@ -301,6 +379,27 @@ def _payload_statement(body: str, rel: str) -> str:
         index += 1
     msg = f"{rel}: {_PAYLOAD_LOCAL} assignment has unbalanced parentheses"
     raise GateSourceError(msg)
+
+
+def _skip_quoted(body: str, opening: int) -> int:
+    r"""Return the index just past the Go quoted string opening at *opening*.
+
+    A backslash escapes the next character, so ``"\""`` closes on the
+    second quote rather than the first.
+
+    Returns:
+        The index of the first character after the closing quote.
+    """
+    index = opening + 1
+    while index < len(body):
+        char = body[index]
+        if char == "\\":
+            index += 2
+            continue
+        if char == '"':
+            return index + 1
+        index += 1
+    return len(body)
 
 
 def _minted_claims(repo_root: Path) -> tuple[frozenset[str], dict[str, str]]:
@@ -333,11 +432,20 @@ def _minted_claims(repo_root: Path) -> tuple[frozenset[str], dict[str, str]]:
 def _required_headers(tree: ast.Module, rel: str) -> frozenset[str]:
     """Collect every header name the controller declares required.
 
+    Having found a ``HeaderParameter`` call is a claim about the shape of
+    the anchor, never about having understood what is inside it. A
+    ``required=`` or ``name=`` this scan cannot resolve is therefore an
+    error rather than an omission: the controller names its two required
+    headers with a repeated literal today, and the very refusal of
+    hardcoded values that would hoist them into a constant is what would
+    otherwise drop them from the enforced set while the gate still passed.
+
     Returns:
         The names of every ``HeaderParameter(..., required=True)``.
 
     Raises:
-        GateSourceError: If the controller declares no header parameters.
+        GateSourceError: If the controller declares no header parameters,
+            or a declaration carries a non-literal ``required=`` / ``name=``.
     """
     names: set[str] = set()
     declared = False
@@ -357,11 +465,22 @@ def _required_headers(tree: ast.Module, rel: str) -> frozenset[str]:
         declared = True
         by_keyword = {kw.arg: kw.value for kw in node.keywords}
         required = by_keyword.get("required")
-        name = by_keyword.get("name")
+        if required is not None and not isinstance(required, ast.Constant):
+            msg = (
+                f"{rel}: a {_HEADER_PARAM} carries a non-literal required=, "
+                "so whether it is required cannot be read"
+            )
+            raise GateSourceError(msg)
         if not (isinstance(required, ast.Constant) and required.value is True):
             continue
-        if isinstance(name, ast.Constant) and isinstance(name.value, str):
-            names.add(name.value)
+        name = by_keyword.get("name")
+        if not (isinstance(name, ast.Constant) and isinstance(name.value, str)):
+            msg = (
+                f"{rel}: a required {_HEADER_PARAM} carries a non-literal name=, "
+                "so the header it demands cannot be read"
+            )
+            raise GateSourceError(msg)
+        names.add(name.value)
     if not declared:
         msg = (
             f"{rel}: no {_HEADER_PARAM} declarations; the required-header "

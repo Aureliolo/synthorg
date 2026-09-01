@@ -100,6 +100,45 @@ not translate it explicitly):
 
 ---
 
+## The admin request the CLI builds
+
+`synthorg backup`, `synthorg restore` and the backup `synthorg wipe` offers to
+take are the only callers of this surface that are not a browser, and the Go
+CLI builds their requests entirely by hand: it carries no JWT library and no
+generated client. Every requirement this API places on them is therefore
+written twice, once per language, with nothing but agreement holding the halves
+together.
+
+Two requirements, both enforced before any handler runs:
+
+- **A signed system token.** `cli/cmd/backup.go::buildLocalJWT` mints an HS256
+  JWT from the shared `jwt_secret`, carrying exactly the six claims
+  `AuthService._decode_token_raw` require-lists (`sub`, `iss`, `aud`, `jti`,
+  `iat`, `exp`). `JwtClaims` sets `extra="forbid"`, so a surplus claim is
+  refused as firmly as a missing one, and the set must match rather than cover.
+  `sub` / `iss` / `aud` are pinned by value to `SYSTEM_USER_ID` /
+  `SYSTEM_ISSUER` / `SYSTEM_AUDIENCE`; a drift there passes the decode and is
+  rejected afterwards by `_enforce_jwt_token_binding`, which looks identical to
+  the operator and is not.
+- **An `Idempotency-Key` header on both POSTs.** Fresh per invocation, because
+  the CLI issues exactly one request and never retries: reusing a key would
+  make a deliberate second run inside the 24h window replay the first run's
+  manifest. Concurrency is not what this protects. `BackupService._backup_lock`
+  owns the at-most-one-running invariant and refuses a second run whatever key
+  it carries.
+
+Both halves shipped broken at once, each independently sufficient to refuse
+every call, and both suites stayed green because each asserted only its own
+side's shape. `check_cli_backend_request_parity.py` derives both halves and
+holds them equal on every push; see the CLI Request Parity rule in `CLAUDE.md`.
+
+The path prefix is the third shared value. `api.api_prefix` is operator
+overridable, so the CLI reads the same `SYNTHORG_API_API_PREFIX` the backend
+does (`cli/internal/config/api_url.go`) rather than keeping a copy that would
+404 on every call the moment an operator moved the routes.
+
+---
+
 ## When the service cannot be built
 
 `build_backup_service` returns `None` if handler construction fails, and a `None`

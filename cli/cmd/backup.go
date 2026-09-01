@@ -166,13 +166,37 @@ func validateBackupListFlags() error {
 // --- API response types ---
 
 // apiEnvelope is the standard API response wrapper.
+//
+// ErrorDetail carries the machine-readable code alongside the prose. Reading
+// only the prose leaves the CLI re-deriving the server's own classification
+// by string-matching, which is how a message written for one caller class
+// came to be printed at another; a code survives a reworded message.
 type apiEnvelope struct {
-	Data    json.RawMessage `json:"data"`
-	Error   *string         `json:"error"`
-	Success bool            `json:"success"`
+	Data        json.RawMessage `json:"data"`
+	Error       *string         `json:"error"`
+	ErrorDetail *apiErrorDetail `json:"error_detail"`
+	Success     bool            `json:"success"`
 }
 
+// apiErrorDetail mirrors the Python ErrorDetail model's discriminating half.
+type apiErrorDetail struct {
+	ErrorCode int `json:"error_code"`
+}
+
+// errCodeBearerTokenInvalid mirrors ErrorCode.BEARER_TOKEN_INVALID.
+//
+// Cross-language: the value is pinned in src/synthorg/core/error_taxonomy.py.
+// It is the one code the CLI can act on, because the CLI minted the token the
+// backend just refused and therefore knows which secret produced it.
+const errCodeBearerTokenInvalid = 1012
+
 // backupManifest mirrors the Python BackupManifest model.
+//
+// The response direction has no equivalent of the request contract's
+// enforcement: encoding/json ignores an unknown field and zero-values a
+// missing one, so a backend rename lands here as empty data rather than an
+// error. check_cli_backend_request_parity.py deliberately does not cover it,
+// because the failure mode is a wrong value rather than a refused request.
 type backupManifest struct {
 	BackupID        string   `json:"backup_id"`
 	SynthorgVersion string   `json:"synthorg_version"`
@@ -269,6 +293,28 @@ const backupJWTExpiration = 60 * time.Second
 // env > state > default precedence as every other byte limit.
 var maxBackupResponseBytes = config.DefaultMaxAPIResponseBytes
 
+// validateJWTSecret reports whether the configured secret can sign an admin
+// token at all. It is the single owner of that question: wipe's pre-flight
+// asks it before spending on images and containers, and buildBackupRequest
+// asks it again at the request itself, so one root cause cannot produce two
+// different diagnoses depending on which door the operator came through.
+//
+// The message names the config key but never the secret, and deliberately not
+// its length either: maskSecret is the house standard for exactly that reason.
+//
+// A well-formed secret is not a correct one. Nothing here can tell whether the
+// backend would accept it, which is why the wipe pre-flight claims only that a
+// token could not be signed.
+func validateJWTSecret(secret string) error {
+	if secret == "" {
+		return errors.New("jwt_secret is not set in config.json")
+	}
+	if len(secret) < minJWTSecretLen {
+		return fmt.Errorf("jwt_secret is shorter than the %d-character minimum", minJWTSecretLen)
+	}
+	return nil
+}
+
 // buildLocalJWT generates a short-lived JWT signed with the shared secret so
 // the CLI can authenticate against the backend's admin endpoints. The token
 // uses HMAC-SHA256 (HS256) and expires after backupJWTExpiration.
@@ -279,11 +325,17 @@ var maxBackupResponseBytes = config.DefaultMaxAPIResponseBytes
 // here is a 401 indistinguishable from a wrong secret, so every claim the
 // backend requires is minted here and asserted by TestBuildLocalJWT against
 // the same list. jti is per-token because the backend keys session revocation
-// on it; rand.Text is 128+ bits of entropy, so two invocations never collide.
+// on it; rand.Text draws 128+ bits, making a collision between two invocations
+// vanishingly unlikely.
 func buildLocalJWT(secret string) (string, error) {
-	if len(secret) < minJWTSecretLen {
-		return "", fmt.Errorf("jwt_secret is too short (%d chars); minimum is %d", len(secret), minJWTSecretLen)
+	if err := validateJWTSecret(secret); err != nil {
+		return "", err
 	}
+	// HS256 is hardcoded rather than read from config because the backend's
+	// jwt_algorithm setting admits HS384 and HS512 too: an operator who moves
+	// it fails every CLI token on signature. That is a narrower contract than
+	// the claim set and is left to the operator, since the CLI has no channel
+	// to learn a live setting before it can authenticate to read one.
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
 	now := time.Now().Unix()
 	exp := now + int64(backupJWTExpiration.Seconds())
@@ -311,7 +363,7 @@ func backupAPIRequest(ctx context.Context, port int, method, path string, body [
 	if path != "" && path != "/restore" {
 		return nil, 0, fmt.Errorf("unexpected API path %q", path)
 	}
-	apiURL, err := url.JoinPath(fmt.Sprintf("http://localhost:%d/api/v1/admin/backups", port), path)
+	apiURL, err := url.JoinPath(config.APIURL(port, "/admin/backups"), path)
 	if err != nil {
 		return nil, 0, fmt.Errorf("building URL: %w", err)
 	}
@@ -349,6 +401,10 @@ func backupAPIRequest(ctx context.Context, port int, method, path string, body [
 // invocation because the CLI issues exactly one request and never retries
 // it: reusing a key would make a deliberate second run inside the backend's
 // 24h window replay the first run's manifest instead of taking a backup.
+// Freshness is safe for concurrency because the key was never what enforced
+// it: BackupService._backup_lock (src/synthorg/backup/service.py) is the sole
+// owner of the at-most-one-running invariant, and refuses a second run with a
+// 409 regardless of what key it carries.
 func buildBackupRequest(ctx context.Context, method, apiURL string, body []byte, jwtSecret string) (*http.Request, error) {
 	var bodyReader io.Reader
 	if body != nil {
@@ -364,18 +420,12 @@ func buildBackupRequest(ctx context.Context, method, apiURL string, body []byte,
 	if method == http.MethodPost {
 		req.Header.Set("Idempotency-Key", rand.Text())
 	}
-	if jwtSecret == "" {
-		// Sending the request unsigned would reach the backend as an
-		// anonymous call and come back "Authentication required", which
-		// says nothing about the config that is actually missing.
-		return nil, errors.New(
-			"jwt_secret is not set in config.json, so no admin token can be " +
-				"signed; run 'synthorg doctor' to inspect the install",
-		)
-	}
+	// Sending the request unsigned would reach the backend as an anonymous
+	// call and come back "Authentication required", which says nothing about
+	// the config that is actually missing.
 	token, err := buildLocalJWT(jwtSecret)
 	if err != nil {
-		return nil, fmt.Errorf("building JWT: %w", err)
+		return nil, fmt.Errorf("signing admin token: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	return req, nil
@@ -414,6 +464,35 @@ func parseAPIResponse(raw []byte) (json.RawMessage, error) {
 		return nil, errors.New(msg)
 	}
 	return env.Data, nil
+}
+
+// bearerTokenHint returns the operator-actionable follow-up for a refused
+// admin token, or the empty string when the response says something else.
+//
+// Only the CLI can offer this: the backend refuses the token without knowing
+// where it came from, while the CLI signed it and knows which secret it used.
+func bearerTokenHint(raw []byte) string {
+	var env apiEnvelope
+	if err := json.Unmarshal(raw, &env); err != nil {
+		return ""
+	}
+	if env.ErrorDetail == nil || env.ErrorDetail.ErrorCode != errCodeBearerTokenInvalid {
+		return ""
+	}
+	return "The backend refused the CLI's admin token. Its jwt_secret in " +
+		"config.json may no longer match the backend's; run 'synthorg doctor'."
+}
+
+// reportAPIError renders a non-2xx admin response and returns the error to
+// exit on, adding the token hint when the backend's own error code says the
+// token was the problem.
+func reportAPIError(errOut *ui.UI, body []byte, fallback string) error {
+	msg := sanitizeAPIMessage(apiErrorMessage(body, fallback))
+	errOut.Error(msg)
+	if hint := bearerTokenHint(body); hint != "" {
+		errOut.HintError(hint)
+	}
+	return errors.New(msg)
 }
 
 // apiErrorMessage extracts a human-readable error from a non-2xx API response.
@@ -482,9 +561,7 @@ func runBackupCreate(cmd *cobra.Command, _ []string) error {
 	}
 
 	if statusCode < 200 || statusCode >= 300 {
-		msg := sanitizeAPIMessage(apiErrorMessage(body, "backup failed"))
-		errOut.Error(msg)
-		return errors.New(msg)
+		return reportAPIError(errOut, body, "backup failed")
 	}
 
 	data, err := parseAPIResponse(body)
@@ -570,9 +647,7 @@ func fetchBackupList(ctx context.Context, state config.State, errOut *ui.UI) ([]
 		return nil, fmt.Errorf("listing backups: %w", err)
 	}
 	if statusCode < 200 || statusCode >= 300 {
-		msg := sanitizeAPIMessage(apiErrorMessage(body, "failed to list backups"))
-		errOut.Error(msg)
-		return nil, errors.New(msg)
+		return nil, reportAPIError(errOut, body, "failed to list backups")
 	}
 	data, err := parseAPIResponse(body)
 	if err != nil {
@@ -730,9 +805,7 @@ func handleRestoreError(errOut *ui.UI, body []byte, statusCode int, backupID str
 		errOut.HintNextStep("Run 'synthorg backup list' to see available backups")
 		return fmt.Errorf("backup not found: %s", backupID)
 	}
-	safe := sanitizeAPIMessage(msg)
-	errOut.Error(safe)
-	return errors.New(safe)
+	return reportAPIError(errOut, body, "restore failed")
 }
 
 // handleRestartAfterRestore stops containers when a restore requires restart.

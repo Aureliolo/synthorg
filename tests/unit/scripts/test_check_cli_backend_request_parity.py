@@ -288,6 +288,7 @@ def test_require_list_beyond_the_model_flagged(tmp_path: Path) -> None:
             "cannot be located",
         ),
     ],
+    ids=["mint_function_absent", "payload_local_absent"],
 )
 def test_unreadable_mint_site_is_a_config_error(
     tmp_path: Path,
@@ -296,6 +297,120 @@ def test_unreadable_mint_site_is_a_config_error(
 ) -> None:
     with pytest.raises(_MODULE.GateSourceError, match=expected):
         _MODULE._check(_make_tree(tmp_path, go=go_source))
+
+
+def test_doc_comment_quoting_the_signature_is_not_read_as_the_body(
+    tmp_path: Path,
+) -> None:
+    # These functions carry doc comments describing their own contract, so
+    # an unanchored header search could read a comment as the definition.
+    go = _go_source().replace(
+        "func buildLocalJWT(",
+        "// See func buildLocalJWT(secret) for the claim set.\nfunc buildLocalJWT(",
+        1,
+    )
+    assert _MODULE._check(_make_tree(tmp_path, go=go)) == []
+
+
+def test_paren_inside_a_quoted_string_does_not_break_balancing(
+    tmp_path: Path,
+) -> None:
+    payload = (
+        '`{"sub":"system","iss":"synthorg-cli","aud":"synthorg-backend",`+\n'
+        '\t\t\t`"jti":%q,"iat":%d,"exp":%d}`,\n'
+        '\t\t\tlabelFor("mint (system)"),\n'
+    )
+    assert _MODULE._check(_make_tree(tmp_path, go=_go_source(payload))) == []
+
+
+def test_model_with_no_annotated_fields_is_a_config_error(tmp_path: Path) -> None:
+    claims = "class JwtClaims(BaseModel):\n    model_config = ConfigDict(frozen=True)\n"
+    with pytest.raises(_MODULE.GateSourceError, match="no annotated claim fields"):
+        _MODULE._check(_make_tree(tmp_path, claims=claims))
+
+
+def test_unbalanced_payload_parentheses_is_a_config_error(tmp_path: Path) -> None:
+    go = (
+        "package cmd\n\n"
+        "func buildLocalJWT(secret string) (string, error) {\n"
+        "\tpayload := encode(\n"
+        '\t\t`{"sub":"system"}`,\n'
+        "\treturn payload, nil\n"
+        "}\n"
+    )
+    with pytest.raises(_MODULE.GateSourceError, match="unbalanced parentheses"):
+        _MODULE._check(_make_tree(tmp_path, go=go))
+
+
+def test_payload_template_without_claim_keys_is_a_config_error(tmp_path: Path) -> None:
+    go = _go_source(payload_body="`{}`,\n")
+    with pytest.raises(_MODULE.GateSourceError, match="no claim keys"):
+        _MODULE._check(_make_tree(tmp_path, go=go))
+
+
+def test_non_literal_required_header_name_is_a_config_error(tmp_path: Path) -> None:
+    # Hoisting the twice-repeated literal into a constant is the refactor
+    # the No Hardcoded Values rule invites; it must fail loudly, never
+    # drop the header from the enforced set.
+    controller = _CONTROLLER.replace(
+        'HeaderParameter(name="Idempotency-Key", required=True, min_length=1)',
+        "HeaderParameter(name=_IDEMPOTENCY_HEADER, required=True, min_length=1)",
+    )
+    with pytest.raises(_MODULE.GateSourceError, match="non-literal name="):
+        _MODULE._check(_make_tree(tmp_path, controller=controller))
+
+
+def test_non_literal_required_flag_is_a_config_error(tmp_path: Path) -> None:
+    controller = _CONTROLLER.replace(
+        'HeaderParameter(name="Idempotency-Key", required=True, min_length=1)',
+        'HeaderParameter(name="Idempotency-Key", required=_IS_REQUIRED, min_length=1)',
+    )
+    with pytest.raises(_MODULE.GateSourceError, match="non-literal required="):
+        _MODULE._check(_make_tree(tmp_path, controller=controller))
+
+
+def test_non_literal_require_element_is_a_config_error(tmp_path: Path) -> None:
+    service = _SERVICE.replace('"require": [', '"require": [*_SHARED_CLAIMS, ')
+    with pytest.raises(_MODULE.GateSourceError, match="non-literal"):
+        _MODULE._check(_make_tree(tmp_path, service=service))
+
+
+def test_ellipsis_field_default_counts_as_required(tmp_path: Path) -> None:
+    # Field(..., description=...) is Pydantic's "required, no default"
+    # idiom, so the one positional argument that means NO default is the
+    # one an arity check reads as supplying one.
+    claims = _CLAIMS.replace(
+        'iat: int = Field(ge=0, description="Issued-at.")',
+        'iat: int = Field(..., description="Issued-at.")',
+    )
+    payload = (
+        '`{"sub":"system","iss":"synthorg-cli","aud":"synthorg-backend",`+\n'
+        '\t\t\t`"jti":%q,"exp":%d}`,\n'
+    )
+    violations = _MODULE._check(
+        _make_tree(tmp_path, claims=claims, go=_go_source(payload))
+    )
+    assert any("does not mint iat" in v for v in violations)
+
+
+def test_classvar_and_private_attrs_are_not_claims(tmp_path: Path) -> None:
+    claims = _CLAIMS.replace(
+        "    iss: NotBlankStr\n",
+        "    _version: ClassVar[int] = 2\n"
+        "    SCHEMA: ClassVar[str] = 'jwt'\n"
+        "    iss: NotBlankStr\n",
+    )
+    assert _MODULE._check(_make_tree(tmp_path, claims=claims)) == []
+
+
+def test_non_field_default_call_does_not_decide_requiredness(tmp_path: Path) -> None:
+    # A default built by some other callable must not have Field's arity
+    # rules applied to it.
+    claims = _CLAIMS.replace(
+        "    pwd_sig: NotBlankStr | None = None\n",
+        "    pwd_sig: NotBlankStr | None = default_sig()\n",
+    )
+    assert _MODULE._check(_make_tree(tmp_path, claims=claims)) == []
 
 
 def test_payload_without_raw_string_is_a_config_error(tmp_path: Path) -> None:

@@ -19335,7 +19335,7 @@ export interface operations {
         readonly parameters: {
             readonly query?: never;
             readonly header: {
-                /** @description RFC-style retry-safe key. Required: identical keys within 24h return the cached manifest instead of starting a second backup. Without a key a 5xx-driven client retry could launch concurrent backups, violating the at-most-one-running invariant. */
+                /** @description RFC-style retry-safe key. Required: identical keys within 24h return the cached manifest instead of starting a second backup, so a 5xx-driven client retry is replay-safe. It is not what keeps two backups from running at once: BackupService._backup_lock owns that invariant and refuses a concurrent run whatever key it carries. */
                 readonly "Idempotency-Key": string;
             };
             readonly path?: never;
@@ -19423,7 +19423,7 @@ export interface operations {
         readonly parameters: {
             readonly query?: never;
             readonly header: {
-                /** @description RFC-style retry-safe key. Required: identical keys within 24h return the cached restore result instead of running a second restore. Without a key a 5xx-driven client retry could launch concurrent restores over the same data. */
+                /** @description RFC-style retry-safe key. Required: identical keys within 24h return the cached restore result instead of running a second restore, so a 5xx-driven client retry is replay-safe. It is not what keeps two restores from running at once over the same data: BackupService._backup_lock owns that invariant, shared with create. */
                 readonly "Idempotency-Key": string;
             };
             readonly path?: never;
