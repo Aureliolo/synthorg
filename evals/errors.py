@@ -239,11 +239,14 @@ class HarnessImageUnresolvedError(EvalError):
     resolving without anything in this repository changing, and the reference
     has to be rebuilt or repointed at a digest.
 
-    Raised BEFORE the host boots because it cannot be discovered later at any
-    useful moment. A cell plans and writes its contract through the gateway,
-    touching no container, so an absent image first surfaces at grading, by
-    which point the sessions have been paid for and every unit is recorded
-    unavailable.
+    Raised after the host has STARTED and before the first paid session,
+    which is the only window the question can be asked in. Not earlier:
+    unless ``--sandbox-image`` names one, the reference comes from the running
+    instance's own settings resolver, so it is not known until the app has
+    booted. Not later: a cell plans and writes its contract through the
+    gateway, touching no container, so an absent image would first surface at
+    grading, by which point the sessions have been paid for and every unit is
+    recorded unavailable.
     """
 
     default_message: ClassVar[str] = "a declared container image does not resolve"

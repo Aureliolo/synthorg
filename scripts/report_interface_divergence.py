@@ -16,6 +16,10 @@ import argparse
 import sys
 from pathlib import Path
 
+# `evals` lives at the repository root rather than on the interpreter's path,
+# and this runs as a script.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from evals.recursion_depth.divergence import leaf_trees, measure, render
 
 

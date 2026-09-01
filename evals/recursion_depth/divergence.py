@@ -49,9 +49,10 @@ class Surface:
 
     Attributes:
         names: Every public top-level name, sorted.
-        signatures: Each public function mapped to its parameter names, in
-            order. Held apart from ``names`` because the two fail differently:
-            a missing name breaks the import, and a changed parameter list
+        signatures: Each public function mapped to the parameters it declares,
+            in order and spelled the way :func:`_parameters` renders them.
+            Held apart from ``names`` because the two fail differently: a
+            missing name breaks the import, and a changed parameter list
             breaks the call that the import made possible.
     """
 
@@ -183,19 +184,46 @@ def read_surface(source: str) -> Surface:
 
 
 def _parameters(args: ast.arguments) -> tuple[str, ...]:
-    """Name every parameter a function declares, in order.
+    """Spell every parameter a function declares, in order.
 
     Names rather than annotations, because a sibling calls by name and a unit
     re-spelling a type it cannot see is not the divergence being measured.
 
+    What a name alone does not carry is whether the sibling's call COMPILES,
+    and three properties decide that: how a parameter may be passed, whether
+    it may be omitted, and whether the function accepts more than it lists.
+    Reading names only, ``f(a, b)``, ``f(a, b=1)``, ``f(a, /, b)``,
+    ``f(*, a, b)`` and ``f(a, b, *rest)`` are one signature, and four of those
+    five pairings break a call the sixth would accept. So each parameter is
+    rendered in Python's own syntax and the separators are rendered too: the
+    tuple reads back as the parameter list it came from, which is also what
+    the report prints beside a conflicting name.
+
     Returns:
-        The parameter names.
+        The parameters, in declaration order.
     """
-    return tuple(
-        argument.arg
-        for argument in (*args.posonlyargs, *args.args, *args.kwonlyargs)
-        if argument.arg != "self"
+    required = len(args.posonlyargs) + len(args.args) - len(args.defaults)
+    spelled: list[str] = []
+    positional = (*args.posonlyargs, *args.args)
+    for index, argument in enumerate(positional):
+        if argument.arg == "self":
+            continue
+        spelled.append(argument.arg + ("" if index < required else "="))
+        if args.posonlyargs and index == len(args.posonlyargs) - 1:
+            spelled.append("/")
+    if args.vararg is not None:
+        spelled.append(f"*{args.vararg.arg}")
+    elif args.kwonlyargs:
+        # The bare marker, which is what makes the names after it
+        # keyword-only. Without it a caller reads them as positional.
+        spelled.append("*")
+    spelled.extend(
+        argument.arg + ("" if default is None else "=")
+        for argument, default in zip(args.kwonlyargs, args.kw_defaults, strict=True)
     )
+    if args.kwarg is not None:
+        spelled.append(f"**{args.kwarg.arg}")
+    return tuple(spelled)
 
 
 def compare(surfaces: Mapping[str, Surface]) -> tuple[tuple[str, ...], tuple[str, ...]]:

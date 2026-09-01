@@ -17,6 +17,7 @@ path built from them is resolved and re-checked against its root before any
 filesystem work happens.
 """
 
+import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +28,7 @@ from evals.runner.execution import EVAL_TASK_PROJECT
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
     EVALS_HARNESS_WORKSPACE_LINK_DROPPED,
+    EVALS_HARNESS_WORKSPACE_LINK_REBASED,
     EVALS_HARNESS_WORKSPACE_PATH_ESCAPED,
     EVALS_WORKSPACE_SEEDED,
 )
@@ -236,12 +238,23 @@ def existing_workspace(*, cell_key: str, work_root: Path) -> CellWorkspace | Non
 
 
 def drop_escaping_links(mounted: Path, *, anchor: Path) -> None:
-    """Remove every symlink under *mounted* that does not resolve inside *anchor*.
+    """Settle every symlink under *mounted* against the copy it now sits in.
 
     Judged against the tree's ORIGINAL location rather than the copy, because a
     relative link was authored against that tree and is what the agent meant it
     to reach. A link that stays inside its own delivery is legitimate and kept;
-    anything else named a place the copy has no business reading.
+    anything else named a place the copy has no business reading and is
+    removed.
+
+    Kept is not the same as left alone, though, and the difference is only
+    visible once the tree has moved. A RELATIVE internal link keeps meaning
+    what it meant, because the thing it points at was copied alongside it. An
+    ABSOLUTE one still names the original tree, which nothing mounts beside
+    the copy: it is a dangling link in every reader, and in a container it
+    also carries a host path in. So an absolute link resolving inside the
+    anchor is rebased onto the copy, expressed relatively so it survives the
+    next copy too, and one that cannot be rebased is dropped like any other
+    escape.
 
     Shared by every place an agent-authored tree is copied somewhere it will be
     read: a merge's mounted children, an oracle's staging directory, and the
@@ -254,6 +267,7 @@ def drop_escaping_links(mounted: Path, *, anchor: Path) -> None:
             resolve into.
     """
     resolved_anchor = anchor.resolve()
+    resolved_mount = mounted.resolve()
     for path in mounted.rglob("*"):
         if not path.is_symlink():
             continue
@@ -263,15 +277,53 @@ def drop_escaping_links(mounted: Path, *, anchor: Path) -> None:
         # `anchor`: every legitimate internal link would then be judged an
         # escape and deleted. An absolute link ignores the base either way,
         # which is the case this is actually looking for.
-        origin = (resolved_anchor / path.relative_to(mounted)).parent
+        relative_to_tree = path.relative_to(mounted)
+        origin = (resolved_anchor / relative_to_tree).parent
         target = (origin / path.readlink()).resolve()
         if target != resolved_anchor and resolved_anchor not in target.parents:
             logger.warning(
                 EVALS_HARNESS_WORKSPACE_LINK_DROPPED,
-                link=str(path.relative_to(mounted)),
+                link=str(relative_to_tree),
                 mounted_as=mounted.name,
             )
             path.unlink()
+        elif path.readlink().is_absolute():
+            _rebase_link(
+                path,
+                at=relative_to_tree,
+                target=target,
+                anchor=resolved_anchor,
+                copy=resolved_mount,
+            )
+
+
+def _rebase_link(
+    path: Path, *, at: Path, target: Path, anchor: Path, copy: Path
+) -> None:
+    """Repoint one absolute internal link at the copied tree.
+
+    The new target is worked out entirely in RESOLVED space and written
+    relatively. Mixing the two spaces is wrong wherever the tree root is
+    itself reached through a link (a macOS ``/tmp`` is), and a relative link
+    is read against its own directory whichever alias got there, so the
+    result is right under either.
+
+    Args:
+        path: The link itself, to rewrite in place.
+        at: Where it sits, relative to the tree root.
+        target: What it resolves to inside *anchor*.
+        anchor: The original tree's resolved location.
+        copy: The copied tree's resolved location.
+    """
+    inside = copy if target == anchor else copy / target.relative_to(anchor)
+    rebased = os.path.relpath(inside, start=(copy / at).parent)
+    logger.info(
+        EVALS_HARNESS_WORKSPACE_LINK_REBASED,
+        link=str(at),
+        mounted_as=copy.name,
+    )
+    path.unlink()
+    path.symlink_to(rebased)
 
 
 def detach_workspace(source: CellWorkspace, root: Path) -> CellWorkspace:

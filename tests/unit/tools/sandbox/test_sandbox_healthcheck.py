@@ -169,8 +169,11 @@ class TestSomethingActuallyStartsTheServer:
 
     def test_the_keepalive_starts_the_file_the_image_installs(self) -> None:
         """The probe dials a port; something has to be listening on it."""
+        # The flags are optional, not required: `.*?\s+` before the path
+        # needs at least one token in front of it, so a plain `COPY src dst`
+        # matched nothing and this test failed claiming the install was gone.
         installed = re.search(
-            r"^COPY\s+.*?\s+docker/sandbox/healthz\.py\s+(\S+)\s*$",
+            r"^COPY\s+(?:--\S+\s+)*docker/sandbox/healthz\.py\s+(\S+)\s*$",
             _DOCKERFILE.read_text(encoding="utf-8"),
             re.MULTILINE,
         )

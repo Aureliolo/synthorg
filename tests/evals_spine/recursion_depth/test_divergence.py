@@ -63,7 +63,81 @@ class TestThePublicSurface:
     def test_parameters_are_taken_in_order(self) -> None:
         surface = read_surface("def run(query, *, data, fmt): ...")
 
-        assert surface.signatures["run"] == ("query", "data", "fmt")
+        assert surface.signatures["run"] == ("query", "*", "data", "fmt")
+
+
+class TestASignatureIsMoreThanItsParameterNames:
+    """The properties that decide whether a sibling's call compiles.
+
+    Read as names alone, every pair below is one signature, and each pairing
+    breaks a call the other end would accept. A measure that cannot tell them
+    apart reports a cell as agreeing on exactly the surface its units then
+    failed to call.
+    """
+
+    def test_a_default_is_recorded(self) -> None:
+        """Omitting the argument compiles against one spelling and not the other."""
+        assert read_surface("def run(a, b=1): ...").signatures["run"] == ("a", "b=")
+
+    def test_positional_only_is_recorded(self) -> None:
+        """Passing it by keyword compiles against one spelling and not the other."""
+        assert read_surface("def run(a, /, b): ...").signatures["run"] == (
+            "a",
+            "/",
+            "b",
+        )
+
+    def test_keyword_only_is_recorded(self) -> None:
+        """Passing it positionally compiles against one spelling and not the other."""
+        assert read_surface("def run(*, a, b): ...").signatures["run"] == (
+            "*",
+            "a",
+            "b",
+        )
+
+    def test_variadics_are_recorded(self) -> None:
+        """A signature that lists two names may still accept five."""
+        assert read_surface("def run(a, *rest, **kw): ...").signatures["run"] == (
+            "a",
+            "*rest",
+            "**kw",
+        )
+
+    @pytest.mark.parametrize(
+        "other",
+        [
+            "def run(a, b=1): ...",
+            "def run(a, /, b): ...",
+            "def run(*, a, b): ...",
+            "def run(a, b, *rest): ...",
+            "def run(a, b, **kw): ...",
+        ],
+        ids=["default", "positional-only", "keyword-only", "vararg", "kwarg"],
+    )
+    def test_each_one_diverges_from_the_bare_pair(
+        self, tmp_path: Path, other: str
+    ) -> None:
+        """Whole-cell, because the report is what an operator reads."""
+        trees = {
+            "leaf-a": _tree(tmp_path, "leaf-a", {"lexer.py": "def run(a, b): ..."}),
+            "leaf-b": _tree(tmp_path, "leaf-b", {"lexer.py": other}),
+        }
+
+        assert measure(trees).modules[0].conflicting_signatures == ("run",)
+
+    def test_the_same_signature_still_agrees(self, tmp_path: Path) -> None:
+        """The direction that would make every cell read as diverged.
+
+        The two differ in a default's VALUE, which a caller never sees: it is
+        the parameter being optional that the call is written against.
+        """
+        shape = "def run(a, /, b={}, *rest, c, **kw): ..."
+        trees = {
+            "leaf-a": _tree(tmp_path, "leaf-a", {"lexer.py": shape.format(1)}),
+            "leaf-b": _tree(tmp_path, "leaf-b", {"lexer.py": shape.format(2)}),
+        }
+
+        assert measure(trees).modules[0].agreed
 
 
 class TestAgreementIsAboutTheSurfaceNotTheBytes:

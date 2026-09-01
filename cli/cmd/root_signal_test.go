@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -23,8 +24,13 @@ func TestReportExecuteError_Interrupted(t *testing.T) {
 	var out bytes.Buffer
 	// The real shape: docker.ComposeExec returns cmd.Run() unwrapped, so a
 	// killed pull arrives as an *exec.ExitError, not as a string carrying
-	// those words.
-	rawErr := failedChildError(t)
+	// those words. It must be a child the signal KILLED rather than one that
+	// merely exited non-zero, because those two are the same Go type and only
+	// the first is a failure the interrupt accounts for.
+	rawErr := killedChildError(t)
+	if exitErr, ok := errors.AsType[*exec.ExitError](rawErr); !ok || exitErr.ExitCode() >= 0 {
+		t.Skip("this platform does not report signal termination on a killed child")
+	}
 	err := reportExecuteError(ctx, &out, rawErr)
 
 	exitErr, ok := errors.AsType[*ExitError](err)
@@ -70,6 +76,67 @@ func TestReportExecuteError_InterruptDoesNotSwallowAnUnrelatedError(t *testing.T
 	}
 	if !strings.Contains(out.String(), "backend unreachable") {
 		t.Errorf("an error the interrupt does not explain must still be shown, got: %s", out.String())
+	}
+}
+
+// TestReportExecuteError_ChildFailureAfterASignalIsStillShown is the same
+// window as the test above, for the shape that hid inside the Go type rather
+// than beside it. exec.Cmd.Run answers *exec.ExitError for ANY unsuccessful
+// exit, so a child that failed on its own and exited 1 is indistinguishable
+// by type from one the signal killed. Accepting the type alone therefore
+// discarded the text of every ordinary child failure landing in this window,
+// and ExitError's own message is explicitly not user-facing, so the operator
+// was left with "Interrupted." for a fault the interrupt did not cause.
+func TestReportExecuteError_ChildFailureAfterASignalIsStillShown(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var out bytes.Buffer
+	// Exits non-zero of its own accord; nothing killed it.
+	rawErr := failedChildError(t)
+
+	err := reportExecuteError(ctx, &out, rawErr)
+
+	if !errors.Is(err, rawErr) {
+		t.Errorf("expected the child's error to be wrapped, got: %v", err)
+	}
+	if !strings.Contains(out.String(), "Interrupted") {
+		t.Errorf("the interrupt should still be reported, got: %s", out.String())
+	}
+	if !strings.Contains(out.String(), "exit status") {
+		t.Errorf("a child failure the interrupt does not explain must still be shown, got: %s", out.String())
+	}
+}
+
+// TestInterruptExplains covers the classification directly, including the two
+// shapes no reportExecuteError test can build portably: our own re-exec'd
+// child, whose signal provenance survives on ChildExitError rather than in
+// its normalised code.
+func TestInterruptExplains(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"cancelled context", context.Canceled, true},
+		{"deadline", context.DeadlineExceeded, true},
+		{"signal-killed child", &ChildExitError{Code: ExitRuntime, Signaled: true}, true},
+		// The child runs Execute() too, so on a platform where the console
+		// delivers to the whole process group it unwinds and reports the
+		// documented interrupted code rather than dying on the signal.
+		{"child that reported the interrupt itself", &ChildExitError{Code: ExitInterrupted}, true},
+		{"child that failed on its own", &ChildExitError{Code: ExitRuntime}, false},
+		{"unrelated failure", errors.New("backend unreachable"), false},
+	}
+	for _, one := range cases {
+		t.Run(one.name, func(t *testing.T) {
+			t.Parallel()
+			if got := interruptExplains(one.err); got != one.want {
+				t.Errorf("interruptExplains(%v) = %v, want %v", one.err, got, one.want)
+			}
+		})
 	}
 }
 

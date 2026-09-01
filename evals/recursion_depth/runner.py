@@ -116,6 +116,7 @@ from evals.recursion_depth.tree import (
 from evals.recursion_depth.unit import (
     UnitDelivery,
     built_unit_workspace,
+    delivery_of,
     leaf_unit_key,
     merge_unit_key,
     unit_workspace,
@@ -795,7 +796,14 @@ def _continue_cell(
     produced: dict[str, CellWorkspace] = {}
     delivered: dict[str, UnitDelivery] = {}
     for unit in resumed.units:
-        if unit.kind == PLAN:
+        if unit.kind in (PLAN, CONTRACT):
+            # Neither is a unit whose workspace a merge reads back. The plan
+            # has none at all, and the contract's is keyed CONTRACT_UNIT_KEY
+            # rather than by unit id, so `_cell_contract` re-finds it on the
+            # next pass and hands it over without paying again. Falling
+            # through to the merge key looked for `merge-<cell>-contract`,
+            # found nothing, and restarted the whole cell: the plan and the
+            # contract stage, both already bought.
             continue
         key = str(unit.unit_id)
         unit_key = leaf_unit_key(key) if unit.kind == LEAF else merge_unit_key(key)
@@ -811,10 +819,11 @@ def _continue_cell(
             )
             return None
         produced[key] = workspace
-        delivered[key] = UnitDelivery(
+        delivered[key] = delivery_of(
             produced=unit.produced,
-            reason=unit.detail,
-            workspace_files_changed=unit.workspace_files_changed,
+            delivered=unit.delivered,
+            detail=unit.detail,
+            files_changed=unit.workspace_files_changed,
         )
     for unit in resumed.units:
         units.replay(unit)
@@ -1201,10 +1210,11 @@ async def _build_tree_units(
             contract=contract,
         )
         produced[str(parent.id)] = outcome.workspace
-        delivered[str(parent.id)] = UnitDelivery(
+        delivered[str(parent.id)] = delivery_of(
             produced=outcome.produced,
-            reason=outcome.detail,
-            workspace_files_changed=outcome.workspace_files_changed,
+            delivered=outcome.delivered,
+            detail=outcome.detail,
+            files_changed=outcome.workspace_files_changed,
         )
         units.append(_merge_record(parent, node, outcome))
         context.budget.spend(outcome.attempts)
@@ -1332,10 +1342,11 @@ async def _build_missing_leaves(
             )
         key = str(task.id)
         produced[key] = leaf.workspace
-        delivered[key] = UnitDelivery(
+        delivered[key] = delivery_of(
             produced=leaf.produced,
-            reason=leaf.detail,
-            workspace_files_changed=leaf.workspace_files_changed,
+            delivered=leaf.delivered,
+            detail=leaf.detail,
+            files_changed=leaf.workspace_files_changed,
         )
         # Deliberately synchronous inside a gathered coroutine. The append
         # write-flush-fsyncs, and running it on the loop is what serialises

@@ -24,6 +24,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+# `evals` lives at the repository root rather than on the interpreter's path,
+# and this runs as a script.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from evals.harness.rendering import one_line
 from synthorg.engine.loop_protocol import TerminationReason
 
 #: Where recordings are written, one directory each.
@@ -211,7 +216,11 @@ def detail(directory: Path) -> str:
             f"end={','.join(str(one) for one in unit.get('terminations') or []) or '-'}"
         )
         if missing:
-            lines.append(f"      missing: {', '.join(str(one) for one in missing)}")
+            # A declared path is whatever a planner wrote down, so it reaches
+            # this terminal as agent-authored text: flattened, or a newline
+            # or control sequence in one breaks the row it is printed under.
+            paths = ", ".join(one_line(str(one)) for one in missing)
+            lines.append(f"      missing: {paths}")
     return "\n".join(lines)
 
 

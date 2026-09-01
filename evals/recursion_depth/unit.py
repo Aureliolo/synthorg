@@ -202,6 +202,12 @@ class UnitDelivery:
         reason: Why this is not a clean delivery, empty when it is. Set with
             ``produced`` false when nothing was built, and with ``produced``
             true when something was built that does not stand up.
+        note: What the parent should know that is NOT a reason to doubt the
+            delivery, empty when there is nothing to say. Held apart from
+            ``reason`` because ``delivered`` reads any reason as a failure,
+            so a branch explaining that a check decided NOTHING was marking
+            the leaf undelivered on the strength of its own explanation. Both
+            such branches say the tree is the evidence, and the tree changed.
         workspace_files_changed: How many files differ between the tree
             before and after, so "turns were spent and nothing changed" is
             readable from the record without opening a transcript. ``None``
@@ -213,6 +219,7 @@ class UnitDelivery:
     produced: bool
     reason: str
     workspace_files_changed: int | None = None
+    note: str = ""
 
     @property
     def delivered(self) -> bool:
@@ -225,6 +232,35 @@ class UnitDelivery:
             input as one that built nothing.
         """
         return self.produced and not self.reason
+
+
+def delivery_of(
+    *, produced: bool, delivered: bool, detail: str, files_changed: int | None
+) -> UnitDelivery:
+    """Rebuild a delivery from a record that flattened its two texts into one.
+
+    A record carries ONE ``detail`` and the verdict beside it, so which field
+    that text came from has to be read back off the verdict rather than
+    guessed: putting a note in ``reason`` would recompute ``delivered`` as
+    false and quietly disagree with the run being replayed. One owner because
+    three call sites rebuild these, and a rule written three times is the
+    shape the note exists to stop.
+
+    Args:
+        produced: Whether the recorded unit's tree changed.
+        delivered: The verdict the run itself reached.
+        detail: Whatever text the record kept beside that verdict.
+        files_changed: The recorded file count, ``None`` before it existed.
+
+    Returns:
+        A delivery whose ``delivered`` matches the record it came from.
+    """
+    return UnitDelivery(
+        produced=produced,
+        reason="" if delivered else detail,
+        note=detail if delivered else "",
+        workspace_files_changed=files_changed,
+    )
 
 
 def produced_tree(workspace: CellWorkspace) -> UnitFingerprint:
@@ -265,6 +301,7 @@ __all__ = [
     "UnitDelivery",
     "UnitFingerprint",
     "built_unit_workspace",
+    "delivery_of",
     "files_changed",
     "leaf_unit_key",
     "merge_unit_key",

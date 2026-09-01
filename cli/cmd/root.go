@@ -502,15 +502,32 @@ func reportExecuteError(ctx context.Context, errOut io.Writer, err error) error 
 // process killed by the signal (exec.ExitError, e.g. `docker compose pull`
 // reporting "signal: killed"), or our own wrapper around a child's exit code.
 // Anything else is a failure the interrupt does not account for.
+//
+// Which is why neither child shape counts on its own. exec.Cmd.Run answers
+// *exec.ExitError for ANY unsuccessful exit, a plain `exit status 1`
+// included, so accepting the type swallowed the text of every ordinary child
+// failure that happened to land in the window after a signal arrived: the
+// case the caller's own comment says must still be shown. Signal termination
+// is the property that actually distinguishes them, and os/exec states it as
+// an exit code below zero.
+//
+// Our own re-exec'd child is judged on ExitInterrupted as well, because it
+// runs Execute() too: told to stop, it unwinds and reports 130 rather than
+// dying on the signal, so on a platform where the console delivers to the
+// whole group that is the shape an interrupt produces. A third-party child
+// on such a platform simply falls through to being printed, which is the
+// conservative direction and the one this function's caller argues for.
 func interruptExplains(err error) bool {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return true
 	}
-	if _, ok := errors.AsType[*exec.ExitError](err); ok {
-		return true
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+		return exitErr.ExitCode() < 0
 	}
-	_, ok := errors.AsType[*ChildExitError](err)
-	return ok
+	if childErr, ok := errors.AsType[*ChildExitError](err); ok {
+		return childErr.Signaled || childErr.Code == ExitInterrupted
+	}
+	return false
 }
 
 // armSecondSignal blocks until ctx is cancelled by the first signal (see

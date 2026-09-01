@@ -1122,6 +1122,15 @@ const StaleAtomicTempAge = time.Hour
 // process killed between creation and rename. Errors are swallowed
 // throughout: this is opportunistic cleanup riding along on every write, not
 // a correctness requirement of the write it accompanies.
+//
+// dir carries the same accepted path-injection tradeoff as writeFileAtomic
+// above (alerts #620/#621, dismissed alongside #617/#618): it is the
+// operator's own data dir on a local single-user CLI with no privilege
+// boundary to cross. What the sweep adds beyond that is bounded rather than
+// new -- entry.Name() from ReadDir is a bare filename, the prefix and
+// IsDir tests confine removal to this write's own temp siblings, and
+// os.Remove unlinks a symlink rather than following it -- so nothing here
+// can reach outside dir even when dir itself is somewhere surprising.
 func sweepStaleTemps(dir, base string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {

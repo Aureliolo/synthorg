@@ -347,8 +347,13 @@ async def check_images_resolve(references: Sequence[str]) -> None:
             except Exception as exc:
                 reraise_critical(exc)
                 if not _is_absent(exc):
+                    # The daemon failed to ANSWER, which is not the same
+                    # finding as an image that is genuinely absent: an alert
+                    # keyed on the unresolved event would file a Docker
+                    # outage as a broken reference and send whoever reads it
+                    # looking for a tag.
                     logger.error(
-                        EVALS_HARNESS_IMAGE_UNRESOLVED,
+                        EVALS_HARNESS_DOCKER_UNAVAILABLE,
                         image=reference,
                         error_type=type(exc).__name__,
                         error=safe_error_description(exc),

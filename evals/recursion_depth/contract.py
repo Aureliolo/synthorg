@@ -29,11 +29,11 @@ is a question with one answer instead of eight.
 """
 
 import asyncio
-import re
 from dataclasses import dataclass
 from typing import Final
 
 from evals.harness.workspace import CellWorkspace
+from evals.recursion_depth.grading import NOTHING_MEASURED, errored_count
 from evals.recursion_depth.manifest import ModelPair
 from evals.recursion_depth.session import (
     SessionLimits,
@@ -330,26 +330,6 @@ async def _judge(
     return written, ""
 
 
-#: What the grader says when a suite produced no verdict at all, rather than a
-#: verdict of failure. Taken from ``grading.read_verdict``, which is the ONLY
-#: thing that writes these strings, and matched against them rather than
-#: against pytest's own words: the grader reads a junit report and reports
-#: counts, so a check written against "collection error" or "ModuleNotFoundError"
-#: matches nothing it can ever emit and quietly classifies every contract as
-#: fine. That is the defect this whole stage exists to catch, one layer up.
-_NOTHING_MEASURED: Final[tuple[str, ...]] = (
-    "collected no tests",
-    "wrote no report",
-    "was not readable",
-    "did not finish",
-)
-
-#: How the grader words a suite that ran: ``"3 failed and 1 errored of 42"``.
-#: The errored count is the half that matters here, because an ERROR is pytest
-#: failing to get into the test at all.
-_COUNTS: Final[re.Pattern[str]] = re.compile(r"(\d+) failed and (\d+) errored of (\d+)")
-
-
 def _uncollectable(report: str) -> bool:
     """Whether a failing suite failed for the wrong reason.
 
@@ -363,14 +343,20 @@ def _uncollectable(report: str) -> bool:
     run that measured nothing at all, and a run whose tests ERRORED, since an
     error is pytest failing to reach the test rather than the test failing.
 
+    Both are read through ``grading``'s own vocabulary rather than against
+    pytest's words, because the grader reads a junit report and reports
+    counts: a check written against "collection error" or
+    "ModuleNotFoundError" matches nothing it can ever be handed and quietly
+    classifies every contract as sound, which is the defect this whole stage
+    exists to catch one layer up.
+
     Returns:
         True when the suite failed for a reason a contract may not have.
     """
-    lowered = report.lower()
-    if any(marker in lowered for marker in _NOTHING_MEASURED):
+    if any(marker in report for marker in NOTHING_MEASURED):
         return True
-    found = _COUNTS.search(lowered)
-    return found is not None and int(found.group(2)) > 0
+    errored = errored_count(report)
+    return errored is not None and errored > 0
 
 
 __all__ = [

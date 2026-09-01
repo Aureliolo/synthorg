@@ -718,9 +718,10 @@ different reasons. Counted per module path and only where more than one unit
 wrote it: a module one unit owns cannot disagree with anybody, and folding those
 in buries the reading under the many files each cell writes once. Agreement is
 the module's public surface, never its bytes, since two units are SUPPOSED to
-write different bodies for a module they share. `evals/recursion_depth/
-divergence.py` owns it and `scripts/report_interface_divergence.py` re-derives
-it from any kept recording without a provider call.
+write different bodies for a module they share.
+`evals/recursion_depth/divergence.py` owns it and
+`scripts/report_interface_divergence.py` re-derives it from any kept recording
+without a provider call.
 
 ### What delivery is decided by, and what it is not
 

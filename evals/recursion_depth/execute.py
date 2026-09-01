@@ -26,6 +26,7 @@ from typing import Final, Literal
 
 from evals.harness.workspace import CellWorkspace
 from evals.recursion_depth.claims import requirement_ids_of
+from evals.recursion_depth.grading import VERDICT_COLLECTED_NOTHING
 from evals.recursion_depth.manifest import ModelPair
 from evals.recursion_depth.models import reject_negative_deltas, sum_costs
 from evals.recursion_depth.session import (
@@ -361,7 +362,7 @@ async def run_leaf(
         output_tokens=spent.output_tokens,
         executor=ModelPair.of(owner, deps.declared_pairs),
         missing_declared_paths=final.missing,
-        detail=delivery.reason,
+        detail=delivery.reason or delivery.note,
         terminations=spent.terminations,
         workspace_files_changed=delivery.workspace_files_changed,
     )
@@ -538,11 +539,16 @@ async def _delivery(
         )
     changed = files_changed(baseline, after)
     if owned != UNBOUND and not owned:
+        # A note, not a reason: the sentence says the gate decided nothing,
+        # and putting that in `reason` made `delivered` read it as the gate
+        # deciding against the unit. The tree changed, which is the evidence
+        # this branch names.
         return UnitDelivery(
             produced=True,
-            reason=(
+            reason="",
+            note=(
                 "the unit claims no requirement, so under a contract it owns "
-                "no test and its own-test gate decides nothing; only its tree "
+                "no test and its own-test gate decided nothing; only its tree "
                 "is evidence"
             ),
             workspace_files_changed=changed,
@@ -552,39 +558,39 @@ async def _delivery(
         passed, report = await grader.own_tests_pass(
             workspace.project_dir, selecting=selecting
         )
+    reason, note = _why_not(report, passed=passed, owned=owned)
     return UnitDelivery(
         produced=True,
-        reason=_why_not(report, passed=passed, owned=owned),
+        reason=reason,
+        note=note,
         workspace_files_changed=changed,
     )
 
 
-#: What the grader says when a run measured nothing at all. Read off
-#: ``grading._verdict_from``, the only thing that writes it, rather than
-#: guessed at from pytest's own words, which never reach here.
-_COLLECTED_NOTHING: Final[str] = "collected no tests"
-
-
-def _why_not(report: str, *, passed: bool, owned: ContractClaim) -> str:
+def _why_not(report: str, *, passed: bool, owned: ContractClaim) -> tuple[str, str]:
     """Why the graded run is not a clean delivery, empty when it is.
 
+    Two answers rather than one, because the middle branch below is not a
+    verdict against the unit and ``UnitDelivery.delivered`` reads any reason
+    as one.
+
     Returns:
-        The reason.
+        The reason, and the note that is not a reason.
     """
     if passed:
-        return ""
-    if owned != UNBOUND and owned and _COLLECTED_NOTHING in report:
+        return "", ""
+    if owned != UNBOUND and owned and VERDICT_COLLECTED_NOTHING in report:
         # The selection is the CONTRACT's promise, not this unit's: it owed a
         # test named for every requirement and this unit's ids reached none of
         # them. Failing the unit for that files a contract defect against the
         # party that had no say in it, which is the misattribution the whole
         # ownership branch exists to avoid, so the tree is the evidence left.
-        return (
+        return "", (
             f"no test in the seeded tree is named for any requirement this "
             f"unit claims ({', '.join(owned)}), so its own-test gate decided "
             f"nothing and only its tree is evidence"
         )
-    return f"the unit's own tests did not pass: {report}"
+    return f"the unit's own tests did not pass: {report}", ""
 
 
 __all__ = [

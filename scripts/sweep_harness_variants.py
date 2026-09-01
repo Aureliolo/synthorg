@@ -50,10 +50,12 @@ RESULTS: Final[Path] = Path("evals/recursion_depth/results")
 #: take the queue down with it.
 RECORDER: Final[Path] = Path("scripts/record_recursion_depth.py")
 
-#: Where the provider connections live, when nothing says otherwise. A path
-#: outside the repository because it holds credentials, and one nobody's home
-#: directory is baked into: an absolute path under one operator's account is
-#: not a default, it is that operator's machine written down.
+#: Where the provider connections live, when nothing says otherwise. Relative,
+#: so it resolves against the directory the queue is launched from, and
+#: gitignored, because it holds provider credentials. Relative rather than
+#: absolute for the same reason it is not somebody's home directory: an
+#: absolute path under one operator's account is not a default, it is that
+#: operator's machine written down.
 DEFAULT_COMPANY_CONFIG: Final[Path] = Path("providers.local.yaml")
 
 #: The environment variable that supplies it, so a queue can be launched

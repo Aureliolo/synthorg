@@ -556,7 +556,15 @@ async def _while_the_gateway_serves(
     with suppress(asyncio.CancelledError):
         await running
     detail = "it ended without raising"
-    if (failure := serving.exception()) is not None:
+    if serving.cancelled():
+        # Task.exception() RAISES CancelledError for a cancelled task rather
+        # than returning it, and this function does not own `serving`: the
+        # host's own teardown, or an interrupt reaching the task group, can
+        # settle it that way. Asking first is what keeps the documented
+        # HarnessGatewayUnavailableError, naming the matrix that stopped,
+        # from being replaced by a bare CancelledError that names nothing.
+        detail = "it was cancelled"
+    elif (failure := serving.exception()) is not None:
         detail = f"{type(failure).__name__}: {safe_error_description(failure)}"
     msg = (
         f"the recording gateway stopped serving mid-matrix, so every cell "

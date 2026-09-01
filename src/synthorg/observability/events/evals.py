@@ -73,6 +73,9 @@ EVALS_HARNESS_WORKSPACE_PATH_ESCAPED: Final[str] = (
 EVALS_HARNESS_WORKSPACE_LINK_DROPPED: Final[str] = (
     "evals.harness.workspace_link_dropped"
 )
+EVALS_HARNESS_WORKSPACE_LINK_REBASED: Final[str] = (
+    "evals.harness.workspace_link_rebased"
+)
 EVALS_HARNESS_STALL_REPORT_FAILED: Final[str] = "evals.harness.stall_report_failed"
 EVALS_HARNESS_RECORD_JOURNALLED: Final[str] = "evals.harness.record_journalled"
 EVALS_HARNESS_RECORD_REPLAYED: Final[str] = "evals.harness.record_replayed"

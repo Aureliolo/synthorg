@@ -1299,9 +1299,12 @@ class TestAContractSeededLeafIsGradedOnWhatItOwns:
         # `UNBOUND` is not "claims nothing": where no contract seeded the
         # tree, everything in the checkout IS this leaf's own work, so
         # narrowing would grade it on a fraction of what it wrote.
-        _outcome, seen = await self._run(tmp_path, monkeypatch, owned=UNBOUND)
+        outcome, seen = await self._run(tmp_path, monkeypatch, owned=UNBOUND)
 
         assert seen == [()]
+        # The grader failed, and under UNBOUND that verdict IS about this
+        # leaf: the whole tree is its own work, so it is undelivered.
+        assert outcome.delivered is False
 
     async def test_a_leaf_claiming_nothing_is_not_graded_on_its_siblings(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1318,6 +1321,12 @@ class TestAContractSeededLeafIsGradedOnWhatItOwns:
         assert seen == []
         assert outcome.produced is True
         assert "claims no requirement" in outcome.detail
+        # And DELIVERED, which is the half the explanation was costing it.
+        # The sentence says the gate decided nothing and the tree is the
+        # evidence; carried as a reason, it was read as the gate deciding
+        # against the leaf, and only delivered leaves' claims reach the
+        # survival denominator.
+        assert outcome.delivered is True
 
     async def test_a_selection_matching_no_test_is_the_contracts_failure(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1333,6 +1342,10 @@ class TestAContractSeededLeafIsGradedOnWhatItOwns:
         assert outcome.produced is True
         assert "R99" in outcome.detail
         assert "decided nothing" in outcome.detail
+        # Delivered for the reason the sentence gives: the contract owed the
+        # test, so its absence says nothing about this leaf, and its tree is
+        # what is left to judge it on.
+        assert outcome.delivered is True
 
     def test_the_selection_reaches_pytest_as_a_name_filter(self) -> None:
         # The join is the requirement id appearing in the test's NAME, which is

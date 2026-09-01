@@ -1,4 +1,4 @@
-# This harness against the published evidence
+# This harness measured against the published evidence
 
 Four teams have published results in the last year on the scaffolding around a
 model rather than the model. This audits our loop against each, using the flow

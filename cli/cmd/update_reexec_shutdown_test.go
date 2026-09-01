@@ -49,6 +49,33 @@ func failedChildError(t *testing.T) error {
 	return err
 }
 
+// killedChildError returns the *exec.ExitError a child KILLED mid-run
+// produces, which failedChildError deliberately does not: that one exits
+// non-zero of its own accord, and the two are the same Go type carrying
+// opposite meanings. Built by letting the stdlib's default cancel action
+// fire, the same path a real `docker compose pull` takes when the operator's
+// Ctrl+C cancels the command's context.
+func killedChildError(t *testing.T) error {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	c := exec.CommandContext(ctx, os.Args[0], "-test.run=TestMain") //nolint:gosec // G204: the test binary re-execing itself
+	c.Env = append(os.Environ(), helperEnv+"=1")
+	if err := c.Start(); err != nil {
+		t.Fatalf("starting helper child: %v", err)
+	}
+	// Well inside the child's run, as in the shutdown tests below, so the
+	// kill lands while it still has work left rather than racing its exit.
+	time.AfterFunc(helperRunMillis/4*time.Millisecond, cancel)
+
+	err := c.Wait()
+	if err == nil {
+		t.Fatal("helper child should have been killed")
+	}
+	return err
+}
+
 // TestConfigureReexecShutdown_letsTheChildFinishUnwinding is the regression
 // guard for the desync `synthorg update` exists to prevent.
 //

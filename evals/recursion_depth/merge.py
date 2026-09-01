@@ -382,13 +382,20 @@ def _piece_state(piece: MergePiece) -> str:
     first is what made a live root merge, handed 277 modules across seven
     subtrees, write nothing at all across six attempts.
 
+    A piece carrying only a NOTE is in the clean state and reads as one: its
+    own-test gate decided nothing rather than deciding against it, so the
+    note travels as context and never as the not-signed-off mark, which the
+    merge is told to treat as work needing repair.
+
     Returns:
-        The annotation, empty for a piece that arrived clean.
+        The annotation, empty for a piece that arrived clean and unremarked.
     """
     if not piece.delivery.produced:
         return "  [BUILT NOTHING]"
     if piece.delivery.reason:
         return f"  [BUILT, BUT NOT SIGNED OFF: {piece.delivery.reason}]"
+    if piece.delivery.note:
+        return f"  [BUILT; {piece.delivery.note}]"
     return ""
 
 
@@ -434,17 +441,18 @@ _AMENDING_BOUND: Final[str] = (
 )
 
 
-def merge_brief(
-    plan: MergePlan, findings: tuple[str, ...], *, bound: bool = False
-) -> str:
+def merge_brief(plan: MergePlan, findings: tuple[str, ...]) -> str:
     """Compose the brief one merge attempt runs against.
+
+    Whether a contract stage fixed the shape every piece was built from is
+    read off *plan* rather than taken as an argument: it is already the
+    plan's, and a second source for one value is a caller away from rendering
+    a bound brief for an unbound assembly.
 
     Args:
         plan: The node being assembled.
         findings: What the last review said, empty on the first attempt and in
             the ungated arm.
-        bound: Whether a contract stage fixed the shape every piece was built
-            from, so this assembly starts from that same shape.
 
     Returns:
         The brief.
@@ -470,7 +478,7 @@ def merge_brief(
         reviewed.append("An independent reviewer rejected the last attempt:")
         reviewed.extend(f"- {finding}" for finding in findings)
     sections = [
-        _ISOLATION_BOUND if bound else _ISOLATION_FREE,
+        _ISOLATION_BOUND if plan.bound else _ISOLATION_FREE,
         (
             f"The pieces are copies under `{CHILDREN_DIR}/`, for you to read "
             "and take from. The deliverable is the tree at the workspace root: "
@@ -485,7 +493,7 @@ def merge_brief(
             "tests up with their code and make them pass against the "
             "assembly."
         ),
-        _AMENDING_BOUND if bound else _AMENDING_FREE,
+        _AMENDING_BOUND if plan.bound else _AMENDING_FREE,
         (
             f"Record what you did in `{MERGE_REPORT_PATH}` and put the "
             "end-to-end run's own output, verbatim, in "
@@ -625,7 +633,7 @@ def _attempt_task(plan: MergePlan, findings: tuple[str, ...]) -> Task:
     """
     return plan.task.model_copy(
         update={
-            "description": NotBlankStr(merge_brief(plan, findings, bound=plan.bound)),
+            "description": NotBlankStr(merge_brief(plan, findings)),
             "artifacts_expected": (
                 ExpectedArtifact(
                     type=ArtifactType.DOCUMENTATION, path=MERGE_REPORT_PATH

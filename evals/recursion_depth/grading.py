@@ -54,6 +54,7 @@ the measurement outright.
 """
 
 import hashlib
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -414,6 +415,60 @@ def refuse_without_a_runner(probe: SandboxResult) -> None:
     raise EvalToolMissingError(msg)
 
 
+#: What ``read_verdict`` says when a suite produced no verdict at all, rather
+#: than a verdict of failure. Declared here because this module is the ONLY
+#: thing that writes these words and two others read them back: the contract
+#: stage, to tell a contract that failed on its assertions from one whose
+#: names do not resolve, and the leaf delivery check, to tell a unit whose
+#: claims reached no test from one whose tests failed. Held as constants
+#: rather than re-spelled at each reader, because a wording change that left
+#: a copy behind would leave that check matching nothing it can ever be
+#: handed and quietly passing everything, which is the exact defect the
+#: contract stage exists to catch one layer up.
+VERDICT_UNFINISHED: Final[str] = "the suite did not finish in"
+VERDICT_NO_REPORT: Final[str] = "the suite wrote no report"
+VERDICT_UNREADABLE: Final[str] = "the suite's report was not readable"
+VERDICT_COLLECTED_NOTHING: Final[str] = "the suite collected no tests"
+
+#: All four together, for a reader asking only "did this measure anything".
+NOTHING_MEASURED: Final[tuple[str, ...]] = (
+    VERDICT_UNFINISHED,
+    VERDICT_NO_REPORT,
+    VERDICT_UNREADABLE,
+    VERDICT_COLLECTED_NOTHING,
+)
+
+#: How a suite that RAN is worded, and the pattern that reads it back. The
+#: pattern is BUILT from the template so the two cannot drift: a reader
+#: matching against its own copy of these words is the same fragility as a
+#: reader with its own copy of the markers above.
+_COUNTS_TEMPLATE: Final[str] = "{failures} failed and {errors} errored of {tests}"
+_COUNTS_PATTERN: Final[re.Pattern[str]] = re.compile(
+    _COUNTS_TEMPLATE.format(
+        failures=r"(?P<failures>\d+)",
+        errors=r"(?P<errors>\d+)",
+        tests=r"(?P<tests>\d+)",
+    )
+)
+
+
+def errored_count(detail: str) -> int | None:
+    """How many tests ERRORED, per a detail line ``read_verdict`` wrote.
+
+    An error is pytest failing to reach the test rather than the test
+    failing, which is the half a caller distinguishing "failed properly" from
+    "never ran" needs.
+
+    Args:
+        detail: A verdict detail this module produced.
+
+    Returns:
+        The count, or ``None`` when *detail* does not report counts at all.
+    """
+    found = _COUNTS_PATTERN.search(detail)
+    return None if found is None else int(found.group("errors"))
+
+
 def read_verdict(report_path: Path, *, timed_out: bool) -> tuple[bool, str]:
     """Decide the verdict from the report pytest wrote, not from an exit code.
 
@@ -430,13 +485,13 @@ def read_verdict(report_path: Path, *, timed_out: bool) -> tuple[bool, str]:
         Whether the suite ran clean, and why not when it did not.
     """
     if timed_out:
-        return False, f"the suite did not finish in {OWN_TESTS_TIMEOUT_SECONDS:.0f}s"
+        return False, f"{VERDICT_UNFINISHED} {OWN_TESTS_TIMEOUT_SECONDS:.0f}s"
     if not report_path.is_file():
-        return False, "the suite wrote no report, so it never reached session end"
+        return False, f"{VERDICT_NO_REPORT}, so it never reached session end"
     try:
         root = ET.parse(report_path).getroot()  # noqa: S314 -- the harness's own path
     except ET.ParseError:
-        return False, "the suite's report was not readable"
+        return False, VERDICT_UNREADABLE
     return _verdict_from(_totals(root))
 
 
@@ -461,13 +516,13 @@ def _verdict_from(totals: dict[str, int]) -> tuple[bool, str]:
         Whether the suite ran clean, and why not when it did not.
     """
     if totals["tests"] == 0:
-        return False, "the suite collected no tests"
+        return False, VERDICT_COLLECTED_NOTHING
     if totals["failures"] or totals["errors"]:
-        detail = (
-            f"{totals['failures']} failed and {totals['errors']} errored "
-            f"of {totals['tests']}"
+        return False, _COUNTS_TEMPLATE.format(
+            failures=totals["failures"],
+            errors=totals["errors"],
+            tests=totals["tests"],
         )
-        return False, detail
     return True, ""
 
 
@@ -501,6 +556,7 @@ __all__ = [
     "GRADED_ENV",
     "INI_BODY",
     "INI_NAME",
+    "NOTHING_MEASURED",
     "ORACLE_KEEP_DIRS",
     "ORACLE_KEEP_FILES",
     "ORACLE_SUITE_DIR",
@@ -508,10 +564,15 @@ __all__ = [
     "OWN_TESTS_TIMEOUT_SECONDS",
     "REPORT_NAME",
     "RUNNER_PROBE_ARGS",
+    "VERDICT_COLLECTED_NOTHING",
+    "VERDICT_NO_REPORT",
+    "VERDICT_UNFINISHED",
+    "VERDICT_UNREADABLE",
     "SandboxFactory",
     "SandboxReleaseHook",
     "SandboxUnitGrader",
     "UnitGrader",
+    "errored_count",
     "is_kept",
     "oracle_fingerprint",
     "oracle_leftovers",

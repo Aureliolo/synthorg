@@ -43,7 +43,11 @@ func reexecUpdate(cmd *cobra.Command, recovered bool) error {
 	if runErr := c.Run(); runErr != nil {
 		// Preserve the child's exit code so the parent can propagate it.
 		if exitErr, ok := errors.AsType[*exec.ExitError](runErr); ok {
-			return &ChildExitError{Code: normalizeChildExitCode(exitErr.ExitCode())}
+			code := exitErr.ExitCode()
+			return &ChildExitError{
+				Code:     normalizeChildExitCode(code),
+				Signaled: code < 0,
+			}
 		}
 		return fmt.Errorf("re-launching updated CLI: %w", runErr)
 	}

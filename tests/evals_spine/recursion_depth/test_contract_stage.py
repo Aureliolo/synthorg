@@ -1,11 +1,12 @@
 # module-kind: tests
 """What a unit finds in its checkout, and what it is told about it.
 
-The recorded corpus is the reason this stage exists: across three cells every
-shared module was defined by more than one child and every one of them
-disagreed on its exports (11 of 11, 10 of 11, 11 of 12). The seed fixture is a
-README, so a leaf opening its workspace found no name to import, and inventing
-one was the only move available to it.
+The recorded corpus is the reason this stage exists: across three cells, most
+of the modules more than one child wrote disagreed on their exports (11 of 14,
+11 of 12 and 12 of 13), re-derivable from the kept trees with
+``scripts/report_interface_divergence.py``. The seed fixture is a README, so a
+leaf opening its workspace found no name to import, and inventing one was the
+only move available to it.
 
 So the property under test is not "a contract session ran". It is that the
 agreement is IN THE TREE the unit is recreated from, because that is the only
@@ -21,14 +22,10 @@ from scripts.record_recursion_depth import narrow
 
 from evals.errors import WorkspaceSeedNotFoundError
 from evals.harness.workspace import CellWorkspace, reseed_workspace
-from evals.recursion_depth import grading
 from evals.recursion_depth.claims import RequirementId, criterion_for
-from evals.recursion_depth.contract import (
-    _NOTHING_MEASURED,
-    _uncollectable,
-    contract_brief,
-)
+from evals.recursion_depth.contract import _uncollectable, contract_brief
 from evals.recursion_depth.execute import leaf_brief
+from evals.recursion_depth.grading import NOTHING_MEASURED, read_verdict
 from evals.recursion_depth.manifest import RecursionDepthManifest, Role
 from evals.recursion_depth.merge import AMENDMENT_MARKER, MergePlan, merge_brief
 from evals.recursion_depth.session import SessionLimits, session_limits_for
@@ -344,7 +341,7 @@ class TestWhatTheMergeIsTold:
             attempts=3,
             bound=bound,
         )
-        return merge_brief(plan, (), bound=bound)
+        return merge_brief(plan, ())
 
     def test_unbound_it_still_says_a_contract_does_not_survive(self) -> None:
         """The control arm keeps the words the corpus was recorded under."""
@@ -471,17 +468,37 @@ class TestAContractsSuiteMustFailForTheRightReason:
     def test_a_partly_failing_suite_with_no_errors_is_right(self) -> None:
         assert not _uncollectable("7 failed and 0 errored of 42")
 
-    def test_the_grader_and_this_check_speak_the_same_vocabulary(self) -> None:
-        """The two must not be able to drift apart silently.
+    def test_every_marker_is_one_the_grader_actually_produces(
+        self, tmp_path: Path
+    ) -> None:
+        """A phrase the grader cannot emit is a check that passes everything.
 
-        This is the bug the parametrised case above documents, asserted
-        directly: every phrase this module watches for has to be one the
-        grader can actually produce.
+        Driven through ``read_verdict`` rather than read out of its source,
+        because the vocabulary is now one declaration both sides import: a
+        text scan would agree with itself whatever the grader does with it,
+        which is the question that actually matters here.
         """
-        source = Path(grading.__file__).read_text(encoding="utf-8")
+        absent = tmp_path / "never-written.xml"
+        unreadable = tmp_path / "truncated.xml"
+        unreadable.write_text("<testsuite", encoding="utf-8")
+        empty = tmp_path / "empty.xml"
+        empty.write_text(
+            '<testsuite tests="0" failures="0" errors="0" />', encoding="utf-8"
+        )
 
-        for marker in _NOTHING_MEASURED:
-            assert marker in source
+        produced = [
+            read_verdict(absent, timed_out=True)[1],
+            read_verdict(absent, timed_out=False)[1],
+            read_verdict(unreadable, timed_out=False)[1],
+            read_verdict(empty, timed_out=False)[1],
+        ]
+
+        for marker in NOTHING_MEASURED:
+            assert any(marker in detail for detail in produced)
+        # And each one is a report this stage then refuses, which is the
+        # whole point of watching for them.
+        for detail in produced:
+            assert _uncollectable(detail)
 
 
 class TestALeafIsSizedByWhatItClaims:

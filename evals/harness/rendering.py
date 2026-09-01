@@ -62,13 +62,18 @@ def one_line(text: str) -> str:
 def tail(output: str) -> str:
     """Bound and flatten agent-authored output for a record.
 
+    Flattened BEFORE the bound, not after: ``printable`` keeps newlines by
+    design, so slicing its result left the extract spanning as many lines as
+    it happened to contain, and a field that promises one line is read by
+    something aligning a row against it.
+
     Args:
         output: The captured output.
 
     Returns:
-        The trailing extract, printable characters only.
+        The trailing extract, on one line.
     """
-    return printable(output)[-TAIL_CHARS:].strip()
+    return one_line(output)[-TAIL_CHARS:].strip()
 
 
 __all__ = ["TAIL_CHARS", "one_line", "printable", "tail"]

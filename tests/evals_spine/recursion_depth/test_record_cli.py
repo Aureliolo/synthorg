@@ -566,13 +566,17 @@ class TestSamplingIsStatedBeforeAnythingIsSpent:
     def test_asking_units_for_no_override_leaves_them_on_the_pair(self) -> None:
         # `none` is the third state and means "build at whatever the pair
         # carries", which is what every recording before the flag existed did.
-        bound = narrow(
-            load_manifest(_MANIFEST),
-            None,
-            None,
-            None,
-            leaf_reasoning_effort=REASONING_UNSET,
+        #
+        # Started from a manifest that PINS a depth, because the committed one
+        # leaves it unset: asserting `None` against that manifest holds whether
+        # or not the sentinel branch runs at all, so the clearing is what has
+        # to be observed rather than the absence.
+        pinned = narrow(
+            load_manifest(_MANIFEST), None, None, None, leaf_reasoning_effort="low"
         )
+        assert pinned.leaf_reasoning_effort is ReasoningEffort.LOW
+
+        bound = narrow(pinned, None, None, None, leaf_reasoning_effort=REASONING_UNSET)
 
         assert bound.leaf_reasoning_effort is None
 
@@ -682,6 +686,12 @@ class TestPreflightGuardsTheBoot:
         monkeypatch.setattr(record_module, "run_preflight", _probe)
         monkeypatch.setattr(record_module, "check_images_resolve", _refuse)
         monkeypatch.setattr(record_module, "run_sweep", _sweep)
+        # `_record` ENTERS the host before it asks about the image, so leaving
+        # these real made this ordering assertion connect and migrate a
+        # scratch database, seed the project and serve the gateway on its way
+        # to the one call it is about. The same collaborators `_recorded`
+        # stubs, for the same reason.
+        _stub_the_host(monkeypatch)
 
         with pytest.raises(HarnessImageUnresolvedError):
             await record_module._record(
@@ -872,6 +882,40 @@ def _record_args(tmp_path: Path) -> argparse.Namespace:
     )
 
 
+def _stub_the_host(
+    monkeypatch: pytest.MonkeyPatch, *, release: Exception | None = None
+) -> None:
+    """Stand in for the gateway host and everything its context build needs.
+
+    ``_record`` ENTERS the host before it reaches most of what a test of its
+    ordering is about, and the real one connects and migrates a scratch
+    database, seeds the project and serves a gateway. One owner rather than a
+    set repeated per test, because a second copy is one collaborator away from
+    the older of them quietly booting for real again.
+
+    Args:
+        monkeypatch: Patching seam.
+        release: Raised when the containers are released, or ``None`` for a
+            release that succeeds.
+    """
+    host = mock_of[RecordingGatewayHost](
+        # The addresses the start log states, which is everything the
+        # lifecycle under test reads off a host.
+        container_gateway_url="http://gateway.invalid/v1",
+        port=0,
+    )
+    host.__aenter__.return_value = host
+    host.__aexit__.return_value = False
+    binder = mock_of[HarnessBinder]()
+    binder.release_all_sandboxes.side_effect = release
+
+    monkeypatch.setattr(record_module, "RecordingGatewayHost", lambda _c: host)
+    monkeypatch.setattr(record_module, "HarnessBinder", lambda **_k: binder)
+    monkeypatch.setattr(record_module, "_host_config", lambda *a, **k: None)
+    monkeypatch.setattr(record_module, "_build_context", _built_context)
+    monkeypatch.setattr(record_module, "capture_provenance", lambda **_k: None)
+
+
 def _recorded(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -900,16 +944,7 @@ def _recorded(
     root = tmp_path / "work" / f"run-{_recording_slug(tmp_path / 'out')}"
     (root / "unit").mkdir(parents=True)
 
-    host = mock_of[RecordingGatewayHost](
-        # The addresses the start log states, which is everything the
-        # lifecycle under test reads off a host.
-        container_gateway_url="http://gateway.invalid/v1",
-        port=0,
-    )
-    host.__aenter__.return_value = host
-    host.__aexit__.return_value = False
-    binder = mock_of[HarnessBinder]()
-    binder.release_all_sandboxes.side_effect = release
+    _stub_the_host(monkeypatch, release=release)
 
     async def _no_preflight(**_kwargs: object) -> None:
         return None
@@ -927,11 +962,6 @@ def _recorded(
     # scratch root survives a failure. Its own behaviour is pinned in
     # `test_image_preflight.py`.
     monkeypatch.setattr(record_module, "check_images_resolve", _images_resolve)
-    monkeypatch.setattr(record_module, "RecordingGatewayHost", lambda _c: host)
-    monkeypatch.setattr(record_module, "HarnessBinder", lambda **_k: binder)
-    monkeypatch.setattr(record_module, "_host_config", lambda *a, **k: None)
-    monkeypatch.setattr(record_module, "_build_context", _built_context)
-    monkeypatch.setattr(record_module, "capture_provenance", lambda **_k: None)
     monkeypatch.setattr(record_module, "run_sweep", _swept)
     monkeypatch.setattr(record_module, "write_report", lambda *_a: (tmp_path / "r",))
     return root

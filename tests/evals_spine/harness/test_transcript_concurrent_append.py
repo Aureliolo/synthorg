@@ -37,6 +37,13 @@ pytestmark = pytest.mark.unit
 #: a whole conversation: the largest in one recorded cell is 6.4 MB.
 _BODY_CHARS = 3_000_000
 
+#: For the two properties below that hold at any size. Every entry is
+#: submitted before anything joins, so the pool queues all 48 at once and
+#: `TranscriptRecorder.write` then builds a serialised copy of each: at
+#: `_BODY_CHARS` that is roughly 144 MB of live strings per test, paid three
+#: times, to prove two things that never depended on the size.
+_SMALL_BODY_CHARS = 4_096
+
 _WRITERS = 8
 _PER_WRITER = 6
 
@@ -47,10 +54,28 @@ def _entry(writer: int, index: int) -> dict[str, object]:
     Returns:
         The entry.
     """
+    return _sized_entry(writer, index, _BODY_CHARS)
+
+
+def _small_entry(writer: int, index: int) -> dict[str, object]:
+    """Build one exchange that identifies itself without straddling anything.
+
+    Returns:
+        The entry.
+    """
+    return _sized_entry(writer, index, _SMALL_BODY_CHARS)
+
+
+def _sized_entry(writer: int, index: int, body_chars: int) -> dict[str, object]:
+    """Build one exchange of a given body size.
+
+    Returns:
+        The entry.
+    """
     return {
         "writer": writer,
         "index": index,
-        "request": {"messages": [{"role": "user", "content": "x" * _BODY_CHARS}]},
+        "request": {"messages": [{"role": "user", "content": "x" * body_chars}]},
     }
 
 
@@ -73,14 +98,19 @@ class TestConcurrentAppendsStayReadable:
             json.loads(line)
 
     def test_no_entry_is_lost(self, tmp_path: Path) -> None:
-        """Locking must not turn interleaving into dropping."""
+        """Locking must not turn interleaving into dropping.
+
+        A small body, because the property is an identity set: every entry
+        submitted comes back. Straddling the buffer is what the test above
+        needs and this one never did.
+        """
         recorder = TranscriptRecorder()
         path = tmp_path / "shared.jsonl"
 
         with ThreadPoolExecutor(max_workers=_WRITERS) as pool:
             for writer in range(_WRITERS):
                 for index in range(_PER_WRITER):
-                    pool.submit(recorder.write, _entry(writer, index), path)
+                    pool.submit(recorder.write, _small_entry(writer, index), path)
 
         seen = {
             (record["writer"], record["index"])
@@ -96,7 +126,11 @@ class TestConcurrentAppendsStayReadable:
         }
 
     def test_separate_files_stay_separate(self, tmp_path: Path) -> None:
-        """A per-session path is the layout; the lock must not merge them."""
+        """A per-session path is the layout; the lock must not merge them.
+
+        A small body for the reason ``test_no_entry_is_lost`` uses one: what
+        is under test is which path an entry lands on, at any size.
+        """
         recorder = TranscriptRecorder()
         paths = {
             writer: tmp_path / f"leaf-{writer}.jsonl" for writer in range(_WRITERS)
@@ -105,7 +139,7 @@ class TestConcurrentAppendsStayReadable:
         with ThreadPoolExecutor(max_workers=_WRITERS) as pool:
             for writer, path in paths.items():
                 for index in range(_PER_WRITER):
-                    pool.submit(recorder.write, _entry(writer, index), path)
+                    pool.submit(recorder.write, _small_entry(writer, index), path)
 
         for writer, path in paths.items():
             records = [
