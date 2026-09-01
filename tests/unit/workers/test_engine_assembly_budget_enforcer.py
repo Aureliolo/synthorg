@@ -1,6 +1,6 @@
 """Boot-wiring coverage for the budget enforcer.
 
-``_construct_agent_engine`` is the one production call site for
+``build_agent_engine`` is the one production call site for
 ``AgentEngine(...)``. Monthly, daily, project and run-hard-ceiling
 enforcement all gate on ``AgentEngine._budget_enforcer`` being set; a
 boot path that builds a ``BudgetEnforcer`` without threading it into the
@@ -27,12 +27,10 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
-from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import SettingsStateSlice
-from synthorg.tools.registry import ToolRegistry
-from synthorg.workers._engine_assembly import _construct_agent_engine
-from tests._shared import FakeClock, as_uuid, make_app_state, mock_of
+from synthorg.workers.engine_assembly import build_agent_engine
+from tests._shared import FakeClock, as_uuid, assembly_inputs, make_app_state, mock_of
 from tests._shared.scripted_provider import ScriptedProvider
 
 pytestmark = pytest.mark.unit
@@ -83,13 +81,7 @@ def _app_state(
 
 
 async def _engine_for(app_state: AppState) -> AgentEngine:
-    return await _construct_agent_engine(
-        app_state,
-        ScriptedProvider([]),
-        registry=ProviderRegistry(drivers={}),
-        tool_registry=ToolRegistry([]),
-        coordination_metrics_collector=None,
-    )
+    return await build_agent_engine(app_state, assembly_inputs(ScriptedProvider([])))
 
 
 class TestBudgetEnforcerBootWiring:
@@ -99,7 +91,7 @@ class TestBudgetEnforcerBootWiring:
         assert engine._budget_enforcer is enforcer
 
     async def test_cost_tracker_identity_invariant_holds(self) -> None:
-        """Regression guard on ``_construct_agent_engine``'s own wiring:
+        """Regression guard on ``build_agent_engine``'s own wiring:
         ``cost_tracker=`` and ``budget_enforcer=`` are two independent
         reads of the same ``BudgetStateSlice``, so a future edit that
         sources either from somewhere else would desynchronise them.

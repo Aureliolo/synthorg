@@ -26,7 +26,7 @@ from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
-from tests._shared import as_uuid, sid
+from tests._shared import as_uuid, make_app_state, sid
 
 pytestmark = pytest.mark.unit
 
@@ -98,7 +98,7 @@ def _deps() -> SweepDeps:
         The deps.
     """
 
-    async def _no_provider(_binding: object) -> object:
+    async def _no_registry(_binding: object) -> object:
         raise AssertionError
 
     def _no_sandbox(_root: Path, *, owner: str) -> object:
@@ -108,7 +108,8 @@ def _deps() -> SweepDeps:
         raise AssertionError
 
     return SweepDeps(
-        build_provider=_no_provider,  # type: ignore[arg-type]
+        app_state=make_app_state(),
+        build_provider_registry=_no_registry,  # type: ignore[arg-type]
         build_tool_registry=lambda _w, *, owner: None,
         build_grader=_no_grader,  # type: ignore[arg-type]
         build_sandbox=_no_sandbox,  # type: ignore[arg-type]

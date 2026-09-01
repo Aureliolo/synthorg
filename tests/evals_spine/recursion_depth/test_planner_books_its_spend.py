@@ -38,11 +38,10 @@ from synthorg.observability.events.evals import (
     EVALS_RECURSION_SPEND_ALL_DROPPED,
     EVALS_RECURSION_SPEND_DEDUPED,
 )
-from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.registry import ProviderRegistry
 from synthorg.tools.registry import ToolRegistry
 from synthorg.tools.sandbox import SandboxBackend
-from tests._shared import as_uuid, mock_of, sid
-from tests._shared.scripted_provider import ScriptedProvider
+from tests._shared import as_uuid, make_app_state, mock_of, sid
 
 pytestmark = pytest.mark.unit
 
@@ -143,7 +142,7 @@ def _planner(
             tells the planner a gateway recorded these calls as well.
 
     Returns:
-        The planner, wired to a provider that is never called (the tree build
+        The planner, wired to a registry that is never called (the tree build
         is replaced) and to the test's own ledger.
     """
 
@@ -151,11 +150,12 @@ def _planner(
     async def _open(_execution_id: str) -> AsyncIterator[ProgressTrackingLedger]:
         yield ledger
 
-    async def _provider(_binding: RunBinding) -> CompletionProvider:
-        return ScriptedProvider([])
+    async def _registry(_binding: RunBinding) -> ProviderRegistry:
+        return ProviderRegistry({})
 
     deps = SweepDeps(
-        build_provider=_provider,
+        app_state=make_app_state(),
+        build_provider_registry=_registry,
         build_tool_registry=lambda _w, *, owner: mock_of[ToolRegistry](),
         build_grader=lambda _w, *, owner: mock_of[UnitGrader](),
         build_sandbox=lambda root, *, owner: mock_of[SandboxBackend](),

@@ -11,6 +11,7 @@ as having delivered nothing and fails a fail-closed gate on an absence the
 engine created itself.
 """
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
@@ -21,7 +22,6 @@ from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.agent_state import AgentRuntimeState, ExecutionStatus
 from synthorg.engine.context import AgentContext
 from synthorg.engine.flight_recording import PersistenceFlightRecorderSink
@@ -42,7 +42,14 @@ from synthorg.persistence.flight_recorder_protocol import (
 )
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
-from tests._shared import mock_of
+from tests._shared import (
+    UNWIRED_OBSERVABILITY,
+    UNWIRED_ORG,
+    engine_with,
+    mock_of,
+    unwired_core,
+    unwired_governance,
+)
 from tests.unit.api.fakes import FakeFlightRecorderFrameRepository
 
 if TYPE_CHECKING:
@@ -91,10 +98,13 @@ async def test_run_records_replayable_frames(
         execute=AsyncMock(return_value=mock_result),
         get_loop_type=MagicMock(return_value="react"),
     )
-    engine = AgentEngine(
-        provider=mock_provider_factory([]),
-        execution_loop=mock_loop,
-        flight_recorder_sink=PersistenceFlightRecorderSink(repo),
+    engine = engine_with(
+        mock_provider_factory([]),
+        core=replace(unwired_core(mock_provider_factory([])), execution_loop=mock_loop),
+        observability=replace(
+            UNWIRED_OBSERVABILITY,
+            flight_recorder_sink=PersistenceFlightRecorderSink(repo),
+        ),
     )
 
     result = await engine.run(
@@ -165,26 +175,38 @@ async def test_the_review_sees_the_frames_of_the_attempt_it_judges(
             ),
         ),
     )
-    engine = AgentEngine(
-        provider=mock_provider_factory([]),
-        execution_loop=mock_of[ExecutionLoop](
-            execute=AsyncMock(return_value=mock_result),
-            get_loop_type=MagicMock(return_value="react"),
+    engine = engine_with(
+        mock_provider_factory([]),
+        core=replace(
+            unwired_core(mock_provider_factory([])),
+            execution_loop=mock_of[ExecutionLoop](
+                execute=AsyncMock(return_value=mock_result),
+                get_loop_type=MagicMock(return_value="react"),
+            ),
         ),
-        flight_recorder_sink=PersistenceFlightRecorderSink(repo),
-        task_engine=mock_of[TaskEngine](
-            submit=AsyncMock(
-                return_value=TaskMutationResult(
-                    request_id="test",
-                    success=True,
-                    version=1,
+        governance=replace(
+            unwired_governance(),
+            review_gate=mock_of[ReviewGateService](
+                run_pipeline=AsyncMock(side_effect=_review)
+            ),
+            review_pipeline=mock_of[ReviewPipeline](),
+        ),
+        org=replace(
+            UNWIRED_ORG,
+            task_engine=mock_of[TaskEngine](
+                submit=AsyncMock(
+                    return_value=TaskMutationResult(
+                        request_id="test",
+                        success=True,
+                        version=1,
+                    )
                 )
-            )
+            ),
         ),
-        review_gate=mock_of[ReviewGateService](
-            run_pipeline=AsyncMock(side_effect=_review)
+        observability=replace(
+            UNWIRED_OBSERVABILITY,
+            flight_recorder_sink=PersistenceFlightRecorderSink(repo),
         ),
-        review_pipeline=mock_of[ReviewPipeline](),
     )
 
     await engine.run(
@@ -234,42 +256,49 @@ async def test_the_review_judges_the_attempt_not_the_recorded_copy(
             ),
         },
     )
-    engine = AgentEngine(
-        provider=mock_provider_factory([]),
-        execution_loop=mock_of[ExecutionLoop](
-            execute=AsyncMock(
-                return_value=ExecutionResult(
-                    context=ctx,
-                    termination_reason=TerminationReason.COMPLETED,
-                    turns=(
-                        TurnRecord(
-                            turn_number=1,
-                            input_tokens=10,
-                            output_tokens=5,
-                            cost=0.01,
-                            finish_reason=FinishReason.STOP,
-                            tool_calls_made=("write_file",),
+    engine = engine_with(
+        mock_provider_factory([]),
+        core=replace(
+            unwired_core(mock_provider_factory([])),
+            execution_loop=mock_of[ExecutionLoop](
+                execute=AsyncMock(
+                    return_value=ExecutionResult(
+                        context=ctx,
+                        termination_reason=TerminationReason.COMPLETED,
+                        turns=(
+                            TurnRecord(
+                                turn_number=1,
+                                input_tokens=10,
+                                output_tokens=5,
+                                cost=0.01,
+                                finish_reason=FinishReason.STOP,
+                                tool_calls_made=("write_file",),
+                            ),
                         ),
-                    ),
+                    )
+                ),
+                get_loop_type=MagicMock(return_value="react"),
+            ),
+        ),
+        governance=replace(
+            unwired_governance(),
+            review_gate=mock_of[ReviewGateService](
+                run_pipeline=AsyncMock(side_effect=_review)
+            ),
+            review_pipeline=mock_of[ReviewPipeline](),
+        ),
+        org=replace(
+            UNWIRED_ORG,
+            task_engine=mock_of[TaskEngine](
+                submit=AsyncMock(
+                    return_value=TaskMutationResult(
+                        request_id="test",
+                        success=True,
+                        version=1,
+                    )
                 )
             ),
-            get_loop_type=MagicMock(return_value="react"),
         ),
-        # No recorder at all: the harshest version of a recorder that has
-        # nothing to say about this attempt.
-        task_engine=mock_of[TaskEngine](
-            submit=AsyncMock(
-                return_value=TaskMutationResult(
-                    request_id="test",
-                    success=True,
-                    version=1,
-                )
-            )
-        ),
-        review_gate=mock_of[ReviewGateService](
-            run_pipeline=AsyncMock(side_effect=_review)
-        ),
-        review_pipeline=mock_of[ReviewPipeline](),
     )
 
     await engine.run(
@@ -321,18 +350,23 @@ async def test_the_engine_records_the_agents_live_state(
         sample_agent,
         task=sample_task_with_criteria,
     )
-    engine = AgentEngine(
-        provider=mock_provider_factory([]),
-        execution_loop=mock_of[ExecutionLoop](
-            execute=AsyncMock(
-                return_value=ExecutionResult(
-                    context=ctx,
-                    termination_reason=TerminationReason.COMPLETED,
-                )
+    engine = engine_with(
+        mock_provider_factory([]),
+        core=replace(
+            unwired_core(mock_provider_factory([])),
+            execution_loop=mock_of[ExecutionLoop](
+                execute=AsyncMock(
+                    return_value=ExecutionResult(
+                        context=ctx,
+                        termination_reason=TerminationReason.COMPLETED,
+                    )
+                ),
+                get_loop_type=MagicMock(return_value="react"),
             ),
-            get_loop_type=MagicMock(return_value="react"),
         ),
-        agent_state_repository_provider=lambda: repository,
+        observability=replace(
+            UNWIRED_OBSERVABILITY, agent_state_repository_provider=lambda: repository
+        ),
     )
 
     await engine.run(
@@ -359,13 +393,18 @@ async def test_a_run_that_died_still_stops_reading_as_busy(
     """
     saved: list[AgentRuntimeState] = []
     repository = _recording_state_repository(saved)
-    engine = AgentEngine(
-        provider=mock_provider_factory([]),
-        execution_loop=mock_of[ExecutionLoop](
-            execute=AsyncMock(side_effect=_LoopDiedError),
-            get_loop_type=MagicMock(return_value="react"),
+    engine = engine_with(
+        mock_provider_factory([]),
+        core=replace(
+            unwired_core(mock_provider_factory([])),
+            execution_loop=mock_of[ExecutionLoop](
+                execute=AsyncMock(side_effect=_LoopDiedError),
+                get_loop_type=MagicMock(return_value="react"),
+            ),
         ),
-        agent_state_repository_provider=lambda: repository,
+        observability=replace(
+            UNWIRED_OBSERVABILITY, agent_state_repository_provider=lambda: repository
+        ),
     )
 
     result = await engine.run(

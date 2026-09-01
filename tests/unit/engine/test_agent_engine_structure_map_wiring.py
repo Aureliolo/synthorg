@@ -6,6 +6,7 @@ it through its provider and adds ``query_structure_map`` to the per-task
 registry only when a project scope exists.
 """
 
+from dataclasses import replace
 from typing import override
 
 import pytest
@@ -19,7 +20,13 @@ from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.registry import ToolRegistry
 from synthorg.tools.structure_map.tool_factory import StructureMapToolFactory
-from tests._shared import mock_of
+from tests._shared import (
+    engine_with,
+    mock_of,
+    unwired_core,
+    unwired_governance,
+    unwired_tooling,
+)
 from tests._shared.scripted_provider import ScriptedProvider, make_e2e_identity
 
 pytestmark = pytest.mark.unit
@@ -41,11 +48,13 @@ def _engine(*, wired: bool = False) -> AgentEngine:
         if wired
         else None
     )
-    return AgentEngine(
-        provider=ScriptedProvider([]),
-        tool_registry=registry,
-        approval_store=ApprovalStore(),
-        structure_map_tool_factory_provider=lambda: factory,
+    return engine_with(
+        ScriptedProvider([]),
+        core=replace(unwired_core(ScriptedProvider([])), tool_registry=registry),
+        governance=replace(unwired_governance(), approval_store=ApprovalStore()),
+        tooling=replace(
+            unwired_tooling(), structure_map_tool_factory_provider=lambda: factory
+        ),
     )
 
 

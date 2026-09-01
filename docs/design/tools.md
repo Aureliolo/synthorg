@@ -348,7 +348,7 @@ remains, so no separate sweep task is needed for the duration ceiling.
 Wiring `pin_check` has a real construction-order cycle: `create_lifecycle_strategy`
 must build the strategy before `build_sandbox_backends` can construct the
 `DockerSandbox` whose bound `pin_check` method the strategy needs, but the
-strategy needs that same callable to exist. Boot wiring (`_engine_assembly.py`)
+strategy needs that same callable to exist. Boot wiring (`tool_registry_assembly.py`)
 breaks the cycle in two steps -- the strategy is constructed first with no
 pin check, then, once the `DockerSandbox` exists, `strategy.bind_pin_check(docker_backend.pin_check)`
 sets it as a second step. `bind_pin_check_if_wired` (`workers/_background_job_wiring.py`)

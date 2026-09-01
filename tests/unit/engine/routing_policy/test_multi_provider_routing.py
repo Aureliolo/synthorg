@@ -8,6 +8,8 @@ serves an equivalent model, and that run-start dispatch resolves the agent's
 own provider rather than the engine default.
 """
 
+from dataclasses import replace
+
 import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
@@ -27,7 +29,7 @@ from synthorg.providers.registry import ProviderRegistry
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
 from synthorg.providers.routing.selector import CheapestSelector
-from tests._shared import as_uuid, mock_of
+from tests._shared import UNWIRED_ORG, UNWIRED_ROUTING, as_uuid, engine_with, mock_of
 from tests._shared.scripted_provider import ScriptedProvider, make_e2e_identity
 
 _DEFAULT_PROVIDER = "default-provider"
@@ -117,12 +119,15 @@ def _engine(
     default_provider: CompletionProvider,
     registry: ProviderRegistry | None,
 ) -> AgentEngine:
-    return AgentEngine(
-        provider=default_provider,
-        provider_registry=registry,
-        capability=CapabilityPolicy(
-            config=CapabilityPolicyConfig(),
-            reader=ResolvedAgentCapabilityReader(_multi_provider_resolver()),
+    return engine_with(
+        default_provider,
+        routing=replace(UNWIRED_ROUTING, provider_registry=registry),
+        org=replace(
+            UNWIRED_ORG,
+            capability=CapabilityPolicy(
+                config=CapabilityPolicyConfig(),
+                reader=ResolvedAgentCapabilityReader(_multi_provider_resolver()),
+            ),
         ),
     )
 

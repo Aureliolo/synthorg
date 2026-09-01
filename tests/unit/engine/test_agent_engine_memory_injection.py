@@ -14,6 +14,7 @@ deterministic stand-in, and it keys ONLY on the generic injected-lesson marker
 (``<memory-entry>``), never on task identity.
 """
 
+from dataclasses import replace
 from datetime import date
 from typing import Final
 
@@ -25,7 +26,6 @@ from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.prompt_safety import TAG_MEMORY_ENTRY
 from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
@@ -41,7 +41,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolDefinition,
 )
-from tests._shared import as_uuid
+from tests._shared import UNWIRED_MEMORY, as_uuid, engine_with
 
 pytestmark = pytest.mark.unit
 
@@ -158,10 +158,13 @@ async def test_engine_injects_context_memory_and_flips_outcome() -> None:
         "test-provider",
         strategy=InjectionSensitiveStrategy(),
     )
-    engine = AgentEngine(
-        provider=provider,
-        memory_injection_strategy_provider=lambda: _context_strategy(backend),
-        memory_backend=backend,
+    engine = engine_with(
+        provider,
+        memory=replace(
+            UNWIRED_MEMORY,
+            memory_injection_strategy_provider=lambda: _context_strategy(backend),
+            memory_backend=backend,
+        ),
     )
 
     result = await engine.run(identity=_make_identity(), task=_make_task())
@@ -178,7 +181,9 @@ async def test_engine_without_injection_strategy_does_not_recall() -> None:
         "test-provider",
         strategy=InjectionSensitiveStrategy(),
     )
-    engine = AgentEngine(provider=provider, memory_backend=backend)
+    engine = engine_with(
+        provider, memory=replace(UNWIRED_MEMORY, memory_backend=backend)
+    )
 
     result = await engine.run(identity=_make_identity(), task=_make_task())
 
@@ -199,10 +204,13 @@ async def test_engine_recalls_once_a_late_wired_strategy_appears() -> None:
     await _seed_lesson(backend)
     provider = ScriptedDriver("test-provider", strategy=InjectionSensitiveStrategy())
     strategy: ContextInjectionStrategy | None = None
-    engine = AgentEngine(
-        provider=provider,
-        memory_injection_strategy_provider=lambda: strategy,
-        memory_backend=backend,
+    engine = engine_with(
+        provider,
+        memory=replace(
+            UNWIRED_MEMORY,
+            memory_injection_strategy_provider=lambda: strategy,
+            memory_backend=backend,
+        ),
     )
 
     unwired = await engine.run(identity=_make_identity(), task=_make_task())
@@ -221,10 +229,13 @@ async def test_engine_injects_nothing_when_backend_empty() -> None:
         "test-provider",
         strategy=InjectionSensitiveStrategy(),
     )
-    engine = AgentEngine(
-        provider=provider,
-        memory_injection_strategy_provider=lambda: _context_strategy(backend),
-        memory_backend=backend,
+    engine = engine_with(
+        provider,
+        memory=replace(
+            UNWIRED_MEMORY,
+            memory_injection_strategy_provider=lambda: _context_strategy(backend),
+            memory_backend=backend,
+        ),
     )
 
     result = await engine.run(identity=_make_identity(), task=_make_task())

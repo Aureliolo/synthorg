@@ -156,6 +156,7 @@ _GATES: tuple[str, ...] = (
     "check_gate_roles_not_assignable",
     "check_no_bound_pair_rewrite",
     "check_charter_authorised_initiative",
+    "check_engine_dependencies_total",
     "check_skeleton_stage_paths",
     "check_stall_reason_maps_total",
     "check_single_planning_strategy_writer",

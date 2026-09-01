@@ -1,7 +1,7 @@
 """Boot-wiring coverage for the background-job stall-nudge watcher.
 
-``_construct_agent_engine`` resolves its own ``BackgroundJobRegistry``
-(mirroring ``_build_tool_registry``'s construction, since the two are
+``build_agent_engine`` resolves its own ``BackgroundJobRegistry``
+(mirroring ``build_tool_registry``'s construction, since the two are
 separate functions and neither's local variable reaches the other) and
 passes ``create_background_job_watcher(...)`` into the boot
 ``AgentEngine``. This guards the same class of dormancy defect
@@ -26,12 +26,10 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
-from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import SettingsStateSlice
-from synthorg.tools.registry import ToolRegistry
-from synthorg.workers._engine_assembly import _construct_agent_engine
-from tests._shared import FakeClock, make_app_state, mock_of
+from synthorg.workers.engine_assembly import build_agent_engine
+from tests._shared import FakeClock, assembly_inputs, make_app_state, mock_of
 from tests._shared.fake_background_job_repo import (
     InMemoryBackgroundJobRepository as _InMemoryBackgroundJobRepository,
 )
@@ -45,7 +43,7 @@ def _app_state(
     background_job_staleness: BackgroundJobStalenessConfig,
     persistence_connected: bool,
 ) -> AppState:
-    """Build the minimal ``AppState`` ``_construct_agent_engine`` needs.
+    """Build the minimal ``AppState`` ``build_agent_engine`` needs.
 
     Returns:
         The composed ``AppState``.
@@ -78,13 +76,7 @@ def _app_state(
 
 
 async def _engine_for(app_state: AppState) -> AgentEngine:
-    return await _construct_agent_engine(
-        app_state,
-        ScriptedProvider([]),
-        registry=ProviderRegistry(drivers={}),
-        tool_registry=ToolRegistry([]),
-        coordination_metrics_collector=None,
-    )
+    return await build_agent_engine(app_state, assembly_inputs(ScriptedProvider([])))
 
 
 class TestBackgroundJobWatcherBootWiring:

@@ -16,6 +16,7 @@ under test:
 Zero real LLM spend: the provider is scripted with fixed token usage.
 """
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -23,7 +24,6 @@ import pytest
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.tracker import CostTracker
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import TerminationReason
@@ -32,7 +32,13 @@ from synthorg.engine.resume_message import build_resume_message
 from synthorg.providers.models import ToolCall
 from synthorg.tools.file_system.write_file import WriteFileTool
 from synthorg.tools.registry import ToolRegistry
-from tests._shared import as_uuid
+from tests._shared import (
+    UNWIRED_BUDGET,
+    as_uuid,
+    engine_with,
+    unwired_core,
+    unwired_governance,
+)
 from tests.unit.api.fakes import FakeParkedContextRepository
 
 from .conftest import (
@@ -129,11 +135,11 @@ async def test_hard_ceiling_run_parks_then_resumes(e2e_workspace: Path) -> None:
     )
     parked_contexts = FakeParkedContextRepository()
     gate = _approval_gate(parked_contexts)
-    engine = AgentEngine(
-        provider=over_budget,
-        tool_registry=registry,
-        budget_enforcer=enforcer,
-        approval_gate=gate,
+    engine = engine_with(
+        over_budget,
+        core=replace(unwired_core(over_budget), tool_registry=registry),
+        budget=replace(UNWIRED_BUDGET, budget_enforcer=enforcer),
+        governance=replace(unwired_governance(), approval_gate=gate),
     )
     task = make_e2e_task(identity=identity, title="Over-budget run").model_copy(
         update={"hard_ceiling": _HARD_CEILING, "forecast_id": forecast_id},
@@ -165,19 +171,25 @@ async def test_hard_ceiling_run_parks_then_resumes(e2e_workspace: Path) -> None:
     # The raised ceiling reaches the run on the restored task, which is what
     # ``ceiling_synced_task`` produces from the moved forecast row; that
     # hand-off itself is covered by ``tests/integration/test_cost_dial_e2e.py``.
-    resume_engine = AgentEngine(
-        provider=ScriptedProvider([make_text_response("All done.")]),
-        tool_registry=registry,
-        budget_enforcer=BudgetEnforcer(
-            budget_config=_budget_config(run_hard_ceiling=0.0),
-            # Reuse the leg-1 tracker so the resume enforces the raised
-            # ceiling against the CUMULATIVE spend carried over from the
-            # parked run, not a fresh zero -- otherwise the COMPLETED
-            # assertion would hold regardless of whether the raise took
-            # effect.
-            cost_tracker=cost_tracker,
+    resume_engine = engine_with(
+        ScriptedProvider([make_text_response("All done.")]),
+        core=replace(
+            unwired_core(ScriptedProvider([make_text_response("All done.")])),
+            tool_registry=registry,
         ),
-        approval_gate=gate,
+        budget=replace(
+            UNWIRED_BUDGET,
+            budget_enforcer=BudgetEnforcer(
+                budget_config=_budget_config(run_hard_ceiling=0.0),
+                # Reuse the leg-1 tracker so the resume enforces the raised
+                # ceiling against the CUMULATIVE spend carried over from the
+                # parked run, not a fresh zero -- otherwise the COMPLETED
+                # assertion would hold regardless of whether the raise took
+                # effect.
+                cost_tracker=cost_tracker,
+            ),
+        ),
+        governance=replace(unwired_governance(), approval_gate=gate),
     )
     resumed = await resume_engine.resume_parked_run(
         parked_context=_with_raised_ceiling(parked_context, _RAISED_CEILING),

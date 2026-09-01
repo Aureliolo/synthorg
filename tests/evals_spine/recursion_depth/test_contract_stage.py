@@ -44,7 +44,7 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import SubtaskDefinition
-from tests._shared import mock_of, sid
+from tests._shared import make_app_state, mock_of, sid
 
 pytestmark = pytest.mark.unit
 
@@ -154,14 +154,15 @@ def _deps_with(build_grader: object) -> SweepDeps:
         The deps.
     """
 
-    async def _no_provider(_binding: object) -> object:
+    async def _no_registry(_binding: object) -> object:
         raise AssertionError
 
     def _no_sandbox(_root: Path, *, owner: str) -> object:
         raise AssertionError
 
     return SweepDeps(
-        build_provider=_no_provider,  # type: ignore[arg-type]
+        app_state=make_app_state(),
+        build_provider_registry=_no_registry,  # type: ignore[arg-type]
         build_tool_registry=lambda _workspace, *, owner: None,
         build_grader=build_grader,  # type: ignore[arg-type]
         build_sandbox=_no_sandbox,  # type: ignore[arg-type]

@@ -16,10 +16,9 @@ from synthorg.core.effective_autonomy import EffectiveAutonomy
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.providers.protocol import CompletionProvider
-from tests._shared import as_uuid, mock_of
+from tests._shared import as_uuid, engine_with, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -60,7 +59,7 @@ def _autonomy() -> EffectiveAutonomy:
 class TestAutonomySeam:
     async def test_unbound_seam_resolves_to_none(self) -> None:
         """An engine nobody bound a resolver to runs degraded, as before."""
-        engine = AgentEngine(provider=mock_of[CompletionProvider]())
+        engine = engine_with(mock_of[CompletionProvider]())
 
         resolved = await engine._effective_autonomy_for(
             _identity(), task_id="task-a", project_id=NotBlankStr("proj-001")
@@ -70,7 +69,7 @@ class TestAutonomySeam:
 
     async def test_bound_seam_is_asked_for_the_task_and_project(self) -> None:
         """The engine asks the one owner, naming the run it is asking about."""
-        engine = AgentEngine(provider=mock_of[CompletionProvider]())
+        engine = engine_with(mock_of[CompletionProvider]())
         seen: list[tuple[str, str, str | None]] = []
         expected = _autonomy()
 
@@ -94,7 +93,7 @@ class TestAutonomySeam:
 
     async def test_run_resolves_when_the_caller_supplied_none(self) -> None:
         """The coordinated path (no autonomy argument) still gets an answer."""
-        engine = AgentEngine(provider=mock_of[CompletionProvider]())
+        engine = engine_with(mock_of[CompletionProvider]())
         expected = _autonomy()
         asked: list[tuple[str, str, str | None]] = []
 

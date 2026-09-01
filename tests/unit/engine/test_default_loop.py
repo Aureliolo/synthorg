@@ -13,6 +13,7 @@ next.
 """
 
 import inspect
+from dataclasses import replace
 from typing import cast, override
 
 import pytest
@@ -33,7 +34,14 @@ from synthorg.engine.stagnation.protocol import StagnationDetector
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.registry import ToolRegistry
-from tests._shared import FakeClock, mock_of
+from tests._shared import (
+    UNWIRED_LOOP_CONTROLS,
+    FakeClock,
+    engine_with,
+    mock_of,
+    unwired_core,
+    unwired_governance,
+)
 from tests._shared.scripted_provider import ScriptedProvider
 
 pytestmark = pytest.mark.unit
@@ -73,18 +81,28 @@ def _controls() -> dict[str, object]:
 
 
 def _engine(controls: dict[str, object]) -> AgentEngine:
-    return AgentEngine(
-        provider=ScriptedProvider([]),
-        tool_registry=ToolRegistry(
-            [_StubTool(name="stub", category=ToolCategory.OTHER)]
+    return engine_with(
+        ScriptedProvider([]),
+        core=replace(
+            unwired_core(ScriptedProvider([])),
+            tool_registry=ToolRegistry(
+                [_StubTool(name="stub", category=ToolCategory.OTHER)]
+            ),
         ),
-        approval_store=ApprovalStore(),
-        stagnation_detector=cast("StagnationDetector", controls["stagnation_detector"]),
-        step_classifier=cast("StepQualityClassifier", controls["step_classifier"]),
-        steering_inbox=cast("SteeringInbox", controls["steering_inbox"]),
-        compaction_callback=cast("CompactionCallback", controls["compaction_callback"]),
-        background_job_watcher=cast(
-            "BackgroundJobWatcher", controls["background_job_watcher"]
+        governance=replace(unwired_governance(), approval_store=ApprovalStore()),
+        loop_controls=replace(
+            UNWIRED_LOOP_CONTROLS,
+            stagnation_detector=cast(
+                "StagnationDetector", controls["stagnation_detector"]
+            ),
+            step_classifier=cast("StepQualityClassifier", controls["step_classifier"]),
+            steering_inbox=cast("SteeringInbox", controls["steering_inbox"]),
+            compaction_callback=cast(
+                "CompactionCallback", controls["compaction_callback"]
+            ),
+            background_job_watcher=cast(
+                "BackgroundJobWatcher", controls["background_job_watcher"]
+            ),
         ),
     )
 
@@ -118,14 +136,20 @@ class TestEngineDefaultLoop:
     def test_no_gate_when_no_approval_store(self) -> None:
         """Without a store there is nothing to park against, so no gate."""
         controls = _controls()
-        engine = AgentEngine(
-            provider=ScriptedProvider([]),
-            tool_registry=ToolRegistry(
-                [_StubTool(name="stub", category=ToolCategory.OTHER)]
+        engine = engine_with(
+            ScriptedProvider([]),
+            core=replace(
+                unwired_core(ScriptedProvider([])),
+                tool_registry=ToolRegistry(
+                    [_StubTool(name="stub", category=ToolCategory.OTHER)]
+                ),
             ),
-            approval_store=None,
-            stagnation_detector=cast(
-                "StagnationDetector", controls["stagnation_detector"]
+            governance=replace(unwired_governance(), approval_store=None),
+            loop_controls=replace(
+                UNWIRED_LOOP_CONTROLS,
+                stagnation_detector=cast(
+                    "StagnationDetector", controls["stagnation_detector"]
+                ),
             ),
         )
         loop = engine._loop

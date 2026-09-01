@@ -119,7 +119,7 @@ from synthorg.engine.prompt_safety import TAG_TASK_DATA
 from synthorg.providers.errors import ProviderQuotaExceededError
 from synthorg.tools.sandbox import SandboxBackend
 from synthorg.tools.sandbox.result import SandboxResult
-from tests._shared import as_uuid, mock_of, sid
+from tests._shared import as_uuid, make_app_state, mock_of, sid
 from tests.evals_spine.recursion_depth._doubles import ungraded_capability
 
 pytestmark = pytest.mark.unit
@@ -440,7 +440,7 @@ def _deps(*, own_tests: tuple[bool, str] = (True, "")) -> SweepDeps:
         The deps.
     """
 
-    async def _no_provider(_binding: object) -> object:
+    async def _no_registry(_binding: object) -> object:
         raise AssertionError
 
     def _no_sandbox(_root: Path, *, owner: str) -> object:
@@ -451,7 +451,8 @@ def _deps(*, own_tests: tuple[bool, str] = (True, "")) -> SweepDeps:
     # suite did not pass" untested through the loop that produces it. The
     # verdict itself is asserted directly in ``TestTheOwnTestGate``.
     return SweepDeps(
-        build_provider=_no_provider,  # type: ignore[arg-type]
+        app_state=make_app_state(),
+        build_provider_registry=_no_registry,  # type: ignore[arg-type]
         build_tool_registry=lambda _workspace, *, owner: None,
         build_grader=lambda _workspace, *, owner: mock_of[UnitGrader](
             own_tests_pass=AsyncMock(return_value=own_tests)

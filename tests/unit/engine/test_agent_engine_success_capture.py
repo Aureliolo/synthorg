@@ -15,6 +15,7 @@ backend, proposer, capture strategy, and post-execution dispatch are all real.
 """
 
 import json
+from dataclasses import replace
 from datetime import date
 from typing import Final
 
@@ -26,7 +27,6 @@ from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
 from synthorg.memory.models import MemoryEntry, MemoryQuery
 from synthorg.memory.procedural.capture.success_capture import (
@@ -43,7 +43,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolDefinition,
 )
-from tests._shared import as_uuid
+from tests._shared import UNWIRED_MEMORY, as_uuid, engine_with
 
 pytestmark = pytest.mark.unit
 
@@ -161,10 +161,13 @@ async def test_success_capture_stores_memory_on_completion() -> None:
     await backend.connect()
     provider = ScriptedDriver("test-provider", strategy=SuccessScriptedStrategy())
     config = ProceduralMemoryConfig(model="test-basic-001")
-    engine = AgentEngine(
-        provider=provider,
-        capture_strategy=_make_capture_strategy(provider, config),
-        memory_backend=backend,
+    engine = engine_with(
+        provider,
+        memory=replace(
+            UNWIRED_MEMORY,
+            capture_strategy=_make_capture_strategy(provider, config),
+            memory_backend=backend,
+        ),
     )
 
     result = await engine.run(identity=_make_identity(), task=_make_task())
@@ -181,7 +184,9 @@ async def test_no_capture_strategy_is_noop() -> None:
     backend = InMemoryBackend()
     await backend.connect()
     provider = ScriptedDriver("test-provider", strategy=SuccessScriptedStrategy())
-    engine = AgentEngine(provider=provider, memory_backend=backend)
+    engine = engine_with(
+        provider, memory=replace(UNWIRED_MEMORY, memory_backend=backend)
+    )
 
     result = await engine.run(identity=_make_identity(), task=_make_task())
 
@@ -210,10 +215,13 @@ async def test_low_confidence_success_not_captured() -> None:
         strategy=SuccessScriptedStrategy(proposal_json=low_conf),
     )
     config = ProceduralMemoryConfig(model="test-basic-001")
-    engine = AgentEngine(
-        provider=provider,
-        capture_strategy=_make_capture_strategy(provider, config),
-        memory_backend=backend,
+    engine = engine_with(
+        provider,
+        memory=replace(
+            UNWIRED_MEMORY,
+            capture_strategy=_make_capture_strategy(provider, config),
+            memory_backend=backend,
+        ),
     )
 
     result = await engine.run(identity=_make_identity(), task=_make_task())
@@ -237,10 +245,11 @@ async def test_capture_failure_does_not_block_result() -> None:
     backend = InMemoryBackend()
     await backend.connect()
     provider = ScriptedDriver("test-provider", strategy=SuccessScriptedStrategy())
-    engine = AgentEngine(
-        provider=provider,
-        capture_strategy=_RaisingCapture(),
-        memory_backend=backend,
+    engine = engine_with(
+        provider,
+        memory=replace(
+            UNWIRED_MEMORY, capture_strategy=_RaisingCapture(), memory_backend=backend
+        ),
     )
 
     result = await engine.run(identity=_make_identity(), task=_make_task())

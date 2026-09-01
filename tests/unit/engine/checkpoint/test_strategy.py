@@ -10,6 +10,7 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.engine.checkpoint.models import Checkpoint, CheckpointConfig
 from synthorg.engine.checkpoint.strategy import CheckpointRecoveryStrategy
+from synthorg.engine.checkpoint.wiring import CheckpointWiring
 from synthorg.engine.context import AgentContext
 from synthorg.engine.failure_classification import FailureCategory
 from synthorg.engine.recovery import (
@@ -70,8 +71,11 @@ def _make_strategy(
 ) -> CheckpointRecoveryStrategy:
     """Build a CheckpointRecoveryStrategy."""
     return CheckpointRecoveryStrategy(
-        checkpoint_repo=repo,
-        config=config or CheckpointConfig(),
+        wiring=CheckpointWiring(
+            checkpoint_repo=repo,
+            heartbeat_repo=AsyncMock(spec=HeartbeatRepository),
+            config=config or CheckpointConfig(),
+        ),
         fallback=fallback,
     )
 
@@ -510,9 +514,11 @@ class TestCheckpointRecoveryFallbackCleanup:
         hb_repo = mock_of[HeartbeatRepository](delete=AsyncMock())
 
         strategy = CheckpointRecoveryStrategy(
-            checkpoint_repo=cp_repo,
-            heartbeat_repo=hb_repo,
-            config=CheckpointConfig(),
+            wiring=CheckpointWiring(
+                checkpoint_repo=cp_repo,
+                heartbeat_repo=hb_repo,
+                config=CheckpointConfig(),
+            )
         )
 
         await strategy.recover(
@@ -546,9 +552,11 @@ class TestCheckpointRecoveryFallbackCleanup:
 
         config = CheckpointConfig(max_resume_attempts=0)
         strategy = CheckpointRecoveryStrategy(
-            checkpoint_repo=cp_repo,
-            heartbeat_repo=hb_repo,
-            config=config,
+            wiring=CheckpointWiring(
+                checkpoint_repo=cp_repo,
+                heartbeat_repo=hb_repo,
+                config=config,
+            )
         )
 
         result = await strategy.recover(

@@ -21,6 +21,7 @@ tests the learning MACHINERY end to end, not "do LLMs get smarter".
 """
 
 import json
+from dataclasses import replace
 from datetime import date
 from typing import Final
 
@@ -48,7 +49,13 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolDefinition,
 )
-from tests._shared import as_uuid, recall_request
+from tests._shared import (
+    UNWIRED_MEMORY,
+    as_uuid,
+    engine_with,
+    recall_request,
+    unwired_recovery,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -168,11 +175,14 @@ def _build_engine(
     else:
         backend = None
         config = ProceduralMemoryConfig(model="test-basic-001", enabled=False)
-    engine = AgentEngine(
-        provider=provider,
-        recovery_strategy=FailAndReassignStrategy(),
-        procedural_memory_config=config,
-        memory_backend=backend,
+    engine = engine_with(
+        provider,
+        memory=replace(
+            UNWIRED_MEMORY, procedural_memory_config=config, memory_backend=backend
+        ),
+        recovery=replace(
+            unwired_recovery(), recovery_strategy=FailAndReassignStrategy()
+        ),
     )
     return engine, backend
 

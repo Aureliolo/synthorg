@@ -4,13 +4,13 @@ Creates an engine with a shutdown manager, starts an agent, triggers
 shutdown, and verifies: agent stops, task is INTERRUPTED, cleanup runs.
 """
 
+from dataclasses import replace
 from typing import Never, override
 
 import pytest
 
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task_enums import TaskStatus
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.shutdown import (
     CooperativeTimeoutStrategy,
     ShutdownManager,
@@ -23,7 +23,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolDefinition,
 )
-from tests._shared import as_uuid
+from tests._shared import as_uuid, engine_with, unwired_core
 
 
 class _ShutdownTriggeringProvider:
@@ -140,9 +140,11 @@ class TestGracefulShutdownFlow:
 
         provider = _ShutdownTriggeringProvider(strategy)
 
-        engine = AgentEngine(
-            provider=provider,
-            shutdown_checker=manager.is_shutting_down,
+        engine = engine_with(
+            provider,
+            core=replace(
+                unwired_core(provider), shutdown_checker=manager.is_shutting_down
+            ),
         )
 
         result = await engine.run(
@@ -276,10 +278,13 @@ class TestGracefulShutdownFlow:
 
         registry = ToolRegistry([_EchoTool()])
 
-        engine = AgentEngine(
-            provider=_MultiTurnProvider(),
-            tool_registry=registry,
-            shutdown_checker=shutdown_checker,
+        engine = engine_with(
+            _MultiTurnProvider(),
+            core=replace(
+                unwired_core(_MultiTurnProvider()),
+                tool_registry=registry,
+                shutdown_checker=shutdown_checker,
+            ),
         )
 
         result = await engine.run(

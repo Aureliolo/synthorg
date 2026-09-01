@@ -9,6 +9,7 @@ are not registered (the feature is off). Governance behaviour of the tools
 themselves is covered in the per-family ``tests/unit/tools/`` suites.
 """
 
+from dataclasses import replace
 from pathlib import Path
 from typing import override
 
@@ -33,6 +34,7 @@ from synthorg.tools.forge._runtime import ForgeToolsRuntime
 from synthorg.tools.publish._runtime import PublishToolsRuntime
 from synthorg.tools.publish.publish_tools import PublishPushTool
 from synthorg.tools.registry import ToolRegistry
+from tests._shared import engine_with, unwired_core, unwired_governance, unwired_tooling
 from tests._shared.scripted_provider import ScriptedProvider, make_e2e_identity
 
 pytestmark = pytest.mark.unit
@@ -133,16 +135,19 @@ def _engine(
     publish_root: Path | None = None,
 ) -> AgentEngine:
     registry = ToolRegistry([_StubTool(name="stub", category=ToolCategory.OTHER)])
-    return AgentEngine(
-        provider=ScriptedProvider([]),
-        tool_registry=registry,
-        approval_store=ApprovalStore(),
-        connection_tool_runtimes=ConnectionToolRuntimes(
-            forge=_forge_runtime() if forge else None,
-            chat=_chat_runtime() if chat else None,
-            deploy=_deploy_runtime() if deploy else None,
-            publish=(
-                _publish_runtime(publish_root) if publish_root is not None else None
+    return engine_with(
+        ScriptedProvider([]),
+        core=replace(unwired_core(ScriptedProvider([])), tool_registry=registry),
+        governance=replace(unwired_governance(), approval_store=ApprovalStore()),
+        tooling=replace(
+            unwired_tooling(),
+            connection_tool_runtimes=ConnectionToolRuntimes(
+                forge=_forge_runtime() if forge else None,
+                chat=_chat_runtime() if chat else None,
+                deploy=_deploy_runtime() if deploy else None,
+                publish=(
+                    _publish_runtime(publish_root) if publish_root is not None else None
+                ),
             ),
         ),
     )

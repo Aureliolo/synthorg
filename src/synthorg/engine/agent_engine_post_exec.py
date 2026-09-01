@@ -100,7 +100,7 @@ class AgentEnginePostExecMixin:
     _review_pipeline: ReviewPipeline | None
     _run_probe: RunBaselineProbe | None
     _apply_recovery: ApplyRecovery
-    _recovery_strategy: RecoveryStrategy
+    _recovery_strategy: RecoveryStrategy | None
     _checkpointing: CheckpointWiring | None
     _error_taxonomy_config: ErrorTaxonomyConfig | None
     _classification_sinks: tuple[ClassificationSink, ...]
@@ -295,7 +295,8 @@ class AgentEnginePostExecMixin:
         without this the rows the run was holding outlive every retry.
         """
         exec_id = execution_result.context.execution_id
-        await self._recovery_strategy.finalize(exec_id)
+        if self._recovery_strategy is not None:
+            await self._recovery_strategy.finalize(exec_id)
         await cleanup_checkpoint_artifacts(self._checkpointing, exec_id)
 
     async def _handle_error_recovery(

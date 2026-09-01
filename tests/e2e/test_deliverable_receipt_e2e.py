@@ -30,6 +30,7 @@ integration tests use): the seam-to-engine sync is unit-tested in
 capture -> build -> validate path the rest of the stack drives.
 """
 
+from dataclasses import replace
 from pathlib import Path
 from typing import cast
 from unittest.mock import AsyncMock
@@ -45,7 +46,6 @@ from synthorg.core.task_enums import TaskStatus
 from synthorg.deliverable_receipts.factory import build_deliverable_receipt_service
 from synthorg.docs_engine.factory import build_docs_service
 from synthorg.docs_engine.service import DocsService
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.flight_recording.sink import PersistenceFlightRecorderSink
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.review_gate import ReviewGateService
@@ -100,7 +100,13 @@ from synthorg.tools.knowledge.search_knowledge import SearchKnowledgeTool
 from synthorg.tools.registry import ToolRegistry
 from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.tools.sandbox.result import SandboxResult
-from tests._shared import mock_of
+from tests._shared import (
+    UNWIRED_BUDGET,
+    UNWIRED_OBSERVABILITY,
+    engine_with,
+    mock_of,
+    unwired_core,
+)
 from tests._shared.fake_clock import FakeClock
 from tests.integration.docs_engine._workspace import InMemoryWorkspaceRepo
 from tests.unit.api.fakes import FakePersistenceBackend
@@ -340,12 +346,15 @@ class TestDeliverableReceiptAcceptance:
             title="Auth module",
             description="Build the auth login endpoint per spec.",
         )
-        engine = AgentEngine(
-            provider=provider,
-            tool_registry=registry,
-            cost_tracker=CostTracker(),
-            flight_recorder_sink=PersistenceFlightRecorderSink(
-                persistence.flight_recorder_frames,
+        engine = engine_with(
+            provider,
+            core=replace(unwired_core(provider), tool_registry=registry),
+            budget=replace(UNWIRED_BUDGET, cost_tracker=CostTracker()),
+            observability=replace(
+                UNWIRED_OBSERVABILITY,
+                flight_recorder_sink=PersistenceFlightRecorderSink(
+                    persistence.flight_recorder_frames,
+                ),
             ),
         )
         result = await engine.run(identity=identity, task=task, max_turns=5)

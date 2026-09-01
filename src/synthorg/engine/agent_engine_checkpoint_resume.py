@@ -94,7 +94,7 @@ class ResumePreparation(BaseModel):
 class AgentEngineCheckpointResumeMixin:
     """Mixin performing a checkpoint resume once recovery has chosen one."""
 
-    _recovery_strategy: RecoveryStrategy
+    _recovery_strategy: RecoveryStrategy | None
     _project_repo: ProjectRepository | None
     _validate_project: ValidateProject
     _build_budget_checker: BuildBudgetChecker
@@ -311,6 +311,7 @@ class AgentEngineCheckpointResumeMixin:
             )
         finally:
             if result.termination_reason != TerminationReason.ERROR:
-                await self._recovery_strategy.finalize(execution_id)
+                if self._recovery_strategy is not None:
+                    await self._recovery_strategy.finalize(execution_id)
                 await cleanup_checkpoint_artifacts(self._checkpointing, execution_id)
         return result

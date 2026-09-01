@@ -13,9 +13,12 @@ class EngineRecovery:
     """What a run falls back on, and what it is measured against.
 
     Attributes:
-        recovery_strategy: What happens to a run that failed. Carries no
-            default because a module-level shared strategy is exactly the
-            invisible wiring this package removes.
+        recovery_strategy: What happens to a run that failed, or ``None``
+            to opt out of recovery entirely, which leaves a failed task
+            where the loop left it. Nullable but never defaulted: the
+            module-level shared strategy it replaces was invisible wiring
+            of exactly the kind this package removes, while opting out is
+            a real mode a caller may want.
         run_probe: Captures how the workspace looked before the run, so
             "did this run deliver" is a question about the run rather
             than about the workspace. ``None`` leaves the delivery check
@@ -25,7 +28,7 @@ class EngineRecovery:
             for a run that does not survive its process.
     """
 
-    recovery_strategy: RecoveryStrategy
+    recovery_strategy: RecoveryStrategy | None
     run_probe: RunBaselineProbe | None
     checkpointing: CheckpointWiring | None
 

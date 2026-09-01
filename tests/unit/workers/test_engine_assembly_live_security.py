@@ -15,7 +15,7 @@ read between them.
 import pytest
 
 from synthorg.security.runtime_config import MutableSecurityConfig
-from synthorg.workers._engine_assembly import _live_security
+from synthorg.workers.engine_assembly import _live_security
 from tests._shared import make_app_state
 
 pytestmark = pytest.mark.unit

@@ -1,5 +1,6 @@
 """Wiring tests for the delegate tool and the engine's runner build."""
 
+from dataclasses import replace
 from datetime import date
 from typing import cast
 from unittest.mock import AsyncMock
@@ -22,7 +23,7 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry_protocol import AgentRegistryProtocol
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.registry import ToolRegistry
-from tests._shared import mock_of
+from tests._shared import UNWIRED_ORG, engine_with, mock_of
 from tests._shared.ids import as_uuid
 
 pytestmark = pytest.mark.unit
@@ -137,18 +138,22 @@ class TestRegistryWithDelegateTool:
 
 class TestEngineRunnerBuild:
     def test_engine_builds_runner_when_registry_wired(self) -> None:
-        from synthorg.engine.agent_engine import AgentEngine
         from tests._shared.scripted_provider import ScriptedProvider
 
-        engine = AgentEngine(
-            provider=ScriptedProvider([]),
-            task_engine=cast(TaskEngine, mock_of[TaskEngine]()),
-            agent_registry=cast(
-                AgentRegistryProtocol,
-                mock_of[AgentRegistryProtocol](
-                    get=AsyncMock(spec=AgentRegistryProtocol.get, return_value=None),
-                    get_by_name=AsyncMock(
-                        spec=AgentRegistryProtocol.get_by_name, return_value=None
+        engine = engine_with(
+            ScriptedProvider([]),
+            org=replace(
+                UNWIRED_ORG,
+                task_engine=cast(TaskEngine, mock_of[TaskEngine]()),
+                agent_registry=cast(
+                    AgentRegistryProtocol,
+                    mock_of[AgentRegistryProtocol](
+                        get=AsyncMock(
+                            spec=AgentRegistryProtocol.get, return_value=None
+                        ),
+                        get_by_name=AsyncMock(
+                            spec=AgentRegistryProtocol.get_by_name, return_value=None
+                        ),
                     ),
                 ),
             ),
@@ -156,11 +161,12 @@ class TestEngineRunnerBuild:
         assert engine._sub_agent_runner is not None
 
     def test_engine_omits_runner_without_agent_registry(self) -> None:
-        from synthorg.engine.agent_engine import AgentEngine
         from tests._shared.scripted_provider import ScriptedProvider
 
-        engine = AgentEngine(
-            provider=ScriptedProvider([]),
-            task_engine=cast(TaskEngine, mock_of[TaskEngine]()),
+        engine = engine_with(
+            ScriptedProvider([]),
+            org=replace(
+                UNWIRED_ORG, task_engine=cast(TaskEngine, mock_of[TaskEngine]())
+            ),
         )
         assert engine._sub_agent_runner is None

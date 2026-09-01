@@ -1,6 +1,7 @@
 """Tests for procedural memory integration in the agent engine."""
 
 import json
+from dataclasses import replace
 from datetime import date
 from unittest.mock import AsyncMock, patch
 
@@ -10,7 +11,6 @@ from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.recovery import FailAndReassignStrategy
@@ -21,7 +21,7 @@ from synthorg.providers.models import (
     CompletionResponse,
     TokenUsage,
 )
-from tests._shared import as_uuid
+from tests._shared import UNWIRED_MEMORY, as_uuid, engine_with, unwired_recovery
 
 _AGENT_UUID = as_uuid("procedural-agent")
 
@@ -120,11 +120,16 @@ class TestAgentEngineProcedural:
         memory_backend.store = AsyncMock(return_value="mem-001")
         config = ProceduralMemoryConfig(model="test-basic-001")
 
-        engine = AgentEngine(
-            provider=provider,
-            recovery_strategy=FailAndReassignStrategy(),
-            procedural_memory_config=config,
-            memory_backend=memory_backend,
+        engine = engine_with(
+            provider,
+            memory=replace(
+                UNWIRED_MEMORY,
+                procedural_memory_config=config,
+                memory_backend=memory_backend,
+            ),
+            recovery=replace(
+                unwired_recovery(), recovery_strategy=FailAndReassignStrategy()
+            ),
         )
 
         error_result = _make_error_execution_result(identity)
@@ -153,11 +158,16 @@ class TestAgentEngineProcedural:
         memory_backend = AsyncMock(spec=MemoryBackend)
         config = ProceduralMemoryConfig(model="test-basic-001")
 
-        engine = AgentEngine(
-            provider=provider,
-            recovery_strategy=FailAndReassignStrategy(),
-            procedural_memory_config=config,
-            memory_backend=memory_backend,
+        engine = engine_with(
+            provider,
+            memory=replace(
+                UNWIRED_MEMORY,
+                procedural_memory_config=config,
+                memory_backend=memory_backend,
+            ),
+            recovery=replace(
+                unwired_recovery(), recovery_strategy=FailAndReassignStrategy()
+            ),
         )
 
         completed_result = _make_completed_execution_result(identity)
@@ -181,11 +191,16 @@ class TestAgentEngineProcedural:
         memory_backend = AsyncMock(spec=MemoryBackend)
         config = ProceduralMemoryConfig(model="test-basic-001")
 
-        engine = AgentEngine(
-            provider=provider,
-            recovery_strategy=FailAndReassignStrategy(),
-            procedural_memory_config=config,
-            memory_backend=memory_backend,
+        engine = engine_with(
+            provider,
+            memory=replace(
+                UNWIRED_MEMORY,
+                procedural_memory_config=config,
+                memory_backend=memory_backend,
+            ),
+            recovery=replace(
+                unwired_recovery(), recovery_strategy=FailAndReassignStrategy()
+            ),
         )
 
         error_result = _make_error_execution_result(identity)
@@ -209,11 +224,16 @@ class TestAgentEngineProcedural:
         provider = _make_provider()
         memory_backend = AsyncMock(spec=MemoryBackend)
 
-        engine = AgentEngine(
-            provider=provider,
-            recovery_strategy=FailAndReassignStrategy(),
-            procedural_memory_config=None,
-            memory_backend=memory_backend,
+        engine = engine_with(
+            provider,
+            memory=replace(
+                UNWIRED_MEMORY,
+                procedural_memory_config=None,
+                memory_backend=memory_backend,
+            ),
+            recovery=replace(
+                unwired_recovery(), recovery_strategy=FailAndReassignStrategy()
+            ),
         )
 
         error_result = _make_error_execution_result(identity)
@@ -233,11 +253,14 @@ class TestAgentEngineProcedural:
         provider = _make_provider()
         config = ProceduralMemoryConfig(model="test-basic-001")
 
-        engine = AgentEngine(
-            provider=provider,
-            recovery_strategy=FailAndReassignStrategy(),
-            procedural_memory_config=config,
-            memory_backend=None,
+        engine = engine_with(
+            provider,
+            memory=replace(
+                UNWIRED_MEMORY, procedural_memory_config=config, memory_backend=None
+            ),
+            recovery=replace(
+                unwired_recovery(), recovery_strategy=FailAndReassignStrategy()
+            ),
         )
 
         error_result = _make_error_execution_result(identity)
@@ -270,11 +293,16 @@ class TestAgentEngineProcedural:
             enabled=False,
         )
 
-        engine = AgentEngine(
-            provider=provider,
-            recovery_strategy=FailAndReassignStrategy(),
-            procedural_memory_config=config,
-            memory_backend=memory_backend,
+        engine = engine_with(
+            provider,
+            memory=replace(
+                UNWIRED_MEMORY,
+                procedural_memory_config=config,
+                memory_backend=memory_backend,
+            ),
+            recovery=replace(
+                unwired_recovery(), recovery_strategy=FailAndReassignStrategy()
+            ),
         )
 
         error_result = _make_error_execution_result(identity)

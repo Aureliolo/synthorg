@@ -20,6 +20,7 @@ so a regression that drops any one layer fails loudly.
 
 import uuid
 from collections.abc import AsyncGenerator
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from typing import Final
@@ -32,7 +33,6 @@ from synthorg.core.memory_enums import MemoryCategory
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.memory.backends.inmemory.adapter import InMemoryBackend
 from synthorg.memory.enums import OrgFactCategory
 from synthorg.memory.models import MemoryMetadata, MemoryStoreRequest
@@ -55,7 +55,7 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolDefinition,
 )
-from tests._shared import as_uuid, sid
+from tests._shared import UNWIRED_MEMORY, as_uuid, engine_with, sid
 
 pytestmark = pytest.mark.integration
 
@@ -217,10 +217,13 @@ async def test_all_three_memory_layers_reach_the_prompt(
         shared_store=OrgSharedKnowledgeStore(org_backend),
     )
     recorder = _RecordingStrategy()
-    engine = AgentEngine(
-        provider=ScriptedDriver("test-provider", strategy=recorder),
-        memory_injection_strategy_provider=lambda: strategy,
-        memory_backend=agent_backend,
+    engine = engine_with(
+        ScriptedDriver("test-provider", strategy=recorder),
+        memory=replace(
+            UNWIRED_MEMORY,
+            memory_injection_strategy_provider=lambda: strategy,
+            memory_backend=agent_backend,
+        ),
     )
 
     result = await engine.run(identity=_identity(), task=_task())
@@ -258,10 +261,13 @@ async def test_project_memory_is_scoped_to_its_own_initiative() -> None:
         ),
     )
     recorder = _RecordingStrategy()
-    engine = AgentEngine(
-        provider=ScriptedDriver("test-provider", strategy=recorder),
-        memory_injection_strategy_provider=lambda: strategy,
-        memory_backend=agent_backend,
+    engine = engine_with(
+        ScriptedDriver("test-provider", strategy=recorder),
+        memory=replace(
+            UNWIRED_MEMORY,
+            memory_injection_strategy_provider=lambda: strategy,
+            memory_backend=agent_backend,
+        ),
     )
 
     await engine.run(identity=_identity(), task=_task())
@@ -295,10 +301,13 @@ async def test_all_three_layers_survive_default_diversity_reranking(
         shared_store=OrgSharedKnowledgeStore(org_backend),
     )
     recorder = _RecordingStrategy()
-    engine = AgentEngine(
-        provider=ScriptedDriver("test-provider", strategy=recorder),
-        memory_injection_strategy_provider=lambda: strategy,
-        memory_backend=agent_backend,
+    engine = engine_with(
+        ScriptedDriver("test-provider", strategy=recorder),
+        memory=replace(
+            UNWIRED_MEMORY,
+            memory_injection_strategy_provider=lambda: strategy,
+            memory_backend=agent_backend,
+        ),
     )
 
     result = await engine.run(identity=_identity(), task=_task())

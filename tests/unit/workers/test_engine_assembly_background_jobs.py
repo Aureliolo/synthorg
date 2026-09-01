@@ -2,11 +2,11 @@
 
 Guards the dormancy class of defect (a collaborator built but never
 actually reachable from a booted tool registry) plus the construction-order
-cycle ``_engine_assembly.py`` resolves between the lifecycle strategy and
+cycle ``tool_registry_assembly.py`` resolves between the lifecycle strategy and
 the Docker sandbox whose bound method becomes its ``pin_check``. Neither
 gap is visible to a test that only exercises ``DockerSandboxBackgroundMixin``
 directly (as ``test_docker_sandbox_background.py`` does): both live entirely
-in how ``_build_tool_registry`` wires its collaborators together.
+in how ``build_tool_registry`` wires its collaborators together.
 """
 
 from pathlib import Path
@@ -30,7 +30,7 @@ from synthorg.workers._background_job_wiring import (
     _OUTPUT_BYTE_CAP_KEY,
     _TOOLS_NS,
 )
-from synthorg.workers._engine_assembly import _build_tool_registry
+from synthorg.workers.tool_registry_assembly import build_tool_registry
 from tests._shared import FakeClock, make_app_state, mock_of
 from tests._shared.fake_background_job_exec import (
     make_mock_docker as _make_mock_docker,
@@ -84,7 +84,7 @@ def _per_agent_docker_config() -> RootConfig:
 def _boot_app_state(
     *, repo: _InMemoryBackgroundJobRepository, config: RootConfig
 ) -> AppState:
-    """Build a minimal ``AppState`` sufficient for ``_build_tool_registry``.
+    """Build a minimal ``AppState`` sufficient for ``build_tool_registry``.
 
     Returns:
         The composed ``AppState``.
@@ -122,7 +122,7 @@ class TestBackgroundJobBootWiring:
         repo = _InMemoryBackgroundJobRepository()
         app_state = _boot_app_state(repo=repo, config=_per_agent_docker_config())
 
-        registry, _count, sandbox_backends = await _build_tool_registry(
+        registry, _count, sandbox_backends = await build_tool_registry(
             app_state, tmp_path
         )
 
@@ -158,7 +158,7 @@ class TestBackgroundJobBootWiring:
         """
         repo = _InMemoryBackgroundJobRepository()
         app_state = _boot_app_state(repo=repo, config=_per_agent_docker_config())
-        _registry, _count, sandbox_backends = await _build_tool_registry(
+        _registry, _count, sandbox_backends = await build_tool_registry(
             app_state, tmp_path
         )
         docker_backend = sandbox_backends["docker"]

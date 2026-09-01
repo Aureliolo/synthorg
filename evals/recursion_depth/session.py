@@ -262,10 +262,6 @@ class SweepDeps:
             compaction callback, the review pipeline, the approval gate and
             the budget enforcer all arrive through it. A second copy of any
             of them here would be a second answer.
-        provider_registry: Where an agent's own bound pair is resolved. The
-            sweep declares its pairs in the manifest, so a unit dispatching
-            on a pair the registry does not know fails closed rather than
-            silently landing on the session's default driver.
         stall_idle_seconds: Idle time after which a unit is reported stalled.
         on_stall: Second channel for that report, alongside the warning the
             watch always logs. A real sweep runs for hours in a terminal.

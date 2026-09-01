@@ -1,5 +1,6 @@
 """AgentEngine capability-gate integration (the ``_check_capability`` seam)."""
 
+from dataclasses import replace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -25,7 +26,7 @@ from synthorg.providers.models import CompletionConfig
 from synthorg.providers.routing.models import ResolvedModel
 from synthorg.providers.routing.resolver import ModelResolver
 from synthorg.settings.resolver import ConfigResolver
-from tests._shared import as_uuid, mock_of
+from tests._shared import UNWIRED_ORG, as_uuid, engine_with, mock_of
 from tests._shared.scripted_provider import ScriptedProvider, make_e2e_identity
 
 _PROVIDER = "example-provider"
@@ -71,9 +72,9 @@ def _policy(
 
 
 def _engine(*, stakes: bool) -> AgentEngine:
-    return AgentEngine(
-        provider=ScriptedProvider([]),
-        capability=_policy() if stakes else None,
+    return engine_with(
+        ScriptedProvider([]),
+        org=replace(UNWIRED_ORG, capability=_policy() if stakes else None),
     )
 
 
@@ -167,9 +168,9 @@ class TestCheckCapabilitySeam:
         # The catalogue holds only the basic model, so the expert agent's pair
         # falls back to its roster rung and still clears the floor: an
         # incomplete catalogue must not park an agent the operator graded.
-        engine = AgentEngine(
-            provider=ScriptedProvider([]),
-            capability=_policy(("basic",)),
+        engine = engine_with(
+            ScriptedProvider([]),
+            org=replace(UNWIRED_ORG, capability=_policy(("basic",))),
         )
 
         effort = engine._check_capability(_identity("expert"), _task(Stakes.HIGH))

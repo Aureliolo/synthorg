@@ -17,12 +17,15 @@ from synthorg.budget.errors import (
     QuotaExhaustedError,
 )
 from synthorg.budget.tracker import CostTracker
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_protocol import TerminationReason
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.task import Task
+
+from dataclasses import replace
+
+from tests._shared import UNWIRED_BUDGET, engine_with
 
 from .conftest import (
     MockCompletionProvider,
@@ -73,9 +76,8 @@ class TestEngineWithEnforcer:
         provider = MockCompletionProvider(
             [make_completion_response(content="Done.")],
         )
-        engine = AgentEngine(
-            provider=provider,
-            budget_enforcer=enforcer,
+        engine = engine_with(
+            provider, budget=replace(UNWIRED_BUDGET, budget_enforcer=enforcer)
         )
 
         with patch.object(
@@ -111,9 +113,8 @@ class TestEngineWithEnforcer:
         provider = MockCompletionProvider(
             [make_completion_response(content="Done.")],
         )
-        engine = AgentEngine(
-            provider=provider,
-            budget_enforcer=enforcer,
+        engine = engine_with(
+            provider, budget=replace(UNWIRED_BUDGET, budget_enforcer=enforcer)
         )
 
         assert not hasattr(enforcer, "resolve_model")
@@ -149,7 +150,7 @@ class TestEngineWithEnforcer:
         provider = MockCompletionProvider(
             [make_completion_response(content="Done.")],
         )
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(
             identity=sample_agent,
@@ -171,9 +172,8 @@ class TestEngineWithEnforcer:
         provider = MockCompletionProvider(
             [make_completion_response(content="Done.")],
         )
-        engine = AgentEngine(
-            provider=provider,
-            budget_enforcer=enforcer,
+        engine = engine_with(
+            provider, budget=replace(UNWIRED_BUDGET, budget_enforcer=enforcer)
         )
 
         # Run a task and verify costs were recorded to the enforcer's tracker

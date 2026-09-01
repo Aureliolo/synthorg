@@ -14,7 +14,6 @@ from synthorg.core.completion_enums import FinishReason
 from synthorg.core.project import Project
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.artifacts.baseline_scope import workspace_run_probe
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (
@@ -28,7 +27,16 @@ from tests._shared import as_uuid, mock_of
 if TYPE_CHECKING:
     from .conftest import MockCompletionProvider
 
+from dataclasses import replace
+
 from synthorg.engine.loop_protocol import ExecutionLoop
+from tests._shared import (
+    UNWIRED_BUDGET,
+    UNWIRED_ORG,
+    engine_with,
+    unwired_core,
+    unwired_recovery,
+)
 
 from .conftest import make_completion_response as _make_completion_response
 
@@ -46,7 +54,7 @@ class TestAgentEnginePostExecutionTransitions:
         """COMPLETED termination parks at IN_REVIEW (awaits human review)."""
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(
             identity=sample_agent,
@@ -66,7 +74,7 @@ class TestAgentEnginePostExecutionTransitions:
         """ASSIGNED->IP, IP->IR = 2 transitions (review gate stops here)."""
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(
             identity=sample_agent,
@@ -90,7 +98,7 @@ class TestAgentEnginePostExecutionTransitions:
         """Task stays at IN_REVIEW so completed_at is not set yet."""
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(
             identity=sample_agent,
@@ -128,7 +136,9 @@ class TestAgentEnginePostExecutionTransitions:
         )
 
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider, execution_loop=mock_loop)
+        engine = engine_with(
+            provider, core=replace(unwired_core(provider), execution_loop=mock_loop)
+        )
 
         result = await engine.run(
             identity=sample_agent,
@@ -194,18 +204,25 @@ class TestAgentEnginePostExecutionTransitions:
         )
         # A work task is refused without a project to validate against, and
         # every task that declares artifacts is one.
-        engine = AgentEngine(
-            provider=mock_provider_factory([]),
-            execution_loop=mock_loop,
-            run_probe=workspace_run_probe(tmp_path),
-            project_repo=mock_of[ProjectRepository](
-                get=AsyncMock(
-                    return_value=Project(
-                        id=as_uuid(work_task.project),
-                        name="Loop A/B",
-                        description="Carries the declared artifact.",
+        engine = engine_with(
+            mock_provider_factory([]),
+            core=replace(
+                unwired_core(mock_provider_factory([])), execution_loop=mock_loop
+            ),
+            org=replace(
+                UNWIRED_ORG,
+                project_repo=mock_of[ProjectRepository](
+                    get=AsyncMock(
+                        return_value=Project(
+                            id=as_uuid(work_task.project),
+                            name="Loop A/B",
+                            description="Carries the declared artifact.",
+                        )
                     )
-                )
+                ),
+            ),
+            recovery=replace(
+                unwired_recovery(), run_probe=workspace_run_probe(tmp_path)
             ),
         )
 
@@ -244,7 +261,9 @@ class TestAgentEnginePostExecutionTransitions:
         )
 
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider, execution_loop=mock_loop)
+        engine = engine_with(
+            provider, core=replace(unwired_core(provider), execution_loop=mock_loop)
+        )
 
         result = await engine.run(
             identity=sample_agent,
@@ -280,7 +299,9 @@ class TestAgentEnginePostExecutionTransitions:
         )
 
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider, execution_loop=mock_loop)
+        engine = engine_with(
+            provider, core=replace(unwired_core(provider), execution_loop=mock_loop)
+        )
 
         result = await engine.run(
             identity=sample_agent,
@@ -316,7 +337,9 @@ class TestAgentEnginePostExecutionTransitions:
         )
 
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider, execution_loop=mock_loop)
+        engine = engine_with(
+            provider, core=replace(unwired_core(provider), execution_loop=mock_loop)
+        )
 
         result = await engine.run(
             identity=sample_agent,
@@ -350,7 +373,9 @@ class TestAgentEnginePostExecutionTransitions:
         )
 
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider, execution_loop=mock_loop)
+        engine = engine_with(
+            provider, core=replace(unwired_core(provider), execution_loop=mock_loop)
+        )
 
         result = await engine.run(
             identity=sample_agent,
@@ -382,7 +407,9 @@ class TestAgentEnginePostExecutionTransitions:
         )
 
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider, execution_loop=mock_loop)
+        engine = engine_with(
+            provider, core=replace(unwired_core(provider), execution_loop=mock_loop)
+        )
 
         result = await engine.run(
             identity=sample_agent,
@@ -415,7 +442,9 @@ class TestAgentEngineTimeout:
         )
 
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider, execution_loop=mock_loop)
+        engine = engine_with(
+            provider, core=replace(unwired_core(provider), execution_loop=mock_loop)
+        )
 
         result = await engine.run(
             identity=sample_agent,
@@ -436,7 +465,7 @@ class TestAgentEngineTimeout:
         """Default run has no timeout."""
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(
             identity=sample_agent,
@@ -459,7 +488,7 @@ class TestAgentEngineTimeout:
         timeout_seconds: float,
     ) -> None:
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         with pytest.raises(ValueError, match="timeout_seconds must be > 0"):
             await engine.run(
@@ -488,7 +517,7 @@ class TestAgentEngineCompletionMetrics:
             cost=0.05,
         )
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(
             identity=sample_agent,
@@ -528,7 +557,9 @@ class TestAgentEngineTimeoutEdgeCases:
         )
 
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider, execution_loop=mock_loop)
+        engine = engine_with(
+            provider, core=replace(unwired_core(provider), execution_loop=mock_loop)
+        )
 
         result = await engine.run(
             identity=sample_agent,
@@ -562,10 +593,10 @@ class TestAgentEngineTimeoutEdgeCases:
         )
 
         provider = mock_provider_factory([])
-        engine = AgentEngine(
-            provider=provider,
-            execution_loop=mock_loop,
-            cost_tracker=mock_tracker,
+        engine = engine_with(
+            provider,
+            core=replace(unwired_core(provider), execution_loop=mock_loop),
+            budget=replace(UNWIRED_BUDGET, cost_tracker=mock_tracker),
         )
 
         result = await engine.run(
@@ -614,7 +645,9 @@ class TestAgentEnginePostExecutionResilience:
         )
 
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider, execution_loop=mock_loop)
+        engine = engine_with(
+            provider, core=replace(unwired_core(provider), execution_loop=mock_loop)
+        )
 
         result = await engine.run(
             identity=sample_agent,
@@ -658,7 +691,9 @@ class TestAgentEnginePostExecutionResilience:
         )
 
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider, execution_loop=mock_loop)
+        engine = engine_with(
+            provider, core=replace(unwired_core(provider), execution_loop=mock_loop)
+        )
 
         result = await engine.run(
             identity=sample_agent,

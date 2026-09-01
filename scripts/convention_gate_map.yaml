@@ -325,6 +325,11 @@ mandatory_rules:
     header: Charter-Authorised Initiative
     gate: scripts/check_charter_authorised_initiative.py
 
+  - id: claude-md::total-engine-wiring
+    file: CLAUDE.md
+    header: Total Engine Wiring
+    gate: scripts/check_engine_dependencies_total.py
+
   - id: claude-md::contract-before-the-work
     file: CLAUDE.md
     header: Contract Before The Work

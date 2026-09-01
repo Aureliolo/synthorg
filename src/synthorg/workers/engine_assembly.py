@@ -359,6 +359,8 @@ class EngineAssemblyInputs:
             engine holds no workspace root, so the layout knowledge stays
             with the caller and the engine receives only the question it
             can ask: did this project produce what its task declared.
+            ``None`` leaves the delivery check on the weaker evidence it
+            has, which never fails a run that delivered.
         coordination_metrics_collector: Shared with the coordinator when
             one exists, so multi-agent metrics compare against the same
             single-agent baselines.
@@ -373,7 +375,7 @@ class EngineAssemblyInputs:
     provider: CompletionProvider
     provider_registry: ProviderRegistry
     tool_registry: ToolRegistry | None
-    run_probe: RunBaselineProbe
+    run_probe: RunBaselineProbe | None
     coordination_metrics_collector: CoordinationMetricsCollector | None
     external_api_runtime: ExternalApiRuntime | None
     connection_tool_runtimes: ConnectionToolRuntimes | None

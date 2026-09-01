@@ -10,7 +10,6 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import (
     ExecutionResult,
@@ -32,11 +31,20 @@ if TYPE_CHECKING:
 
     from .conftest import MockCompletionProvider
 
+from dataclasses import replace
+
 from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.tracker import CostTracker
 from synthorg.engine.loop_protocol import ExecutionLoop
 from synthorg.engine.recovery import RecoveryStrategy
 from synthorg.providers.protocol import CompletionProvider
+from tests._shared import (
+    UNWIRED_BUDGET,
+    UNWIRED_ORG,
+    engine_with,
+    unwired_core,
+    unwired_recovery,
+)
 
 from .conftest import make_completion_response
 
@@ -52,7 +60,7 @@ class TestAgentEngineErrorHandling:
     ) -> None:
         provider = MagicMock(spec=CompletionProvider)
         provider.complete = AsyncMock(side_effect=RuntimeError("LLM is down"))
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(
             identity=sample_agent,
@@ -70,7 +78,7 @@ class TestAgentEngineErrorHandling:
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         with patch(
             "synthorg.engine.agent_engine_context.build_system_prompt",
@@ -96,7 +104,7 @@ class TestAgentEngineNonRecoverable:
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         with (
             patch(
@@ -117,7 +125,7 @@ class TestAgentEngineNonRecoverable:
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         with (
             patch(
@@ -143,7 +151,7 @@ class TestAgentEngineMaxTurnsValidation:
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         with pytest.raises(ValueError, match="max_turns must be >= 1"):
             await engine.run(
@@ -159,7 +167,7 @@ class TestAgentEngineMaxTurnsValidation:
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         with pytest.raises(ValueError, match="max_turns must be >= 1"):
             await engine.run(
@@ -187,7 +195,7 @@ class TestAgentEngineTimeoutValidation:
     ) -> None:
         """Invalid timeout_seconds raises ValueError."""
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         with pytest.raises(ValueError, match="timeout_seconds must be > 0"):
             await engine.run(
@@ -215,7 +223,9 @@ class TestAgentEngineCostRecordingNonRecoverable:
         tracker.budget_config = None
         response = make_completion_response(cost=0.05)
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider, cost_tracker=tracker)
+        engine = engine_with(
+            provider, budget=replace(UNWIRED_BUDGET, cost_tracker=tracker)
+        )
 
         with pytest.raises(MemoryError, match="OOM in tracker"):
             await engine.run(
@@ -239,7 +249,9 @@ class TestAgentEngineCostRecordingNonRecoverable:
         tracker.budget_config = None
         response = make_completion_response(cost=0.05)
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider, cost_tracker=tracker)
+        engine = engine_with(
+            provider, budget=replace(UNWIRED_BUDGET, cost_tracker=tracker)
+        )
 
         with pytest.raises(RecursionError, match="infinite in tracker"):
             await engine.run(
@@ -260,7 +272,7 @@ class TestAgentEngineFatalErrorResult:
     ) -> None:
         """Errors in _handle_fatal_error path produce template_version='error'."""
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         with patch(
             "synthorg.engine.agent_engine_context.build_system_prompt",
@@ -287,7 +299,7 @@ class TestAgentEngineFatalErrorResult:
     ) -> None:
         """Paths in exception messages are redacted in the error result."""
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         with patch(
             "synthorg.engine.agent_engine_context.build_system_prompt",
@@ -310,7 +322,7 @@ class TestAgentEngineFatalErrorResult:
     ) -> None:
         """If _handle_fatal_error itself fails, original exception is raised."""
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
         real_from_identity = AgentContext.from_identity.__func__  # type: ignore[attr-defined]
         call_count = 0
 
@@ -376,7 +388,9 @@ class TestFatalErrorBeforeAContextExists:
                 return_value=TaskMutationResult(request_id="r", success=True)
             )
         )
-        engine = AgentEngine(provider=provider, task_engine=task_engine)
+        engine = engine_with(
+            provider, org=replace(UNWIRED_ORG, task_engine=task_engine)
+        )
 
         with patch(
             "synthorg.engine.agent_engine_context.build_system_prompt",
@@ -407,7 +421,7 @@ class TestAgentEngineFatalErrorNonRecoverable:
     ) -> None:
         """MemoryError during error-result construction propagates directly."""
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         with (
             patch(
@@ -442,9 +456,8 @@ class TestAgentEngineBudgetErrorSecondaryFailure:
         budget_enforcer.check_can_execute = AsyncMock(
             side_effect=BudgetExhaustedError("budget exceeded"),
         )
-        engine = AgentEngine(
-            provider=provider,
-            budget_enforcer=budget_enforcer,
+        engine = engine_with(
+            provider, budget=replace(UNWIRED_BUDGET, budget_enforcer=budget_enforcer)
         )
 
         with (
@@ -503,7 +516,9 @@ class TestAgentEngineMemoryMessages:
             ChatMessage(role=MessageRole.ASSISTANT, content="Previous response B"),
         )
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider, execution_loop=mock_loop)
+        engine = engine_with(
+            provider, core=replace(unwired_core(provider), execution_loop=mock_loop)
+        )
 
         await engine.run(
             identity=sample_agent,
@@ -545,7 +560,7 @@ class TestAgentEngineRecovery:
         """Provider exception -> task status is FAILED."""
         provider = MagicMock(spec=CompletionProvider)
         provider.complete = AsyncMock(side_effect=RuntimeError("LLM is down"))
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(
             identity=sample_agent,
@@ -574,7 +589,10 @@ class TestAgentEngineRecovery:
 
         provider = MagicMock(spec=CompletionProvider)
         provider.complete = AsyncMock(side_effect=RuntimeError("crash"))
-        engine = AgentEngine(provider=provider, recovery_strategy=mock_strategy)
+        engine = engine_with(
+            provider,
+            recovery=replace(unwired_recovery(), recovery_strategy=mock_strategy),
+        )
 
         await engine.run(
             identity=sample_agent,
@@ -596,7 +614,10 @@ class TestAgentEngineRecovery:
 
         provider = MagicMock(spec=CompletionProvider)
         provider.complete = AsyncMock(side_effect=RuntimeError("LLM down"))
-        engine = AgentEngine(provider=provider, recovery_strategy=mock_strategy)
+        engine = engine_with(
+            provider,
+            recovery=replace(unwired_recovery(), recovery_strategy=mock_strategy),
+        )
 
         result = await engine.run(
             identity=sample_agent,
@@ -615,7 +636,9 @@ class TestAgentEngineRecovery:
         """Opting out of recovery: task stays IN_PROGRESS (not FAILED)."""
         provider = MagicMock(spec=CompletionProvider)
         provider.complete = AsyncMock(side_effect=RuntimeError("crash"))
-        engine = AgentEngine(provider=provider, recovery_strategy=None)
+        engine = engine_with(
+            provider, recovery=replace(unwired_recovery(), recovery_strategy=None)
+        )
 
         result = await engine.run(
             identity=sample_agent,
@@ -654,9 +677,8 @@ class TestAgentEngineRecovery:
         mock_loop.get_loop_type = MagicMock(return_value="react")
 
         provider = mock_provider_factory([])
-        engine = AgentEngine(
-            provider=provider,
-            execution_loop=mock_loop,
+        engine = engine_with(
+            provider, core=replace(unwired_core(provider), execution_loop=mock_loop)
         )
 
         result = await engine.run(
@@ -702,7 +724,9 @@ class TestAgentEngineRecovery:
         mock_loop.get_loop_type = MagicMock(return_value="react")
 
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider, execution_loop=mock_loop)
+        engine = engine_with(
+            provider, core=replace(unwired_core(provider), execution_loop=mock_loop)
+        )
 
         try:
             result = await asyncio.wait_for(
@@ -754,9 +778,9 @@ class TestAgentEngineRecovery:
 
         provider = MagicMock(spec=CompletionProvider)
         provider.complete = AsyncMock(side_effect=RuntimeError("crash"))
-        engine = AgentEngine(
-            provider=provider,
-            recovery_strategy=CustomRecovery(),
+        engine = engine_with(
+            provider,
+            recovery=replace(unwired_recovery(), recovery_strategy=CustomRecovery()),
         )
 
         await engine.run(
@@ -777,9 +801,9 @@ class TestAgentEngineRecovery:
 
         provider = MagicMock(spec=CompletionProvider)
         provider.complete = AsyncMock(side_effect=RuntimeError("crash"))
-        engine = AgentEngine(
-            provider=provider,
-            recovery_strategy=mock_strategy,
+        engine = engine_with(
+            provider,
+            recovery=replace(unwired_recovery(), recovery_strategy=mock_strategy),
         )
 
         with pytest.raises(MemoryError, match="OOM"):
@@ -801,9 +825,9 @@ class TestAgentEngineRecovery:
 
         provider = MagicMock(spec=CompletionProvider)
         provider.complete = AsyncMock(side_effect=RuntimeError("crash"))
-        engine = AgentEngine(
-            provider=provider,
-            recovery_strategy=mock_strategy,
+        engine = engine_with(
+            provider,
+            recovery=replace(unwired_recovery(), recovery_strategy=mock_strategy),
         )
 
         with pytest.raises(RecursionError, match="max depth"):

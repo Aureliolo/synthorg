@@ -55,6 +55,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_domain_error_hierarchy.py` | push | `src/synthorg/` | full | no | `domain_error_hierarchy_baseline.txt` | keep |
 | `check_dto_types_ts_in_sync.py` | commit+push | `api/` + `core/` + `*.gen.ts` | full | no | none | keep |
 | `check_dual_backend_test_parity.py` | push | persistence protocols + conformance | full | no | `dual_backend_parity_baseline.txt` | keep |
+| `check_engine_dependencies_total.py` | push | `engine/dependencies/` + `src/synthorg/` + `evals/` + `scripts/` + `tests/` | full | no | none (no opt-out) | add |
 | `check_enum_check_constraint_parity.py` | push | `src/synthorg/` + both `schema.sql` | full | no | none | add |
 | `check_error_code_uniqueness.py` | push | `src/synthorg/**/*.py` | full | no | none | add |
 | `check_error_codes_ts_in_sync.py` | commit+push | `error_taxonomy.py` + `error-codes.gen.ts` | full | no | none | keep |

@@ -175,8 +175,34 @@ through `_make_default_loop()`, which passes every in-flight control the engine
 holds (approval gate, stagnation detector, compaction callback, steering inbox,
 step classifier, background job watcher) by name, so a control the engine was
 given that the loop never received is a type error rather than a silently
-ungoverned run. An `execution_loop=` may still be injected, which tests use to
-drive a double.
+ungoverned run. An injected `execution_loop` may still be declared, which tests
+use to drive a double.
+
+**Construction:** `AgentEngine(deps: EngineDependencies)`, and that is the whole
+signature. `engine/dependencies/` declares the wiring as eleven frozen `kw_only`
+bundles (`core`, `routing`, `budget`, `governance`, `loop_controls`, `memory`,
+`org`, `tooling`, `observability`, `recovery`, `behaviour`), mirroring the state
+slices the composition root already reads from. **No field of any bundle carries
+a default**, so a collaborator a caller did not name is a type error rather than
+a silent `None`. Absence is ordinary and still allowed; it is written down
+(`compaction_callback=None`), because a written absence is a decision a reviewer
+can question and a missing keyword is a decision nobody made.
+
+Two invariants are shape rather than runtime checks. `CheckpointWiring` carries
+the checkpoint repository, the heartbeat repository and the checkpoint config
+together, so "one without the other" is unrepresentable; `EngineBudget` keeps its
+`cost_tracker is budget_enforcer.cost_tracker` identity check, which is a
+cross-field invariant a type cannot express.
+
+There is one production construction, `workers/engine_assembly.py::build_agent_engine`,
+which reads the live `AppState` and assembles the bundles. What its **caller**
+owns (the provider, the registry, the tool registry, the run probe, and the
+collaborators only a caller can know) arrives as its own equally total
+`EngineAssemblyInputs`. The recursion-depth harness calls that same function, so
+a collaborator the harness runs without is that recording's declared
+configuration rather than its omission. `check_engine_dependencies_total.py`
+holds the contract past the type-checker (see the Total Engine Wiring rule in
+`CLAUDE.md`).
 
 The engine also exposes an optional ``coordinate()`` method that delegates to a
 ``MultiAgentCoordinator`` when one is configured (see [Coordination](coordination.md)).
