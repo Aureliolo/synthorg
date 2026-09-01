@@ -1,0 +1,616 @@
+{
+  "schema_version": 3,
+  "provenance": {
+    "generated_at": "2026-08-31T23:23:30.709360Z",
+    "git_commit": "02a917c0c19b692930073c8c640e993d893fefc7",
+    "git_dirty": false,
+    "manifest_sha256": "sha256:f472802c810331077b3a9511c35232447f4132eba152768f0c08ed9318135bf8",
+    "spec_id": "sqlcsv",
+    "requirement_count": 42,
+    "executor": {
+      "provider": "example-provider",
+      "model_id": "example-capable-001",
+      "capability": "capable",
+      "family": "example-family-a",
+      "temperature": 0.7,
+      "top_p": 1.0,
+      "reasoning_effort": null,
+      "max_tokens": 131072
+    },
+    "reviewer": {
+      "provider": "example-provider",
+      "model_id": "example-expert-001",
+      "capability": "expert",
+      "family": "example-family-b",
+      "temperature": 0.6,
+      "top_p": 0.95,
+      "reasoning_effort": "high",
+      "max_tokens": 65536
+    },
+    "independence": "cross_family",
+    "spend_source": "journalled",
+    "executor_connection_sha256": "sha256:0b69d5ef64b39856422baa8d7f0d5b232c6c417f6e68f12e6f03a69379da0e08",
+    "reviewer_connection_sha256": "sha256:13e3e77c215d0a13f0c141ce6a5e59ca0ab3edf5fb75e049ec692db4d771d4ee",
+    "cost_basis": "unpriced",
+    "sandbox_image": "ghcr.io/aureliolo/synthorg-sandbox@sha256:af8996364caca94ba07b98b593a091afe4a11208d1f8c7cbe8966b35ca700e81"
+  },
+  "cells": [
+    {
+      "depth_cap": 1,
+      "arm": "gated",
+      "repetition": 0,
+      "achieved_depth": 1,
+      "units": [
+        {
+          "unit_id": "d1-gated-r0-plan",
+          "title": "Plan: A SQL query CLI over CSV files",
+          "kind": "plan",
+          "depth": 0,
+          "claimed": [],
+          "unresolved_claims": 0,
+          "delivered": false,
+          "produced": false,
+          "attempts": 1,
+          "turns": 0,
+          "cost": null,
+          "tokens": 47760,
+          "input_tokens": null,
+          "output_tokens": null,
+          "executor": null,
+          "reviewer": null,
+          "detail": "",
+          "verdict": null,
+          "parked": false,
+          "parked_attempts": 0,
+          "amendments": 0,
+          "missing_declared_paths": [],
+          "terminations": [],
+          "workspace_files_changed": null
+        },
+        {
+          "unit_id": "8d540420-d7a4-4125-90d9-13d0ea58f793",
+          "title": "CSV ingest and column typing",
+          "kind": "leaf",
+          "depth": 0,
+          "claimed": [
+            "R01",
+            "R02",
+            "R03",
+            "R04",
+            "R05"
+          ],
+          "unresolved_claims": 0,
+          "delivered": true,
+          "produced": true,
+          "attempts": 1,
+          "turns": 28,
+          "cost": null,
+          "tokens": 502062,
+          "input_tokens": 357449,
+          "output_tokens": 144613,
+          "executor": {
+            "provider": "example-provider",
+            "model_id": "example-capable-001",
+            "capability": "capable",
+            "family": "example-family-a",
+            "temperature": 0.7,
+            "top_p": 1.0,
+            "reasoning_effort": null,
+            "max_tokens": 131072
+          },
+          "reviewer": null,
+          "detail": "",
+          "verdict": null,
+          "parked": false,
+          "parked_attempts": 0,
+          "amendments": 0,
+          "missing_declared_paths": [
+            "tests/fixtures/typing.csv"
+          ],
+          "terminations": [
+            "completed"
+          ],
+          "workspace_files_changed": 12
+        },
+        {
+          "unit_id": "d9b6fa0d-82b7-4ca6-a2fb-de701d1512db",
+          "title": "SQL lexer",
+          "kind": "leaf",
+          "depth": 0,
+          "claimed": [
+            "R06",
+            "R07",
+            "R08",
+            "R09"
+          ],
+          "unresolved_claims": 0,
+          "delivered": true,
+          "produced": true,
+          "attempts": 1,
+          "turns": 45,
+          "cost": null,
+          "tokens": 837807,
+          "input_tokens": 744981,
+          "output_tokens": 92826,
+          "executor": {
+            "provider": "example-provider",
+            "model_id": "example-capable-001",
+            "capability": "capable",
+            "family": "example-family-a",
+            "temperature": 0.7,
+            "top_p": 1.0,
+            "reasoning_effort": null,
+            "max_tokens": 131072
+          },
+          "reviewer": null,
+          "detail": "",
+          "verdict": null,
+          "parked": false,
+          "parked_attempts": 0,
+          "amendments": 0,
+          "missing_declared_paths": [],
+          "terminations": [
+            "completed"
+          ],
+          "workspace_files_changed": 6
+        },
+        {
+          "unit_id": "6b282aa8-35ee-46cc-b4f4-b0c1005d9485",
+          "title": "Parser: grammar to AST",
+          "kind": "leaf",
+          "depth": 0,
+          "claimed": [
+            "R10",
+            "R11",
+            "R12",
+            "R13",
+            "R14",
+            "R17"
+          ],
+          "unresolved_claims": 0,
+          "delivered": false,
+          "produced": true,
+          "attempts": 1,
+          "turns": 68,
+          "cost": null,
+          "tokens": 1525020,
+          "input_tokens": 1507003,
+          "output_tokens": 18017,
+          "executor": {
+            "provider": "example-provider",
+            "model_id": "example-capable-001",
+            "capability": "capable",
+            "family": "example-family-a",
+            "temperature": 0.7,
+            "top_p": 1.0,
+            "reasoning_effort": null,
+            "max_tokens": 131072
+          },
+          "reviewer": null,
+          "detail": "the unit's own tests did not pass: the suite collected no tests",
+          "verdict": null,
+          "parked": false,
+          "parked_attempts": 0,
+          "amendments": 0,
+          "missing_declared_paths": [
+            "tests/test_parser.py",
+            ".synthorg/unit/report.md"
+          ],
+          "terminations": [
+            "budget_exhausted"
+          ],
+          "workspace_files_changed": 7
+        },
+        {
+          "unit_id": "76d7652e-fd31-407a-9161-842ea2a3ba11",
+          "title": "Architecture and module contracts",
+          "kind": "leaf",
+          "depth": 0,
+          "claimed": [],
+          "unresolved_claims": 0,
+          "delivered": false,
+          "produced": true,
+          "attempts": 1,
+          "turns": 52,
+          "cost": null,
+          "tokens": 1529316,
+          "input_tokens": 1322350,
+          "output_tokens": 206966,
+          "executor": {
+            "provider": "example-provider",
+            "model_id": "example-capable-001",
+            "capability": "capable",
+            "family": "example-family-a",
+            "temperature": 0.7,
+            "top_p": 1.0,
+            "reasoning_effort": null,
+            "max_tokens": 131072
+          },
+          "reviewer": null,
+          "detail": "the unit's own tests did not pass: the suite collected no tests",
+          "verdict": null,
+          "parked": false,
+          "parked_attempts": 0,
+          "amendments": 0,
+          "missing_declared_paths": [
+            ".synthorg/unit/report.md"
+          ],
+          "terminations": [
+            "budget_exhausted"
+          ],
+          "workspace_files_changed": 12
+        },
+        {
+          "unit_id": "5f0c6fd7-7f78-467d-878f-343168c1695e",
+          "title": "Joins: INNER and LEFT with qualified references",
+          "kind": "leaf",
+          "depth": 0,
+          "claimed": [
+            "R33",
+            "R34"
+          ],
+          "unresolved_claims": 0,
+          "delivered": true,
+          "produced": true,
+          "attempts": 1,
+          "turns": 57,
+          "cost": null,
+          "tokens": 1535148,
+          "input_tokens": 1433788,
+          "output_tokens": 101360,
+          "executor": {
+            "provider": "example-provider",
+            "model_id": "example-capable-001",
+            "capability": "capable",
+            "family": "example-family-a",
+            "temperature": 0.7,
+            "top_p": 1.0,
+            "reasoning_effort": null,
+            "max_tokens": 131072
+          },
+          "reviewer": null,
+          "detail": "",
+          "verdict": null,
+          "parked": false,
+          "parked_attempts": 0,
+          "amendments": 0,
+          "missing_declared_paths": [
+            "tests/test_join.py"
+          ],
+          "terminations": [
+            "completed"
+          ],
+          "workspace_files_changed": 13
+        },
+        {
+          "unit_id": "7ee18d5b-9dc4-4edc-bc05-7e9f121fab91",
+          "title": "Binder and execution engine",
+          "kind": "leaf",
+          "depth": 0,
+          "claimed": [
+            "R15",
+            "R16",
+            "R17",
+            "R18",
+            "R19",
+            "R20",
+            "R21",
+            "R22",
+            "R23",
+            "R24",
+            "R25",
+            "R26",
+            "R27",
+            "R28",
+            "R29",
+            "R30",
+            "R31",
+            "R32"
+          ],
+          "unresolved_claims": 0,
+          "delivered": false,
+          "produced": true,
+          "attempts": 1,
+          "turns": 42,
+          "cost": null,
+          "tokens": 1533654,
+          "input_tokens": 1313989,
+          "output_tokens": 219665,
+          "executor": {
+            "provider": "example-provider",
+            "model_id": "example-capable-001",
+            "capability": "capable",
+            "family": "example-family-a",
+            "temperature": 0.7,
+            "top_p": 1.0,
+            "reasoning_effort": null,
+            "max_tokens": 131072
+          },
+          "reviewer": null,
+          "detail": "the unit's own tests did not pass: 12 failed and 0 errored of 76",
+          "verdict": null,
+          "parked": false,
+          "parked_attempts": 0,
+          "amendments": 0,
+          "missing_declared_paths": [
+            "tests/test_binder.py",
+            "tests/test_executor.py",
+            ".synthorg/unit/report.md"
+          ],
+          "terminations": [
+            "budget_exhausted"
+          ],
+          "workspace_files_changed": 11
+        },
+        {
+          "unit_id": "0b8decfb-69bf-4b69-89d5-21414585d431",
+          "title": "Output rendering: table, csv, json",
+          "kind": "leaf",
+          "depth": 0,
+          "claimed": [
+            "R35",
+            "R36",
+            "R37",
+            "R38",
+            "R39"
+          ],
+          "unresolved_claims": 0,
+          "delivered": true,
+          "produced": true,
+          "attempts": 1,
+          "turns": 58,
+          "cost": null,
+          "tokens": 1526300,
+          "input_tokens": 1388208,
+          "output_tokens": 138092,
+          "executor": {
+            "provider": "example-provider",
+            "model_id": "example-capable-001",
+            "capability": "capable",
+            "family": "example-family-a",
+            "temperature": 0.7,
+            "top_p": 1.0,
+            "reasoning_effort": null,
+            "max_tokens": 131072
+          },
+          "reviewer": null,
+          "detail": "",
+          "verdict": null,
+          "parked": false,
+          "parked_attempts": 0,
+          "amendments": 0,
+          "missing_declared_paths": [],
+          "terminations": [
+            "budget_exhausted"
+          ],
+          "workspace_files_changed": 13
+        },
+        {
+          "unit_id": "86ff7de0-445e-4d49-bd27-829c9bbc6a35",
+          "title": "CLI surface, exit codes and end-to-end suite",
+          "kind": "leaf",
+          "depth": 0,
+          "claimed": [
+            "R15",
+            "R16",
+            "R17",
+            "R40",
+            "R41",
+            "R42"
+          ],
+          "unresolved_claims": 0,
+          "delivered": true,
+          "produced": true,
+          "attempts": 1,
+          "turns": 44,
+          "cost": null,
+          "tokens": 1505630,
+          "input_tokens": 1182929,
+          "output_tokens": 322701,
+          "executor": {
+            "provider": "example-provider",
+            "model_id": "example-capable-001",
+            "capability": "capable",
+            "family": "example-family-a",
+            "temperature": 0.7,
+            "top_p": 1.0,
+            "reasoning_effort": null,
+            "max_tokens": 131072
+          },
+          "reviewer": null,
+          "detail": "",
+          "verdict": null,
+          "parked": false,
+          "parked_attempts": 0,
+          "amendments": 0,
+          "missing_declared_paths": [],
+          "terminations": [
+            "budget_exhausted"
+          ],
+          "workspace_files_changed": 11
+        },
+        {
+          "unit_id": "45099520-df94-5de7-8402-f5a2ced2986f",
+          "title": "Assemble: A SQL query CLI over CSV files",
+          "kind": "merge",
+          "depth": 0,
+          "claimed": [],
+          "unresolved_claims": 0,
+          "delivered": false,
+          "produced": true,
+          "attempts": 2,
+          "turns": 77,
+          "cost": null,
+          "tokens": 9014167,
+          "input_tokens": 8725834,
+          "output_tokens": 288333,
+          "executor": {
+            "provider": "example-provider",
+            "model_id": "example-capable-001",
+            "capability": "capable",
+            "family": "example-family-a",
+            "temperature": 0.7,
+            "top_p": 1.0,
+            "reasoning_effort": null,
+            "max_tokens": 131072
+          },
+          "reviewer": {
+            "provider": "example-provider",
+            "model_id": "example-expert-001",
+            "capability": "expert",
+            "family": "example-family-b",
+            "temperature": 0.6,
+            "top_p": 0.95,
+            "reasoning_effort": "high",
+            "max_tokens": 65536
+          },
+          "detail": "the merged tree's own tests did not pass: the suite collected no tests",
+          "verdict": "approve_with_notes",
+          "parked": false,
+          "parked_attempts": 0,
+          "amendments": 0,
+          "missing_declared_paths": [
+            ".synthorg/merge/report.md",
+            ".synthorg/merge/end-to-end.txt"
+          ],
+          "terminations": [
+            "budget_exhausted"
+          ],
+          "workspace_files_changed": 16
+        }
+      ],
+      "merged_passing": [
+        "R01",
+        "R02",
+        "R03",
+        "R04",
+        "R05",
+        "R07",
+        "R08",
+        "R09",
+        "R10",
+        "R11",
+        "R12",
+        "R13",
+        "R14",
+        "R15",
+        "R16",
+        "R17",
+        "R18",
+        "R19",
+        "R20",
+        "R21",
+        "R23",
+        "R24",
+        "R25",
+        "R26",
+        "R27",
+        "R28",
+        "R29",
+        "R30",
+        "R31",
+        "R32",
+        "R33",
+        "R34",
+        "R36",
+        "R37",
+        "R38",
+        "R39",
+        "R40",
+        "R41",
+        "R42"
+      ],
+      "unavailable_reason": null,
+      "total_cost": null,
+      "total_attempts": 11,
+      "total_tokens": 19556864,
+      "is_unjudged": false
+    }
+  ],
+  "by_achieved_depth": [
+    {
+      "depth": 1,
+      "arm": "gated",
+      "required": 42,
+      "satisfied": 39,
+      "cells": 1,
+      "cost": null,
+      "tokens": 19556864,
+      "attempts": 11,
+      "fraction": 0.9285714285714286
+    }
+  ],
+  "by_depth_cap": [
+    {
+      "depth": 1,
+      "arm": "gated",
+      "required": 42,
+      "satisfied": 39,
+      "cells": 1,
+      "cost": null,
+      "tokens": 19556864,
+      "attempts": 11,
+      "fraction": 0.9285714285714286
+    }
+  ],
+  "survival_by_achieved_depth": [
+    {
+      "depth": 1,
+      "arm": "gated",
+      "delivered_claims": 22,
+      "surviving_claims": 20,
+      "cells": 1,
+      "fraction": 0.9090909090909091
+    }
+  ],
+  "survival_by_depth_cap": [
+    {
+      "depth": 1,
+      "arm": "gated",
+      "delivered_claims": 22,
+      "surviving_claims": 20,
+      "cells": 1,
+      "fraction": 0.9090909090909091
+    }
+  ],
+  "spread_by_achieved_depth": [
+    {
+      "depth": 1,
+      "arm": "gated",
+      "cells": 1,
+      "required": 42,
+      "satisfied_min": 39,
+      "satisfied_median": 39,
+      "satisfied_max": 39,
+      "survival_min": 0.9090909090909091,
+      "survival_median": 0.9090909090909091,
+      "survival_max": 0.9090909090909091
+    }
+  ],
+  "spread_by_depth_cap": [
+    {
+      "depth": 1,
+      "arm": "gated",
+      "cells": 1,
+      "required": 42,
+      "satisfied_min": 39,
+      "satisfied_median": 39,
+      "satisfied_max": 39,
+      "survival_min": 0.9090909090909091,
+      "survival_median": 0.9090909090909091,
+      "survival_max": 0.9090909090909091
+    }
+  ],
+  "achieved_depth_histogram": {
+    "cap=1 gated reached=1": 1
+  },
+  "unjudged_by_depth": {},
+  "caveats": [
+    "Two curves, and they answer different questions. SPECIFICATION is the share of the specification's own requirements the merged tree satisfies: a denominator every cell shares, which cannot empty, and which says nothing about where the work came from, so a tree scoring well because the merging agent rebuilt it reads there exactly like one whose leaves survived. SURVIVAL is the share of the requirements DELIVERED leaves claimed that the merged tree still satisfies: the question this sweep was built around, on a denominator that is leaf work and can be empty, in which case the point is absent rather than zero. The two coming apart IS the finding.",
+    "Unit sizing is the planner's own: the size signal reads the declaration a planner made, so this measures gated recursion UNDER PLANNER-DECLARED SIZING and cannot separate 'recursion fails' from 'the planner sized badly'. Separating them needs an agent that has read the code deciding its own split, which no published system has.",
+    "The oracle is held out: it never enters a workspace and is named in no brief, so a delivery cannot be built to it.",
+    "At least one connection this sweep dispatched through does not price its calls (its billing model is not in MEASURABLE_BILLING_MODELS), or could not be resolved at all, so every cost figure in this recording is absent rather than zero: an unpriced call and a free one are not the same claim. Token counts are unaffected and remain the figure the equal-budget check is stated in."
+  ],
+  "total_cost": null,
+  "total_tokens": 19556864
+}
