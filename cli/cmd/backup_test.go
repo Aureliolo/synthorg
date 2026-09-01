@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -207,6 +209,33 @@ func TestBuildLocalJWT(t *testing.T) {
 	if aud, _ := claims["aud"].(string); aud != "synthorg-backend" {
 		t.Errorf("aud = %q, want %q", aud, "synthorg-backend")
 	}
+	// Cross-language: the backend require-lists exactly these six claims
+	// before validating the payload into JwtClaims, which sets
+	// extra="forbid". A claim missing here and a claim surplus here are the
+	// same 401 from opposite directions, so the set is asserted whole rather
+	// than name by name. scripts/check_cli_jwt_claims_parity.py derives both
+	// halves and holds them equal; this test pins the Go half on its own so a
+	// change here fails in the package that made it.
+	wantClaims := []string{"aud", "exp", "iat", "iss", "jti", "sub"}
+	gotClaims := make([]string, 0, len(claims))
+	for name := range claims {
+		gotClaims = append(gotClaims, name)
+	}
+	sort.Strings(gotClaims)
+	if !slices.Equal(gotClaims, wantClaims) {
+		t.Errorf("claim set = %v, want %v", gotClaims, wantClaims)
+	}
+
+	// jti keys session revocation on the backend, so it must be per-token.
+	if jti, _ := claims["jti"].(string); jti == "" {
+		t.Error("jti claim is empty")
+	}
+	if same, err := buildLocalJWT("test-secret-that-is-at-least-32-characters-long"); err != nil {
+		t.Fatalf("second buildLocalJWT: %v", err)
+	} else if jtiOf(t, same) == jtiOf(t, token) {
+		t.Error("two tokens share a jti; revocation would cover both")
+	}
+
 	// iat and exp must be present with a 60-second window.
 	iat, _ := claims["iat"].(float64)
 	exp, _ := claims["exp"].(float64)
@@ -219,6 +248,25 @@ func TestBuildLocalJWT(t *testing.T) {
 	if wantWindow := backupJWTExpiration.Seconds(); exp-iat != wantWindow {
 		t.Errorf("expected exp-iat=%v, got %v", wantWindow, exp-iat)
 	}
+}
+
+// jtiOf decodes a token's payload and returns its jti claim.
+func jtiOf(t *testing.T, token string) string {
+	t.Helper()
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		t.Fatalf("expected 3 JWT parts, got %d", len(parts))
+	}
+	payloadJSON, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatalf("decoding payload: %v", err)
+	}
+	var claims map[string]any
+	if err := json.Unmarshal(payloadJSON, &claims); err != nil {
+		t.Fatalf("unmarshalling payload: %v", err)
+	}
+	jti, _ := claims["jti"].(string)
+	return jti
 }
 
 func TestBuildLocalJWT_TooShort(t *testing.T) {

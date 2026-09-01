@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -271,6 +272,14 @@ var maxBackupResponseBytes = config.DefaultMaxAPIResponseBytes
 // buildLocalJWT generates a short-lived JWT signed with the shared secret so
 // the CLI can authenticate against the backend's admin endpoints. The token
 // uses HMAC-SHA256 (HS256) and expires after backupJWTExpiration.
+//
+// Cross-language: the claim set is a contract with the backend's decode path
+// (src/synthorg/api/auth/service.py, which require-lists exp, iat, sub, jti,
+// iss and aud before validating the payload into JwtClaims). A claim omitted
+// here is a 401 indistinguishable from a wrong secret, so every claim the
+// backend requires is minted here and asserted by TestBuildLocalJWT against
+// the same list. jti is per-token because the backend keys session revocation
+// on it; rand.Text is 128+ bits of entropy, so two invocations never collide.
 func buildLocalJWT(secret string) (string, error) {
 	if len(secret) < minJWTSecretLen {
 		return "", fmt.Errorf("jwt_secret is too short (%d chars); minimum is %d", len(secret), minJWTSecretLen)
@@ -279,7 +288,12 @@ func buildLocalJWT(secret string) (string, error) {
 	now := time.Now().Unix()
 	exp := now + int64(backupJWTExpiration.Seconds())
 	payload := base64.RawURLEncoding.EncodeToString(
-		fmt.Appendf(nil, `{"sub":"system","iss":"synthorg-cli","aud":"synthorg-backend","iat":%d,"exp":%d}`, now, exp),
+		fmt.Appendf(
+			nil,
+			`{"sub":"system","iss":"synthorg-cli","aud":"synthorg-backend",`+
+				`"jti":%q,"iat":%d,"exp":%d}`,
+			rand.Text(), now, exp,
+		),
 	)
 	signingInput := header + "." + payload
 	mac := hmac.New(sha256.New, []byte(secret))
@@ -290,8 +304,9 @@ func buildLocalJWT(secret string) (string, error) {
 
 // backupAPIRequest performs an HTTP request to the backup API and returns
 // the response body, HTTP status code, and any transport-level error.
-// The path must be either "" (root) or "/restore". If jwtSecret is non-empty,
-// a short-lived Bearer token is attached for admin endpoint authentication.
+// The path must be either "" (root) or "/restore". Every endpoint reached
+// here is admin-only, so a short-lived Bearer token is always attached and
+// an unusable jwtSecret is an error rather than an anonymous request.
 func backupAPIRequest(ctx context.Context, port int, method, path string, body []byte, timeout time.Duration, jwtSecret string) ([]byte, int, error) {
 	if path != "" && path != "/restore" {
 		return nil, 0, fmt.Errorf("unexpected API path %q", path)
@@ -325,8 +340,15 @@ func backupAPIRequest(ctx context.Context, port int, method, path string, body [
 }
 
 // buildBackupRequest constructs the HTTP request, setting Content-Type
-// for any JSON body and attaching a short-lived Bearer token when the
-// caller supplied a JWT signing secret.
+// for any JSON body and attaching a short-lived Bearer token. A missing or
+// unusable signing secret fails here rather than producing an anonymous
+// request: no caller of this admin surface wants one.
+//
+// Cross-language: both POST operations declare Idempotency-Key required, so
+// omitting it is a 400 the CLI never gets past. The key is fresh per
+// invocation because the CLI issues exactly one request and never retries
+// it: reusing a key would make a deliberate second run inside the backend's
+// 24h window replay the first run's manifest instead of taking a backup.
 func buildBackupRequest(ctx context.Context, method, apiURL string, body []byte, jwtSecret string) (*http.Request, error) {
 	var bodyReader io.Reader
 	if body != nil {
@@ -339,8 +361,17 @@ func buildBackupRequest(ctx context.Context, method, apiURL string, body []byte,
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	if method == http.MethodPost {
+		req.Header.Set("Idempotency-Key", rand.Text())
+	}
 	if jwtSecret == "" {
-		return req, nil
+		// Sending the request unsigned would reach the backend as an
+		// anonymous call and come back "Authentication required", which
+		// says nothing about the config that is actually missing.
+		return nil, errors.New(
+			"jwt_secret is not set in config.json, so no admin token can be " +
+				"signed; run 'synthorg doctor' to inspect the install",
+		)
 	}
 	token, err := buildLocalJWT(jwtSecret)
 	if err != nil {

@@ -139,7 +139,7 @@ func (wc *wipeContext) runOptionalBackup() (proceed bool, err error) {
 	if !wc.dockerAvailable {
 		// A backup needs a running stack; without Docker there is nothing
 		// to back up. Proceed straight to the data wipe.
-		wc.errOut.Warn("Skipping backup: Docker is not available.")
+		wc.errOut.WarnAlways("Skipping backup: Docker is not available.")
 		return true, nil
 	}
 	if err := wc.offerBackup(); err != nil {
@@ -455,6 +455,24 @@ func (wc *wipeContext) offerBackup() error {
 		return nil
 	}
 
+	// Everything below can pull gigabytes of images and start the whole stack,
+	// all of it serving one authenticated API call. Refuse on a signing secret
+	// that cannot mint a usable token while that spend is still ahead of us,
+	// rather than after it with the operator's only remaining choice being to
+	// wipe unprotected.
+	if _, err := buildLocalJWT(wc.state.JWTSecret); err != nil {
+		wc.errOut.WarnAlways(
+			fmt.Sprintf("Cannot authenticate to the backup API: %v", err),
+		)
+		if err := wc.askContinueWithoutBackup(
+			"Backup credentials are unusable, so no backup can be taken. " +
+				"Continue with wipe anyway?",
+		); err != nil {
+			return err
+		}
+		return nil
+	}
+
 	ready, err := wc.ensureRunningForBackup()
 	if err != nil {
 		return err
@@ -493,12 +511,14 @@ func (wc *wipeContext) ensureRunningForBackup() (bool, error) {
 
 	running, err := wc.containersRunning()
 	if err != nil {
-		wc.errOut.Warn(fmt.Sprintf("Could not check container status: %v", err))
+		wc.errOut.WarnAlways(
+			fmt.Sprintf("Could not check container status: %v", err),
+		)
 		return askToSkip("Could not check container status. Continue with wipe anyway?")
 	}
 	if running {
 		if err := wc.waitForBackendHealth(); err != nil {
-			wc.errOut.Warn(fmt.Sprintf("Backend not healthy: %v", err))
+			wc.errOut.WarnAlways(fmt.Sprintf("Backend not healthy: %v", err))
 			return askToSkip("Backend is not healthy. Continue with wipe anyway?")
 		}
 		return true, nil
@@ -513,7 +533,9 @@ func (wc *wipeContext) ensureRunningForBackup() (bool, error) {
 	}
 
 	if err := wc.startContainers(); err != nil {
-		wc.errOut.Warn(fmt.Sprintf("Could not start containers for backup: %v", err))
+		wc.errOut.WarnAlways(
+			fmt.Sprintf("Could not start containers for backup: %v", err),
+		)
 		return askToSkip("Could not start containers for backup. Continue with wipe anyway?")
 	}
 
@@ -671,7 +693,7 @@ func (wc *wipeContext) createAndCopyBackup(savePath string) error {
 	manifest, err := createBackupViaAPI(wc.ctx, wc.state)
 	if err != nil {
 		sp.Error("Backup failed")
-		wc.errOut.Warn(fmt.Sprintf("Could not create backup: %v", err))
+		wc.errOut.WarnAlways(fmt.Sprintf("Could not create backup: %v", err))
 		return wc.askContinueWithoutBackup("Backup creation failed. Continue with wipe anyway?")
 	}
 	sp.Success("Backup created")
@@ -679,7 +701,7 @@ func (wc *wipeContext) createAndCopyBackup(savePath string) error {
 	sp = wc.out.StartSpinner("Copying backup to local path...")
 	if err := copyBackupFromContainer(wc.ctx, wc.info, wc.safeDir, manifest.BackupID, savePath); err != nil {
 		sp.Error("Failed to copy backup")
-		wc.errOut.Warn(fmt.Sprintf("Could not copy backup locally: %v", err))
+		wc.errOut.WarnAlways(fmt.Sprintf("Could not copy backup locally: %v", err))
 		wc.errOut.HintError("The backup exists in the container but will be destroyed by the wipe.")
 		return wc.askContinueWithoutBackup(
 			"Backup was created but could not be copied locally. Continue with wipe anyway?",
@@ -695,6 +717,12 @@ func (wc *wipeContext) createAndCopyBackup(savePath string) error {
 // the prompt to match the reason (e.g. user declined, Docker unreachable,
 // container start failure). Returns nil to continue, or errWipeCancelled
 // to abort the wipe cleanly.
+//
+// Every warning that reaches here uses WarnAlways rather than Warn: under
+// --yes this prompt answers itself, so the warning is the only notice the
+// operator gets that irreversible destruction is proceeding unprotected,
+// and --quiet would otherwise swallow it in exactly the scripted run that
+// cannot be watched.
 func (wc *wipeContext) askContinueWithoutBackup(title string) error {
 	if !wc.shouldPrompt() {
 		return nil // --yes: continue without backup

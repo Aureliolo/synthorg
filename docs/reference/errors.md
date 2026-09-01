@@ -41,9 +41,10 @@ This page is the developer-oriented reference for the problem-type URIs and the 
 | 1006 | `SESSION_LIMIT_EXCEEDED` | Per-user session cap reached |
 | 1007 | `TOOL_PERMISSION_DENIED` | Agent not permitted to invoke the tool |
 | 1008 | `SESSION_NO_TOKEN` | No session cookie or bearer token on the request |
-| 1009 | `SESSION_EXPIRED` | Session cookie / JWT decoded but past expiry |
+| 1009 | `SESSION_EXPIRED` | Session cookie rejected: a browser session lapsed |
 | 1010 | `SECURITY_TOGGLE_CONFIRM_REQUIRED` | Weakening a security setting without explicit confirmation and a reason |
 | 1011 | `GATEWAY_TOKEN_INVALID` | LLM-gateway run token missing, malformed, or expired |
+| 1012 | `BEARER_TOKEN_INVALID` | `Authorization` bearer JWT failed signature, required-claim, or expiry validation |
 
 ## Validation (2xxx)
 

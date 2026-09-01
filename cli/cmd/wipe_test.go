@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -21,6 +22,34 @@ import (
 // helpers in tests without polluting test output.
 func discardUI() *ui.UI {
 	return ui.NewUIWithOptions(io.Discard, (&GlobalOpts{Hints: "auto", Yes: true}).UIOptions())
+}
+
+// TestOfferBackup_RefusesUnusableSecretBeforeContainerWork asserts the
+// credential preflight runs before the pull-and-start path: an unusable
+// signing secret must be refused while that spend is still ahead, not after
+// gigabytes of images and a healthy stack have been paid for.
+func TestOfferBackup_RefusesUnusableSecretBeforeContainerWork(t *testing.T) {
+	var errBuf bytes.Buffer
+	opts := &GlobalOpts{Hints: "auto", Yes: true, Tunables: config.DefaultTunables()}
+	wc := &wipeContext{
+		ctx:             SetGlobalOpts(context.Background(), opts),
+		state:           config.State{JWTSecret: "too-short-to-sign"},
+		safeDir:         t.TempDir(),
+		out:             discardUI(),
+		errOut:          ui.NewUIWithOptions(&errBuf, opts.UIOptions()),
+		dockerAvailable: true,
+	}
+
+	if err := wc.offerBackup(); err != nil {
+		t.Fatalf("offerBackup = %v, want nil (--yes continues the wipe)", err)
+	}
+	warning := errBuf.String()
+	if !strings.Contains(warning, "Cannot authenticate to the backup API") {
+		t.Errorf("preflight did not refuse; stderr = %q", warning)
+	}
+	if strings.Contains(warning, "container status") {
+		t.Errorf("reached the container path before the preflight; stderr = %q", warning)
+	}
 }
 
 func TestIsEmptyPS(t *testing.T) {

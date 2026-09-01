@@ -190,6 +190,11 @@ mandatory_rules:
     header: LLM Gateway Binding
     gate: scripts/check_gateway_explicit_binding.py
 
+  - id: claude-md::cli-request-parity
+    file: CLAUDE.md
+    header: CLI Request Parity
+    gate: scripts/check_cli_backend_request_parity.py
+
   - id: claude-md::governed-destructive-tools
     file: CLAUDE.md
     header: Governed Destructive Tools

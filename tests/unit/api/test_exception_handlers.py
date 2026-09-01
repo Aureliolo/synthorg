@@ -731,8 +731,14 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    async def test_invalid_jwt_token_also_maps_to_session_expired(self) -> None:
-        """Bearer-token-invalid path is treated the same as expired cookie."""
+    async def test_invalid_jwt_token_maps_to_bearer_token_invalid(self) -> None:
+        """The bearer path names the condition, never a session remedy.
+
+        Only the Authorization header reaches this detail, and its
+        callers (the CLI's minted system token, API-key and service
+        callers) hold no session, so session advice would point at a
+        remedy none of them can perform.
+        """
 
         @get("/test")
         async def handler() -> None:
@@ -742,10 +748,11 @@ class TestExceptionHandlers:
             resp = await client.get("/test")
             assert resp.status_code == 401
             body = resp.json()
-            assert "expired" in body["error"].lower()
+            assert body["error"].startswith("Bearer token rejected")
+            assert "log in again" not in body["error"].lower()
             _assert_error_detail(
                 body,
-                error_code=ErrorCode.SESSION_EXPIRED,
+                error_code=ErrorCode.BEARER_TOKEN_INVALID,
                 error_category=ErrorCategory.AUTH,
                 retryable=False,
             )

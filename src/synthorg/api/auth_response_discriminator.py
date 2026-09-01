@@ -6,6 +6,12 @@ error codes so the dashboard can distinguish "fresh page load, no
 token yet" (silent redirect) from "expired session" (toast +
 redirect).
 
+The detail string also carries WHICH credential failed, and that
+decides the audience: a cookie failure belongs to a browser with a
+session to renew, while an Authorization-header failure belongs to a
+CLI, API-key or service caller holding a minted token, for whom
+session advice names a remedy they cannot perform.
+
 Lives in its own module so the registry-style
 :mod:`synthorg.api.exception_handlers` does not creep over the
 800-line soft limit. Both producer (the auth middleware) and
@@ -35,10 +41,12 @@ def discriminate_unauthorized(detail: str | None) -> tuple[ErrorCode, str]:
 
     Lets the dashboard treat "fresh session, no token" (a normal cold
     page load when the browser does not yet have a cookie) differently
-    from "expired token" (the user had a session but it lapsed). The
-    UI shows the login form in both cases but only toasts on expiry,
+    from "expired session" (the user had one but it lapsed). The UI
+    shows the login form in both cases but only toasts on expiry,
     avoiding false-positive "you were signed out" messages on the
-    very first load.
+    very first load. A rejected bearer token takes a third code: no
+    browser reaches it, so it is answered with the condition rather
+    than with session advice.
 
     The mapping reads ``exc.detail`` literally. New detail strings
     fall through to the generic ``UNAUTHORIZED`` code AND emit a
@@ -60,10 +68,24 @@ def discriminate_unauthorized(detail: str | None) -> tuple[ErrorCode, str]:
                 ErrorCode.SESSION_NO_TOKEN,
                 "Authentication required",
             )
-        case "Invalid session cookie" | "Invalid JWT token":
+        case "Invalid session cookie":
             return (
                 ErrorCode.SESSION_EXPIRED,
                 "Session expired. Please log in again.",
+            )
+        case "Invalid JWT token":
+            # Reached only from the Authorization header, which the browser
+            # never uses (it authenticates by cookie, whose failure is the
+            # branch above). The callers here hold a minted token and have no
+            # session to renew, so "log in again" names a remedy none of them
+            # can perform and points at the wrong cause: what actually failed
+            # is the token's signature, required claims, or expiry.
+            return (
+                ErrorCode.BEARER_TOKEN_INVALID,
+                (
+                    "Bearer token rejected: its signature, required claims, "
+                    "or expiry failed validation."
+                ),
             )
         case "Invalid authorization scheme" | "Invalid credentials":
             # Known bad-credential / wrong-scheme failures (e.g. an API-key
