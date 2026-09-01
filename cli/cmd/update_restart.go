@@ -152,8 +152,11 @@ func waitAndAnnounceRestart(ctx context.Context, uiOut *ui.UI, state config.Stat
 }
 
 // confirmRestart prompts the operator to restart running containers after an
-// image update.
-func confirmRestart() (bool, error) {
+// image update. It raises errUpdateCancelled on a dismissal like every other
+// prompt in this flow: it runs after the CLI update and the image pull have
+// both succeeded, so reporting a dismissal as a failed update would be wrong
+// about the two steps that did work.
+func confirmRestart(ctx context.Context) (bool, error) {
 	restart := true // default yes
 	form := huh.NewForm(
 		huh.NewGroup(
@@ -162,7 +165,7 @@ func confirmRestart() (bool, error) {
 				Value(&restart),
 		),
 	)
-	if err := form.Run(); err != nil {
+	if err := runUpdateConfirm(ctx, form); err != nil {
 		return false, err
 	}
 	return restart, nil

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -47,7 +48,36 @@ func init() {
 	rootCmd.AddCommand(uninstallCmd)
 }
 
-func runUninstall(cmd *cobra.Command, _ []string) error {
+// errUninstallCancelled marks a prompt the operator dismissed rather than
+// answered. Uninstall removes volumes, images, the config directory and the
+// binary in sequence, so a dismissal means stop, not decline this one step
+// and carry on removing the rest.
+var errUninstallCancelled = errors.New("uninstall cancelled by user")
+
+// runUninstallConfirm runs form and folds a dismissal into
+// errUninstallCancelled, the one outcome every confirm prompt in the
+// teardown sequence reports it as.
+func runUninstallConfirm(ctx context.Context, form *huh.Form) error {
+	if err := runPromptForm(ctx, form); err != nil {
+		if promptDismissed(err) {
+			return errUninstallCancelled
+		}
+		return err
+	}
+	return nil
+}
+
+func runUninstall(cmd *cobra.Command, args []string) error {
+	err := runUninstallSteps(cmd, args)
+	if !errors.Is(err, errUninstallCancelled) {
+		return err
+	}
+	out := ui.NewUIWithOptions(cmd.OutOrStdout(), GetGlobalOpts(cmd.Context()).UIOptions())
+	out.StepAlways("Uninstall cancelled.")
+	return nil
+}
+
+func runUninstallSteps(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	opts := GetGlobalOpts(ctx)
 	if !isInteractive() && !opts.Yes {
@@ -130,7 +160,7 @@ func uninstallData(cmd *cobra.Command, safeDir string, autoAccept bool, out *ui.
 // shouldRemoveVolumes decides whether `compose down` should pass -v.
 // --keep-data forces false (volumes hold app data we must preserve);
 // --yes accepts without prompting; otherwise we prompt interactively.
-func shouldRemoveVolumes(keepData, autoAccept bool) (bool, error) {
+func shouldRemoveVolumes(ctx context.Context, keepData, autoAccept bool) (bool, error) {
 	if keepData {
 		return false, nil
 	}
@@ -146,7 +176,7 @@ func shouldRemoveVolumes(keepData, autoAccept bool) (bool, error) {
 				Value(&remove),
 		),
 	)
-	if err := form.Run(); err != nil {
+	if err := runUninstallConfirm(ctx, form); err != nil {
 		return false, err
 	}
 	return remove, nil
@@ -182,7 +212,7 @@ func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, dataDir string, 
 		out.Step(msgNothingToStop)
 		return nil
 	}
-	removeVolumes, err := shouldRemoveVolumes(keepData, autoAccept)
+	removeVolumes, err := shouldRemoveVolumes(ctx, keepData, autoAccept)
 	if err != nil {
 		return err
 	}
@@ -245,7 +275,7 @@ func confirmAndRemoveImages(cmd *cobra.Command, info docker.Info, out, errUI *ui
 				Title(fmt.Sprintf("Remove %d image(s)?", len(images))).
 				Value(&removeImages),
 		))
-		if err := form.Run(); err != nil {
+		if err := runUninstallConfirm(cmd.Context(), form); err != nil {
 			return err
 		}
 	}
@@ -289,7 +319,7 @@ func confirmAndRemoveData(cmd *cobra.Command, dataDir string, autoAccept bool) e
 					Value(&removeData),
 			),
 		)
-		if err := form.Run(); err != nil {
+		if err := runUninstallConfirm(cmd.Context(), form); err != nil {
 			return err
 		}
 	}
@@ -386,7 +416,7 @@ func confirmAndRemoveBinary(cmd *cobra.Command, autoAccept bool) error {
 					Value(&removeBinary),
 			),
 		)
-		if err := form.Run(); err != nil {
+		if err := runUninstallConfirm(cmd.Context(), form); err != nil {
 			return err
 		}
 	}

@@ -193,7 +193,12 @@ func confirmCleanupPrompt(cmd *cobra.Command, opts *GlobalOpts, old []oldImage) 
 			Title(fmt.Sprintf("Remove %d old image(s)?", len(old))).
 			Value(&remove),
 	))
-	if err := form.WithInput(cmd.InOrStdin()).WithOutput(cmd.OutOrStdout()).Run(); err != nil {
+	if err := runPromptForm(cmd.Context(), form.WithInput(cmd.InOrStdin()).WithOutput(cmd.OutOrStdout())); err != nil {
+		// Nothing has been removed yet, so a dismissal is the same answer
+		// as "No": decline without removing anything.
+		if promptDismissed(err) {
+			return false, nil
+		}
 		return false, err
 	}
 	return remove, nil

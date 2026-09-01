@@ -525,7 +525,7 @@ func TestConfigListReportsPersistedKeyAtDefaultValueAsConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	if state.AutoStartAfterWipe != config.DefaultState().AutoStartAfterWipe {
-		t.Fatal("fixture must hold auto_start_after_wipe at its default to exercise the regression")
+		t.Fatal("fixture must hold auto_start_after_wipe at its default so the case under test is a persisted key whose value equals the compiled-in default")
 	}
 
 	entries := configListEntries(t, dir)
@@ -556,8 +556,8 @@ func TestConfigListReportsAbsentKeyAsDefault(t *testing.T) {
 	}
 }
 
-// Setting a key to the value it already holds still pins it, which is the
-// case the value-against-default comparison could not see.
+// Setting a key to the value it already holds still pins it in the file, so
+// it must report config rather than default.
 func TestConfigListReportsSetKeyAsConfig(t *testing.T) {
 	dir := t.TempDir()
 	state := config.DefaultState()

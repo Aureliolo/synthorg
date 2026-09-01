@@ -370,10 +370,9 @@ func (wc *wipeContext) removeDataDirectory() error {
 
 // runForm configures a huh form with the wipe context's I/O streams and runs it.
 func (wc *wipeContext) runForm(form *huh.Form) error {
-	return form.
+	return runPromptForm(wc.cmd.Context(), form.
 		WithInput(wc.cmd.InOrStdin()).
-		WithOutput(wc.cmd.OutOrStdout()).
-		Run()
+		WithOutput(wc.cmd.OutOrStdout()))
 }
 
 // confirmWipe prompts for final destructive-action confirmation.
@@ -391,8 +390,8 @@ func (wc *wipeContext) confirmWipe() (bool, error) {
 			Value(&confirmed),
 	)))
 	if err != nil {
-		if isUserAbort(err) {
-			// Wipe has NOT happened yet, so Ctrl-C is equivalent to
+		if promptDismissed(err) {
+			// Wipe has NOT happened yet, so dismissing is equivalent to
 			// choosing "Cancel" -- return false without errWipeCancelled
 			// since the caller already handles the !confirmed path.
 			return false, nil
@@ -630,7 +629,7 @@ func (wc *wipeContext) promptStartForBackup() (bool, error) {
 			Value(&startOK),
 	)))
 	if err != nil {
-		if isUserAbort(err) {
+		if promptDismissed(err) {
 			wc.out.HintNextStep("Wipe cancelled.")
 			return false, errWipeCancelled
 		}
@@ -654,7 +653,7 @@ func (wc *wipeContext) promptForBackup() (bool, error) {
 			Value(&wantBackup),
 	)))
 	if err != nil {
-		if isUserAbort(err) {
+		if promptDismissed(err) {
 			wc.out.HintNextStep("Wipe cancelled.")
 			return false, errWipeCancelled
 		}
@@ -685,7 +684,7 @@ func (wc *wipeContext) promptSavePath() (string, error) {
 			Description("Path for the backup archive").
 			Value(&savePath),
 	))); err != nil {
-		if isUserAbort(err) {
+		if promptDismissed(err) {
 			wc.out.HintNextStep("Wipe cancelled.")
 			return "", errWipeCancelled
 		}
@@ -739,7 +738,7 @@ func (wc *wipeContext) checkOverwrite(path string) error {
 			Value(&overwrite),
 	)))
 	if err != nil {
-		if isUserAbort(err) {
+		if promptDismissed(err) {
 			wc.out.HintNextStep("Overwrite declined -- wipe cancelled.")
 			return errWipeCancelled
 		}
@@ -803,7 +802,7 @@ func (wc *wipeContext) askContinueWithoutBackup(title string) error {
 			Value(&proceed),
 	)))
 	if err != nil {
-		if isUserAbort(err) {
+		if promptDismissed(err) {
 			wc.out.HintNextStep("Wipe cancelled.")
 			return errWipeCancelled
 		}
@@ -834,9 +833,4 @@ func isEmptyPS(output string) (bool, error) {
 	}
 	// NDJSON: any non-empty line means at least one container.
 	return false, nil
-}
-
-// isUserAbort returns true if the error is a huh user-abort (Ctrl-C/Esc).
-func isUserAbort(err error) bool {
-	return errors.Is(err, huh.ErrUserAborted)
 }

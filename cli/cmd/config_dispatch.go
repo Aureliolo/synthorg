@@ -7,10 +7,9 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 )
 
-// Map-based dispatchers for the per-key config operations. The original
-// switch-on-string structures had ~25 cases each, all mechanically
-// regular. Map-of-functions reduces each entrypoint to a lookup plus a
-// fallback through the tunables layer.
+// Map-based dispatchers for the per-key config operations: each entrypoint
+// is a lookup, falling through to the tunables layer for a key with no
+// per-key function of its own.
 
 // configSetter applies a parsed value to one field of state.
 type configSetter func(state *config.State, value string) error

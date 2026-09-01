@@ -30,7 +30,7 @@ On-demand reference for `synthorg config` operators. The short summary in `cli/C
 | `config` | The key is written in `config.json`. Its value is fixed there, so a later release changing the built-in default will not move it. |
 | `default` | The key is absent from `config.json` and follows the built-in default, including any future change to it. |
 
-`config` is a statement about the file, not about the value: a key you set to the same value as its default still reports `config`, because setting it pinned it. `synthorg init` writes the keys it prompts for, so those read `config` whether you typed a value or accepted the one offered.
+`config` is a statement about the file, not about the value: a key you set to the same value as its default still reports `config`, because setting it pinned it. `synthorg init` writes the keys it prompts for, so those read `config` whether you typed a value or accepted the one offered. The two read-only keys go further still: `memory_backend` and `persistence_backend` are always written, so both report `config` on any initialised install even though neither is settable and only one of them is ever prompted for.
 
 `unset` restores the built-in default value. Whether it also clears the pin depends on the key: one omitted from the file when empty (`color`, `hints`, `output`, `timestamps`, `changelog_view`, `docker_sock`, `fine_tuning_variant` and every tunable) goes back to `default`, while one always serialised (the `auto_*` flags, `sandbox`, `fine_tuning`, `telemetry_opt_in`, the ports, `channel`, `image_tag`, `log_level`) keeps reporting `config` at the default value.
 

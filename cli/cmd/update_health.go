@@ -124,7 +124,7 @@ func promptHealthRecover(cmd *cobra.Command) (bool, error) {
 			Description("Choose 'No' to run 'synthorg init' for a fresh setup instead.").
 			Value(&doRecover),
 	))
-	if err := form.Run(); err != nil {
+	if err := runUpdateConfirm(cmd.Context(), form); err != nil {
 		return false, err
 	}
 	if !doRecover {
