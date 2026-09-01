@@ -101,6 +101,7 @@ from evals.recursion_depth.models import (
     Provenance,
     RecursionDepthReport,
     UnitRecord,
+    WiringReport,
     sum_costs,
 )
 from evals.recursion_depth.oracle import run_oracle
@@ -520,6 +521,7 @@ async def run_sweep(
     provenance: Provenance,
     out_dir: Path,
     resume: bool,
+    wiring: WiringReport | None = None,
 ) -> RecursionDepthReport:
     """Run the whole matrix and assemble the report.
 
@@ -532,6 +534,8 @@ async def run_sweep(
         provenance: What this recording is measured against.
         out_dir: Where the journal and the report are written.
         resume: Whether an existing journal for this matrix is continued.
+        wiring: What the smoke this recording was gated on found, carried
+            into the report so the artefact states its own wiring.
 
     Returns:
         The report, always written, carrying every run that was attempted.
@@ -618,6 +622,7 @@ async def run_sweep(
         cells=cells,
         caveats=caveats,
         planned_cells=len(planned),
+        wiring=wiring,
     )
 
 

@@ -233,6 +233,11 @@ def session_limits_for(
     )
 
 
+#: Told about an engine the moment it is built, with the ledger its spend lands
+#: in. The one seam the wire-level smoke reads an engine's wiring through.
+type EngineObserver = Callable[[AgentEngine, ProgressTrackingLedger], None]
+
+
 @dataclass(frozen=True)
 class SweepDeps:
     """Runtime collaborators every unit of a sweep is driven with.
@@ -305,6 +310,10 @@ class SweepDeps:
     build_grader: GraderFactory
     build_sandbox: SandboxFactory
     release_tools: ToolReleaseHook | None = None
+    # Told about every engine the moment it is built, with the ledger its
+    # spend lands in. The wire-level smoke reads the engine's own wiring
+    # summary here, which is the only place both are in hand together.
+    on_engine_built: EngineObserver | None = None
     transcripts: TranscriptRecorder | None = None
     transcript_root: Path | None = None
     open_run_ledger: LedgerFactory | None = None
@@ -625,6 +634,8 @@ async def open_session(
             workspace=workspace,
             extra_tools=extra_tools,
         )
+        if deps.on_engine_built is not None:
+            deps.on_engine_built(engine, ledger)
         yield OpenSession(
             engine=engine,
             ledger=ledger,

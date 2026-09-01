@@ -622,6 +622,27 @@ arms, and the first recording used both; what changed and why is in
 Run `make recursion-depth` to print the matrix and the bill without spending
 anything, and `make recursion-depth-record` to measure for real.
 
+### Before a matrix is paid for
+
+A recording refuses to start without a passing **wire-level smoke** for its
+own manifest digest (`scripts/record_recursion_depth.py --smoke`, read by
+`--record` from `<out-dir>/smoke/wiring.json`). A 200 response, a valid
+manifest and a green unit test are all compatible with a treatment being
+absent from the engine: the corpus this harness replaced measured an engine
+wired at 8 of the 51 points a deployment supplies, for eight recordings, and
+nothing at any layer could tell. The smoke runs one cell at the shallowest
+cap and reads each treatment off EVIDENCE rather than configuration
+(`evals/recursion_depth/wire_check.py`): the engine's own wiring summary
+(`AgentEngine.wiring`, the same facts its creation event logs, plus the tool
+surface the invoker was built with), the live settings the manifest was armed
+into, the cell ledger (cached-prefix tokens), and the recorded request bodies
+(the reasoning depth that actually reached the provider). Each becomes a
+finding with what was expected and what was seen; a treatment whose evidence
+cannot be read is `unverified`, which is neither a pass nor a failure and is
+said in those words. The findings travel in the report under `wiring`, so a
+published artefact states its own wiring rather than asserting it, and a
+recording made before the smoke existed says "not measured" there.
+
 ### What one run does
 
 1. **Plan.** The shipped owner-run planning session decomposes the

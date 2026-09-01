@@ -47,6 +47,7 @@ from evals.recursion_depth.models import (
     SurvivalPoint,
     TokensPerSolvedPoint,
     UnitRecord,
+    WiringReport,
     sum_costs,
 )
 from evals.recursion_depth.score import (
@@ -140,6 +141,7 @@ def assemble_report(
     cells: Sequence[CellRecord],
     caveats: Sequence[str],
     planned_cells: int,
+    wiring: WiringReport | None = None,
 ) -> RecursionDepthReport:
     """Build the report from cells that are already measured and journalled.
 
@@ -160,6 +162,8 @@ def assemble_report(
         planned_cells: How many cells the matrix asked for, for the log line
             below. A re-score passes the recorded count, since everything on
             disk was by construction planned.
+        wiring: What the smoke this recording was gated on found, or ``None``
+            for a recording made before the smoke existed.
 
     Returns:
         The assembled report.
@@ -191,6 +195,7 @@ def assemble_report(
     judged = _judged(measured)
     return RecursionDepthReport(
         provenance=provenance,
+        wiring=wiring,
         cells=tuple(cells),
         by_achieved_depth=curve_by_achieved_depth(judged, requirement_count=required),
         by_depth_cap=curve_by_depth_cap(judged, requirement_count=required),
@@ -352,6 +357,51 @@ def _provenance_lines(report: RecursionDepthReport) -> list[str]:
     ]
 
 
+def _wiring_lines(wiring: WiringReport | None) -> list[str]:
+    """Render what the smoke found on the wire, one row per treatment.
+
+    Rendered even when absent, as an absence: a recording that never checked
+    its wiring is a different claim from one that checked and passed, and a
+    section that vanished would let the two read alike.
+
+    Returns:
+        The section's lines.
+    """
+    lines = ["## Wiring, as measured on the wire", ""]
+    if wiring is None:
+        lines.extend(
+            [
+                "Not measured. This recording predates the one-cell smoke that",
+                "reads each treatment off the engine and the recorded request",
+                "bodies before a matrix is paid for, so what it ran under is",
+                "what its provenance ASSERTS rather than what was checked.",
+                "",
+            ]
+        )
+        return lines
+    verdicts = {True: "ok", False: "FAILED", None: "unverified"}
+    outcome = "passed" if wiring.passed else "FAILED"
+    lines.extend(
+        [
+            f"Smoke for manifest `{wiring.manifest_sha256}` at",
+            f"{wiring.checked_at.isoformat()}: {outcome}. Each row is a",
+            "treatment the manifest declares, and what the engine, the ledger",
+            "or the recorded request bodies actually showed. `unverified` means",
+            "no evidence could be read, which is neither a pass nor a failure.",
+            "",
+            "| Treatment | Expected | Observed | Verdict |",
+            "|---|---|---|---|",
+            *(
+                f"| {_cell(finding.treatment)} | {_cell(finding.expected)} "
+                f"| {_cell(finding.observed)} | {verdicts[finding.passed]} |"
+                for finding in wiring.findings
+            ),
+            "",
+        ]
+    )
+    return lines
+
+
 def _curve_sections(report: RecursionDepthReport) -> list[str]:
     """Render the three curves, six tables, in the order they are read.
 
@@ -453,6 +503,7 @@ def _markdown(report: RecursionDepthReport) -> str:
     """
     lines = [
         *_provenance_lines(report),
+        *_wiring_lines(report.wiring),
         *_curve_sections(report),
         "## How deep the runs went",
         "",

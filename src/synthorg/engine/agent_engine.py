@@ -82,6 +82,7 @@ from synthorg.engine.post_execution.rework_settlement import (
 )
 from synthorg.engine.routing_policy.errors import StakesModelUnavailableError
 from synthorg.engine.run_result import AgentRunResult
+from synthorg.engine.wiring_summary import EngineWiringSummary
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
@@ -166,18 +167,38 @@ class AgentEngine(
         # per-agent level and the initiative mode, both of which the worker
         # layer owns); see ``set_autonomy_resolution``.
         self._autonomy_resolution: AutonomyResolution | None = None
-        logger.debug(
-            EXECUTION_ENGINE_CREATED,
+        logger.debug(EXECUTION_ENGINE_CREATED, **self.wiring.log_fields())
+
+    @property
+    def wiring(self) -> EngineWiringSummary:
+        """What this engine was constructed with, as one readable record.
+
+        The same facts the creation event logs, held as a value so a harness
+        measuring this engine can ask what it measured rather than infer it
+        from a log line it may not have captured.
+
+        Returns:
+            The summary, with the tool surface of the last built invoker.
+        """
+        detector = self._stagnation_detector
+        return EngineWiringSummary(
             loop_type=self._loop.get_loop_type(),
             has_tool_registry=self._tool_registry is not None,
             has_cost_tracker=self._cost_tracker is not None,
             has_budget_enforcer=self._budget_enforcer is not None,
             has_coordinator=self._coordinator is not None,
             has_compaction_callback=self._compaction_callback is not None,
-            has_stagnation_detector=self._stagnation_detector is not None,
+            has_stagnation_detector=detector is not None,
+            stagnation_strategy=(
+                detector.get_detector_type() if detector is not None else None
+            ),
             has_review_pipeline=self._review_pipeline is not None,
             has_memory_backend=self._memory_backend is not None,
             has_sub_agent_runner=self._sub_agent_runner is not None,
+            has_approval_gate=self._approval_gate is not None,
+            has_policy_engine=self._policy_engine is not None,
+            cost_tracker=self._cost_tracker,
+            tool_surface=self._tool_surface,
         )
 
     def _bind_core(self, core: EngineCore) -> None:
@@ -283,6 +304,9 @@ class AgentEngine(
 
     def _bind_tooling(self, tooling: EngineTooling) -> None:
         """Bind the seams that extend the base tool registry per task."""
+        # Final only where the invoker is built, once per run; nothing has
+        # run yet.
+        self._tool_surface: tuple[str, ...] | None = None
         self._external_api_runtime = tooling.external_api_runtime
         self._connection_tool_runtimes = tooling.connection_tool_runtimes
         self._tool_invocation_tracker = tooling.tool_invocation_tracker

@@ -89,6 +89,7 @@ EVALS_HARNESS_SANDBOX_RELEASE_FAILED: Final[str] = (
 # Recursion-depth sweep: does gating every merge hold off aggregation collapse?
 EVALS_RECURSION_ORACLE_RUN: Final[str] = "evals.recursion_depth.oracle_run"
 EVALS_RECURSION_LIVENESS_PROBED: Final[str] = "evals.recursion_depth.liveness_probed"
+EVALS_RECURSION_WIRING_CHECKED: Final[str] = "evals.recursion_depth.wiring_checked"
 EVALS_RECURSION_UNIT_STARTED: Final[str] = "evals.recursion_depth.unit_started"
 """A sweep unit is about to open a session that spends real provider tokens.
 Logged at DEBUG before the dispatch, because its INFO sibling

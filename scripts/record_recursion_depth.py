@@ -57,6 +57,7 @@ from evals.harness.host import (
     RecordingGatewayHost,
     RecordingHostConfig,
 )
+from evals.harness.provenance import manifest_digest
 from evals.harness.stall_watch import DEFAULT_STALL_IDLE_SECONDS
 from evals.recursion_depth.emit import (
     REPORT_JSON_NAME,
@@ -82,6 +83,7 @@ from evals.recursion_depth.models import (
     CellRecord,
     Provenance,
     RecursionDepthReport,
+    WiringReport,
 )
 from evals.recursion_depth.planner import AgentSessionPlanner
 from evals.recursion_depth.preflight import check_images_resolve, run_preflight
@@ -92,7 +94,11 @@ from evals.recursion_depth.runner import (
     planned_cells,
     run_sweep,
 )
-from evals.recursion_depth.session import SweepDeps, session_limits_for
+from evals.recursion_depth.session import (
+    EngineObserver,
+    SweepDeps,
+    session_limits_for,
+)
 from evals.recursion_depth.spend_repair import (
     placed_units,
     repair_cell_spend,
@@ -104,6 +110,15 @@ from evals.recursion_depth.tree import (
     arm_recursion,
     arm_treatments,
     load_spec_brief,
+)
+from evals.recursion_depth.wire_check import (
+    WiringProbe,
+    describe_findings,
+    load_wiring_report,
+    require_passing_smoke,
+    smoke_dir,
+    smoke_manifest,
+    write_wiring_report,
 )
 from evals.runner.execution import EVAL_TASK_PROJECT, seed_eval_project
 from synthorg.config.loader import load_config
@@ -606,11 +621,60 @@ async def _while_the_gateway_serves(
     raise HarnessGatewayUnavailableError(msg)
 
 
+@dataclass(frozen=True)
+class _RunMode:
+    """How one paid invocation runs: which matrix, where, and what gates it.
+
+    Attributes:
+        manifest: The matrix that runs: the operator's, or the one-cell smoke
+            narrowed from it.
+        out_dir: Where its journal and report land. The smoke lands under
+            the recording's own directory, apart from the recording's
+            journal, which refuses a second matrix.
+        probe: What reads the smoke's engine, or ``None`` on a recording.
+        wiring: What the smoke found, on a recording it gated; ``None`` on
+            the smoke itself, whose findings do not exist until it has run.
+    """
+
+    manifest: RecursionDepthManifest
+    out_dir: Path
+    probe: WiringProbe | None
+    wiring: WiringReport | None
+
+
+def _run_mode(args: argparse.Namespace, manifest: RecursionDepthManifest) -> _RunMode:
+    """Decide whether this invocation smokes or records, and what that needs.
+
+    A recording refuses to start without a passing smoke for the SAME manifest
+    file: every treatment it claims to measure was once absent from the engine
+    it ran on with nothing able to tell, and the smoke is what tells.
+
+    Returns:
+        The mode.
+
+    Raises:
+        RecursionDepthSmokeRequiredError: A recording was asked for with no
+            passing smoke for its manifest.
+    """
+    if args.smoke:
+        narrowed = smoke_manifest(manifest)
+        return _RunMode(
+            manifest=narrowed,
+            out_dir=smoke_dir(args.out_dir),
+            probe=WiringProbe(narrowed),
+            wiring=None,
+        )
+    wiring = require_passing_smoke(
+        args.out_dir, manifest_sha256=manifest_digest(args.manifest)
+    )
+    return _RunMode(manifest=manifest, out_dir=args.out_dir, probe=None, wiring=wiring)
+
+
 async def _sweep_under(
     context: SweepContext,
     *,
     args: argparse.Namespace,
-    manifest: RecursionDepthManifest,
+    mode: _RunMode,
     spec: SpecBrief,
     company_config: RootConfig,
     sandbox_image: str,
@@ -624,7 +688,7 @@ async def _sweep_under(
     Args:
         context: The bound sweep.
         args: The parsed command line.
-        manifest: The recording matrix.
+        mode: The matrix that runs, where it lands, and the smoke it rests on.
         spec: The specification the sweep builds.
         company_config: The config the pairs actually dispatch through.
         sandbox_image: The image the host resolved, which is what every unit
@@ -640,16 +704,48 @@ async def _sweep_under(
             capture_provenance,
             repo_root=Path.cwd(),
             manifest_path=args.manifest,
-            manifest=manifest,
+            manifest=mode.manifest,
             spec=spec,
             company_config=company_config,
-            out_dir=args.out_dir,
+            out_dir=mode.out_dir,
             sandbox_image=sandbox_image,
         )
     )
     return await run_sweep(
-        context, provenance=provenance, out_dir=args.out_dir, resume=args.resume
+        context,
+        provenance=provenance,
+        out_dir=mode.out_dir,
+        resume=args.resume,
+        wiring=mode.wiring,
     )
+
+
+async def _finish_smoke(
+    probe: WiringProbe,
+    *,
+    host: RecordingGatewayHost,
+    context: SweepContext,
+    report: RecursionDepthReport,
+    out_dir: Path,
+) -> RecursionDepthReport:
+    """Read the treatments off the evidence the smoke cell left, and keep them.
+
+    Written beside the smoke's own journal, which is where the recording it
+    gates looks, and folded into the smoke's report so that artefact states
+    what it found too.
+
+    Returns:
+        The smoke's report, carrying its findings.
+    """
+    wiring = await probe.report(
+        host.app_state,
+        transcript_root=context.deps.transcript_root,
+        manifest_sha256=report.provenance.manifest_sha256,
+    )
+    path = await asyncio.to_thread(write_wiring_report, wiring, out_dir)
+    print(describe_findings(wiring.findings))
+    print(f"wiring findings written: {path}")
+    return report.model_copy(update={"wiring": wiring})
 
 
 async def _record(
@@ -662,11 +758,15 @@ async def _record(
     """Run the sweep for real and write the report.
 
     Returns:
-        Process exit code.
+        Process exit code: non-zero when a smoke found a treatment absent.
 
     Raises:
         RecursionDepthNoCellsMeasuredError: Not one run was measured.
+        RecursionDepthSmokeRequiredError: A recording was asked for with no
+            passing smoke for its manifest.
     """
+    mode = _run_mode(args, manifest)
+    manifest = mode.manifest
     # Before the host, because everything it checks is a property of the
     # configuration or the machine and none of it becomes truer once a scratch
     # database, a gateway and a container are standing.
@@ -678,7 +778,7 @@ async def _record(
     # Two runs sharing an output directory are refused by the journal itself,
     # and two with different ones land on different roots, so concurrent
     # recordings still never reset each other's trees.
-    run_work_root = args.work_root / f"run-{_recording_slug(args.out_dir)}"
+    run_work_root = args.work_root / f"run-{_recording_slug(mode.out_dir)}"
     binder: HarnessBinder | None = None
     completed = False
     try:
@@ -694,6 +794,7 @@ async def _record(
                 spec=spec,
                 work_root=run_work_root,
                 company_config=company_config,
+                probe=mode.probe,
             )
             # After the host resolved it and before the first session is paid
             # for. It cannot be asked earlier: unless `--sandbox-image` names
@@ -714,16 +815,24 @@ async def _record(
                 _sweep_under(
                     context,
                     args=args,
-                    manifest=manifest,
+                    mode=mode,
                     spec=spec,
                     company_config=company_config,
                     sandbox_image=host.sandbox_image,
                 ),
                 serving=host.serving,
             )
+            if mode.probe is not None:
+                report = await _finish_smoke(
+                    mode.probe,
+                    host=host,
+                    context=context,
+                    report=report,
+                    out_dir=mode.out_dir,
+                )
             # Written inside the host's lifetime so a teardown that overruns
             # cannot discard a sweep that already cost real money to produce.
-            paths = await asyncio.to_thread(write_report, report, args.out_dir)
+            paths = await asyncio.to_thread(write_report, report, mode.out_dir)
             completed = True
     finally:
         await _release(
@@ -736,7 +845,7 @@ async def _record(
             "nothing; the reasons are in the artifact just written"
         )
         raise RecursionDepthNoCellsMeasuredError(msg)
-    return 0
+    return 0 if report.wiring is None or report.wiring.passed else 1
 
 
 def _host_config(
@@ -773,12 +882,24 @@ async def _build_context(
     spec: SpecBrief,
     work_root: Path,
     company_config: RootConfig,
+    probe: WiringProbe | None = None,
 ) -> SweepContext:
     """Arm the settings, staff the roster, and wire the sweep.
 
     Recursion is armed through the real settings service rather than handed to
     the decomposition service directly, so the sweep exercises the live read the
     product does.
+
+    Args:
+        host: The hosted gateway.
+        binder: What routes and authenticates each unit at that gateway.
+        args: The parsed command line.
+        manifest: The matrix that runs.
+        spec: The specification it builds.
+        work_root: This run's scratch root.
+        company_config: The config the pairs dispatch through.
+        probe: What reads each engine's wiring on a smoke; ``None`` on a
+            recording.
 
     Returns:
         The wired context.
@@ -839,6 +960,7 @@ async def _build_context(
         # such field, so every per-unit record read `family: null` and the
         # cross_family claim the gated arm rests on was evidenced nowhere.
         declared_pairs=(manifest.executor, manifest.reviewer),
+        on_engine_built=probe.observe if probe is not None else None,
     )
     # What a PLANNING session gets, on the same declarative sizing every other
     # role uses (`SweepContext.limits_for` reaches the same function for the
@@ -874,6 +996,7 @@ def _build_deps(
     declared_pairs: tuple[ModelPair, ...],
     priced_providers: frozenset[str] = frozenset(),
     stall_idle_seconds: float = DEFAULT_STALL_IDLE_SECONDS,
+    on_engine_built: EngineObserver | None = None,
 ) -> SweepDeps:
     """Bind every per-unit collaborator to the hosted gateway.
 
@@ -890,6 +1013,8 @@ def _build_deps(
         priced_providers: Provider connections resolved as pricing their
             calls, from the same config the preflight already read.
         stall_idle_seconds: Idle time after which a unit is reported stalled.
+        on_engine_built: Told about each engine as it is built, with its
+            ledger; the smoke's probe, or ``None``.
 
     Returns:
         The wired :class:`SweepDeps`.
@@ -922,6 +1047,7 @@ def _build_deps(
         on_stall=_print_stall,
         declared_pairs=declared_pairs,
         priced_providers=priced_providers,
+        on_engine_built=on_engine_built,
     )
 
 
@@ -1247,7 +1373,30 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     mode.add_argument(
         "--record",
         action="store_true",
-        help="Execute the sweep against real providers (real spend).",
+        help=(
+            "Execute the sweep against real providers (real spend). Refused "
+            "without a passing --smoke under --out-dir for the same manifest "
+            "file: a 200 response, a valid config and a green unit test are "
+            "all compatible with a treatment being absent from the engine, "
+            "and the smoke is the one check that is not."
+        ),
+    )
+    mode.add_argument(
+        "--smoke",
+        action="store_true",
+        help=(
+            "Run ONE cell at the shallowest cap against real providers, then "
+            "read every treatment the manifest declares off the wire rather "
+            "than off the config: the engine's own wiring summary (compaction, "
+            "stagnation, budget, review, approval, policy, the tool surface "
+            "the invoker was built with), the live settings it was armed "
+            "into, the cell ledger (cached-prefix tokens) and the recorded "
+            "request bodies (reasoning depth). Writes the findings under "
+            "<out-dir>/smoke/wiring.json, which --record then requires for "
+            "the same manifest digest, and exits non-zero on a treatment "
+            "found absent. Costs one cheap cell; a whole matrix measured on "
+            "an engine missing a treatment cost eight recordings."
+        ),
     )
     mode.add_argument(
         "--rescore",
@@ -1737,6 +1886,9 @@ def _rescore(out_dir: Path, *, repair_from: Path | None) -> int:
         cells=cells,
         caveats=caveats,
         planned_cells=len(cells),
+        # Off the disk beside the journal, where the smoke left it, so a
+        # re-score carries the same wiring the recording stated.
+        wiring=load_wiring_report(smoke_dir(out_dir)),
     )
     written = write_report(report, out_dir)
     print("report written: " + ", ".join(str(path) for path in written))
@@ -1777,7 +1929,7 @@ def main(argv: list[str] | None = None) -> int:
     # contradiction found only under --record is found one decision too late.
     check_declared_families(manifest, company_config)
 
-    if not args.record:
+    if not (args.record or args.smoke):
         # The plan path boots nothing, opens no port and starts no container.
         print(describe_plan(manifest, spec))
         return 0

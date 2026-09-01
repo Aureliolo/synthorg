@@ -1252,6 +1252,89 @@ class LoopTreatments(BaseModel):
     compaction: CompactionTreatment | None = None
 
 
+class WiringFinding(BaseModel):
+    """One treatment, as the smoke found it on the wire.
+
+    Attributes:
+        treatment: What was checked.
+        expected: What the manifest declared.
+        observed: What the engine, the ledger or the recorded request bodies
+            actually showed.
+        passed: Whether the two agree, or ``None`` when the evidence could
+            not be read at all, which is a different claim from either: a
+            provider that publishes no cache figures has not failed the
+            check, and a check that found no request to read has not passed
+            it.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    treatment: NotBlankStr
+    expected: str
+    observed: str
+    passed: bool | None
+
+
+class WiringReport(BaseModel):
+    """What a one-cell smoke established about the engine a matrix would run on.
+
+    Written beside the journal and read back by the recording it gates, so a
+    published report states its own wiring rather than asserting it.
+
+    Attributes:
+        manifest_sha256: The matrix FILE this smoke was run for. A recording
+            under a different digest is a different matrix and needs its own.
+        checked_at: When the smoke ran.
+        findings: One per treatment.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    manifest_sha256: NotBlankStr
+    checked_at: datetime
+    findings: tuple[WiringFinding, ...] = Field(min_length=1)
+
+    @field_validator("checked_at")
+    @classmethod
+    def _checked_at_must_be_aware(cls, value: datetime) -> datetime:
+        """Reject naive timestamps so smokes order unambiguously.
+
+        Returns:
+            The validated timestamp.
+
+        Raises:
+            ValueError: The timestamp carries no timezone.
+        """
+        if value.tzinfo is None or value.utcoffset() is None:
+            msg = "checked_at must be timezone-aware"
+            raise ValueError(msg)
+        return value
+
+    @computed_field
+    @property
+    def passed(self) -> bool:
+        """Whether no treatment was found absent or wrong.
+
+        An unverified treatment does not fail the smoke: it is named as
+        unverified in the report, which is the honest claim.
+
+        Returns:
+            ``True`` when no finding failed.
+        """
+        return all(finding.passed is not False for finding in self.findings)
+
+    @property
+    def unverified(self) -> tuple[str, ...]:
+        """The treatments the smoke could read no evidence for.
+
+        Returns:
+            Their names.
+        """
+        return tuple(
+            finding.treatment for finding in self.findings if finding.passed is None
+        )
+
+
 class Provenance(BaseModel):
     """What this sweep was measured against.
 
@@ -1387,12 +1470,17 @@ class RecursionDepthReport(BaseModel):
             exclusion a fact of the artifact rather than prose that a later
             re-score of the same journal could report differently.
         caveats: What a reader must hold in mind, in the report's own words.
+        wiring: What the one-cell smoke this recording was gated on found on
+            the wire, so the artifact states its own wiring. ``None`` on a
+            recording made before the smoke existed, which is also the honest
+            reading of those recordings: nothing checked.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     schema_version: int = Field(default=RECURSION_DEPTH_SCHEMA_VERSION)
     provenance: Provenance
+    wiring: WiringReport | None = None
     cells: tuple[CellRecord, ...] = Field(min_length=1)
     by_achieved_depth: tuple[DepthPoint, ...] = ()
     by_depth_cap: tuple[DepthPoint, ...] = ()
@@ -1489,5 +1577,7 @@ __all__ = [
     "TokensPerSolvedPoint",
     "UnitKind",
     "UnitRecord",
+    "WiringFinding",
+    "WiringReport",
     "sum_costs",
 ]
