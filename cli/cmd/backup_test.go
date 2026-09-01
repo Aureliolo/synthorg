@@ -375,35 +375,77 @@ func TestBuildBackupRequest(t *testing.T) {
 	})
 }
 
-func TestBearerTokenHint(t *testing.T) {
+// TestDescribeAPIFailure covers both halves of the single decode, because the
+// message and the hint now come out of one envelope and a regression in either
+// would otherwise be invisible from the other's test. ANSI stripping is not
+// re-asserted here; TestSanitizeAPIMessage owns that.
+func TestDescribeAPIFailure(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name     string
-		body     string
-		wantHint bool
+		name        string
+		body        string
+		wantHint    bool
+		wantMessage string
 	}{
 		{
-			name:     "bearer token refused",
-			body:     `{"success":false,"error":"nope","error_detail":{"error_code":1012}}`,
-			wantHint: true,
+			name:        "bearer token refused",
+			body:        `{"success":false,"error":"nope","error_detail":{"error_code":1012}}`,
+			wantHint:    true,
+			wantMessage: "nope",
 		},
 		{
-			name:     "some other auth failure",
-			body:     `{"success":false,"error":"nope","error_detail":{"error_code":1009}}`,
-			wantHint: false,
+			name:        "some other auth failure",
+			body:        `{"success":false,"error":"nope","error_detail":{"error_code":1009}}`,
+			wantHint:    false,
+			wantMessage: "nope",
 		},
-		{"no error detail", `{"success":false,"error":"nope"}`, false},
-		{"unparseable", `not json`, false},
+		{
+			name:        "no error detail",
+			body:        `{"success":false,"error":"nope"}`,
+			wantHint:    false,
+			wantMessage: "nope",
+		},
+		{
+			name:        "failure with no prose",
+			body:        `{"success":false}`,
+			wantHint:    false,
+			wantMessage: "unknown error",
+		},
+		{
+			// The status code said failure and the envelope disagrees, so the
+			// caller's fallback is the only honest thing left to say.
+			name:        "success envelope on a non-2xx falls back",
+			body:        `{"success":true,"data":null}`,
+			wantHint:    false,
+			wantMessage: "backup failed",
+		},
+		{
+			name:        "unparseable",
+			body:        `not json`,
+			wantHint:    false,
+			wantMessage: "",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			hint := bearerTokenHint([]byte(tt.body))
-			if tt.wantHint && hint == "" {
+			failure := describeAPIFailure([]byte(tt.body), "backup failed")
+			if tt.wantHint && failure.Hint == "" {
 				t.Error("expected a hint for a refused admin token")
 			}
-			if !tt.wantHint && hint != "" {
-				t.Errorf("unexpected hint %q", hint)
+			if !tt.wantHint && failure.Hint != "" {
+				t.Errorf("unexpected hint %q", failure.Hint)
+			}
+			// An empty wantMessage means the body never decoded, which the
+			// message has to say rather than pass off as the fallback.
+			if tt.wantMessage == "" {
+				if !strings.HasPrefix(failure.Message, "parsing response:") {
+					t.Errorf("message %q does not report the decode failure", failure.Message)
+				}
+				return
+			}
+			if failure.Message != tt.wantMessage {
+				t.Errorf("message = %q, want %q", failure.Message, tt.wantMessage)
 			}
 		})
 	}

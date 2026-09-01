@@ -65,25 +65,27 @@ func TestWipeBackupWarningsSurviveQuiet(t *testing.T) {
 	tests := []struct {
 		name string
 		want string
-		run  func(wc *wipeContext)
+		run  func(t *testing.T, wc *wipeContext)
 	}{
 		{
 			name: "docker unavailable",
 			want: "Docker is not available",
-			run: func(wc *wipeContext) {
+			run: func(t *testing.T, wc *wipeContext) {
+				t.Helper()
 				wc.dockerAvailable = false
 				if _, err := wc.runOptionalBackup(); err != nil {
-					panic(err)
+					t.Fatalf("runOptionalBackup = %v, want nil", err)
 				}
 			},
 		},
 		{
 			name: "credential preflight",
 			want: "Cannot sign an admin token",
-			run: func(wc *wipeContext) {
+			run: func(t *testing.T, wc *wipeContext) {
+				t.Helper()
 				wc.state = config.State{JWTSecret: "short"}
 				if err := wc.offerBackup(); err != nil {
-					panic(err)
+					t.Fatalf("offerBackup = %v, want nil", err)
 				}
 			},
 		},
@@ -106,7 +108,7 @@ func TestWipeBackupWarningsSurviveQuiet(t *testing.T) {
 				errOut:          ui.NewUIWithOptions(&errBuf, opts.UIOptions()),
 				dockerAvailable: true,
 			}
-			tt.run(wc)
+			tt.run(t, wc)
 			if got := errBuf.String(); !strings.Contains(got, tt.want) {
 				t.Errorf("--quiet swallowed the warning; stderr = %q, want %q", got, tt.want)
 			}

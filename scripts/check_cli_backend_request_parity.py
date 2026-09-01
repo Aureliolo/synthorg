@@ -96,6 +96,7 @@ _HEADER_PARAM: Final[str] = "HeaderParameter"
 # unrelated literal.
 _PAYLOAD_LOCAL: Final[str] = "payload"
 _REQUIRE_KEY: Final[str] = "require"
+_DECODE_CALLEE: Final[str] = "jwt.decode"
 
 # Each claim whose value is fixed, mapped to the backend constant that owns
 # it. The CLI hard-codes all three, so a drift here is invisible to the
@@ -217,6 +218,27 @@ def _model_fields(tree: ast.Module, rel: str) -> tuple[frozenset[str], frozenset
     raise GateSourceError(msg)
 
 
+def _is_decode_call(node: ast.Call) -> bool:
+    """Report whether node is the decode entry point this gate reads.
+
+    Scoping matters both ways: an unreadable ``options`` is exit 2, so a
+    ``**`` spread on some unrelated call must not raise, and a decode
+    reached under another name must not pass unread. A different import
+    style therefore fails closed at the caller, which finds no require
+    list at all.
+
+    Returns:
+        True when the callee is spelled exactly ``jwt.decode``.
+    """
+    module, _, attribute = _DECODE_CALLEE.partition(".")
+    return (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr == attribute
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == module
+    )
+
+
 def _decode_required(tree: ast.Module, rel: str) -> frozenset[str]:
     """Collect every claim name PyJWT is told to require.
 
@@ -235,14 +257,26 @@ def _decode_required(tree: ast.Module, rel: str) -> frozenset[str]:
     required: set[str] = set()
     found = False
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
+        if not isinstance(node, ast.Call) or not _is_decode_call(node):
             continue
         for keyword in node.keywords:
+            if keyword.arg is None:
+                msg = (
+                    f"{rel}: a {_DECODE_CALLEE} call spreads its keyword arguments, "
+                    f"so its {_REQUIRE_KEY!r} option cannot be read"
+                )
+                raise GateSourceError(msg)
             if keyword.arg != "options" or not isinstance(keyword.value, ast.Dict):
                 continue
             for key, value in zip(
                 keyword.value.keys, keyword.value.values, strict=True
             ):
+                if key is None:
+                    msg = (
+                        f"{rel}: an options dict unpacks another mapping, so the "
+                        "enforced claim set cannot be read"
+                    )
+                    raise GateSourceError(msg)
                 if not (isinstance(key, ast.Constant) and key.value == _REQUIRE_KEY):
                     continue
                 if not isinstance(value, ast.List):
@@ -402,8 +436,11 @@ def _skip_quoted(body: str, opening: int) -> int:
     return len(body)
 
 
-def _minted_claims(repo_root: Path) -> tuple[frozenset[str], dict[str, str]]:
+def _minted_claims(source: str) -> tuple[frozenset[str], dict[str, str]]:
     """Derive the claim names and pinned literals the CLI mints.
+
+    Args:
+        source: The text of ``_MINT_REL``, read once by the caller.
 
     Returns:
         ``(claim_names, literal_values)`` read from the payload template.
@@ -411,7 +448,6 @@ def _minted_claims(repo_root: Path) -> tuple[frozenset[str], dict[str, str]]:
     Raises:
         GateSourceError: If the template is absent or carries no keys.
     """
-    source = read_source(repo_root / _MINT_REL)
     statement = _payload_statement(
         _function_body(source, _MINT_REL, _MINT_FUNC), _MINT_REL
     )
@@ -490,8 +526,11 @@ def _required_headers(tree: ast.Module, rel: str) -> frozenset[str]:
     return frozenset(names)
 
 
-def _cli_headers(repo_root: Path) -> frozenset[str]:
+def _cli_headers(source: str) -> frozenset[str]:
     """Collect every header the CLI's request builder sets.
+
+    Args:
+        source: The text of ``_MINT_REL``, read once by the caller.
 
     Returns:
         The header names passed to ``Header.Set`` in the builder.
@@ -499,7 +538,6 @@ def _cli_headers(repo_root: Path) -> frozenset[str]:
     Raises:
         GateSourceError: If the builder is absent or sets no header.
     """
-    source = read_source(repo_root / _MINT_REL)
     body = _function_body(source, _MINT_REL, _REQUEST_FUNC)
     names = frozenset(_HEADER_SET_RE.findall(body))
     if not names:
@@ -613,11 +651,14 @@ def _check(repo_root: Path) -> list[str]:
     expected = _pinned_values(system_tree, _SYSTEM_USER_REL)
     headers = _required_headers(controller_tree, _CONTROLLER_REL)
 
-    minted, literals = _minted_claims(repo_root)
+    # Both Go-side reads anchor in the same file, so it is read once here
+    # rather than by each helper.
+    mint_source = read_source(repo_root / _MINT_REL)
+    minted, literals = _minted_claims(mint_source)
     return (
         _claim_set_violations(minted, declared, required)
         + _pinned_violations(literals, expected)
-        + _header_violations(_cli_headers(repo_root), headers)
+        + _header_violations(_cli_headers(mint_source), headers)
     )
 
 

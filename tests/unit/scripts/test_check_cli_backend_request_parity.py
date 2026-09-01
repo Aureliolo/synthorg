@@ -375,6 +375,32 @@ def test_non_literal_require_element_is_a_config_error(tmp_path: Path) -> None:
         _MODULE._check(_make_tree(tmp_path, service=service))
 
 
+def test_spread_decode_options_is_a_config_error(tmp_path: Path) -> None:
+    # A decode reached through **kwargs carries its require list somewhere
+    # this scan cannot open, which reads exactly like a decode that
+    # require-lists nothing.
+    service = _SERVICE.replace("options={", "**_DECODE_OPTIONS,\n        options={")
+    with pytest.raises(_MODULE.GateSourceError, match="spreads its keyword"):
+        _MODULE._check(_make_tree(tmp_path, service=service))
+
+
+def test_unpacked_options_key_is_a_config_error(tmp_path: Path) -> None:
+    service = _SERVICE.replace(
+        "options={\n", "options={\n            **_BASE_OPTIONS,\n"
+    )
+    with pytest.raises(_MODULE.GateSourceError, match="unpacks another mapping"):
+        _MODULE._check(_make_tree(tmp_path, service=service))
+
+
+def test_spread_on_an_unrelated_call_is_not_a_config_error(tmp_path: Path) -> None:
+    # The fail-closed rule is scoped to the decode callee: every other call
+    # in the module is none of this gate's business, and raising on one
+    # would make the gate fail on code it never reads.
+    unrelated = "def _unrelated():\n    return helper(**kwargs)\n\n\n"
+    service = unrelated + _SERVICE
+    assert _MODULE._check(_make_tree(tmp_path, service=service)) == []
+
+
 def test_ellipsis_field_default_counts_as_required(tmp_path: Path) -> None:
     # Field(..., description=...) is Pydantic's "required, no default"
     # idiom, so the one positional argument that means NO default is the

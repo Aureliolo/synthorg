@@ -28,11 +28,12 @@ func createBackupViaAPI(ctx context.Context, state config.State) (backupManifest
 		return backupManifest{}, fmt.Errorf("backup API request: %w", err)
 	}
 	if statusCode < 200 || statusCode >= 300 {
-		msg := sanitizeAPIMessage(apiErrorMessage(body, "backup failed"))
+		failure := describeAPIFailure(body, "backup failed")
 		// The hint rides in the error text because this call site has no UI
 		// of its own: wipe renders the whole string through WarnAlways.
-		if hint := bearerTokenHint(body); hint != "" {
-			msg += " " + hint
+		msg := failure.Message
+		if failure.Hint != "" {
+			msg += " " + failure.Hint
 		}
 		return backupManifest{}, fmt.Errorf("backup API error: %s", msg)
 	}

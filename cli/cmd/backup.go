@@ -466,42 +466,57 @@ func parseAPIResponse(raw []byte) (json.RawMessage, error) {
 	return env.Data, nil
 }
 
-// bearerTokenHint returns the operator-actionable follow-up for a refused
-// admin token, or the empty string when the response says something else.
+// apiFailure is what a non-2xx admin response says: the prose an operator
+// reads, and the follow-up only the CLI can offer.
+type apiFailure struct {
+	// Message is sanitised at construction, because it is server-originated
+	// and every consumer would otherwise have to remember to do it.
+	Message string
+	// Hint is empty unless the backend's own error code named the token.
+	Hint string
+}
+
+// describeAPIFailure decodes a non-2xx response ONCE and derives both halves.
 //
-// Only the CLI can offer this: the backend refuses the token without knowing
-// where it came from, while the CLI signed it and knows which secret it used.
-func bearerTokenHint(raw []byte) string {
+// Only the CLI can offer the hint: the backend refuses the token without
+// knowing where it came from, while the CLI signed it and knows which secret
+// it used.
+func describeAPIFailure(body []byte, fallback string) apiFailure {
 	var env apiEnvelope
-	if err := json.Unmarshal(raw, &env); err != nil {
-		return ""
+	if err := json.Unmarshal(body, &env); err != nil {
+		return apiFailure{
+			Message: sanitizeAPIMessage(fmt.Errorf("parsing response: %w", err).Error()),
+		}
 	}
-	if env.ErrorDetail == nil || env.ErrorDetail.ErrorCode != errCodeBearerTokenInvalid {
-		return ""
+	msg := fallback
+	if !env.Success {
+		msg = "unknown error"
+		if env.Error != nil {
+			msg = *env.Error
+		}
 	}
-	return "The backend refused the CLI's admin token. Its jwt_secret in " +
-		"config.json may no longer match the backend's; run 'synthorg doctor'."
+	failure := apiFailure{Message: sanitizeAPIMessage(msg)}
+	if env.ErrorDetail != nil && env.ErrorDetail.ErrorCode == errCodeBearerTokenInvalid {
+		failure.Hint = "The backend refused the CLI's admin token. Its jwt_secret in " +
+			"config.json may no longer match the backend's; run 'synthorg doctor'."
+	}
+	return failure
+}
+
+// report renders the failure through errOut and returns the error to exit on.
+func (f apiFailure) report(errOut *ui.UI) error {
+	errOut.Error(f.Message)
+	if f.Hint != "" {
+		errOut.HintError(f.Hint)
+	}
+	return errors.New(f.Message)
 }
 
 // reportAPIError renders a non-2xx admin response and returns the error to
 // exit on, adding the token hint when the backend's own error code says the
 // token was the problem.
 func reportAPIError(errOut *ui.UI, body []byte, fallback string) error {
-	msg := sanitizeAPIMessage(apiErrorMessage(body, fallback))
-	errOut.Error(msg)
-	if hint := bearerTokenHint(body); hint != "" {
-		errOut.HintError(hint)
-	}
-	return errors.New(msg)
-}
-
-// apiErrorMessage extracts a human-readable error from a non-2xx API response.
-func apiErrorMessage(body []byte, fallback string) string {
-	_, parseErr := parseAPIResponse(body)
-	if parseErr != nil {
-		return parseErr.Error()
-	}
-	return fallback
+	return describeAPIFailure(body, fallback).report(errOut)
 }
 
 // printManifest renders a backup manifest as key-value pairs.
@@ -794,18 +809,18 @@ func renderRestoreSuccess(cmd *cobra.Command, out, errOut *ui.UI, body []byte, s
 // handleRestoreError displays a user-friendly error for restore API failures
 // and returns a non-nil error so the CLI exits non-zero.
 func handleRestoreError(errOut *ui.UI, body []byte, statusCode int, backupID string) error {
-	msg := apiErrorMessage(body, "restore failed")
+	failure := describeAPIFailure(body, "restore failed")
 
 	if statusCode == http.StatusNotFound {
-		displayMsg := fmt.Sprintf("Backup not found: %s", backupID)
-		if msg != "restore failed" {
-			displayMsg = msg
+		displayMsg := sanitizeAPIMessage(fmt.Sprintf("Backup not found: %s", backupID))
+		if failure.Message != "restore failed" {
+			displayMsg = failure.Message
 		}
-		errOut.Error(sanitizeAPIMessage(displayMsg))
+		errOut.Error(displayMsg)
 		errOut.HintNextStep("Run 'synthorg backup list' to see available backups")
 		return fmt.Errorf("backup not found: %s", backupID)
 	}
-	return reportAPIError(errOut, body, "restore failed")
+	return failure.report(errOut)
 }
 
 // handleRestartAfterRestore stops containers when a restore requires restart.
