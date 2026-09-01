@@ -37,7 +37,7 @@ def _report(
     reviewer: str = "reviewer-1",
     executor: str = "executor-1",
     verdict: CompletionOracleVerdict = CompletionOracleVerdict.APPROVE,
-    ran_tests: bool = False,
+    test_evidence_cited: bool = False,
     test_command: str | None = None,
 ) -> CompletionOracleReport:
     rejecting = verdict is CompletionOracleVerdict.REJECT
@@ -49,7 +49,7 @@ def _report(
         verdict=verdict,
         findings=(_A_FINDING,) if rejecting else (),
         summary="reviewed",
-        ran_tests=ran_tests,
+        test_evidence_cited=test_evidence_cited,
         test_command=test_command,
     )
 
@@ -59,12 +59,12 @@ class TestReportInvariants:
         with pytest.raises(ValidationError, match="must differ"):
             _report(reviewer="same", executor="same")
 
-    def test_test_command_without_ran_tests_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="ran_tests is False"):
-            _report(ran_tests=False, test_command="pytest -x")
+    def test_test_command_without_cited_evidence_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="test_evidence_cited is False"):
+            _report(test_evidence_cited=False, test_command="pytest -x")
 
-    def test_test_command_with_ran_tests_allowed(self) -> None:
-        report = _report(ran_tests=True, test_command="pytest -x")
+    def test_test_command_with_cited_evidence_allowed(self) -> None:
+        report = _report(test_evidence_cited=True, test_command="pytest -x")
         assert report.test_command == "pytest -x"
 
     def test_rejection_with_no_findings_rejected(self) -> None:

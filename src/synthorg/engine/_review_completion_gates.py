@@ -28,7 +28,10 @@ from synthorg.engine._review_oracle_gates import (
     apply_build_test_gate,
     observe_output_policy,
 )
-from synthorg.engine._review_oracle_stage import apply_oracle_review_stage
+from synthorg.engine._review_oracle_stage import (
+    OracleStageConfig,
+    apply_oracle_review_stage,
+)
 from synthorg.engine._review_red_team_gates import (
     RedTeamStageConfig,
     apply_red_team_stage,
@@ -127,9 +130,12 @@ async def run_completion_gates(  # noqa: PLR0913 -- gate chain inputs, all requi
         min_stakes=red_team_min_stakes,
     )
     outcome, deliverable_input = await apply_oracle_review_stage(
-        completion_oracle_gate=completion_oracle_gate,
-        completion_oracle_shadow_mode=completion_oracle_shadow_mode,
-        completion_oracle_min_stakes=completion_oracle_min_stakes,
+        oracle=OracleStageConfig(
+            gate=completion_oracle_gate,
+            shadow_mode=completion_oracle_shadow_mode,
+            min_stakes=completion_oracle_min_stakes,
+            records=code_execution_records,
+        ),
         deliverable_input_builder=deliverable_input_builder,
         red_team_active=red_team.armed_for(task),
         output_policy_active=_output_policy_active(),

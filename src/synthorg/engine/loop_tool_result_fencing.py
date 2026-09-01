@@ -28,6 +28,7 @@ from synthorg.engine.prompt_safety import (
     TAG_TOOL_ARGUMENTS,
     TAG_TOOL_RESULT,
     TAG_UNTRUSTED_ARTIFACT,
+    TAG_VERIFICATION_RUNS,
     wrap_untrusted,
 )
 from synthorg.observability import get_logger, scrub_secret_tokens
@@ -54,6 +55,7 @@ _FENCE_TAGS: Final[tuple[str, ...]] = (
     TAG_TOOL_RESULT,
     TAG_TOOL_ARGUMENTS,
     TAG_UNTRUSTED_ARTIFACT,
+    TAG_VERIFICATION_RUNS,
     TAG_CODE_DIFF,
     TAG_CONFIG_VALUE,
     TAG_CRITERIA_JSON,

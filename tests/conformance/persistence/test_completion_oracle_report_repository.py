@@ -492,8 +492,8 @@ class TestCompletionOracleReportArchiveRepository:
             verdict=CompletionOracleVerdict.APPROVE,
             findings=(),
             summary=NotBlankStr("Approved my own work."),
-            ran_build=False,
-            ran_tests=False,
+            build_evidence_cited=False,
+            test_evidence_cited=False,
             test_command=None,
         )
         record = CompletionOracleReportRecord.model_construct(

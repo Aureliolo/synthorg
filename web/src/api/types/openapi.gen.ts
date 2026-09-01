@@ -9478,18 +9478,18 @@ export type components = {
         };
         /** CompletionOracleReport */
         readonly CompletionOracleReport: {
+            /** @default false */
+            readonly build_evidence_cited: boolean;
             readonly execution_id: string;
             readonly executor_agent_id: string;
             /** @default [] */
             readonly findings: readonly components["schemas"]["CompletionOracleFinding"][];
-            /** @default false */
-            readonly ran_build: boolean;
-            /** @default false */
-            readonly ran_tests: boolean;
             readonly reviewer_agent_id: string | null;
             readonly summary: string;
             readonly task_id: string;
             readonly test_command: string | null;
+            /** @default false */
+            readonly test_evidence_cited: boolean;
             readonly verdict: components["schemas"]["CompletionOracleVerdict"];
         };
         /** CompletionOracleReportRecord */

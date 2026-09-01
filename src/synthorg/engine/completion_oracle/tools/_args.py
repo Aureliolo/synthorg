@@ -27,9 +27,11 @@ class SubmitCompletionOracleVerdictArgs(BaseModel):
             reject / escalate).
         findings: Structured observations. May be empty on a clean approval.
         summary: One-paragraph natural-language summary of the review.
-        ran_build: Whether the reviewer built the deliverable.
-        ran_tests: Whether the reviewer ran the deliverable's tests.
-        test_command: The test command the reviewer ran, when it ran tests.
+        build_evidence_cited: Whether the verdict rests on a recorded build
+            run the reviewer read in the brief's verification runs.
+        test_evidence_cited: Whether it rests on a recorded test run.
+        test_command: The recorded test command the reviewer cited, when it
+            cited one.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -39,6 +41,6 @@ class SubmitCompletionOracleVerdictArgs(BaseModel):
     verdict: CompletionOracleVerdict
     findings: tuple[CompletionOracleFinding, ...] = ()
     summary: NotBlankStr
-    ran_build: bool = False
-    ran_tests: bool = False
+    build_evidence_cited: bool = False
+    test_evidence_cited: bool = False
     test_command: NotBlankStr | None = None

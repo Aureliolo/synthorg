@@ -12,8 +12,10 @@ than an artifact count:
 * Layer 2 (``gate`` + ``runner`` + ``tools`` + ``review_models``): an
   independent agent-session peer reviewer, selected per review from the
   roster agents holding the ``Completion Reviewer`` role, that reads the
-  deliverable, may run the tests, and files an approve / reject verdict via
-  a single terminal tool.
+  deliverable and the build/test runs Layer 1 recorded, and files an
+  approve / reject verdict via a single terminal tool. It holds no shell
+  and no code-execution tool: a judge that runs or writes inside the tree
+  under review is authoring what it judges.
 
 The package ``__init__`` stays intentionally import-light: persistence
 imports the ``review_models`` leaf, so eagerly loading the heavy gate /

@@ -153,3 +153,8 @@ COMPLETION_ORACLE_REPORT_DESERIALIZE_FAILED: Final[str] = (
 
 COMPLETION_ORACLE_REPORTS_LISTED: Final[str] = "completion_oracle.review.reports_listed"
 """An operator read a page of archived verdicts."""
+
+COMPLETION_ORACLE_EVIDENCE_UNREADABLE: Final[str] = (
+    "completion_oracle.review.evidence_unreadable"
+)
+"""The recorded build/test runs a reviewer cites could not be read."""

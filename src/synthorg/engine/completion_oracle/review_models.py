@@ -161,9 +161,14 @@ class CompletionOracleReport(BaseModel):
         findings: Structured findings (may be empty on a clean approval).
             Bounded by :data:`MAX_ORACLE_FINDINGS_PER_REPORT`.
         summary: One-paragraph natural-language summary of the review.
-        ran_build: Whether the reviewer built the deliverable.
-        ran_tests: Whether the reviewer ran the deliverable's tests.
-        test_command: The test command the reviewer ran, when it ran tests.
+        build_evidence_cited: Whether the verdict rests on a recorded build
+            run the reviewer read. The reviewer runs nothing itself: the
+            completion gates record the project's declared commands before
+            the review opens, and the reviewer cites those runs.
+        test_evidence_cited: Whether the verdict rests on a recorded test
+            run the reviewer read.
+        test_command: The recorded test command the reviewer cited, when
+            it cited one.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -175,8 +180,8 @@ class CompletionOracleReport(BaseModel):
     verdict: CompletionOracleVerdict
     findings: tuple[CompletionOracleFinding, ...] = ()
     summary: NotBlankStr = Field(max_length=MAX_ORACLE_SUMMARY_LENGTH)
-    ran_build: bool = False
-    ran_tests: bool = False
+    build_evidence_cited: bool = False
+    test_evidence_cited: bool = False
     test_command: NotBlankStr | None = None
 
     @model_validator(mode="after")
@@ -211,11 +216,11 @@ class CompletionOracleReport(BaseModel):
                 "summary alone is not what the rework brief reads."
             )
             raise ValueError(msg)
-        if self.test_command is not None and not self.ran_tests:
+        if self.test_command is not None and not self.test_evidence_cited:
             msg = (
                 "CompletionOracleReport carries a test_command "
-                f"{self.test_command!r} but ran_tests is False; a report cannot "
-                "name a test command it did not run."
+                f"{self.test_command!r} but test_evidence_cited is False; a "
+                "report cannot name a test command whose run it did not cite."
             )
             raise ValueError(msg)
         return self
