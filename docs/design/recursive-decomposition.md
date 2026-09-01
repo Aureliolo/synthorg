@@ -579,14 +579,29 @@ brief now names the plan's WORKSTREAMS rather than every leaf in the tree.
 
 ## The experiment
 
-`evals/recursion_depth/` sweeps the depth cap and emits one chart: the fraction
-of the specification a merged tree satisfies, against the depth that tree
-actually reached, with a cost panel beside it. That axis is not the one the
-question asks for, and [The metric](#the-metric) below says why it stands in.
+`evals/recursion_depth/` sweeps the depth cap and emits one chart with three
+panels on one depth axis: the fraction of the specification a merged tree
+satisfies, the fraction of the delivered leaves' own claims the merge kept,
+and the headline, tokens per solved requirement with a 95% bootstrap
+interval over each bucket's runs. The headline is what ranks the arms: a
+published comparison of three harnesses (arXiv 2607.22585) measured a
+forty-fold cost separation while every pairwise pass-rate interval crossed
+zero, so a loop can be cheaper by an order of magnitude at a pass rate no
+interval separates, and a report ranking on satisfaction alone ranks two
+things it cannot tell apart. The interval is a seeded percentile bootstrap
+(`evals/recursion_depth/efficiency.py`), seeded from the runs themselves so a
+re-score reproduces it; a bucket under three runs reports the point with no
+interval rather than a fabricated one, and two arms whose intervals overlap
+at a depth are named in the caveats as unrankable there. The depth axis is not
+the one the question asks for, and [The metric](#the-metric) below says why it
+stands in.
 
-The committed matrix records caps 1 to 4 at three, three, two, and two
-repetitions, one arm. The harness still supports two arms, and the first
-recording used both; what changed and why is in [The gate](#the-gate).
+The committed matrix records caps 1 to 4 at five repetitions each, one arm,
+because `MINIMUM_REPETITIONS` refuses to load a matrix asking for fewer: the
+same comparison found that below five trials a pass-rate difference is
+indistinguishable from the run-to-run spread. The harness still supports two
+arms, and the first recording used both; what changed and why is in
+[The gate](#the-gate).
 
 Run `make recursion-depth` to print the matrix and the bill without spending
 anything, and `make recursion-depth-record` to measure for real.

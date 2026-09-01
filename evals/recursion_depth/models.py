@@ -91,8 +91,8 @@ MERGE: Final[Literal["merge"]] = "merge"
 
 #: The planning sessions that wrote the tree. Not work and not an assembly, so
 #: it claims nothing and delivers nothing, but a deep sweep pays for one of
-#: these per node and a cost panel that omitted them would understate the deep
-#: end exactly where the question is.
+#: these per node and a spend figure that omitted them would understate the
+#: deep end exactly where the question is.
 PLAN: Final[Literal["plan"]] = "plan"
 
 #: What a plan unit's id ends in. Planning is the one unit whose id is minted
@@ -175,6 +175,40 @@ METRIC_CAVEAT: Final[str] = (
     "in which case the point is absent rather than zero. The two coming apart "
     "IS the finding."
 )
+
+#: Which figure is the headline, stated because three axes now travel together
+#: and the one that ranks the arms is not the one the sweep was first built
+#: around. Published harness comparisons have measured a forty-fold cost
+#: separation while every pairwise pass-rate interval crossed zero, so a curve
+#: read on satisfaction alone can rank two loops it cannot tell apart.
+HEADLINE_CAVEAT: Final[str] = (
+    "The headline figure is tokens per solved requirement, with a 95% "
+    "bootstrap interval over the runs in each bucket. A loop can be cheaper "
+    "by an order of magnitude at a pass rate no interval separates, so the "
+    "arms are ranked on what a solved requirement COST. The SPECIFICATION and "
+    "SURVIVAL curves say what was solved and where the work came from; "
+    "neither ranks the arms on what it cost."
+)
+
+#: Derived from the intervals, and the finding when it fires: two arms whose
+#: intervals overlap at a depth are two arms this recording cannot rank there,
+#: however far apart their point estimates sit.
+INDISTINGUISHABLE_ARMS_CAVEAT: Final[str] = (
+    "At depth {depths} the arms' 95% intervals on tokens per solved "
+    "requirement overlap, so this recording cannot rank them on efficiency "
+    "there: a gap between the point estimates at those depths sits inside the "
+    "spread the repetitions measured."
+)
+
+#: Fewer runs than this and no interval is reported: a bootstrap over two
+#: draws has four distinct resamples, and a percentile of those is a number
+#: shaped like an interval that describes nothing.
+MIN_CELLS_FOR_INTERVAL: Final[int] = 3
+
+#: Resamples per interval. Enough that the outer percentiles rest on fifty
+#: draws each rather than one. Seeded from the runs themselves, so a re-score
+#: of the same journal reproduces the interval to the digit.
+BOOTSTRAP_RESAMPLES: Final[int] = 2000
 
 #: What the held-out oracle buys, stated for the same reason.
 ORACLE_CAVEAT: Final[str] = (
@@ -852,6 +886,105 @@ class SurvivalPoint(BaseModel):
         return self.surviving_claims / self.delivered_claims
 
 
+class TokensPerSolvedPoint(BaseModel):
+    """One point on the headline curve: what a solved requirement cost.
+
+    A model of its own rather than a column on :class:`DepthPoint` because it
+    carries an INTERVAL, and an interval is what the other two curves lack:
+    a pooled fraction says nothing about whether a second sweep would land
+    near it. The ratio is pooled the way every other bucket figure is (all
+    tokens over all solved requirements), and the interval is a seeded
+    percentile bootstrap over the bucket's runs, so it widens exactly where
+    the repetitions disagreed.
+
+    Attributes:
+        depth: The depth this point bins, in levels, on the axis its two
+            sibling curves use.
+        arm: Which line the point belongs to.
+        tokens: What the runs in this bucket spent, summed.
+        solved: How many distinct specification requirements those runs'
+            merged trees satisfied, summed. The denominator, and it CAN empty:
+            a bucket that solved nothing has an infinite cost per solved
+            requirement, which is reported as an absent ratio rather than a
+            number.
+        cells: How many runs the bucket holds.
+        ci_low: The lower bound of the 95% bootstrap interval, or ``None``
+            when none is reported: too few runs (``MIN_CELLS_FOR_INTERVAL``),
+            or so many resamples solved nothing that even the lower bound is
+            unbounded.
+        ci_high: The upper bound, or ``None`` when the lower bound is absent
+            OR when the upper resamples solved nothing, in which case
+            ``unbounded_above`` says which.
+        unbounded_above: Whether the interval runs to infinity: some resample
+            of these runs solved nothing at all. A real finding rather than a
+            gap, because it says the bucket's cost per solved requirement has
+            no ceiling this recording can put on it.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    depth: int = Field(ge=1)
+    arm: Arm
+    tokens: int = Field(ge=0)
+    solved: int = Field(ge=0)
+    cells: int = Field(ge=1)
+    ci_low: float | None = Field(default=None, ge=0.0)
+    ci_high: float | None = Field(default=None, ge=0.0)
+    unbounded_above: bool = False
+
+    @model_validator(mode="after")
+    def _the_interval_is_one_of_four_shapes(self) -> Self:
+        """Reject an interval whose halves disagree about what it is.
+
+        Absent entirely, bounded both ends, bounded below and open above, or
+        open at both ends: each is a distinct claim, and a row carrying an
+        upper bound with no lower one, or an upper bound that also says it is
+        unbounded, is two of them at once.
+
+        Returns:
+            ``self`` when the shape is one of the four.
+
+        Raises:
+            ValueError: The halves contradict each other.
+        """
+        label = f"depth {self.depth} {self.arm.value}"
+        if self.ci_low is None and self.ci_high is not None:
+            msg = f"{label}: an upper bound with no lower bound"
+            raise ValueError(msg)
+        if self.ci_high is not None and self.unbounded_above:
+            msg = f"{label}: a bounded upper bound that also claims to be unbounded"
+            raise ValueError(msg)
+        open_top = self.ci_low is not None and self.ci_high is None
+        if open_top and not self.unbounded_above:
+            msg = f"{label}: an open upper bound that does not say it is unbounded"
+            raise ValueError(msg)
+        if (
+            self.ci_low is not None
+            and self.ci_high is not None
+            and self.ci_low > self.ci_high
+        ):
+            msg = f"{label}: interval {self.ci_low}..{self.ci_high} is reversed"
+            raise ValueError(msg)
+        return self
+
+    # Serialised for the reason its siblings' ratios are: the artifact
+    # carries the operands, and a reader recomputing the empty case would
+    # disagree with the next reader about what a bucket that solved nothing
+    # costs per solved requirement.
+    @computed_field
+    @property
+    def tokens_per_solved(self) -> float | None:
+        """What one solved requirement cost in this bucket.
+
+        Returns:
+            The pooled ratio, or ``None`` when nothing was solved: the cost
+            is unbounded there, and no finite number says that.
+        """
+        if self.solved == 0:
+            return None
+        return self.tokens / self.solved
+
+
 class DepthSpread(BaseModel):
     """How much one bucket's repetitions disagreed with each other.
 
@@ -1173,6 +1306,14 @@ class RecursionDepthReport(BaseModel):
             draw from a real drop, which is what recording a cap more than once
             is for.
         spread_by_depth_cap: The same, binned on the cap.
+        tokens_per_solved_by_achieved_depth: The HEADLINE curve: what one
+            solved requirement cost in tokens, per bucket, with a bootstrap
+            interval over the bucket's runs. On the axis ``by_achieved_depth``
+            uses. The two fraction curves say what was solved and where the
+            work came from; this one is what ranks the arms, because a loop
+            can be cheaper by an order of magnitude at a pass rate no interval
+            separates.
+        tokens_per_solved_by_depth_cap: The same, binned on the cap.
         achieved_depth_histogram: How many runs reached each depth, per cap.
             Without it a flat right half of the primary curve is unreadable.
         unjudged_by_depth: How many measured cells asked a gate for a verdict
@@ -1197,6 +1338,8 @@ class RecursionDepthReport(BaseModel):
     survival_by_depth_cap: tuple[SurvivalPoint, ...] = ()
     spread_by_achieved_depth: tuple[DepthSpread, ...] = ()
     spread_by_depth_cap: tuple[DepthSpread, ...] = ()
+    tokens_per_solved_by_achieved_depth: tuple[TokensPerSolvedPoint, ...] = ()
+    tokens_per_solved_by_depth_cap: tuple[TokensPerSolvedPoint, ...] = ()
     achieved_depth_histogram: dict[str, int] = Field(default_factory=dict)
     unjudged_by_depth: dict[str, int] = Field(default_factory=dict)
     caveats: tuple[str, ...] = ()
@@ -1260,8 +1403,12 @@ class RecursionDepthReport(BaseModel):
 
 
 __all__ = [
+    "BOOTSTRAP_RESAMPLES",
+    "HEADLINE_CAVEAT",
+    "INDISTINGUISHABLE_ARMS_CAVEAT",
     "LEAF",
     "MERGE",
+    "MIN_CELLS_FOR_INTERVAL",
     "PLAN",
     "PLAN_UNIT_SUFFIX",
     "RECURSION_DEPTH_SCHEMA_VERSION",
@@ -1275,6 +1422,7 @@ __all__ = [
     "RecursionDepthReport",
     "SpendSource",
     "SurvivalPoint",
+    "TokensPerSolvedPoint",
     "UnitKind",
     "UnitRecord",
     "sum_costs",

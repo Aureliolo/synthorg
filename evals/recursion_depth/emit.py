@@ -20,10 +20,17 @@ from evals.errors import (
     RecursionDepthNoCellsMeasuredError,
 )
 from evals.recursion_depth.chart import render_chart
+from evals.recursion_depth.efficiency import (
+    indistinguishable_depths,
+    tokens_per_solved_by_achieved_depth,
+    tokens_per_solved_by_depth_cap,
+)
 from evals.recursion_depth.journal import cell_key
 from evals.recursion_depth.manifest import Arm, ModelPair
 from evals.recursion_depth.models import (
+    INDISTINGUISHABLE_ARMS_CAVEAT,
     MERGE,
+    MIN_CELLS_FOR_INTERVAL,
     UNATTRIBUTED_LEAVES_CAVEAT,
     UNPRICED_COST_CAVEAT,
     UNRESOLVABLE_CLAIM_CELLS_CAVEAT,
@@ -36,6 +43,7 @@ from evals.recursion_depth.models import (
     RecursionDepthReport,
     SpendSource,
     SurvivalPoint,
+    TokensPerSolvedPoint,
     UnitRecord,
     sum_costs,
 )
@@ -108,7 +116,12 @@ def derived_caveats(
         for cell in cells
         if (cell.unavailable_reason or "").startswith(_CLAIM_UNRESOLVABLE)
     )
+    overlapping = indistinguishable_depths(
+        tokens_per_solved_by_achieved_depth(_judged(cells))
+    )
+    depths = ", ".join(str(depth) for depth in overlapping)
     return [
+        *([INDISTINGUISHABLE_ARMS_CAVEAT.format(depths=depths)] if overlapping else []),
         *([UNATTRIBUTED_LEAVES_CAVEAT.format(buckets=blank)] if blank else []),
         *([UNRESOLVED_CLAIMS_CAVEAT.format(dropped=dropped)] if dropped else []),
         *([UNRESOLVABLE_CLAIM_CELLS_CAVEAT.format(cells=stopped)] if stopped else []),
@@ -164,13 +177,14 @@ def assemble_report(
         raise RecursionDepthNoCellsMeasuredError(msg)
     required = provenance.requirement_count
     # A cell whose gate rendered no verdict is a missing observation, not a
-    # gated one: excluded from the satisfaction curves alone. The oracle
+    # gated one: excluded from the satisfaction curves alone, and from the
+    # cost-per-solved curve that divides by what they satisfied. The oracle
     # grades survival and spread too, so exclusion there would be equally
     # defensible; it is scoped narrower because both are already thin lines
     # and thinning them further costs more than it buys. unjudged_by_depth
     # is a first-class field precisely so either curve can be recomputed
     # without it if that trade is ever revisited.
-    judged = tuple(cell for cell in measured if not cell.is_unjudged)
+    judged = _judged(measured)
     return RecursionDepthReport(
         provenance=provenance,
         cells=tuple(cells),
@@ -182,9 +196,28 @@ def assemble_report(
             measured, requirement_count=required
         ),
         spread_by_depth_cap=spread_by_depth_cap(measured, requirement_count=required),
+        tokens_per_solved_by_achieved_depth=tokens_per_solved_by_achieved_depth(judged),
+        tokens_per_solved_by_depth_cap=tokens_per_solved_by_depth_cap(judged),
         achieved_depth_histogram=achieved_depth_histogram(measured),
         unjudged_by_depth=unjudged_by_achieved_depth(measured),
         caveats=tuple(caveats),
+    )
+
+
+def _judged(cells: Sequence[CellRecord]) -> tuple[CellRecord, ...]:
+    """The measured cells whose gate rendered a verdict.
+
+    The one owner of that filter, because two curves divide by what a cell
+    satisfied and a second spelling of "judged" is one that can admit a cell
+    the other excludes.
+
+    Returns:
+        The cells, in the order given.
+    """
+    return tuple(
+        cell
+        for cell in cells
+        if cell.achieved_depth is not None and not cell.is_unjudged
     )
 
 
@@ -212,6 +245,7 @@ def write_report(report: RecursionDepthReport, out_dir: Path) -> tuple[Path, ...
             caption_lines=_caption(report),
             by_cap=report.by_depth_cap,
             survival=report.survival_by_achieved_depth,
+            tokens_per_solved=report.tokens_per_solved_by_achieved_depth,
         ),
         encoding="utf-8",
         newline="",
@@ -315,12 +349,34 @@ def _provenance_lines(report: RecursionDepthReport) -> list[str]:
 
 
 def _curve_sections(report: RecursionDepthReport) -> list[str]:
-    """Render the two curves, four tables, in the order they are read.
+    """Render the three curves, six tables, in the order they are read.
+
+    The headline first: it is the one that ranks the arms, and a reader who
+    stops after the first table should stop holding the figure that does.
 
     Returns:
         The curve sections.
     """
     return [
+        "## Tokens per solved requirement by depth reached (headline)",
+        "",
+        "What one solved requirement cost, pooled over each bucket's runs, with",
+        "a 95% percentile bootstrap interval over those runs. This is the axis",
+        "the arms are ranked on: a loop can be cheaper by an order of magnitude",
+        "at a pass rate no interval separates, so the two fraction curves below",
+        "say what was solved and this says what it cost. Two arms whose",
+        "intervals overlap at a depth cannot be ranked there, and the caveats",
+        f"say so. A bucket under {MIN_CELLS_FOR_INTERVAL} runs reports no",
+        "interval; one that solved nothing has no finite cost per solved",
+        "requirement and reads `n/a`; an interval open above means some",
+        "resample of the bucket's runs solved nothing at all.",
+        "",
+        *_efficiency_table(report.tokens_per_solved_by_achieved_depth),
+        "",
+        "## Tokens per solved requirement by depth cap",
+        "",
+        *_efficiency_table(report.tokens_per_solved_by_depth_cap),
+        "",
         "## Specification satisfied by depth reached",
         "",
         "What share of the specification the merged tree satisfies. Binned on",
@@ -459,6 +515,40 @@ def _curve_table(points: tuple[DepthPoint, ...]) -> list[str]:
             f"| {_cost_cell(point.cost)} |"
         )
     return rows
+
+
+def _efficiency_table(points: tuple[TokensPerSolvedPoint, ...]) -> list[str]:
+    """Render one cost-per-solved curve as a Markdown table.
+
+    Returns:
+        The table lines.
+    """
+    rows = [
+        "| Depth | Arm | Tokens per solved | 95% interval | Tokens | Solved | Runs |",
+        "|---:|---|---:|---|---:|---:|---:|",
+    ]
+    for point in points:
+        ratio = point.tokens_per_solved
+        rendered = "n/a" if ratio is None else f"{ratio:,.0f}"
+        rows.append(
+            f"| {point.depth} | {point.arm.value} | {rendered} "
+            f"| {_interval_cell(point)} | {point.tokens} | {point.solved} "
+            f"| {point.cells} |"
+        )
+    return rows
+
+
+def _interval_cell(point: TokensPerSolvedPoint) -> str:
+    """Render one point's interval in whichever of its four shapes it has.
+
+    Returns:
+        The rendered interval.
+    """
+    if point.ci_low is None:
+        return "unbounded" if point.unbounded_above else "n/a"
+    if point.ci_high is None:
+        return f"{point.ci_low:,.0f}.. (open above)"
+    return f"{point.ci_low:,.0f}..{point.ci_high:,.0f}"
 
 
 def _survival_table(points: tuple[SurvivalPoint, ...]) -> list[str]:

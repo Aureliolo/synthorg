@@ -86,6 +86,7 @@ from evals.recursion_depth.merge import (
 from evals.recursion_depth.models import (
     CEILING_CAVEAT,
     CONTRACT,
+    HEADLINE_CAVEAT,
     LEAF,
     MERGE,
     METRIC_CAVEAT,
@@ -555,7 +556,12 @@ async def run_sweep(
     # Seeded, not accumulated: these three hold for every sweep this harness
     # can run, and a report that states them only when something went wrong
     # states them in exactly the runs nobody reads closely.
-    caveats: list[str] = [METRIC_CAVEAT, SIZING_CAVEAT, ORACLE_CAVEAT]
+    caveats: list[str] = [
+        METRIC_CAVEAT,
+        HEADLINE_CAVEAT,
+        SIZING_CAVEAT,
+        ORACLE_CAVEAT,
+    ]
     independence = context.manifest.caveat()
     if independence is not None:
         caveats.append(independence)

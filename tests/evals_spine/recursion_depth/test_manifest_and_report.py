@@ -31,6 +31,7 @@ from evals.recursion_depth.models import (
     RecursionDepthReport,
     SpendSource,
     SurvivalPoint,
+    TokensPerSolvedPoint,
     UnitRecord,
 )
 from evals.recursion_depth.spend_repair import SPEND_REPAIRED_CAVEAT
@@ -410,9 +411,9 @@ def _report(*, cells: tuple[CellRecord, ...]) -> RecursionDepthReport:
                 arm=Arm.GATED,
                 required=4,
                 satisfied=3,
-                # Set, not defaulted: `_cost_series` skips a point holding no
-                # runs, so a fixture leaving this at 0 renders no cost panel
-                # and every assertion about that panel passes on an empty one.
+                # Set, not defaulted: a point holding no runs has nothing to
+                # render, so a fixture leaving this at 0 asserts every claim
+                # about the spend columns against an empty table.
                 cells=1,
                 cost=1.5,
                 attempts=6,
@@ -447,6 +448,23 @@ def _report(*, cells: tuple[CellRecord, ...]) -> RecursionDepthReport:
         survival_by_depth_cap=(
             SurvivalPoint(
                 depth=2, arm=Arm.GATED, delivered_claims=4, surviving_claims=3, cells=1
+            ),
+        ),
+        # Set so the headline panel draws a line and a whisker: one arm
+        # carries an interval and the other none, which is the pair of shapes
+        # the renderer has to tell apart.
+        tokens_per_solved_by_achieved_depth=(
+            TokensPerSolvedPoint(
+                depth=2,
+                arm=Arm.GATED,
+                tokens=6000,
+                solved=3,
+                cells=3,
+                ci_low=1500.0,
+                ci_high=2500.0,
+            ),
+            TokensPerSolvedPoint(
+                depth=2, arm=Arm.UNGATED, tokens=6000, solved=1, cells=1
             ),
         ),
         # The key shape `achieved_depth_histogram` actually emits, arm

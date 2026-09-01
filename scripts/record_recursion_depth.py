@@ -74,6 +74,7 @@ from evals.recursion_depth.manifest import (
     require_repetition_floor,
 )
 from evals.recursion_depth.models import (
+    HEADLINE_CAVEAT,
     METRIC_CAVEAT,
     ORACLE_CAVEAT,
     RUN_STATE_CAVEATS,
@@ -1721,6 +1722,7 @@ def _rescore(out_dir: Path, *, repair_from: Path | None) -> int:
         provenance, cells = _repaired(out_dir, provenance, cells, log=repair_from)
     caveats = [
         METRIC_CAVEAT,
+        HEADLINE_CAVEAT,
         SIZING_CAVEAT,
         ORACLE_CAVEAT,
         *derived_caveats(cells, spend_source=provenance.spend_source),

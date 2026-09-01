@@ -10,8 +10,8 @@ The production implementation is the shipped owner-run planning session over
 the shipped :class:`DecompositionService`, so what recursion does to a plan here
 is what the product's recursion does to a plan. Its spend is booked to the run
 like any other session, because a deep sweep pays for a planning session at
-every node and a cost panel that omitted them would understate the deep end
-exactly where the question is.
+every node and a tokens-per-solved figure that omitted them would understate
+the deep end exactly where the question is.
 """
 
 import asyncio
@@ -220,10 +220,10 @@ class AgentSessionPlanner:
                     # planning completion goes out through the hosted gateway,
                     # which records it, and the strategy's own cost scope
                     # records it again, so a shared ledger counts every planning
-                    # call twice and the cost panel overstates exactly the arm
-                    # that plans the most. When no gateway is hosted the two are
-                    # the same object by construction, and the read below is the
-                    # only one either way.
+                    # call twice and the tokens-per-solved curve overstates
+                    # exactly the arm that plans the most. When no gateway is
+                    # hosted the two are the same object by construction, and
+                    # the read below is the only one either way.
                     service=self._service(provider, fallback),
                     task=task,
                     depth_cap=depth_cap,

@@ -478,8 +478,8 @@ def session_spend(
     """Add up one session's records, counting each CALL exactly once.
 
     The single owner of that arithmetic, because two readers of one ledger is
-    how a figure comes to mean different things in the cost panel and in the
-    spend ceiling. A live run journalled a planning unit at twice what it
+    how a figure comes to mean different things on the tokens-per-solved curve
+    and in the spend ceiling. A live run journalled a planning unit at twice what it
     spent.
 
     A hosted gateway is the recorder of RECORD: every call a sweep session
