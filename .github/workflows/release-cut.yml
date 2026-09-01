@@ -47,12 +47,17 @@ jobs:
     # Forks don't have those env-scoped secrets; skip cleanly.
     if: ${{ !github.event.repository.fork }}
     runs-on: ubuntu-24.04
-    # Bound total wall time. The retry-wrapped gh calls below (LICENSE
-    # read, PR-body read, head-SHA read, and the four required-status
-    # POSTs) each carry the gh_with_retry.sh ladder (~1m45s worst case);
-    # a black-holed connection is not bounded by the ladder itself. Cap
-    # the job so a stuck API call cannot hold a runner up to the 6h
-    # default and block the cancel-in-progress:false concurrency group.
+    # Bound total wall time. Every retry-wrapped gh call below carries the
+    # gh_with_retry.sh ladder (~1m45s worst case each), and a black-holed
+    # connection is not bounded by the ladder itself. Cap the job so a stuck
+    # API call cannot hold a runner up to the 6h default and block the
+    # cancel-in-progress:false concurrency group.
+    #
+    # This is a CEILING on a stuck job, not a budget every ladder fits
+    # inside: enough of them exhausting at once exceeds it, and being killed
+    # at 15 minutes is the wanted outcome when the API is out that long. The
+    # call sites are deliberately not enumerated here, because a list in a
+    # comment cannot be held to the job below it.
     timeout-minutes: 15
     environment: release
     permissions:
@@ -112,12 +117,82 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
 
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+      # Retry-wrapped: with `force-tag-creation`, release-please mints the
+      # tag and creates the release in two separate API calls, so a blip on
+      # the second leaves a live tag with no release behind it. Rationale and
+      # the output caveat live in the action's own description.
+      - uses: ./.github/actions/release-please
         id: release
         with:
           token: ${{ steps.setup.outputs.token }}
           config-file: .github/release-please-config.json
           manifest-file: .github/.release-please-manifest.json
+
+      # The invariant the retry exists to protect, asserted directly: a tag
+      # this repository releases under must have a release behind it. Runs on
+      # every push to main, so it is level-triggered rather than tied to the
+      # run that happened to cut the release, and `always()` because the
+      # state worth naming is exactly the one release-please leaves when it
+      # fails partway.
+      - name: Assert the released tag has a release
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # A shorter ladder than the helper's default, because this step is
+          # level-triggered (the next push to main re-asks the same question)
+          # and its exhaustion path already passes with a warning. Two
+          # attempts still ride out a single blip while keeping the step's
+          # contribution to the job's wall-time ceiling near zero.
+          GH_RETRY_ATTEMPTS: "2"
+        run: |
+          set -euo pipefail
+          # The manifest on the merge commit names the version being cut, so
+          # on an ordinary push it names the last one released and both
+          # halves are expected to exist.
+          version=$(jq -re '."."' .github/.release-please-manifest.json)
+          tag="v${version}"
+
+          # `matching-refs` answers 200 with `[]` for an absent tag where
+          # `git/ref/tags` answers 404, so both probes below always succeed
+          # on a healthy API and a transient blip cannot be misread as an
+          # absence. The prefix match is deliberately widened by an exact
+          # comparison: `v0.9.4` also matches `v0.9.40`.
+          rc=0
+          refs=$(.github/scripts/gh_with_retry.sh "tag ref lookup for $tag" \
+            gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$tag" \
+            --jq '.[].ref') || rc=$?
+          # A read that never landed cannot decide the invariant either way.
+          # EX_TEMPFAIL (75) is the one outcome this may pass on, because the
+          # next push re-asks the same question; every other failure is real.
+          if [ "$rc" -eq 75 ]; then
+            echo "::warning::tag/release assertion skipped: tag ref lookup exhausted its retries"
+            exit 0
+          fi
+          [ "$rc" -eq 0 ] || exit "$rc"
+          if ! printf '%s\n' "$refs" | grep -qxF "refs/tags/$tag"; then
+            echo "No tag $tag yet; nothing to assert."
+            exit 0
+          fi
+
+          # Releases are created as drafts here, and `releases/tags/{tag}`
+          # does not serve drafts, so the release has to be found by scanning
+          # the list.
+          rc=0
+          tags=$(.github/scripts/gh_with_retry.sh "release lookup for $tag" \
+            gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq '.[].tag_name') || rc=$?
+          if [ "$rc" -eq 75 ]; then
+            echo "::warning::tag/release assertion skipped: release lookup exhausted its retries"
+            exit 0
+          fi
+          [ "$rc" -eq 0 ] || exit "$rc"
+          if printf '%s\n' "$tags" | grep -qxF "$tag"; then
+            echo "Tag $tag has a release."
+            exit 0
+          fi
+
+          echo "::error::Half-released: tag $tag exists but no release (draft or published) is attached to it. The tag has already triggered the tag-driven image and CLI workflows, which have no draft to upload assets to, and Release - Finalise has nothing to publish. Re-run this workflow to let release-please finish the release it started."
+          exit 1
 
       # When Release Please creates/updates a release PR, update the BSL
       # Change Date to 3 years from today. The date update ships as part
@@ -833,13 +908,17 @@ jobs:
           Run: ${RUN_URL}
 
           Likely cause: release-please action failure (manifest drift,
-          token mint failure, BSL-date generation), or the post-CI-Pass
+          token mint failure, BSL-date generation), a half-released tag
+          (the tag ref minted but the release call did not land, which the
+          assertion step in this job names explicitly), or the post-CI-Pass
           status spoof failed. A failed Highlights generation does NOT
           reach here: it is best-effort and carries its own tracker.
 
           When this stays red, no new release PR is opened on main;
           dev tags continue to mint via release-dev.yml but no stable
-          release ever lands.
+          release ever lands. A half-released tag is worse than that: the
+          tag is live and has already triggered the image and CLI builds,
+          which have no draft release to upload their assets to.
           EOF
             echo 'TRACKING_ISSUE_BODY_EOF'
           } >> "$GITHUB_OUTPUT"
