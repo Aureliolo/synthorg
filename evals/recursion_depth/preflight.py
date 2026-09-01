@@ -19,12 +19,14 @@ in the matrix, so the curve's flattest point would carry the load time.
 """
 
 import asyncio
+from collections.abc import Sequence
 from typing import Final
 
 import aiodocker
 
 from evals.errors import (
     HarnessDockerUnavailableError,
+    HarnessImageUnresolvedError,
     HarnessProviderMissingError,
 )
 from evals.recursion_depth.manifest import ModelPair, RecursionDepthManifest
@@ -251,4 +253,50 @@ async def _check_docker() -> None:
         raise HarnessDockerUnavailableError(msg) from exc
 
 
-__all__ = ["run_preflight"]
+async def check_images_resolve(references: Sequence[str]) -> None:
+    """Refuse to spend when a declared image is not on the daemon.
+
+    The daemon already answers this question at boot and the answer was
+    LOGGED rather than acted on, on the reasoning that a recording naming an
+    absent image "fails on its first container, which is a better place to
+    learn it". It does not. A cell plans and writes its contract through the
+    gateway, touching no container at all, so an unresolvable image surfaces
+    only when the first GRADING runs. Measured: two cells each booted clean,
+    ran a 74-turn contract session, and died at
+    ``the sweep measured no cells`` having spent real money on a run that could
+    never have been graded. The reference was a published TAG that upstream no
+    longer carries, which a digest would have made obvious and a tag never
+    does.
+
+    Asked here, before the host boots, because this is the last point at which
+    refusing costs nothing.
+
+    Args:
+        references: Image references the run will need, in the order a reader
+            should be told about them.
+
+    Raises:
+        HarnessImageUnresolvedError: The daemon holds no image under one of
+            them.
+    """
+    missing: list[str] = []
+    async with aiodocker.Docker() as client:
+        for reference in references:
+            try:
+                await client.images.inspect(reference)
+            except aiodocker.DockerError, OSError:
+                missing.append(reference)
+    if not missing:
+        return
+    msg = (
+        f"the Docker daemon holds no image under {', '.join(missing)}, and a "
+        f"cell that cannot open a container cannot be graded, so every unit "
+        f"would be recorded unavailable AFTER its sessions had been paid for. "
+        f"Build the image from this tree (`make sandbox-image`) and pass "
+        f"--sandbox-image, or pass a digest that exists: a published tag can "
+        f"stop resolving without anything in this repository changing"
+    )
+    raise HarnessImageUnresolvedError(msg)
+
+
+__all__ = ["check_images_resolve", "run_preflight"]

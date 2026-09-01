@@ -123,11 +123,35 @@ class SessionFlow:
         name: The session's transcript name, which is its unit id.
         turns: Every exchange, in order.
         unreadable: Transcript lines that could not be parsed.
+        reasoning: What each turn's request carried in ``reasoning_effort``,
+            in order, with ``None`` where the key was absent. Read off the
+            REQUEST because a parameter that is accepted and dropped looks
+            exactly like one that works: this stack silently strips it for a
+            model its routing table has no entry for, and it did so here for
+            every executor session of the first recorded corpus.
     """
 
     name: str
     turns: list[Turn]
     unreadable: int
+    reasoning: list[str | None] = field(default_factory=list)
+
+    @property
+    def kind(self) -> str:
+        """Which phase of the loop this session is.
+
+        Returns:
+            The phase name, derived from the unit key the recorder wrote.
+        """
+        for marker, phase in (
+            ("-review", "review"),
+            ("-merge", "merge"),
+            ("-contract", "contract"),
+            ("-plan", "plan"),
+        ):
+            if marker in self.name:
+                return phase
+        return "leaf"
 
     @property
     def calls(self) -> Counter[str]:
@@ -247,6 +271,9 @@ def read_session(path: Path) -> SessionFlow:
     """
     turns: list[Turn] = []
     unreadable = 0
+    # NOT `reasoning`: the loop below unpacks a reasoning CHARACTER COUNT into
+    # that name, and the collision silently turned this list into an int.
+    efforts: list[str | None] = []
     for index, line in enumerate(
         path.read_text(encoding="utf-8", errors="replace").splitlines()
     ):
@@ -256,6 +283,8 @@ def read_session(path: Path) -> SessionFlow:
             unreadable += 1
             continue
         request = record.get("request") or {}
+        sent = request.get("reasoning_effort")
+        efforts.append(str(sent) if sent is not None else None)
         reasoning, content, called = _stream_totals(str(record.get("response") or ""))
         turns.append(
             Turn(
@@ -270,7 +299,40 @@ def read_session(path: Path) -> SessionFlow:
                 content=content,
             )
         )
-    return SessionFlow(name=path.stem, turns=turns, unreadable=unreadable)
+    return SessionFlow(
+        name=path.stem, turns=turns, unreadable=unreadable, reasoning=efforts
+    )
+
+
+def render_wire(runs: dict[str, list[SessionFlow]]) -> str:
+    """What each phase actually SENT for ``reasoning_effort``, per recording.
+
+    The check that has to happen before an arm varying reasoning by phase is
+    paid for. A schedule that never reaches the provider produces a cell that
+    differs from its control in nothing at all, and reads as the treatment
+    having no effect.
+
+    Returns:
+        One line per recording and phase.
+    """
+    lines = ["what each phase sent for reasoning_effort (read off the request):"]
+    for run, flows in sorted(runs.items()):
+        seen: Counter[str] = Counter()
+        for flow in flows:
+            for sent in flow.reasoning:
+                seen[f"{flow.kind}={sent or 'ABSENT'}"] += 1
+        if not seen:
+            continue
+        summary = "  ".join(
+            f"{label} x{count}" for label, count in sorted(seen.items())
+        )
+        lines.append(f"  {run:22} {summary}")
+    lines.append("")
+    lines.append(
+        "ABSENT is a REQUEST on this family, not a gap: an omitted field runs "
+        "at the vendor default, which here is its most expensive tier."
+    )
+    return "\n".join(lines)
 
 
 def render(flows: list[SessionFlow]) -> str:
@@ -495,6 +557,17 @@ def main(argv: list[str] | None = None) -> int:
         "--session", default=None, help="Only sessions whose name contains this."
     )
     parser.add_argument(
+        "--kind",
+        default=None,
+        choices=("plan", "contract", "leaf", "merge", "review"),
+        help=(
+            "Only sessions of this PHASE. Not the same as --session: a review "
+            "transcript is named after the merge it judges, so a substring "
+            "filter on 'merge' silently includes every reviewer and reports "
+            "their calls as the merge's own."
+        ),
+    )
+    parser.add_argument(
         "--calls", action="store_true", help="Also tally every tool call by name."
     )
     parser.add_argument(
@@ -509,13 +582,19 @@ def main(argv: list[str] | None = None) -> int:
         metavar="N",
         help="Also tally the top N programs the shell calls ran.",
     )
+    parser.add_argument(
+        "--wire",
+        action="store_true",
+        help="Also report what each phase SENT for reasoning_effort.",
+    )
     args = parser.parse_args(argv)
 
     runs = {
         run.name: [
-            read_session(path)
+            flow
             for path in sorted((run / TRANSCRIPTS).glob("*.jsonl"))
             if args.session is None or args.session in path.stem
+            if (flow := read_session(path)).kind == args.kind or args.kind is None
         ]
         for run in sorted(args.work_root.glob("run-*"))
         if args.run is None or args.run in run.name
@@ -528,6 +607,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.shell:
         print()
         print(render_shell(flows, top=args.shell))
+    if args.wire:
+        print()
+        print(render_wire(runs))
     return 0
 
 

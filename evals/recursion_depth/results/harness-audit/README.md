@@ -91,11 +91,30 @@ We already have the phase boundaries as first-class objects: `Role.CONTRACT`,
 `session_limits_for(manifest, role, ...)`. Reasoning effort is currently the
 one dial that does NOT vary by role.
 
-**Action**: make `reasoning_effort` per-role, and add a sandwich arm (high on
-plan and contract, low on leaves, high on merge and review). Caveat that
-transfers with it: LangChain state plainly that their harness gains did not
-carry to a different model untuned, so the ordering is a hypothesis to test
-here, not a result to import.
+**Done**, and verified on the wire before anything was paid for. Units now
+build on a SECOND POOL of agents bound at their own depth rather than on a
+re-pointed binding, because an agent is a fixed pair and work needing a
+different one goes to a different agent. `sweep-sandwich-contract` is the arm.
+
+The wire check mattered and is now permanent (`report_session_flow.py --wire`).
+This stack strips `reasoning_effort` for a model its routing table has no entry
+for, so a schedule that never reaches the provider would produce a cell
+identical to its control and read as the treatment doing nothing. Measured
+across every recording that still has its transcripts:
+
+| recording | what each phase sent |
+|---|---|
+| pinned `high` | `contract=high`, `plan=high` |
+| asked to omit | `contract=ABSENT`, `plan=ABSENT`, `leaf=ABSENT` |
+| every recording | `review=high` |
+
+So the parameter does reach the provider from an executor session once the
+manifest pins one. `ABSENT` is a request rather than a gap on this family: an
+omitted field runs at the vendor default, which is its most expensive tier.
+
+Caveat that transfers with the technique: LangChain state plainly that their
+harness gains did not carry to a different model untuned, so the ORDERING is a
+hypothesis to test here, not a result to import.
 
 ## Gap 2: no context management at all
 
@@ -188,9 +207,14 @@ points across 4 scaffolds; Haiku 4.5 spanned 22 across 2). That is the thesis of
 this whole exercise, independently measured, and it is the reason to spend the
 repetitions rather than the reason to skip them.
 
-**Action**: raise repetitions on the arms that survive the first pass, rather
-than widening the matrix. A third arm at n=2 buys less than a second arm at
-n=5.
+**Partly acted on**: the matrix no longer spends two cells re-recording
+"default reasoning, no contract". That arm already has FOUR samples (three
+smoke cells plus `control-a`), so a fifth bought a control we are holding. Its
+cells went to the sandwich instead.
+
+**Still open**: raise repetitions on the arms that survive the first pass
+rather than widening the matrix further. A third arm at n=2 buys less than a
+second arm at n=5.
 
 ## Two corrections to the article that sent us here
 

@@ -143,6 +143,21 @@ class TestTheTreatmentIsPinnedIntoTheIdentity:
 
         assert matrix_identity(once) != matrix_identity(_provenance())
 
+    def test_the_depth_units_built_at_is_a_different_matrix(self) -> None:
+        """The schedule IS the treatment, so it cannot ride outside the id.
+
+        Two cells whose leaves reasoned at different depths are two arms of the
+        only published harness ablation with numbers behind it. A header that
+        cannot tell them apart would let a resume splice them.
+        """
+        shallow = _provenance(
+            loop=LoopTreatments(
+                contract_stage=True, merge_attempts=3, leaf_reasoning_effort="low"
+            )
+        )
+
+        assert matrix_identity(shallow) != matrix_identity(_provenance())
+
     def test_the_same_treatment_is_the_same_matrix(self) -> None:
         # The complement, or the ones above would pass on any two stamps.
         assert matrix_identity(_provenance()) == matrix_identity(_provenance())

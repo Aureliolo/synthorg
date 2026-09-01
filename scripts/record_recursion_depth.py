@@ -79,7 +79,7 @@ from evals.recursion_depth.models import (
     RecursionDepthReport,
 )
 from evals.recursion_depth.planner import AgentSessionPlanner
-from evals.recursion_depth.preflight import run_preflight
+from evals.recursion_depth.preflight import check_images_resolve, run_preflight
 from evals.recursion_depth.provenance import capture_provenance, provider_is_priced
 from evals.recursion_depth.runner import (
     SessionBudget,
@@ -584,6 +584,14 @@ async def _record(
                 work_root=run_work_root,
                 company_config=company_config,
             )
+            # After the host resolved it and before the first session is paid
+            # for. It cannot be asked earlier: unless `--sandbox-image` names
+            # one, the reference comes from the running instance's own settings
+            # resolver, which needs a booted app. It must not be asked later:
+            # planning and the contract stage open no container, so an absent
+            # image first shows up at GRADING, with every session already
+            # spent and every unit recorded unavailable.
+            await check_images_resolve((host.sandbox_image,))
             _log_record_start(args, manifest=manifest, host=host)
             report = await _sweep_under(
                 context,
@@ -979,6 +987,20 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--leaf-reasoning-effort",
+        default=None,
+        choices=(*(member.value for member in ReasoningEffort), REASONING_UNSET),
+        help=(
+            "Reasoning depth for the agents that BUILD units, leaving planning, "
+            "the contract and assembly at the executor's own. The one published "
+            "harness ablation with numbers behind it puts the win in the "
+            "SCHEDULE rather than the level: reasoning deepest throughout scored "
+            "WORSE than reasoning moderately throughout, and reasoning deeply "
+            "while planning and verifying but moderately while building beat "
+            "both. Set this BELOW the executor's depth to buy that shape."
+        ),
+    )
+    parser.add_argument(
         "--merge-attempts",
         type=_positive_int,
         default=None,
@@ -1303,6 +1325,7 @@ def narrow(
     executor: PairOverride | None = None,
     contract_stage: bool | None = None,
     merge_attempts: int | None = None,
+    leaf_reasoning_effort: str | None = None,
 ) -> RecursionDepthManifest:
     """Narrow *manifest* to what this run records, and what it may spend.
 
@@ -1334,6 +1357,13 @@ def narrow(
         merge_attempts: How many attempts each merge gets, or ``None`` to keep
             the manifest's own. Equal across arms whatever it is set to, which
             is the property that makes the arms comparable at all.
+        leaf_reasoning_effort: Depth the agents that BUILD units are bound at,
+            or ``None`` to keep the manifest's own. ``REASONING_UNSET`` asks
+            for them to build at the executor's own depth, which is what every
+            recording before this flag existed did. A TREATMENT rather than a
+            schedule lever, so it reaches the journal identity: the published
+            ablation puts the win in which phases reason deeply, not in how
+            deeply any of them does.
         contract_stage: Whether to run the contract stage, or ``None`` to keep
             the manifest's own. A per-run lever for the same reason sampling
             is one, and more so: this is the TREATMENT, so a cell measuring it
@@ -1359,6 +1389,7 @@ def narrow(
         and not reasoned
         and contract_stage is None
         and merge_attempts is None
+        and leaf_reasoning_effort is None
     ):
         return manifest
     # Each helper answers only the FIELDS it was asked to change, and they are
@@ -1375,6 +1406,13 @@ def narrow(
         override["contract_stage"] = contract_stage
     if merge_attempts is not None:
         override["merge_attempts"] = merge_attempts
+    if leaf_reasoning_effort is not None:
+        # Same three-state reading as the executor's own dial: `none` asks for
+        # units to build at whatever the pair already carries, which is what
+        # every recording before this flag existed did.
+        override["leaf_reasoning_effort"] = (
+            None if leaf_reasoning_effort == REASONING_UNSET else leaf_reasoning_effort
+        )
     if max_sessions is not None:
         override["max_sessions"] = max_sessions
     if counts is not None:
@@ -1586,6 +1624,7 @@ def main(argv: list[str] | None = None) -> int:
         ),
         contract_stage=args.contract_stage,
         merge_attempts=args.merge_attempts,
+        leaf_reasoning_effort=args.leaf_reasoning_effort,
     )
     spec = load_spec_brief(Path(manifest.spec_dir))
     company_config = load_config(args.company_config)

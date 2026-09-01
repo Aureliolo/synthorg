@@ -31,7 +31,7 @@ from evals.recursion_depth.tree import SpecBrief, load_spec_brief
 from synthorg.config.model_metadata import ModelMetadata
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.config.schema import RootConfig
-from synthorg.core.completion_enums import REASONING_UNSET
+from synthorg.core.completion_enums import REASONING_UNSET, ReasoningEffort
 from synthorg.core.types import NotBlankStr
 from synthorg.providers.enums import AuthType
 from tests._shared import mock_of
@@ -535,6 +535,45 @@ class TestSamplingIsStatedBeforeAnythingIsSpent:
 
         assert narrow(shipped, None, None, None).executor == shipped.executor
 
+    def test_units_can_be_bound_below_the_pair_that_plans_and_assembles(
+        self,
+    ) -> None:
+        """The sandwich: deep to plan and assemble, shallow to build.
+
+        The only published harness ablation with numbers behind it reports
+        reasoning deeply everywhere and reasoning moderately everywhere as the
+        two arms that LOSE, so a matrix that can only move one global tier
+        cannot express the arm that won.
+        """
+        sandwiched = narrow(
+            load_manifest(_MANIFEST),
+            None,
+            None,
+            None,
+            leaf_reasoning_effort="low",
+        )
+
+        assert sandwiched.leaf_reasoning_effort is ReasoningEffort.LOW
+        # The outer phases must NOT move with it, or the arm is the losing
+        # uniform one wearing the winning arm's name.
+        assert (
+            sandwiched.executor.reasoning_effort
+            == load_manifest(_MANIFEST).executor.reasoning_effort
+        )
+
+    def test_asking_units_for_no_override_leaves_them_on_the_pair(self) -> None:
+        # `none` is the third state and means "build at whatever the pair
+        # carries", which is what every recording before the flag existed did.
+        bound = narrow(
+            load_manifest(_MANIFEST),
+            None,
+            None,
+            None,
+            leaf_reasoning_effort=REASONING_UNSET,
+        )
+
+        assert bound.leaf_reasoning_effort is None
+
     def test_the_flag_refuses_a_tier_this_vocabulary_cannot_spell(self) -> None:
         """A value the manifest would reject is rejected before the boot.
 
@@ -791,7 +830,14 @@ def _recorded(
             raise sweep
         return SimpleNamespace(measured_cells=("one",))
 
+    async def _images_resolve(_references: object) -> None:
+        return None
+
     monkeypatch.setattr(record_module, "run_preflight", _no_preflight)
+    # The image check talks to the daemon, and what is under test here is which
+    # scratch root survives a failure. Its own behaviour is pinned in
+    # `test_image_preflight.py`.
+    monkeypatch.setattr(record_module, "check_images_resolve", _images_resolve)
     monkeypatch.setattr(record_module, "RecordingGatewayHost", lambda _c: host)
     monkeypatch.setattr(record_module, "HarnessBinder", lambda **_k: binder)
     monkeypatch.setattr(record_module, "_host_config", lambda *a, **k: None)

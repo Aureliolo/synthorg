@@ -987,12 +987,17 @@ class LoopTreatments(BaseModel):
         contract_stage: Whether one contract session ran between the plan and
             the units, fixing the shape every unit is then recreated from.
         merge_attempts: How many attempts each merge got.
+        leaf_reasoning_effort: The depth units BUILT at, or ``None`` when they
+            built at the executor's own. The published ablation puts the win in
+            the schedule rather than the level, so which phases reasoned how
+            deeply is a treatment and belongs in the identity beside the others.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     contract_stage: bool
     merge_attempts: int = Field(ge=1)
+    leaf_reasoning_effort: str | None = None
 
 
 class Provenance(BaseModel):

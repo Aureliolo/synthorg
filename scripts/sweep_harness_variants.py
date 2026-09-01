@@ -51,9 +51,25 @@ RECORDER = Path("scripts/record_recursion_depth.py")
 
 #: What every variant shares. Anything here that differed between variants
 #: would be a second treatment nobody declared.
+#: The sandbox every unit builds in and every grading runs in, BY DIGEST.
+#:
+#: A digest rather than the settings default, which is a published tag that
+#: upstream no longer carries: every cell of the first queue booted clean,
+#: planned, wrote a 74-turn contract through the gateway (which opens no
+#: container), and then died at grading with "the sweep measured no cells",
+#: having spent real money on a run that could never have been graded. The
+#: recorder now refuses before the first session rather than after, but a
+#: queue that runs unattended for hours should not be relying on that.
+SANDBOX_IMAGE: str = (
+    "ghcr.io/aureliolo/synthorg-sandbox"
+    "@sha256:af8996364caca94ba07b98b593a091afe4a11208d1f8c7cbe8966b35ca700e81"
+)
+
 COMMON: tuple[str, ...] = (
     "--company-config",
     "C:/Users/Aurelio/synthorg/providers.local.yaml",
+    "--sandbox-image",
+    SANDBOX_IMAGE,
     "--work-root",
     ".recursion-depth/work",
     "--depths",
@@ -103,6 +119,14 @@ class Variant:
 #: Repeats because a single cell says very little here: three cap-1 cells on
 #: identical inputs scored 39, 40 and 19 of 42, so one draw cannot separate a
 #: treatment from a tree.
+#:
+#: There is deliberately NO "default reasoning, no contract" arm. That is the
+#: recorded corpus, and it already has four samples (three smoke cells plus
+#: `control-a`); paying for a fifth buys a control we are holding. The cells it
+#: would have taken go to the SANDWICH instead, because the only published
+#: ablation with numbers behind it says reasoning deeply at every phase and
+#: reasoning moderately at every phase are the two arms that LOSE, and varying
+#: one global tier can only ever pick between them.
 MATRIX: tuple[Variant, ...] = (
     Variant(
         name="sweep-default-contract",
@@ -111,9 +135,15 @@ MATRIX: tuple[Variant, ...] = (
         repeats=2,
     ),
     Variant(
-        name="sweep-default-bare",
-        flags=("--executor-reasoning-effort", "none", "--no-contract-stage"),
-        why="the corpus reproduced: its reasoning tier and its loop",
+        name="sweep-sandwich-contract",
+        flags=(
+            "--executor-reasoning-effort",
+            "high",
+            "--leaf-reasoning-effort",
+            "low",
+            "--contract-stage",
+        ),
+        why="deep to plan and assemble, shallow to build: the published shape",
         repeats=2,
     ),
     Variant(
