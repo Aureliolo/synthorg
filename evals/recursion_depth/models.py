@@ -200,6 +200,19 @@ INDISTINGUISHABLE_ARMS_CAVEAT: Final[str] = (
     "spread the repetitions measured."
 )
 
+#: Derived from the cells, and the finding when it fires: the score and the
+#: liveness verdict are two answers to two questions, and a cell where they
+#: disagree is the published failure mode the probe exists to catch.
+DEAD_DELIVERABLE_CAVEAT: Final[str] = (
+    "{cells} measured cell(s) were scored against the oracle while the "
+    "deliverable the specification names was DEAD: a declared module failed "
+    "to import, or a declared entry point raised or hung. The score and the "
+    "verdict are reported side by side and never folded together, because a "
+    "tree satisfying a hidden oracle while its named artefact does not run is "
+    "the failure mode this probe exists to catch, and a score that absorbed "
+    "the verdict would hide it."
+)
+
 #: Fewer runs than this and no interval is reported: a bootstrap over two
 #: draws has four distinct resamples, and a percentile of those is a number
 #: shaped like an interval that describes nothing.
@@ -294,6 +307,22 @@ UNPRICED_COST_CAVEAT: Final[str] = (
     "Token counts are unaffected and remain the figure the equal-budget check "
     "is stated in."
 )
+
+
+class Liveness(StrEnum):
+    """What the liveness probe made of the deliverable a specification names.
+
+    Members:
+        LIVE: Every declared module imported and every declared entry point
+            ran to an exit of its own choosing.
+        DEAD: A module failed to import, or an entry point raised or hung.
+        NOT_PROBEABLE: The specification declares nothing to probe: its
+            deliverable is prose, or it never said what runs.
+    """
+
+    LIVE = "live"
+    DEAD = "dead"
+    NOT_PROBEABLE = "not_probeable"
 
 
 class UnitRecord(BaseModel):
@@ -533,6 +562,15 @@ class CellRecord(BaseModel):
             measurement nobody remembers to take is one the next reader will
             not have. Measured off the trees, since no unit can see a sibling
             and so no unit can report it.
+        liveness: Whether the deliverable the specification names RUNS,
+            asked of the merged tree apart from the oracle. A third state
+            beside the score rather than a term in it: a tree can satisfy a
+            hidden oracle while the program it was asked for is dead, and
+            the two disagreeing is the finding. ``None`` on a recording made
+            before the probe existed, which is a different claim from
+            ``NOT_PROBEABLE`` (the specification declares nothing to run).
+        liveness_detail: What died, or why nothing could be asked. Empty on
+            a live deliverable.
         unavailable_reason: Why this cell has no measurement.
     """
 
@@ -546,7 +584,31 @@ class CellRecord(BaseModel):
     merged_passing: tuple[RequirementId, ...] = ()
     shared_modules: int = Field(default=0, ge=0)
     diverged_modules: int = Field(default=0, ge=0)
+    liveness: Liveness | None = None
+    liveness_detail: str = ""
     unavailable_reason: str | None = None
+
+    @model_validator(mode="after")
+    def _liveness_is_a_verdict_on_a_measured_tree(self) -> Self:
+        """Reject a verdict on nothing, or a live verdict carrying a death.
+
+        Returns:
+            ``self`` when the verdict and its detail agree.
+
+        Raises:
+            ValueError: An unavailable cell carries a verdict, or a live one
+                carries a detail.
+        """
+        label = (
+            f"cell depth={self.depth_cap} arm={self.arm.value} rep={self.repetition}"
+        )
+        if self.liveness is not None and self.achieved_depth is None:
+            msg = f"{label} was never graded and still carries a liveness verdict"
+            raise ValueError(msg)
+        if self.liveness is Liveness.LIVE and self.liveness_detail:
+            msg = f"{label} reads live and still says {self.liveness_detail!r}"
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _measured_xor_unavailable(self) -> Self:
@@ -1404,6 +1466,7 @@ class RecursionDepthReport(BaseModel):
 
 __all__ = [
     "BOOTSTRAP_RESAMPLES",
+    "DEAD_DELIVERABLE_CAVEAT",
     "HEADLINE_CAVEAT",
     "INDISTINGUISHABLE_ARMS_CAVEAT",
     "LEAF",
@@ -1417,6 +1480,7 @@ __all__ = [
     "CostBasis",
     "DepthPoint",
     "DepthSpread",
+    "Liveness",
     "LoopTreatments",
     "Provenance",
     "RecursionDepthReport",

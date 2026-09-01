@@ -28,6 +28,7 @@ from evals.recursion_depth.efficiency import (
 from evals.recursion_depth.journal import cell_key
 from evals.recursion_depth.manifest import Arm, ModelPair
 from evals.recursion_depth.models import (
+    DEAD_DELIVERABLE_CAVEAT,
     INDISTINGUISHABLE_ARMS_CAVEAT,
     MERGE,
     MIN_CELLS_FOR_INTERVAL,
@@ -39,6 +40,7 @@ from evals.recursion_depth.models import (
     CostBasis,
     DepthPoint,
     DepthSpread,
+    Liveness,
     Provenance,
     RecursionDepthReport,
     SpendSource,
@@ -120,7 +122,9 @@ def derived_caveats(
         tokens_per_solved_by_achieved_depth(_judged(cells))
     )
     depths = ", ".join(str(depth) for depth in overlapping)
+    dead = sum(1 for cell in cells if cell.liveness is Liveness.DEAD)
     return [
+        *([DEAD_DELIVERABLE_CAVEAT.format(cells=dead)] if dead else []),
         *([INDISTINGUISHABLE_ARMS_CAVEAT.format(depths=depths)] if overlapping else []),
         *([UNATTRIBUTED_LEAVES_CAVEAT.format(buckets=blank)] if blank else []),
         *([UNRESOLVED_CLAIMS_CAVEAT.format(dropped=dropped)] if dropped else []),
@@ -429,6 +433,12 @@ def _curve_sections(report: RecursionDepthReport) -> list[str]:
         "One row per run, which is the population behind every figure above.",
         "An unavailable cell is listed too, because it cost real money and",
         "leaving it out would make the matrix read as smaller than it was.",
+        "`Deliverable` is whether the program the specification names RUNS,",
+        "asked apart from the score beside it: a declared module imported and",
+        "a declared entry point ran without raising. It is never folded into",
+        "the score, because a tree satisfying a hidden oracle while its named",
+        "artefact is dead is exactly the disagreement the column exists to",
+        "show.",
         "",
         *_cell_table(report),
         "",
@@ -643,10 +653,10 @@ def _cell_table(report: RecursionDepthReport) -> list[str]:
     """
     table = [
         (
-            "| Cell | Achieved | Satisfied | Required | Diverged | Sessions "
-            "| Tokens | Spend |"
+            "| Cell | Achieved | Satisfied | Required | Deliverable | Diverged "
+            "| Sessions | Tokens | Spend |"
         ),
-        "|---|---|---:|---:|---:|---:|---:|---:|",
+        "|---|---|---:|---:|---|---:|---:|---:|---:|",
     ]
     required = report.provenance.requirement_count
     for cell in report.cells:
@@ -659,11 +669,27 @@ def _cell_table(report: RecursionDepthReport) -> list[str]:
         )
         table.append(
             f"| {key} | {achieved} | {satisfied} | {required} "
-            f"| {_diverged_cell(cell)} "
+            f"| {_liveness_cell(cell)} | {_diverged_cell(cell)} "
             f"| {cell.total_attempts} | {cell.total_tokens} "
             f"| {_cost_cell(cell.total_cost)} |"
         )
     return table
+
+
+def _liveness_cell(cell: CellRecord) -> str:
+    """Render whether the named deliverable ran, beside the score it got.
+
+    A recording made before the probe existed never asked, which is a
+    different claim from the specification declaring nothing to ask.
+
+    Returns:
+        The cell's contents.
+    """
+    if cell.liveness is None:
+        return "not recorded"
+    if cell.liveness is Liveness.DEAD:
+        return f"dead: {_cell(cell.liveness_detail)}"
+    return cell.liveness.value
 
 
 def _diverged_cell(cell: CellRecord) -> str:

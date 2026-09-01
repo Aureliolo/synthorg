@@ -89,7 +89,7 @@ _PYTEST_TESTS_FAILED: Final[int] = 1
 
 #: What runs the oracle inside the sandbox image, where the bare name is the
 #: only interpreter present and is the one the image was built around.
-_CONTAINER_INTERPRETER: Final[str] = "python"
+CONTAINER_INTERPRETER: Final[str] = "python"
 
 #: Prefixes the key the graded containers are filed under. Distinct from every
 #: session's execution id on purpose: these are the harness's own containers,
@@ -267,7 +267,7 @@ async def run_oracle(
     spec_dir: Path,
     tree: Path,
     only: frozenset[RequirementId] | None = None,
-    interpreter: str = _CONTAINER_INTERPRETER,
+    interpreter: str = CONTAINER_INTERPRETER,
 ) -> OracleOutcome:
     """Grade *tree* against the spec's held-out oracle, in a container.
 
@@ -507,16 +507,32 @@ def refuse_if_oracle_survived(root: Path) -> None:
 def stage(root: Path, *, tree: Path, oracle_dir: Path) -> None:
     """Lay the graded tree and the oracle out side by side for the container.
 
+    Args:
+        root: The scratch directory to build.
+        tree: The produced tree to grade.
+        oracle_dir: The held-out suite.
+    """
+    stage_tree(root, tree=tree)
+    stage_oracle(root, oracle_dir=oracle_dir)
+
+
+def stage_tree(root: Path, *, tree: Path) -> None:
+    """Copy the produced tree into the container's scratch root, alone.
+
     The tree is copied WITHOUT following symlinks, for the reason
     :func:`evals.recursion_depth.merge.mount_children` does not follow them: a
     link in an agent-authored tree names a host path the agent chose, and
     resolving it here would pull the repository, this oracle included, into the
     directory about to be mounted.
 
+    Its own function because the liveness probe stages the tree and NOTHING
+    else: it executes the delivered program, and a scratch root that also
+    held the oracle would put the expectations beside a process the tree
+    controls.
+
     Args:
         root: The scratch directory to build.
-        tree: The produced tree to grade.
-        oracle_dir: The held-out suite.
+        tree: The produced tree.
     """
     staged_tree = root / ORACLE_TREE_DIR
     shutil.copytree(
@@ -529,6 +545,15 @@ def stage(root: Path, *, tree: Path, oracle_dir: Path) -> None:
     # tree resolves inside the same mount and `tree/x -> ../oracle` would hand
     # the delivery the suite grading it, with no host access needed.
     drop_escaping_links(staged_tree, anchor=tree)
+
+
+def stage_oracle(root: Path, *, oracle_dir: Path) -> None:
+    """Copy the held-out suite beside an already-staged tree.
+
+    Args:
+        root: The scratch directory the tree is already staged in.
+        oracle_dir: The held-out suite.
+    """
     # The suite's own sources are staged because collection has to import them,
     # and they are unlinked before the first test body runs. Compiled copies are
     # not staged at all: nothing needs them, they are gitignored so a reviewer
@@ -747,6 +772,7 @@ def _node_outcomes(raw: Mapping[str, object]) -> dict[str, bool]:
 
 
 __all__ = [
+    "CONTAINER_INTERPRETER",
     "OracleOutcome",
     "load_index",
     "node_ids",
@@ -756,4 +782,6 @@ __all__ = [
     "requirement_ids",
     "run_oracle",
     "stage",
+    "stage_oracle",
+    "stage_tree",
 ]

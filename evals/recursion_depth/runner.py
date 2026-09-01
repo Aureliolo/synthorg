@@ -75,6 +75,7 @@ from evals.recursion_depth.journal import (
     open_cell_journal,
     open_progress_journal,
 )
+from evals.recursion_depth.liveness import probe_liveness
 from evals.recursion_depth.manifest import Arm, RecursionDepthManifest, Role
 from evals.recursion_depth.merge import (
     MergeOutcome,
@@ -1006,6 +1007,15 @@ async def _run_cell(
         spec_dir=context.spec_dir,
         tree=assembled.project_dir,
     )
+    # A second question of the same tree, in a container of its own: the
+    # oracle says what the tree satisfies, this says whether the program the
+    # specification names runs at all, and the two are recorded side by side.
+    alive = await probe_liveness(
+        build_sandbox=context.deps.build_sandbox,
+        release_sandboxes=context.deps.release_tools,
+        spec_dir=context.spec_dir,
+        tree=assembled.project_dir,
+    )
     # Off the trees, once, while they are still here: --keep-workspaces is not
     # the default, so a run that did not ask for it would otherwise have no way
     # to answer afterwards what its units agreed on.
@@ -1033,6 +1043,8 @@ async def _run_cell(
         merged_passing=tuple(sorted(merged.passed)),
         shared_modules=agreement.shared,
         diverged_modules=agreement.diverged,
+        liveness=alive.verdict,
+        liveness_detail=alive.detail,
     )
     logger.info(
         EVALS_RECURSION_CELL_RECORDED,
@@ -1042,6 +1054,7 @@ async def _run_cell(
         achieved_depth=record.achieved_depth,
         leaf_count=len(record.leaves),
         merged_passing=len(record.merged_passing),
+        liveness=alive.verdict.value,
         shared_modules=record.shared_modules,
         diverged_modules=record.diverged_modules,
         cost=record.total_cost,

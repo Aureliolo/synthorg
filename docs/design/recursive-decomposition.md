@@ -596,6 +596,22 @@ at a depth are named in the caveats as unrankable there. The depth axis is not
 the one the question asks for, and [The metric](#the-metric) below says why it
 stands in.
 
+Beside the score, and never folded into it, every measured cell carries a
+**liveness** verdict on the deliverable the specification names
+(`evals/recursion_depth/liveness.py`). The oracle says which requirements a
+tree satisfies; it does not say whether `python -m sqlcsv` runs, and the two
+can come apart: an agent can satisfy a hidden oracle while the requested
+artefact is dead (arXiv 2606.28430), and the gap between visible and held-out
+verdicts grows about 28 points per tenfold increase in code size (arXiv
+2605.21384), which is the direction a depth sweep pushes. The spec's
+`requirements.yaml` declares what must run (`liveness: modules` and
+`entry_points`); each module is imported and each entry point executed with
+`-I` in a throwaway container holding the tree ALONE, so nothing the probe
+runs can read an expectation, and the verdict is `live`, `dead` (with what
+died) or `not_probeable` (the spec declares nothing to run). A cell scoring
+well while its deliverable is dead is named in the caveats, because that is
+the published failure mode the probe exists to catch.
+
 The committed matrix records caps 1 to 4 at five repetitions each, one arm,
 because `MINIMUM_REPETITIONS` refuses to load a matrix asking for fewer: the
 same comparison found that below five trials a pass-rate difference is
