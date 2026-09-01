@@ -1,0 +1,209 @@
+name: Release Please (retry-wrapped)
+description: |
+  ``googleapis/release-please-action`` with explicit 5-attempt retry at the
+  workflow layer.
+
+  The release path is TWO API calls, not one. With ``draft: true`` GitHub
+  does not mint the tag as part of the release, so the config sets
+  ``force-tag-creation: true`` and release-please
+  (``src/github-api.ts::createRelease``) issues ``POST /git/refs`` for
+  ``refs/tags/vX.Y.Z`` first and ``POST /repos/.../releases`` second. A
+  transient failure on the second leaves the repository HALF-RELEASED: the
+  tag is live and has already triggered the tag-driven image and CLI
+  workflows, there is no draft for them to attach assets to, nothing for
+  ``Release - Finalise`` to publish, and the release PR keeps its
+  ``autorelease: pending`` label. Everything else in ``release-cut.yml``
+  goes through ``.github/scripts/gh_with_retry.sh``; this call is the one
+  that reaches GitHub unguarded.
+
+  Retrying the whole action is safe because release-please is level
+  triggered: it re-derives its work from the manifest and the merged pull
+  requests on every invocation. ``createRelease`` swallows a 422 on a tag
+  ref it already created, and a release that already exists raises
+  ``DuplicateReleaseError``, which ``Manifest.createReleasesForPullRequest``
+  treats as success before swapping the pull request's labels.
+
+  Backoff schedule across the 5 attempts: 5s, 15s, 30s, 60s = 110s total
+  wait floor, matching ``.github/actions/checkout``.
+
+  OUTPUT CAVEAT. A run that needed a retry can report differently from one
+  that did not. If an attempt creates the release and then dies, the next
+  attempt sees a duplicate and reports ``releases_created=false`` even
+  though the release exists. No caller reads that output today; a future
+  step gating a publish on it would silently skip after a retried run and
+  must probe the release itself instead.
+
+inputs:
+  token:
+    description: |
+      Token release-please authenticates with. Defaults to the workflow
+      token; ``release-cut.yml`` passes the synthorg-repo-bot App
+      installation token so the release branch, release pull request and
+      release are authored under the App identity.
+    required: false
+    default: ${{ github.token }}
+  config-file:
+    description: Forwarded to release-please.
+    required: false
+    default: ""
+  manifest-file:
+    description: Forwarded to release-please.
+    required: false
+    default: ""
+
+outputs:
+  # The upstream action declares no ``outputs:`` block at all -- it sets them
+  # dynamically via ``core.setOutput`` -- so a composite wrapper has to
+  # declare the set it re-exports. This repository releases a single package
+  # at path ``.``, and ``setPathOutput`` emits a flat key for that path, so
+  # there are no ``<path>--<key>`` variants to lose here.
+  #
+  # Each value takes the first attempt that produced one: a skipped step
+  # yields an empty string, and a boolean output arrives as the non-empty
+  # string "false", so the chain never falls through a legitimate negative.
+  #
+  # ``body`` is deliberately absent: it carries the entire release notes
+  # (26 KB for v0.9.4) and nothing consumes it.
+  pr:
+    description: The release pull request that was opened or updated, as JSON.
+    value: ${{ steps.attempt1.outputs.pr || steps.attempt2.outputs.pr || steps.attempt3.outputs.pr || steps.attempt4.outputs.pr || steps.attempt5.outputs.pr }}
+  prs:
+    description: Every release pull request opened or updated, as a JSON array.
+    value: ${{ steps.attempt1.outputs.prs || steps.attempt2.outputs.prs || steps.attempt3.outputs.prs || steps.attempt4.outputs.prs || steps.attempt5.outputs.prs }}
+  prs_created:
+    description: Whether any release pull request was opened or updated.
+    value: ${{ steps.attempt1.outputs.prs_created || steps.attempt2.outputs.prs_created || steps.attempt3.outputs.prs_created || steps.attempt4.outputs.prs_created || steps.attempt5.outputs.prs_created }}
+  releases_created:
+    description: Whether any release was created. See the OUTPUT CAVEAT above.
+    value: ${{ steps.attempt1.outputs.releases_created || steps.attempt2.outputs.releases_created || steps.attempt3.outputs.releases_created || steps.attempt4.outputs.releases_created || steps.attempt5.outputs.releases_created }}
+  release_created:
+    description: Whether the root package's release was created.
+    value: ${{ steps.attempt1.outputs.release_created || steps.attempt2.outputs.release_created || steps.attempt3.outputs.release_created || steps.attempt4.outputs.release_created || steps.attempt5.outputs.release_created }}
+  paths_released:
+    description: Package paths released, as a JSON array.
+    value: ${{ steps.attempt1.outputs.paths_released || steps.attempt2.outputs.paths_released || steps.attempt3.outputs.paths_released || steps.attempt4.outputs.paths_released || steps.attempt5.outputs.paths_released }}
+  tag_name:
+    description: Tag of the created release.
+    value: ${{ steps.attempt1.outputs.tag_name || steps.attempt2.outputs.tag_name || steps.attempt3.outputs.tag_name || steps.attempt4.outputs.tag_name || steps.attempt5.outputs.tag_name }}
+  sha:
+    description: Commit the release points at.
+    value: ${{ steps.attempt1.outputs.sha || steps.attempt2.outputs.sha || steps.attempt3.outputs.sha || steps.attempt4.outputs.sha || steps.attempt5.outputs.sha }}
+  html_url:
+    description: Web URL of the created release.
+    value: ${{ steps.attempt1.outputs.html_url || steps.attempt2.outputs.html_url || steps.attempt3.outputs.html_url || steps.attempt4.outputs.html_url || steps.attempt5.outputs.html_url }}
+  upload_url:
+    description: Asset upload URL of the created release.
+    value: ${{ steps.attempt1.outputs.upload_url || steps.attempt2.outputs.upload_url || steps.attempt3.outputs.upload_url || steps.attempt4.outputs.upload_url || steps.attempt5.outputs.upload_url }}
+  draft:
+    description: Whether the created release is a draft.
+    value: ${{ steps.attempt1.outputs.draft || steps.attempt2.outputs.draft || steps.attempt3.outputs.draft || steps.attempt4.outputs.draft || steps.attempt5.outputs.draft }}
+  id:
+    description: Numeric id of the created release.
+    value: ${{ steps.attempt1.outputs.id || steps.attempt2.outputs.id || steps.attempt3.outputs.id || steps.attempt4.outputs.id || steps.attempt5.outputs.id }}
+  name:
+    description: Name of the created release.
+    value: ${{ steps.attempt1.outputs.name || steps.attempt2.outputs.name || steps.attempt3.outputs.name || steps.attempt4.outputs.name || steps.attempt5.outputs.name }}
+  path:
+    description: Package path the release was cut from.
+    value: ${{ steps.attempt1.outputs.path || steps.attempt2.outputs.path || steps.attempt3.outputs.path || steps.attempt4.outputs.path || steps.attempt5.outputs.path }}
+  version:
+    description: Released version.
+    value: ${{ steps.attempt1.outputs.version || steps.attempt2.outputs.version || steps.attempt3.outputs.version || steps.attempt4.outputs.version || steps.attempt5.outputs.version }}
+  major:
+    description: Major component of the released version.
+    value: ${{ steps.attempt1.outputs.major || steps.attempt2.outputs.major || steps.attempt3.outputs.major || steps.attempt4.outputs.major || steps.attempt5.outputs.major }}
+  minor:
+    description: Minor component of the released version.
+    value: ${{ steps.attempt1.outputs.minor || steps.attempt2.outputs.minor || steps.attempt3.outputs.minor || steps.attempt4.outputs.minor || steps.attempt5.outputs.minor }}
+  patch:
+    description: Patch component of the released version.
+    value: ${{ steps.attempt1.outputs.patch || steps.attempt2.outputs.patch || steps.attempt3.outputs.patch || steps.attempt4.outputs.patch || steps.attempt5.outputs.patch }}
+
+runs:
+  using: composite
+  steps:
+    - name: Release Please (attempt 1/5)
+      id: attempt1
+      uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+      continue-on-error: true
+      with:
+        token: ${{ inputs.token }}
+        config-file: ${{ inputs.config-file }}
+        manifest-file: ${{ inputs.manifest-file }}
+
+    # Exponential backoff between attempts (5s, 15s, 30s, 60s = 110s total).
+    # The short head recovers from a one-off blip on the release call; the
+    # longer tail rides out a GitHub degradation lasting more than a moment,
+    # which is the window in which the tag is already live and the draft is
+    # not.
+    - name: Backoff before attempt 2
+      if: steps.attempt1.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::release-please attempt 1 failed; waiting 5s before retry"
+        sleep 5
+
+    - name: Release Please (attempt 2/5)
+      id: attempt2
+      if: steps.attempt1.outcome == 'failure'
+      uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+      continue-on-error: true
+      with:
+        token: ${{ inputs.token }}
+        config-file: ${{ inputs.config-file }}
+        manifest-file: ${{ inputs.manifest-file }}
+
+    - name: Backoff before attempt 3
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::release-please attempt 2 failed; waiting 15s before retry"
+        sleep 15
+
+    - name: Release Please (attempt 3/5)
+      id: attempt3
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure'
+      uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+      continue-on-error: true
+      with:
+        token: ${{ inputs.token }}
+        config-file: ${{ inputs.config-file }}
+        manifest-file: ${{ inputs.manifest-file }}
+
+    - name: Backoff before attempt 4
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure' && steps.attempt3.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::release-please attempt 3 failed; waiting 30s before retry"
+        sleep 30
+
+    - name: Release Please (attempt 4/5)
+      id: attempt4
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure' && steps.attempt3.outcome == 'failure'
+      uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+      continue-on-error: true
+      with:
+        token: ${{ inputs.token }}
+        config-file: ${{ inputs.config-file }}
+        manifest-file: ${{ inputs.manifest-file }}
+
+    - name: Backoff before attempt 5
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure' && steps.attempt3.outcome == 'failure' && steps.attempt4.outcome == 'failure'
+      shell: bash
+      run: |
+        echo "::warning::release-please attempt 4 failed; waiting 60s before final retry"
+        sleep 60
+
+    # No ``continue-on-error`` on the final attempt -- if all five fail the
+    # workflow rightly aborts. The action surfaces only ``err.message``, and
+    # a transient release-creation failure carries an empty one, so the
+    # tag/release assertion in the calling workflow is what names the state
+    # the run ended in.
+    - name: Release Please (attempt 5/5)
+      id: attempt5
+      if: steps.attempt1.outcome == 'failure' && steps.attempt2.outcome == 'failure' && steps.attempt3.outcome == 'failure' && steps.attempt4.outcome == 'failure'
+      uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+      with:
+        token: ${{ inputs.token }}
+        config-file: ${{ inputs.config-file }}
+        manifest-file: ${{ inputs.manifest-file }}
