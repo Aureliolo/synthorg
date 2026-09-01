@@ -123,6 +123,7 @@ from evals.recursion_depth.unit import (
 )
 from evals.runner.execution import EVAL_TASK_PROJECT
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
@@ -1415,7 +1416,16 @@ async def _run_one_leaf(
     Returns:
         The leaf's outcome.
     """
-    owner = _owner_for(context.roster, str(task.id), building=True)
+    claimed = requirement_ids_of(
+        definition.satisfies,
+        known=context.spec.requirement_ids,
+        unit=str(task.title),
+    )
+    # Sized before it is owned: the budget and the reasoning depth are one
+    # decision about how much this unit has to do, and the owner is whichever
+    # declared pool is bound at the depth that decision named.
+    limits = context.limits_for(Role.LEAF, fan_in=0, claims=len(claimed))
+    owner = _owner_for(context.roster, str(task.id), effort=limits.reasoning_effort)
     workspace = await asyncio.to_thread(
         unit_workspace,
         cell_key=cell.key,
@@ -1423,11 +1433,6 @@ async def _run_one_leaf(
         spec_dir=context.spec_dir,
         work_root=context.work_root,
         contract=contract,
-    )
-    claimed = requirement_ids_of(
-        definition.satisfies,
-        known=context.spec.requirement_ids,
-        unit=str(task.title),
     )
     return await run_leaf(
         context.deps,
@@ -1441,7 +1446,7 @@ async def _run_one_leaf(
         owner=owner,
         workspace=workspace,
         execution_id=f"{cell.key}-leaf-{task.id}",
-        limits=context.limits_for(Role.LEAF, fan_in=0, claims=len(claimed)),
+        limits=limits,
         # The ids only decide the own-test gate where a contract seeded the
         # tree, which is also the only arm where the tree holds tests this leaf
         # did not write. `UNBOUND` and `()` are different answers and both
@@ -1532,7 +1537,10 @@ def _merge_criteria(
 
 
 def _owner_for(
-    roster: SweepRoster, unit_id: str, *, building: bool = False
+    roster: SweepRoster,
+    unit_id: str,
+    *,
+    effort: ReasoningEffort | None = None,
 ) -> AgentIdentity:
     """Pick the builder that owns one unit.
 
@@ -1544,16 +1552,17 @@ def _owner_for(
     Args:
         roster: The sweep's agents.
         unit_id: What the choice is derived from.
-        building: Whether this session BUILDS a unit, as opposed to planning,
-            fixing the contract or assembling. Only that distinction can route
-            to a pool bound at its own reasoning depth, and it defaults to
-            false so every caller that has not been asked the question keeps
-            the pool it always had.
+        effort: The depth this session was allocated, which names the POOL
+            it draws from: ``None`` is the executor's own, and it is what
+            planning, the contract and every assembly keep. A leaf passes
+            what :func:`session_limits_for` decided for it, so the one owner
+            of how much a unit has to do is also the one owner of how deeply
+            it reasons about it.
 
     Returns:
         The owning builder.
     """
-    pool = roster.leaf_builders if building else roster.builders
+    pool = roster.pool_for(effort)
     # The digest is taken over the unit id ALONE, so a unit reaches the same
     # position in whichever pool it is drawn from. Folding the pool into the
     # seed would re-shuffle every ownership the moment a second pool exists,

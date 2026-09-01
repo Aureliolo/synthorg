@@ -12,6 +12,7 @@ from evals.errors import RecursionDepthJudgeNotIndependentError
 from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.emit import derived_caveats, load_report, write_report
 from evals.recursion_depth.manifest import (
+    MINIMUM_REPETITIONS,
     Arm,
     Independence,
     ModelPair,
@@ -72,6 +73,10 @@ def _manifest_payload(**overrides: object) -> dict[str, object]:
             "family": "example-family-a",
         },
         "independence": "same_family",
+        "embedder": {"provider": "example-provider", "model_id": "example-embed-001"},
+        "stagnation": {"strategy": "tool_repetition"},
+        "compaction": {"fill_threshold_percent": 80.0, "summariser": None},
+        "leaf_deep_claims": 4,
         "merge_attempts": 3,
         "unit_max_turns": 40,
         "planner_max_turns": 40,
@@ -348,18 +353,16 @@ class TestTheMatrixIsCoherent:
         manifest = load_manifest(_COMMITTED_MANIFEST)
 
         assert manifest.depths == (1, 2, 3, 4)
-        # Repetitions are concentrated where a cell is cheap. Every depth needs
-        # a population or it reports a point rather than a range, and cap 1
-        # earned its three: independently planned trees at that cap scored 37,
-        # 37 and 23 of 42. The deep end is bracketed rather than sampled,
-        # because one more cap-4 cell costs more than every cap-1 and cap-2
-        # cell in the matrix put together.
-        assert manifest.repetitions[1] == 3
-        assert manifest.repetitions[2] == 3
-        assert manifest.repetitions[3] == 2
-        assert manifest.repetitions[4] == 2
-        assert all(manifest.repetitions[depth] >= 2 for depth in manifest.depths)
-        assert manifest.planned_cells == 10
+        # Five at every cap, held by the loader: below five draws every
+        # pairwise confidence interval in the published harness comparison
+        # crossed zero, so a smaller sample cannot say whether a low point is
+        # one bad tree or a real drop, which is the one question a repeated
+        # cap is paid to answer.
+        assert all(
+            manifest.repetitions[depth] == MINIMUM_REPETITIONS
+            for depth in manifest.depths
+        )
+        assert manifest.planned_cells == 4 * MINIMUM_REPETITIONS
         assert all(manifest.expected_sessions(depth) >= 1 for depth in manifest.depths)
 
     def test_the_shipped_manifest_names_no_vendor(self) -> None:

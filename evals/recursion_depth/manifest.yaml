@@ -7,13 +7,19 @@
 # on independently planned trees scored 37, 37 and 23 of 42, so a lone cap-1
 # draw could have reported anything from strong to middling.
 #
-# They are concentrated where a cell is cheap, because the bill is almost
-# entirely the deep end. Measured per cell on this harness: cap 1 is about an
-# hour and 14M tokens, cap 2 about three hours and 45M. Cap 3 and cap 4 are
-# roughly two and four times that again, so a third repetition at cap 4 costs
-# more than every cap-1 and cap-2 cell in the matrix combined. Two draws at the
-# deep end still bracket a cell rather than reporting a point, which is what
-# stops one unlucky tree reading as the curve.
+# FIVE at every cap, and the loader refuses fewer (`MINIMUM_REPETITIONS`).
+# An earlier design concentrated repetitions where a cell was cheap and
+# bracketed the deep end with two, on the argument that a third cap-4 cell
+# costs more than every cap-1 and cap-2 cell combined. That argument was
+# written before the measurement that overrides it: across three harnesses on
+# one benchmark, cost separated forty-fold while every pairwise pass-rate
+# confidence interval crossed zero, and the benchmark's own protocol runs five
+# trials per task for exactly that reason. Two draws bracket a cell; they
+# cannot say whether a low point is one bad tree or a real drop, and that is
+# the one question a repeated cap is paid to answer. The bill this implies is
+# printed on the plan path before anything is charged, and the deep end is
+# staged with --depths, --max-sessions and --resume rather than by sampling a
+# cap it cannot then report on.
 #
 # ONE arm, and it is the gated one. Gating is not the binding question, the
 # replication is, and halving the arms pays for it. It also dissolves the
@@ -45,10 +51,10 @@
 spec_dir: spec/sqlcsv
 depths: [1, 2, 3, 4]
 repetitions:
-  1: 3
-  2: 3
-  3: 2
-  4: 2
+  1: 5
+  2: 5
+  3: 5
+  4: 5
 arms:
   - gated
 # Sampling and reasoning depth are declared PER PAIR, and they have to be:
@@ -227,6 +233,43 @@ merge_attempts: 3
 # many words: "the pieces around you are being built at the same time by
 # others".
 contract_stage: true
+# Units build at the executor's own depth unless a shallower one is declared
+# here (a second pool of builders bound at it, never a re-pointed pair), and
+# then only the units answerable for FEWER than `leaf_deep_claims`
+# requirements take the shallow pool. The published ablation that puts the
+# win in the schedule also reports that its own FIXED allocation underperforms
+# a per-task one, so the shallow depth is not applied uniformly: a unit
+# carrying a whole subsystem is the case it was never measured on. Decided per
+# unit by the same function that sizes the unit's budget, from what the unit
+# claims. Unset keeps every unit at the executor's depth, which is what every
+# recording before this field existed ran under.
+leaf_reasoning_effort: null
+leaf_deep_claims: 4
+# The embedding model every session's memory recalls through. REQUIRED: the
+# corpus this matrix replaces measured an engine with no memory at all, and
+# nothing in its artefacts said so. Written to `memory.embedder_model` when
+# the sweep arms its settings, so what a recording remembered with is on its
+# face rather than inherited from whatever the host happened to hold. The
+# placeholder is aliased in provider config exactly like the pairs above.
+embedder:
+  provider: example-provider
+  model_id: example-embedding-001
+# The stagnation detector every session runs under, in the product's own
+# vocabulary (`engine.stagnation_strategy`). Stated rather than inherited: a
+# review session in the corpus re-ran one identical probe twenty times and
+# nothing watched it, and a recording that cannot say whether it was watching
+# cannot say what a loop cost.
+stagnation:
+  strategy: tool_repetition
+# Compaction: the fill at which the context is compacted and the pair the
+# semantic summariser dispatches on. `summariser: null` keeps the snippet-join
+# text summary, which is what the product ships with the summariser off and
+# costs nothing; naming a pair turns it on for the recording and its spend is
+# accounted separately on every session. The corpus this replaces ran with no
+# compaction of any kind: a 108-turn merge re-sent 225 messages.
+compaction:
+  fill_threshold_percent: 80.0
+  summariser: null
 # A BASE budget, not a ceiling, and it is the shipped loop's own semantics
 # rather than a looseness introduced here: a run that used a tool in the budget
 # it just spent earns another budget of the same size, up to
@@ -346,18 +389,20 @@ review_max_turns_cap: 100
 # branching factors the manifest cannot predict, and the cost of being wrong
 # about it is spend rather than a wrong answer.
 #
-# Sized above the full-tree projection below (1,390 for this matrix), which is
-# the expensive scenario rather than the expected one. The expected bill from
-# the first recording's measured rates is about 1,660, so this survives every
-# cap-4 cell costing twice what the shape of a cap-3 tree implies, and it still
-# stops a runaway well short of double the matrix.
+# Sized from the expected bill of the whole matrix at five repetitions per cap
+# (5 x (30 + 130 + 220 + 450) = 4,150 sessions from the declared per-cell
+# costs below), with room for the deep end to cost half again what the shape
+# of a cap-3 tree implies, and it still stops a runaway short of double the
+# matrix. The full-tree projection the plan prints is the expensive scenario
+# rather than the expected one and is printed beside this figure so the two
+# can be compared where the decision to spend is made.
 #
 # Both this and expected_sessions_per_cell below were measured while a park
 # ended the repair loop the way an approval does. A parked attempt retries
 # instead, so a merge that parks repeatedly spends up to its full attempt
 # budget rather than one attempt: both figures are a known under-estimate
 # until a depth-1 smoke re-measures them.
-max_sessions: 2600
+max_sessions: 6000
 # What the plan projection assumes one planning session splits into. Used ONLY
 # to print the bill before a run; nothing in the run reads it, and the tree the
 # planner actually produces is whatever it produces.

@@ -37,8 +37,11 @@ from evals.recursion_depth.manifest import (
     MAX_MERGE_ATTEMPTS,
     SHARED_FAMILY_CAVEAT,
     Arm,
+    CompactionTreatment,
+    EmbedderPair,
     Independence,
     ModelPair,
+    StagnationTreatment,
 )
 from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.task import Task
@@ -1018,6 +1021,16 @@ class LoopTreatments(BaseModel):
             built at the executor's own. The published ablation puts the win in
             the schedule rather than the level, so which phases reasoned how
             deeply is a treatment and belongs in the identity beside the others.
+        leaf_deep_claims: The requirement count at or above which a unit was
+            allocated the executor's own depth instead. ``None`` on a
+            recording made before the allocation existed.
+        embedder: The embedding model memory recalled through. ``None`` on a
+            recording made before the field existed, which is also the honest
+            reading of those recordings: they ran with no memory at all.
+        stagnation: The detector every session ran under, or ``None`` on a
+            recording made before the field existed.
+        compaction: How every session's context was compacted, or ``None``
+            on a recording made before the field existed.
 
     The two typed fields carry the manifest's own types rather than a
     stringified copy, because this model is READ BACK: the journal header is
@@ -1034,6 +1047,14 @@ class LoopTreatments(BaseModel):
     contract_stage: bool
     merge_attempts: int = Field(ge=1, le=MAX_MERGE_ATTEMPTS)
     leaf_reasoning_effort: ReasoningEffort | None = None
+    # The four below default to ``None`` so a recording made before they
+    # existed still reads back; a fresh recording always states all four,
+    # because each changes what the loop DOES and belongs in the identity a
+    # resume is checked against.
+    leaf_deep_claims: int | None = Field(default=None, ge=1)
+    embedder: EmbedderPair | None = None
+    stagnation: StagnationTreatment | None = None
+    compaction: CompactionTreatment | None = None
 
 
 class Provenance(BaseModel):

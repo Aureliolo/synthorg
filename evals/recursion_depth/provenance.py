@@ -170,6 +170,10 @@ def capture_provenance(
             contract_stage=manifest.contract_stage,
             merge_attempts=manifest.merge_attempts,
             leaf_reasoning_effort=manifest.leaf_reasoning_effort,
+            leaf_deep_claims=manifest.leaf_deep_claims,
+            embedder=manifest.embedder,
+            stagnation=manifest.stagnation,
+            compaction=manifest.compaction,
         ),
     )
 

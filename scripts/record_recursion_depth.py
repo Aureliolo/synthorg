@@ -71,6 +71,7 @@ from evals.recursion_depth.manifest import (
     RecursionDepthManifest,
     Role,
     load_manifest,
+    require_repetition_floor,
 )
 from evals.recursion_depth.models import (
     METRIC_CAVEAT,
@@ -97,7 +98,12 @@ from evals.recursion_depth.spend_repair import (
     tokens_by_unit,
 )
 from evals.recursion_depth.staffing import build_roster
-from evals.recursion_depth.tree import SpecBrief, arm_recursion, load_spec_brief
+from evals.recursion_depth.tree import (
+    SpecBrief,
+    arm_recursion,
+    arm_treatments,
+    load_spec_brief,
+)
 from evals.runner.execution import EVAL_TASK_PROJECT, seed_eval_project
 from synthorg.config.loader import load_config
 from synthorg.config.schema import RootConfig
@@ -464,6 +470,12 @@ def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
         # of spending on them.
         f"  contract stage: {'on' if manifest.contract_stage else 'off'}",
         f"  leaf depth    : {_leaf_depth(manifest)}",
+        # The three treatments the corpus this matrix replaces never stated,
+        # and so measured an engine without: each is written into the live
+        # settings at arm time and is part of the identity a resume checks.
+        f"  embedder      : {manifest.embedder.label}",
+        f"  stagnation    : {manifest.stagnation.strategy}",
+        f"  compaction    : {_compaction(manifest)}",
         "",
         f"  runs          : {len(cells)}",
         *_projection_lines(manifest, projected),
@@ -485,7 +497,26 @@ def _leaf_depth(manifest: RecursionDepthManifest) -> str:
     """
     if manifest.leaf_reasoning_effort is None:
         return "the executor's own"
-    return f"{manifest.leaf_reasoning_effort.value} (a second builder pool)"
+    return (
+        f"{manifest.leaf_reasoning_effort.value} (a second builder pool) for "
+        f"units claiming fewer than {manifest.leaf_deep_claims} requirements; "
+        f"the executor's own above that"
+    )
+
+
+def _compaction(manifest: RecursionDepthManifest) -> str:
+    """How the plan should describe the compaction every session runs under.
+
+    Returns:
+        The threshold, and which summariser answers past it.
+    """
+    summariser = manifest.compaction.summariser
+    who = (
+        "text summary (no model)"
+        if summariser is None
+        else f"semantic summary on {_pair(summariser)}"
+    )
+    return f"at {manifest.compaction.fill_threshold_percent:g}% fill, {who}"
 
 
 async def _release(
@@ -760,6 +791,11 @@ async def _build_context(
     app_state = host.app_state
     await seed_eval_project(host.project_repo)
     await arm_recursion(settings_service_of(app_state), enabled=True)
+    # What every session remembers with, is watched by, and is compacted
+    # under, written through the same live settings recursion is: a
+    # treatment inherited from whatever the host held is one no artefact
+    # can report.
+    await arm_treatments(settings_service_of(app_state), manifest)
     capability = await build_capability_policy(app_state)
     if capability is None:
         msg = (
@@ -1013,12 +1049,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help=(
             "Override how many times a cap is recorded, as CAP:COUNT pairs "
-            "(for example '4:1'). Only the caps named change. This is the "
-            "lever for the deep end, where the bill is: a cap costs its "
-            "branching to the power of its depth, so trading one repetition "
-            "at the deepest cap buys back more time than anything else here. "
-            "The committed counts are the experimental DESIGN (samples "
-            "concentrated where the aggregation transition is expected), so "
+            "(for example '4:8'). Only the caps named change. A count below "
+            "the recording floor is refused: below five draws every pairwise "
+            "confidence interval in the published harness comparison crossed "
+            "zero, so a smaller sample measures nothing a curve can carry. "
+            "Stage the deep end with --depths, --max-sessions and --resume "
+            "instead. The committed counts are the experimental DESIGN, so "
             "they are overridden per run rather than edited, and the manifest "
             "digest a resume pins is taken over the file, which this does not "
             "touch."
@@ -1503,7 +1539,9 @@ def narrow(
     if counts is not None:
         override["repetitions"] = manifest.repetitions | counts
     if depths is None:
-        return RecursionDepthManifest.model_validate(manifest.model_dump() | override)
+        return _floored(
+            RecursionDepthManifest.model_validate(manifest.model_dump() | override)
+        )
     wanted = tuple(int(part) for part in depths.split(",") if part.strip())
     unknown = [cap for cap in wanted if cap not in manifest.depths]
     if unknown:
@@ -1515,9 +1553,28 @@ def narrow(
     # twice, and `--depths ,` would narrow to nothing and record a sweep that
     # measured no cell at all. The manifest already refuses both, so the fix is
     # to go back through it rather than to restate its rules here.
-    return RecursionDepthManifest.model_validate(
-        manifest.model_dump() | {"depths": wanted} | override
+    return _floored(
+        RecursionDepthManifest.model_validate(
+            manifest.model_dump() | {"depths": wanted} | override
+        )
     )
+
+
+def _floored(manifest: RecursionDepthManifest) -> RecursionDepthManifest:
+    """Hold a narrowed matrix to the repetition floor a recording needs.
+
+    Asked of the NARROWED matrix rather than only of the file, because the
+    override is the one place a cap can drop below the floor after the
+    loader has already accepted it.
+
+    Returns:
+        The same matrix, once it is recordable.
+
+    Raises:
+        ValueError: A swept cap carries fewer repetitions than the floor.
+    """
+    require_repetition_floor(manifest)
+    return manifest
 
 
 def _previous_caveats(out_dir: Path) -> tuple[str, ...]:

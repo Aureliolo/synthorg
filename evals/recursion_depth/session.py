@@ -43,6 +43,7 @@ from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
@@ -129,11 +130,19 @@ class SessionLimits:
             every call, so ``cost_ceiling`` can never fire there and a unit
             would run to its turn cap with no spend bound at all. Tokens are
             counted on every provider.
+        reasoning_effort: The depth the session BUILDS at, or ``None`` for
+            the executor's own. Decided here, beside the budget, because both
+            are answers to how much a unit has to do: a leaf answerable for a
+            whole subsystem is sized larger AND reasons at the executor's
+            depth, while a leaf claiming little takes the shallow pool the
+            manifest declared. Never a rewritten pair: the value names which
+            declared POOL the unit is dispatched to.
     """
 
     max_turns: int
     cost_ceiling: float
     token_ceiling: int
+    reasoning_effort: ReasoningEffort | None = None
 
 
 def session_limits_for(
@@ -167,6 +176,15 @@ def session_limits_for(
         The turn and spend bounds.
     """
     if role is Role.LEAF:
+        # A unit carrying at least `leaf_deep_claims` requirements builds at
+        # the executor's own depth: the shallow pool was measured on
+        # implementation of a plan already understood, and a unit answerable
+        # for a subsystem is not that. `None` names the executor's own pool.
+        shallow = (
+            manifest.leaf_reasoning_effort
+            if claims < manifest.leaf_deep_claims
+            else None
+        )
         return SessionLimits(
             max_turns=manifest.unit_max_turns,
             cost_ceiling=manifest.unit_cost_ceiling,
@@ -174,6 +192,7 @@ def session_limits_for(
                 manifest.unit_token_ceiling + claims * manifest.unit_token_per_claim,
                 manifest.unit_token_cap,
             ),
+            reasoning_effort=shallow,
         )
     if role is Role.CONTRACT:
         return SessionLimits(

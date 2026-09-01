@@ -802,51 +802,66 @@ class TestStaging:
         assert narrowed.expected_sessions(4) >= 1
 
 
-class TestTradingRepetitionsForASchedule:
-    """The deep end is where the bill is, so it is where the lever belongs.
+class TestRaisingRepetitionsPerRun:
+    """The committed counts are the design; a run may sample MORE, never less.
 
-    A cap costs its branching to the power of its depth, so one repetition
-    fewer at the deepest cap buys back more time than any other single change.
-    The committed counts are the experimental design (samples concentrated
-    where the aggregation transition is expected), so an operator trading one
-    of them for a schedule overrides it per run rather than editing that design
-    into something the next reader inherits as if it were intended.
+    The floor is five at every recorded cap, held by the loader and by every
+    per-run narrowing: below it every pairwise confidence interval in the
+    published harness comparison crossed zero. An operator wanting a tighter
+    interval at one cap raises it per run rather than editing the design into
+    something the next reader inherits as if it were intended.
     """
 
     def test_only_the_named_cap_changes(self) -> None:
         shipped = load_manifest(_MANIFEST)
 
-        narrowed = narrow(shipped, None, None, "4:1")
+        narrowed = narrow(shipped, None, None, "4:8")
 
-        assert narrowed.repetitions[4] == 1
+        assert narrowed.repetitions[4] == 8
         for cap in (1, 2, 3):
             assert narrowed.repetitions[cap] == shipped.repetitions[cap]
 
     def test_it_reaches_the_plan_the_operator_reads(self) -> None:
         # Same reason --max-sessions is folded into the manifest: a count
         # applied downstream of the plan prints the manifest's own figure
-        # beside the flag meant to lower it.
-        narrowed = narrow(load_manifest(_MANIFEST), "3,4", None, "4:1")
+        # beside the flag meant to change it.
+        narrowed = narrow(load_manifest(_MANIFEST), "3,4", None, "4:8")
 
         plan = describe_plan(narrowed, _spec())
 
-        assert "cap 4: 1" in plan
+        assert "cap 4: 8" in plan
 
     def test_it_composes_with_the_other_two_levers(self) -> None:
-        narrowed = narrow(load_manifest(_MANIFEST), "1,2,3,4", 6000, "4:1")
+        narrowed = narrow(load_manifest(_MANIFEST), "1,2,3,4", 9000, "4:8")
 
         assert narrowed.depths == (1, 2, 3, 4)
-        assert narrowed.max_sessions == 6000
-        assert narrowed.repetitions[4] == 1
+        assert narrowed.max_sessions == 9000
+        assert narrowed.repetitions[4] == 8
 
-    def test_it_lowers_the_planned_cell_count(self) -> None:
+    def test_it_raises_the_planned_cell_count(self) -> None:
         shipped = load_manifest(_MANIFEST)
 
-        narrowed = narrow(shipped, "1,2,3,4", None, "4:1")
+        narrowed = narrow(shipped, "1,2,3,4", None, "4:8")
 
-        assert len(planned_cells(narrowed)) < len(
+        assert len(planned_cells(narrowed)) > len(
             planned_cells(narrow(shipped, "1,2,3,4"))
         )
+
+    def test_a_count_below_the_floor_is_refused(self) -> None:
+        # Refused at the narrowing, not discovered as a curve with no interval
+        # after the cells were paid for. The message names the staging levers
+        # that DO exist, because the operator reaching for this one has a
+        # schedule to keep.
+        with pytest.raises(ValueError, match="at least 5 repetitions"):
+            narrow(load_manifest(_MANIFEST), None, None, "4:1")
+
+    def test_the_committed_file_is_held_to_the_same_floor(self, tmp_path: Path) -> None:
+        text = _MANIFEST.read_text(encoding="utf-8").replace("  4: 5", "  4: 2")
+        edited = tmp_path / "manifest.yaml"
+        edited.write_text(text, encoding="utf-8")
+
+        with pytest.raises(ValueError, match="cap 4: 2"):
+            load_manifest(edited)
 
     def test_a_cap_the_matrix_does_not_sweep_is_refused(self) -> None:
         # The manifest validator only checks that every SWEPT depth has a
