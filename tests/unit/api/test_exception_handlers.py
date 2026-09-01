@@ -15,6 +15,8 @@ from litestar.exceptions import (
 )
 from litestar.params import PathParameter
 
+from synthorg.api import auth_response_discriminator as discriminator_module
+from synthorg.api.auth_response_discriminator import discriminate_unauthorized
 from synthorg.api.dto import ApiResponse, ProblemDetail
 from synthorg.api.exception_handlers import (
     _build_response,
@@ -731,8 +733,14 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    async def test_invalid_jwt_token_also_maps_to_session_expired(self) -> None:
-        """Bearer-token-invalid path is treated the same as expired cookie."""
+    async def test_invalid_jwt_token_maps_to_bearer_token_invalid(self) -> None:
+        """The bearer path names the condition, never a session remedy.
+
+        Only the Authorization header reaches this detail, and its
+        callers (the CLI's minted system token, API-key and service
+        callers) hold no session, so session advice would point at a
+        remedy none of them can perform.
+        """
 
         @get("/test")
         async def handler() -> None:
@@ -742,10 +750,41 @@ class TestExceptionHandlers:
             resp = await client.get("/test")
             assert resp.status_code == 401
             body = resp.json()
-            assert "expired" in body["error"].lower()
+            assert body["error"].startswith("Bearer token rejected")
+            assert "log in again" not in body["error"].lower()
             _assert_error_detail(
                 body,
-                error_code=ErrorCode.SESSION_EXPIRED,
+                error_code=ErrorCode.BEARER_TOKEN_INVALID,
+                error_category=ErrorCategory.AUTH,
+                retryable=False,
+            )
+
+    @pytest.mark.parametrize(
+        "detail",
+        ["Invalid authorization scheme", "Invalid credentials"],
+    )
+    async def test_recognised_credential_failures_stay_generic(
+        self,
+        detail: str,
+    ) -> None:
+        """Bad-credential details map to the neutral code, without a warning.
+
+        These are recognised, not unclassified, so they must not reach the
+        fall-through arm that announces producer/consumer divergence.
+        """
+
+        @get("/test")
+        async def handler() -> None:
+            raise NotAuthorizedException(detail=detail)
+
+        async with LoopAsyncClient(make_exception_handler_app(handler)) as client:
+            resp = await client.get("/test")
+            assert resp.status_code == 401
+            body = resp.json()
+            assert body["error"] == "Authentication required"
+            _assert_error_detail(
+                body,
+                error_code=ErrorCode.UNAUTHORIZED,
                 error_category=ErrorCategory.AUTH,
                 retryable=False,
             )
@@ -770,6 +809,39 @@ class TestExceptionHandlers:
                 error_category=ErrorCategory.AUTH,
                 retryable=False,
             )
+
+    def test_unknown_detail_announces_the_divergence(self) -> None:
+        """The fall-through arm warns, which is the module's whole purpose.
+
+        Without this log an unregistered producer drifts from the consumer in
+        silence, which is the condition the discriminator exists to surface.
+        """
+        with patch.object(discriminator_module, "logger") as mock_logger:
+            code, message = discriminate_unauthorized("Custom: something else")
+
+        assert code is ErrorCode.UNAUTHORIZED
+        assert message == "Authentication required"
+        mock_logger.warning.assert_called_once()
+        assert (
+            mock_logger.warning.call_args.kwargs["detail"] == "Custom: something else"
+        )
+
+    @pytest.mark.parametrize(
+        "detail",
+        [
+            "Missing authentication",
+            "Invalid session cookie",
+            "Invalid JWT token",
+            "Invalid authorization scheme",
+            "Invalid credentials",
+        ],
+    )
+    def test_recognised_details_never_announce_divergence(self, detail: str) -> None:
+        """Every string the middleware actually raises is recognised."""
+        with patch.object(discriminator_module, "logger") as mock_logger:
+            discriminate_unauthorized(detail)
+
+        mock_logger.warning.assert_not_called()
 
     async def test_litestar_validation_exception_maps_to_400(self) -> None:
         """Litestar ValidationException forwards its detail."""

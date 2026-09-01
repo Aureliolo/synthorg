@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -21,6 +22,129 @@ import (
 // helpers in tests without polluting test output.
 func discardUI() *ui.UI {
 	return ui.NewUIWithOptions(io.Discard, (&GlobalOpts{Hints: "auto", Yes: true}).UIOptions())
+}
+
+// TestOfferBackup_RefusesUnusableSecretBeforeContainerWork asserts the
+// credential preflight runs before the pull-and-start path: an unusable
+// signing secret must be refused while that spend is still ahead, not after
+// gigabytes of images and a healthy stack have been paid for.
+func TestOfferBackup_RefusesUnusableSecretBeforeContainerWork(t *testing.T) {
+	t.Parallel()
+	var errBuf bytes.Buffer
+	opts := &GlobalOpts{Hints: "auto", Yes: true, Tunables: config.DefaultTunables()}
+	wc := &wipeContext{
+		ctx:             SetGlobalOpts(context.Background(), opts),
+		state:           config.State{JWTSecret: "too-short-to-sign"},
+		safeDir:         t.TempDir(),
+		out:             discardUI(),
+		errOut:          ui.NewUIWithOptions(&errBuf, opts.UIOptions()),
+		dockerAvailable: true,
+	}
+
+	if err := wc.offerBackup(); err != nil {
+		t.Fatalf("offerBackup = %v, want nil (--yes continues the wipe)", err)
+	}
+	if warning := errBuf.String(); !strings.Contains(warning, "Cannot sign an admin token") {
+		t.Errorf("preflight did not refuse; stderr = %q", warning)
+	}
+	// The ordering claim is asserted on state this function owns, not on the
+	// absence of another function's wording: startedForBackup is set only by
+	// ensureRunningForBackup, so a false here proves the preflight returned
+	// before any container work, and no unrelated reword can silence it.
+	if wc.startedForBackup {
+		t.Error("containers were started despite the preflight refusing")
+	}
+}
+
+// TestWipeBackupWarningsSurviveQuiet pins the property the WarnAlways sweep
+// exists for: under --yes the continue prompt answers itself, so these
+// warnings are the operator's only notice that irreversible destruction is
+// proceeding unprotected, and --quiet must not erase them.
+func TestWipeBackupWarningsSurviveQuiet(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		want string
+		run  func(t *testing.T, wc *wipeContext)
+	}{
+		{
+			name: "docker unavailable",
+			want: "Docker is not available",
+			run: func(t *testing.T, wc *wipeContext) {
+				t.Helper()
+				wc.dockerAvailable = false
+				if _, err := wc.runOptionalBackup(); err != nil {
+					t.Fatalf("runOptionalBackup = %v, want nil", err)
+				}
+			},
+		},
+		{
+			name: "credential preflight",
+			want: "Cannot sign an admin token",
+			run: func(t *testing.T, wc *wipeContext) {
+				t.Helper()
+				wc.state = config.State{JWTSecret: "short"}
+				if err := wc.offerBackup(); err != nil {
+					t.Fatalf("offerBackup = %v, want nil", err)
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var errBuf bytes.Buffer
+			opts := &GlobalOpts{
+				Hints:    "auto",
+				Yes:      true,
+				Quiet:    true,
+				Tunables: config.DefaultTunables(),
+			}
+			wc := &wipeContext{
+				ctx:             SetGlobalOpts(context.Background(), opts),
+				state:           config.State{JWTSecret: "short"},
+				safeDir:         t.TempDir(),
+				out:             discardUI(),
+				errOut:          ui.NewUIWithOptions(&errBuf, opts.UIOptions()),
+				dockerAvailable: true,
+			}
+			tt.run(t, wc)
+			if got := errBuf.String(); !strings.Contains(got, tt.want) {
+				t.Errorf("--quiet swallowed the warning; stderr = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestRunOptionalBackup_NoBackupFlagSkipsSilently pins that --no-backup takes
+// the early return without warning: the operator asked for no backup, so
+// there is nothing unexpected to report.
+func TestRunOptionalBackup_NoBackupFlagSkipsSilently(t *testing.T) {
+	restore := wipeNoBackup
+	wipeNoBackup = true
+	t.Cleanup(func() { wipeNoBackup = restore })
+
+	var errBuf bytes.Buffer
+	opts := &GlobalOpts{Hints: "auto", Yes: true, Tunables: config.DefaultTunables()}
+	wc := &wipeContext{
+		ctx:             SetGlobalOpts(context.Background(), opts),
+		state:           config.State{JWTSecret: "short"},
+		safeDir:         t.TempDir(),
+		out:             discardUI(),
+		errOut:          ui.NewUIWithOptions(&errBuf, opts.UIOptions()),
+		dockerAvailable: true,
+	}
+
+	proceed, err := wc.runOptionalBackup()
+	if err != nil {
+		t.Fatalf("runOptionalBackup = %v, want nil", err)
+	}
+	if !proceed {
+		t.Error("--no-backup must proceed to the wipe")
+	}
+	if got := errBuf.String(); got != "" {
+		t.Errorf("--no-backup warned about something; stderr = %q", got)
+	}
 }
 
 func TestIsEmptyPS(t *testing.T) {

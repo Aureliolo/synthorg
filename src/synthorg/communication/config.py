@@ -24,7 +24,7 @@ from synthorg.settings.mirrors import (
 _VALID_NATS_URL_SCHEMES: frozenset[str] = frozenset({"nats", "tls", "nats+tls"})
 """NATS URL schemes accepted at config load.
 
-Matches the Go CLI's ``validateNatsURL`` allow-list in
+Matches the Go CLI's ``validateNATSURL`` allow-list in
 ``cli/cmd/worker_start.go`` so the config and the CLI enforce the
 same rule at their respective system boundaries.
 """

@@ -117,6 +117,20 @@ func setupGlobalOpts(cmd *cobra.Command) error {
 		return fmt.Errorf("invalid hints mode %q: must be always, auto, or never", opts.Hints)
 	}
 
+	if err := config.ValidateAPIPrefix(); err != nil {
+		// The same variable is interpolated into the compose file, so a
+		// value the CLI refuses is one the backend would not serve either.
+		// Recovery commands still run: an operator has to be able to reach
+		// doctor and wipe while their environment is wrong.
+		if isRecoveryCommand(cmd) {
+			ui.NewUIWithOptions(cmd.ErrOrStderr(), opts.UIOptions()).WarnAlways(fmt.Sprintf(
+				"%v; continuing against the default API prefix so this command "+
+					"can still repair the install.", err))
+		} else {
+			return err
+		}
+	}
+
 	if err := applyTunables(cmd, opts); err != nil {
 		// Recovery commands must stay callable even when config.json is
 		// unreadable or fails validation -- otherwise the user has no

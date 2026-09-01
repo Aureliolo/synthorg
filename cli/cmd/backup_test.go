@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -168,8 +169,11 @@ func TestSanitizeAPIMessage(t *testing.T) {
 	}
 }
 
+// testJWTSecret is a signable secret: long enough to clear minJWTSecretLen.
+const testJWTSecret = "test-secret-that-is-at-least-32-characters-long"
+
 func TestBuildLocalJWT(t *testing.T) {
-	token, err := buildLocalJWT("test-secret-that-is-at-least-32-characters-long")
+	token, err := buildLocalJWT(testJWTSecret)
 	if err != nil {
 		t.Fatalf("buildLocalJWT: %v", err)
 	}
@@ -177,15 +181,90 @@ func TestBuildLocalJWT(t *testing.T) {
 	if len(parts) != 3 {
 		t.Fatalf("expected 3 JWT parts, got %d", len(parts))
 	}
-	// Verify header is valid base64url-encoded JSON.
-	headerJSON, err := base64.RawURLEncoding.DecodeString(parts[0])
-	if err != nil {
-		t.Fatalf("decoding header: %v", err)
+	claims := claimsOf(t, token)
+
+	t.Run("header names HS256", func(t *testing.T) {
+		headerJSON, err := base64.RawURLEncoding.DecodeString(parts[0])
+		if err != nil {
+			t.Fatalf("decoding header: %v", err)
+		}
+		if !strings.Contains(string(headerJSON), `"alg":"HS256"`) {
+			t.Errorf("header missing HS256 alg: %s", headerJSON)
+		}
+	})
+
+	// Cross-language: sub, iss and aud must match the Python backend
+	// constants in src/synthorg/api/auth/system_user.py. The middleware
+	// rejects a mismatch AFTER the decode succeeds, so a drift here reads
+	// as a signature problem rather than the identity problem it is.
+	t.Run("pinned identity claims", func(t *testing.T) {
+		for _, tt := range []struct{ claim, want string }{
+			{"sub", "system"},
+			{"iss", "synthorg-cli"},
+			{"aud", "synthorg-backend"},
+		} {
+			if got, _ := claims[tt.claim].(string); got != tt.want {
+				t.Errorf("%s = %q, want %q", tt.claim, got, tt.want)
+			}
+		}
+	})
+
+	// Cross-language: the backend require-lists exactly these six claims
+	// before validating the payload into JwtClaims, which sets
+	// extra="forbid". A claim missing here and a claim surplus here are the
+	// same 401 from opposite directions, so the set is asserted whole rather
+	// than name by name. scripts/check_cli_backend_request_parity.py derives
+	// both halves and holds them equal; this test pins the Go half on its own
+	// so a change here fails in the package that made it.
+	t.Run("claim set is exactly what the backend requires", func(t *testing.T) {
+		wantClaims := []string{"aud", "exp", "iat", "iss", "jti", "sub"}
+		gotClaims := make([]string, 0, len(claims))
+		for name := range claims {
+			gotClaims = append(gotClaims, name)
+		}
+		slices.Sort(gotClaims)
+		if !slices.Equal(gotClaims, wantClaims) {
+			t.Errorf("claim set = %v, want %v", gotClaims, wantClaims)
+		}
+	})
+
+	// jti keys session revocation on the backend, so it must be per-token.
+	t.Run("jti is per token", func(t *testing.T) {
+		first, _ := claims["jti"].(string)
+		if first == "" {
+			t.Fatal("jti claim is empty")
+		}
+		same, err := buildLocalJWT(testJWTSecret)
+		if err != nil {
+			t.Fatalf("second buildLocalJWT: %v", err)
+		}
+		if second, _ := claimsOf(t, same)["jti"].(string); second == first {
+			t.Error("two tokens share a jti; revocation would cover both")
+		}
+	})
+
+	t.Run("expiry window", func(t *testing.T) {
+		iat, _ := claims["iat"].(float64)
+		exp, _ := claims["exp"].(float64)
+		if iat == 0 {
+			t.Error("payload missing iat claim")
+		}
+		if exp == 0 {
+			t.Error("payload missing exp claim")
+		}
+		if wantWindow := backupJWTExpiration.Seconds(); exp-iat != wantWindow {
+			t.Errorf("expected exp-iat=%v, got %v", wantWindow, exp-iat)
+		}
+	})
+}
+
+// claimsOf decodes a token's payload into its claim map.
+func claimsOf(t *testing.T, token string) map[string]any {
+	t.Helper()
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		t.Fatalf("expected 3 JWT parts, got %d", len(parts))
 	}
-	if !strings.Contains(string(headerJSON), `"alg":"HS256"`) {
-		t.Errorf("header missing HS256 alg: %s", headerJSON)
-	}
-	// Verify payload contains expected claims via JSON unmarshal.
 	payloadJSON, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
 		t.Fatalf("decoding payload: %v", err)
@@ -194,40 +273,181 @@ func TestBuildLocalJWT(t *testing.T) {
 	if err := json.Unmarshal(payloadJSON, &claims); err != nil {
 		t.Fatalf("unmarshalling payload: %v", err)
 	}
-	// Cross-language: sub and iss must match the Python backend constants
-	// in src/synthorg/api/auth/system_user.py -- keep in sync.
-	if sub, _ := claims["sub"].(string); sub != "system" {
-		t.Errorf("sub = %q, want %q", sub, "system")
+	return claims
+}
+
+func TestValidateJWTSecret(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		secret  string
+		wantErr string
+	}{
+		{"usable", testJWTSecret, ""},
+		{"unset", "", "not set"},
+		{"too short", "short", "minimum"},
 	}
-	if iss, _ := claims["iss"].(string); iss != "synthorg-cli" {
-		t.Errorf("iss = %q, want %q", iss, "synthorg-cli")
-	}
-	// aud is validated by the backend middleware for system tokens
-	// (defense-in-depth alongside the iss check).
-	if aud, _ := claims["aud"].(string); aud != "synthorg-backend" {
-		t.Errorf("aud = %q, want %q", aud, "synthorg-backend")
-	}
-	// iat and exp must be present with a 60-second window.
-	iat, _ := claims["iat"].(float64)
-	exp, _ := claims["exp"].(float64)
-	if iat == 0 {
-		t.Error("payload missing iat claim")
-	}
-	if exp == 0 {
-		t.Error("payload missing exp claim")
-	}
-	if wantWindow := backupJWTExpiration.Seconds(); exp-iat != wantWindow {
-		t.Errorf("expected exp-iat=%v, got %v", wantWindow, exp-iat)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateJWTSecret(tt.secret)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("validateJWTSecret(%q) = %v, want nil", tt.secret, err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("validateJWTSecret(%q) = nil, want an error", tt.secret)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error %q does not mention %q", err.Error(), tt.wantErr)
+			}
+			// The house standard (maskSecret) never discloses a secret's
+			// length, and this message reaches the operator's terminal.
+			if strings.Contains(err.Error(), strconv.Itoa(len(tt.secret))) &&
+				tt.secret != "" {
+				t.Errorf("error %q discloses the secret's length", err.Error())
+			}
+		})
 	}
 }
 
-func TestBuildLocalJWT_TooShort(t *testing.T) {
-	_, err := buildLocalJWT("short")
-	if err == nil {
-		t.Fatal("expected error for short secret, got nil")
+func TestBuildBackupRequest(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	const apiURL = "http://localhost:3001/api/v1/admin/backups"
+
+	t.Run("POST carries a fresh Idempotency-Key", func(t *testing.T) {
+		t.Parallel()
+		// Cross-language: both POST operations declare the header required,
+		// so an omitted one is a 400 before any handler runs.
+		first, err := buildBackupRequest(ctx, http.MethodPost, apiURL, nil, testJWTSecret)
+		if err != nil {
+			t.Fatalf("buildBackupRequest: %v", err)
+		}
+		key := first.Header.Get("Idempotency-Key")
+		if key == "" {
+			t.Fatal("POST carries no Idempotency-Key")
+		}
+		second, err := buildBackupRequest(ctx, http.MethodPost, apiURL, nil, testJWTSecret)
+		if err != nil {
+			t.Fatalf("second buildBackupRequest: %v", err)
+		}
+		if second.Header.Get("Idempotency-Key") == key {
+			t.Error("two requests share an Idempotency-Key; the second would replay the first")
+		}
+	})
+
+	t.Run("GET carries no Idempotency-Key", func(t *testing.T) {
+		t.Parallel()
+		req, err := buildBackupRequest(ctx, http.MethodGet, apiURL, nil, testJWTSecret)
+		if err != nil {
+			t.Fatalf("buildBackupRequest: %v", err)
+		}
+		if got := req.Header.Get("Idempotency-Key"); got != "" {
+			t.Errorf("GET carries Idempotency-Key %q; only POST declares it", got)
+		}
+	})
+
+	t.Run("every request is signed", func(t *testing.T) {
+		t.Parallel()
+		req, err := buildBackupRequest(ctx, http.MethodGet, apiURL, nil, testJWTSecret)
+		if err != nil {
+			t.Fatalf("buildBackupRequest: %v", err)
+		}
+		if !strings.HasPrefix(req.Header.Get("Authorization"), "Bearer ") {
+			t.Error("request carries no Bearer token")
+		}
+	})
+
+	t.Run("an unusable secret refuses rather than sending anonymously", func(t *testing.T) {
+		t.Parallel()
+		for _, secret := range []string{"", "short"} {
+			req, err := buildBackupRequest(ctx, http.MethodPost, apiURL, nil, secret)
+			if err == nil {
+				t.Errorf("secret %q built a request; an admin call must never go unsigned", secret)
+			}
+			if req != nil {
+				t.Errorf("secret %q returned a non-nil request alongside its error", secret)
+			}
+		}
+	})
+}
+
+// TestDescribeAPIFailure covers both halves of the single decode, because the
+// message and the hint now come out of one envelope and a regression in either
+// would otherwise be invisible from the other's test. ANSI stripping is not
+// re-asserted here; TestSanitizeAPIMessage owns that.
+func TestDescribeAPIFailure(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		body        string
+		wantHint    bool
+		wantMessage string
+	}{
+		{
+			name:        "bearer token refused",
+			body:        `{"success":false,"error":"nope","error_detail":{"error_code":1012}}`,
+			wantHint:    true,
+			wantMessage: "nope",
+		},
+		{
+			name:        "some other auth failure",
+			body:        `{"success":false,"error":"nope","error_detail":{"error_code":1009}}`,
+			wantHint:    false,
+			wantMessage: "nope",
+		},
+		{
+			name:        "no error detail",
+			body:        `{"success":false,"error":"nope"}`,
+			wantHint:    false,
+			wantMessage: "nope",
+		},
+		{
+			name:        "failure with no prose",
+			body:        `{"success":false}`,
+			wantHint:    false,
+			wantMessage: "unknown error",
+		},
+		{
+			// The status code said failure and the envelope disagrees, so the
+			// caller's fallback is the only honest thing left to say.
+			name:        "success envelope on a non-2xx falls back",
+			body:        `{"success":true,"data":null}`,
+			wantHint:    false,
+			wantMessage: "backup failed",
+		},
+		{
+			name:        "unparseable",
+			body:        `not json`,
+			wantHint:    false,
+			wantMessage: "",
+		},
 	}
-	if !strings.Contains(err.Error(), "too short") {
-		t.Errorf("error %q does not mention too short", err.Error())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			failure := describeAPIFailure([]byte(tt.body), "backup failed")
+			if tt.wantHint && failure.Hint == "" {
+				t.Error("expected a hint for a refused admin token")
+			}
+			if !tt.wantHint && failure.Hint != "" {
+				t.Errorf("unexpected hint %q", failure.Hint)
+			}
+			// An empty wantMessage means the body never decoded, which the
+			// message has to say rather than pass off as the fallback.
+			if tt.wantMessage == "" {
+				if !strings.HasPrefix(failure.Message, "parsing response:") {
+					t.Errorf("message %q does not report the decode failure", failure.Message)
+				}
+				return
+			}
+			if failure.Message != tt.wantMessage {
+				t.Errorf("message = %q, want %q", failure.Message, tt.wantMessage)
+			}
+		})
 	}
 }
 

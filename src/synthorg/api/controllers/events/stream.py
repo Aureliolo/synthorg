@@ -91,7 +91,13 @@ def _require_dashboard_feed(
         # this; raise the client-facing auth exception directly rather than
         # logging a WARNING on a routine auth failure (attacker-controllable
         # log noise). The unavailable-feed branch below keeps its WARNING.
-        msg = "Authentication required"
+        #
+        # The detail string is one auth_response_discriminator recognises.
+        # Any other wording falls through to its unknown-detail arm, which
+        # logs a WARNING announcing that producer and consumer have drifted,
+        # so an unregistered producer here reports a divergence that has not
+        # happened.
+        msg = "Missing authentication"
         raise NotAuthorizedException(msg)
     plugin = get_channels_plugin(request)
     if plugin is None:

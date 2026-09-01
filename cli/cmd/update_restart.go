@@ -122,7 +122,7 @@ func waitAndAnnounceRestart(ctx context.Context, uiOut *ui.UI, state config.Stat
 	// Liveness, not readiness: an optional dependency that is not back yet
 	// (a local model server, say) must not read as a failed update. The
 	// dependency check below reports that separately without failing.
-	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/healthz", state.BackendPort)
+	healthURL := config.APIURL(state.BackendPort, "/healthz")
 	healthTimeout := restartHealthTimeout()
 	tun := GetGlobalOpts(ctx).Tunables
 	if err := health.WaitForHealthy(ctx, healthURL, healthTimeout, tun.HealthPollInterval, tun.HealthInitialDelay); err != nil {

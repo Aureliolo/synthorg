@@ -37,6 +37,14 @@ type wipeContext struct {
 	// stays best-effort: a missing Docker skips backup + container teardown
 	// but still clears the data dir.
 	dockerAvailable bool
+	// startedForBackup records that this command brought the stack up itself.
+	// Only then does cancelling owe the operator a teardown; a stack that was
+	// already running is theirs and must be left alone.
+	startedForBackup bool
+	// backupTaken records that an archive actually reached the operator's
+	// chosen path, which is a different question from whether one was asked
+	// for: every failure path below offers to continue without one.
+	backupTaken bool
 }
 
 var (
@@ -88,7 +96,10 @@ func runWipe(cmd *cobra.Command, _ []string) error {
 	// must never stop a factory-reset. Parse what we can, clear the rest.
 	state, loadErr := config.LoadForTeardown(opts.DataDir)
 	if loadErr != nil {
-		errOut.Warn(fmt.Sprintf("Could not fully load config (%v); continuing wipe with what could be read.", loadErr))
+		// WarnAlways: this precedes the whole destructive sequence, and only
+		// jwt_secret and safeDir have their own downstream check. Any other
+		// field this tolerated would otherwise be corrupt with no record.
+		errOut.WarnAlways(fmt.Sprintf("Could not fully load config (%v); continuing wipe with what could be read.", loadErr))
 	}
 	safeDir, err := safeStateDir(state)
 	if err != nil {
@@ -139,16 +150,43 @@ func (wc *wipeContext) runOptionalBackup() (proceed bool, err error) {
 	if !wc.dockerAvailable {
 		// A backup needs a running stack; without Docker there is nothing
 		// to back up. Proceed straight to the data wipe.
-		wc.errOut.Warn("Skipping backup: Docker is not available.")
+		wc.errOut.WarnAlways("Skipping backup: Docker is not available.")
 		return true, nil
 	}
 	if err := wc.offerBackup(); err != nil {
 		if errors.Is(err, errWipeCancelled) {
+			wc.stopContainersStartedForBackup()
 			return false, nil
 		}
 		return false, err
 	}
 	return true, nil
+}
+
+// stopContainersStartedForBackup returns the stack to the state the command
+// found it in, for the cancel path only.
+//
+// Cancelling a destructive operation is how an operator backs out safely, so
+// finishing with MORE running than they started with, and no word of it, is
+// the opposite of what they asked for. The wipe path needs no equivalent: it
+// tears the stack down regardless.
+//
+// Plain `stop`, never stopAndPrune's `down -v`: the operator cancelled to
+// KEEP their data, so the one thing this must not do is remove the volumes.
+func (wc *wipeContext) stopContainersStartedForBackup() {
+	if !wc.startedForBackup {
+		return
+	}
+	sp := wc.out.StartSpinner("Stopping the containers started for the backup...")
+	if err := composeRunQuiet(wc.ctx, wc.info, wc.safeDir, "stop"); err != nil {
+		sp.Error("Failed to stop containers")
+		wc.errOut.WarnAlways(
+			fmt.Sprintf("Could not stop the containers started for the backup: %v", err),
+		)
+		wc.errOut.HintError("They were not running before this command; stop them with 'synthorg stop'.")
+		return
+	}
+	sp.Success("Containers stopped; your data is untouched")
 }
 
 // wipeDryRunPreview shows what a wipe would do without executing.
@@ -198,14 +236,20 @@ func (wc *wipeContext) confirmAndWipe() error {
 	}
 	defer func() {
 		if rerr := lock.Release(); rerr != nil {
-			wc.errOut.Warn(fmt.Sprintf("could not release lifecycle lock: %v", rerr))
+			// WarnAlways: a stuck lock blocks the next start/update, and this
+			// is the only place its cause is ever named.
+			wc.errOut.WarnAlways(fmt.Sprintf("could not release lifecycle lock: %v", rerr))
 		}
 	}()
 	if err := wc.stopAndPrune(); err != nil {
 		return err
 	}
-	if wipeNoBackup {
-		wc.out.HintNextStep("Backup skipped. Data cannot be recovered after wipe.")
+	// Keyed on whether a backup was actually taken, not on the flag: an
+	// operator who asked for one, watched it fail, and continued is in the
+	// same position as one who declined it, and was told so only by a prompt
+	// that answers itself under --yes.
+	if !wc.backupTaken {
+		wc.out.HintNextStep("No backup was taken. Data cannot be recovered after wipe.")
 	}
 	if err := wc.removeDataDirectory(); err != nil {
 		return err
@@ -229,7 +273,12 @@ func (wc *wipeContext) stopAndPrune() error {
 	if statErr != nil {
 		// A permission (or other non-not-found) error: warn but stay
 		// best-effort and proceed to the data wipe rather than aborting.
-		wc.errOut.Warn(fmt.Sprintf("Could not check for compose.yml: %v; skipping container teardown.", statErr))
+		//
+		// WarnAlways: this is not the benign "no compose.yml" case below. It
+		// means containers may be running against the directory about to be
+		// removed, and nothing downstream says so, so --quiet would leave the
+		// operator with no record of why teardown was skipped.
+		wc.errOut.WarnAlways(fmt.Sprintf("Could not check for compose.yml: %v; skipping container teardown.", statErr))
 		return nil
 	}
 	if composePath == "" {
@@ -430,7 +479,7 @@ func (wc *wipeContext) waitForBackendHealth() error {
 	// serving, not every optional dependency reachable, and gating on
 	// readiness would abandon a recoverable wipe over an unrelated
 	// dependency that is still coming up.
-	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/healthz", wc.state.BackendPort)
+	healthURL := config.APIURL(wc.state.BackendPort, "/healthz")
 	// Use the same wait budget as start (SYNTHORG_HEALTH_WAIT_TIMEOUT,
 	// default 90s) rather than a hardcoded 30s: a slow first boot (e.g. a large
 	// Postgres migration) can legitimately take longer than 30s, and a shorter
@@ -452,6 +501,26 @@ func (wc *wipeContext) offerBackup() error {
 		return err
 	}
 	if !wantBackup {
+		return nil
+	}
+
+	// Everything below can pull gigabytes of images and start the whole stack,
+	// all of it serving one authenticated API call. Refuse on a signing secret
+	// that cannot mint a token at all while that spend is still ahead of us,
+	// rather than after it with the operator's only remaining choice being to
+	// wipe unprotected.
+	//
+	// This catches an absent or malformed secret, never a wrong one: whether
+	// the backend accepts it is only knowable from the backend, so the message
+	// claims no more than was checked.
+	if err := validateJWTSecret(wc.state.JWTSecret); err != nil {
+		wc.errOut.WarnAlways(fmt.Sprintf("Cannot sign an admin token: %v", err))
+		if err := wc.askContinueWithoutBackup(
+			"Backup credentials are unusable, so no backup can be taken. " +
+				"Continue with wipe anyway?",
+		); err != nil {
+			return err
+		}
 		return nil
 	}
 
@@ -493,12 +562,14 @@ func (wc *wipeContext) ensureRunningForBackup() (bool, error) {
 
 	running, err := wc.containersRunning()
 	if err != nil {
-		wc.errOut.Warn(fmt.Sprintf("Could not check container status: %v", err))
+		wc.errOut.WarnAlways(
+			fmt.Sprintf("Could not check container status: %v", err),
+		)
 		return askToSkip("Could not check container status. Continue with wipe anyway?")
 	}
 	if running {
 		if err := wc.waitForBackendHealth(); err != nil {
-			wc.errOut.Warn(fmt.Sprintf("Backend not healthy: %v", err))
+			wc.errOut.WarnAlways(fmt.Sprintf("Backend not healthy: %v", err))
 			return askToSkip("Backend is not healthy. Continue with wipe anyway?")
 		}
 		return true, nil
@@ -513,8 +584,22 @@ func (wc *wipeContext) ensureRunningForBackup() (bool, error) {
 	}
 
 	if err := wc.startContainers(); err != nil {
-		wc.errOut.Warn(fmt.Sprintf("Could not start containers for backup: %v", err))
+		wc.errOut.WarnAlways(
+			fmt.Sprintf("Could not start containers for backup: %v", err),
+		)
 		return askToSkip("Could not start containers for backup. Continue with wipe anyway?")
+	}
+	wc.startedForBackup = true
+
+	// startContainers -> verifyAndPin reloads wc.state from disk, so the
+	// secret the pre-flight approved is not necessarily the one about to be
+	// used. Re-ask rather than assume: the pre-flight's whole promise is that
+	// the spend above was not wasted, and a silently swapped secret breaks it.
+	if err := validateJWTSecret(wc.state.JWTSecret); err != nil {
+		wc.errOut.WarnAlways(
+			fmt.Sprintf("Config reloaded with an unusable jwt_secret: %v", err),
+		)
+		return askToSkip("Backup credentials are unusable. Continue with wipe anyway?")
 	}
 
 	// No second health wait here: startContainers -> pullStartAndWait already
@@ -583,7 +668,9 @@ func (wc *wipeContext) promptSavePath() (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		homeDir = os.TempDir()
-		wc.errOut.Warn("Could not determine home directory; defaulting to temp directory")
+		// WarnAlways: this changes WHERE the operator's only remaining copy
+		// lands, to a directory the OS may clear, and the wipe follows.
+		wc.errOut.WarnAlways("Could not determine home directory; defaulting to temp directory")
 	}
 	defaultPath := filepath.Join(homeDir, fmt.Sprintf("synthorg-backup-%s.tar.gz", time.Now().Format("20060102-150405")))
 
@@ -671,7 +758,7 @@ func (wc *wipeContext) createAndCopyBackup(savePath string) error {
 	manifest, err := createBackupViaAPI(wc.ctx, wc.state)
 	if err != nil {
 		sp.Error("Backup failed")
-		wc.errOut.Warn(fmt.Sprintf("Could not create backup: %v", err))
+		wc.errOut.WarnAlways(fmt.Sprintf("Could not create backup: %v", err))
 		return wc.askContinueWithoutBackup("Backup creation failed. Continue with wipe anyway?")
 	}
 	sp.Success("Backup created")
@@ -679,13 +766,14 @@ func (wc *wipeContext) createAndCopyBackup(savePath string) error {
 	sp = wc.out.StartSpinner("Copying backup to local path...")
 	if err := copyBackupFromContainer(wc.ctx, wc.info, wc.safeDir, manifest.BackupID, savePath); err != nil {
 		sp.Error("Failed to copy backup")
-		wc.errOut.Warn(fmt.Sprintf("Could not copy backup locally: %v", err))
+		wc.errOut.WarnAlways(fmt.Sprintf("Could not copy backup locally: %v", err))
 		wc.errOut.HintError("The backup exists in the container but will be destroyed by the wipe.")
 		return wc.askContinueWithoutBackup(
 			"Backup was created but could not be copied locally. Continue with wipe anyway?",
 		)
 	}
 	sp.Success(fmt.Sprintf("Backup saved to %s", savePath))
+	wc.backupTaken = true
 
 	return nil
 }
@@ -695,6 +783,12 @@ func (wc *wipeContext) createAndCopyBackup(savePath string) error {
 // the prompt to match the reason (e.g. user declined, Docker unreachable,
 // container start failure). Returns nil to continue, or errWipeCancelled
 // to abort the wipe cleanly.
+//
+// Every warning that reaches here uses WarnAlways rather than Warn: under
+// --yes this prompt answers itself, so the warning is the only notice the
+// operator gets that irreversible destruction is proceeding unprotected,
+// and --quiet would otherwise swallow it in exactly the scripted run that
+// cannot be watched.
 func (wc *wipeContext) askContinueWithoutBackup(title string) error {
 	if !wc.shouldPrompt() {
 		return nil // --yes: continue without backup

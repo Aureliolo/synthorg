@@ -444,7 +444,7 @@ func waitForBackendHealthy(ctx context.Context, info docker.Info, safeDir string
 	// from was running the entire time.
 	// localhost is correct: the CLI polls the docker-compose backend
 	// it just started on the same host, via the published port.
-	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/healthz", state.BackendPort)
+	healthURL := config.APIURL(state.BackendPort, "/healthz")
 	tun := GetGlobalOpts(ctx).Tunables
 	if err := health.WaitForHealthy(ctx, healthURL, healthTimeout, tun.HealthPollInterval, tun.HealthInitialDelay); err != nil {
 		sp.Error("Backend did not start")
@@ -471,7 +471,7 @@ func waitForBackendHealthy(ctx context.Context, info docker.Info, safeDir string
 // authenticated detail endpoint; pointing at the dashboard is what the CLI
 // can honestly do with an unauthenticated probe.
 func warnIfDependenciesDegraded(ctx context.Context, state config.State, out *ui.UI) bool {
-	readyURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", state.BackendPort)
+	readyURL := config.APIURL(state.BackendPort, "/readyz")
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, readyURL, nil)
 	if err != nil {
 		out.Warn("Could not build the readiness probe; skipping the dependency check.")

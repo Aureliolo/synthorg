@@ -36,6 +36,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 | `check_chat_inbound_fenced.py` | push | `integrations/chat_api/inbound/` | full | no | none | add |
 | `check_ci_rollup_complete.py` | commit+push | `.github/workflows/{verify-backend,verify-cli,build-images,perf-benchmarks,perf-web-vitals}.yml` + `branch_protection.yml` | full | no | none | add |
 | `check_ci_workflow_resilience.py` | push | `.github/workflows/` + `.github/actions/` + `docker/**/Dockerfile` | full | no | none | add |
+| `check_cli_backend_request_parity.py` | push | `cli/cmd/backup.go` + `api/auth/{claims,service,system_user}.py` + `api/controllers/backup.py` | full | no | none | add |
 | `check_cli_bench_regression.sh` | CI (`verify-cli.yml :: cli-bench`) | `cli/internal/*_bench_test.go` (path-scoped via the `cli-changes` gate) | n/a | n/a | none (in-CI A/B compare, not a committed baseline) | keep |
 | `check_comparison_md_in_sync.py` | push | `competitors.yaml` + `comparison.md` + generator | full | no | none | keep |
 | `check_completion_config_temperature.py` | commit+push | `src/synthorg/` | full | no | none | keep |
@@ -164,7 +165,7 @@ That update is a convention, not an enforced one. `check_convention_gate_invento
 
 PreToolUse-only `check_*.py` that gate Claude Code / OpenCode tool calls before content lands (no repo-stage counterpart, excluded from CI parity): `check_mock_spec_ratchet.py` (blocks mock-spec regressions in `tests/`). See the *PreToolUse hooks* section below for the full agent-time hook set, including the Bash `.sh` guards.
 
-(<!--RS:convention_gates-->136<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
+(<!--RS:convention_gates-->140<!--/RS--> total `check_*.py` scripts: the enforcement gates in the table above, the meta-gate, and the PreToolUse / PostToolUse `check_*.py` agent-time hooks.)
 
 ### CI parity
 
@@ -189,6 +190,7 @@ Most gates scan `src/synthorg/` only. Those that walk additional trees encode ev
 - `check_setting_live_or_compose_set.py`: `src/synthorg/settings/definitions/` (the inventory of writable settings), `src/synthorg/` (live-seam and construction-path evidence), AND `web/src/` (dashboard references). The dashboard tree is load-bearing rather than incidental: a namespace and key quoted together in one non-generated dashboard file is live evidence, because the dashboard re-fetches through `GET /settings`. Dropping `web/src/` would report those settings as unreachable.
   - A **blank-default** setting is judged more strictly, because the read that would prove it live can be unreachable exactly when it matters. A setting that is blank until an operator names a value gates the construction of the very component whose resolver read the gate was accepting as evidence: with the setting unset the component does not exist, so nothing reads it, and the first write reaches nothing. That is how a per-feature model could be written, persisted, shown on the settings page, and applied only at the next restart while the gate stayed green. For a blank-default setting the gate therefore demands a seam that runs when the value is still absent: a subscriber `_WATCHED` pair, a `SubsystemSpec` `enabled_by`, a `settings=` declaration alongside `rebuild_on_change=True`, or a dashboard reference. A live resolver read still counts on its own when it is genuinely reachable from cold, which is what the no-fallback `resolve_bound_model_live` + `require_configured_model` shape gives; a read that supplies its own `fallback=`, or a bulk read of a whole namespace, is demoted, because both run happily over a blank value and prove nothing about the write reaching a running component.
 - `check_argument_count_suppression.py`: the whole tree, enumerated with `git ls-files` and parsed directly. Deliberately NOT scoped to what `ruff` walks, since pruning that walk is one of the bypasses it exists to close.
+- `check_cli_backend_request_parity.py`: `cli/cmd/backup.go` (Go) AND `src/synthorg/api/auth/{claims,service,system_user}.py` + `src/synthorg/api/controllers/backup.py` (Python). The only gate that walks a Go tree, and the only one that spans two languages: the contract it enforces is written twice, once per side, so reading either half alone is exactly the blindness that let the CLI ship minting a token and a header set the backend refused. The Go half is read by anchored text scan rather than AST (there is no Go parser here), which is why every anchor loss is exit 2.
 
 ## PreToolUse hooks (Claude Code + OpenCode)
 

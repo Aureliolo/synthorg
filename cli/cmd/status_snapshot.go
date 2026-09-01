@@ -334,7 +334,7 @@ type healthResponse struct {
 // fetchHealth is a package var so tests can stub the probe instead of
 // depending on whether a real backend happens to listen on the port.
 var fetchHealth = func(ctx context.Context, port int) ([]byte, int, error) {
-	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/readyz", port)
+	healthURL := config.APIURL(port, "/readyz")
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
 	if err != nil {
 		return nil, 0, fmt.Errorf("health check error: %w", err)
