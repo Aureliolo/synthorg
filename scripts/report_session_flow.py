@@ -364,6 +364,102 @@ def _share(count: int, total: int) -> str:
     return f"{count / total:.0%}" if total else "-"
 
 
+def render_shell(flows: list[SessionFlow], *, top: int) -> str:
+    """What the shell calls actually ran, by leading program.
+
+    A call count says the agent reached for the shell; this says what for, and
+    the two answer different questions. A merge that spends 88% of its calls on
+    the shell is either building or FORAGING, and only the verbs tell them
+    apart: reading a tree through `ls` and `cat` one file at a time is a
+    context problem the harness can fix by handing it a manifest, while running
+    the suite is the work.
+
+    Returns:
+        The tally, most-run first.
+    """
+    verbs: Counter[str] = Counter()
+    for flow in flows:
+        for turn in flow.turns:
+            for call in turn.called:
+                if call.name != "shell_command":
+                    continue
+                verbs[_leading_program(call.arguments)] += 1
+    if not verbs:
+        return "no shell call was recorded"
+    total = sum(verbs.values())
+    lines = [f"{total} shell calls, by leading program:"]
+    lines.extend(
+        f"  {count:6d}  {count / total:5.1%}  {verb}"
+        for verb, count in verbs.most_common(top)
+    )
+    return "\n".join(lines)
+
+
+def _leading_program(arguments: str) -> str:
+    """The program a shell call runs, off its accumulated argument JSON.
+
+    Returns:
+        The program name, or a marker when the arguments did not parse. They
+        arrive as streamed fragments, so a truncated reply leaves half a JSON
+        document, and reporting that as a program would invent a verb nobody
+        ran.
+    """
+    try:
+        parsed = json.loads(arguments)
+    except json.JSONDecodeError:
+        return "<arguments truncated>"
+    if not isinstance(parsed, dict):
+        return "<arguments not an object>"
+    command = str(parsed.get("command") or parsed.get("cmd") or "").strip()
+    if not command:
+        return "<no command>"
+    return _verb(command)
+
+
+#: Words that PREFIX the program rather than being it. Reading the literal
+#: first word filed 62% of a corpus of merge calls under `cd`, which is the one
+#: verb that says nothing at all about what the session was doing.
+_PREFIXES: Final[frozenset[str]] = frozenset({"cd", "timeout", "env", "nohup", "exec"})
+
+
+def _verb(command: str) -> str:
+    """The program a shell line actually runs.
+
+    Walks past a leading directory change or wrapper and past the shell
+    operator joining it to the real command, so `cd x && pytest -q` reports
+    pytest. Reports the FIRST program of a pipeline, since that is the one
+    producing what the rest filters.
+
+    Returns:
+        The program name, unqualified.
+    """
+    text = command.lstrip("( \t")
+    while True:
+        words = text.split()
+        if not words:
+            return "<no command>"
+        head = words[0].rsplit("/", maxsplit=1)[-1].rstrip(";")
+        if head not in _PREFIXES:
+            return head
+        for operator in ("&&", ";", "||"):
+            _, found, rest = text.partition(operator)
+            if found:
+                text = rest.lstrip("( \t")
+                break
+        else:
+            # A wrapper with no operator after it takes its program as an
+            # argument (`timeout 60 pytest`), so drop the wrapper and any
+            # bare-number or assignment argument it carries.
+            remainder = [
+                word
+                for word in words[1:]
+                if not word.replace(".", "", 1).isdigit() and "=" not in word
+            ]
+            if not remainder:
+                return head
+            text = " ".join(remainder)
+
+
 def render_calls(flows: list[SessionFlow]) -> str:
     """What was called, across every session read.
 
@@ -406,6 +502,13 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="One row per recording instead of one per session.",
     )
+    parser.add_argument(
+        "--shell",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Also tally the top N programs the shell calls ran.",
+    )
     args = parser.parse_args(argv)
 
     runs = {
@@ -422,6 +525,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.calls:
         print()
         print(render_calls(flows))
+    if args.shell:
+        print()
+        print(render_shell(flows, top=args.shell))
     return 0
 
 
