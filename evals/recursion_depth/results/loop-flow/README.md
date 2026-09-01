@@ -82,6 +82,48 @@ was taken without is now here: for a merge it is most of them.
 `workspace_files_changed` is unaffected, because it fingerprints the tree
 rather than counting tool calls.
 
+## The task brief is sent twice, on every turn
+
+The system prompt and the first user message are composed independently and
+both carry the whole brief. Measured as the longest IDENTICAL run between them,
+not a similarity score:
+
+| session kind | system | user | identical block | share of the user message |
+|---|---:|---:|---:|---:|
+| leaves (8) | 12.7–15.2 KB | 9.7–12.1 KB | 9.1–10.6 KB | **88–94%** |
+| merge | 10.6 KB | 6.6 KB | 4.6 KB | 69% |
+| plan | 1.3 KB | 11.1 KB | 20 B | 0% |
+
+It sits in the conversation prefix, so it is re-sent on every turn for the life
+of the session. Across one cell's ten sessions that is **4,203,369 characters
+of duplication**, on the order of an eighth of the cell's input bill. Prompt
+caching does not absorb it: caching is a no-op on this connection, measured
+three times.
+
+Two owners, neither aware of the other, which is the shape the repository's own
+single-owner rule describes:
+
+- `engine/prompt_template.py`, the `## Current Task` section, renders
+  `{{ task.title }}` and `{{ task.description }}` into the SYSTEM prompt.
+- `engine/prompt_validation.py::format_task_instruction` renders `Title: ...`
+  and `task.description` into the FIRST USER message.
+
+Both read the same `Task`. Nothing reconciles them, so the answer to "where
+does the brief go" is "both places".
+
+The planner is the control that shows this is the composition and not the
+brief: its system prompt carries no task section, and its overlap is 20
+characters.
+
+Not fenced differently in the two places, which was the first thing checked:
+the title and description arrive already wrapped in `<task-data>`, so this
+costs tokens rather than safety.
+
+**Deliberately not fixed yet.** It changes the token cost of every session, so
+landing it mid-sweep would separate the running arms by an undeclared second
+treatment. It is the strongest candidate for the next arm precisely because the
+prediction is sharp: input falls, behaviour should not change.
+
 ## Things the flow ruled OUT, which were worth ruling out
 
 **Tool bloat is not our problem.** The wire offers 8 tools, 5 of them real
@@ -102,6 +144,18 @@ re-derives it.
 **A malformed tool call fails closed.** One model-emitted name carried injected
 markup (`write_file bogus="1" /><tool_call>write_file`). The harness refused
 it, named the registered tools back, and the model retried correctly.
+
+## Two smaller things the prompt does that are worth deciding about
+
+**The discovery protocol argues with itself.** The system prompt says "You have
+access to 8 tools. Call `list_tools()` for details, then `load_tool(tool_name)`
+before invoking a tool" and then lists all eight with their descriptions. The
+agent reads the descriptions and calls the tools directly, which is right and
+is why the discovery tax is 4% rather than a third. The instruction describes a
+protocol the same message makes unnecessary.
+
+**Two sections ship empty.** `## Skills` and `## Authority` render as headings
+with nothing under them on every leaf session.
 
 ## What holds everywhere
 
