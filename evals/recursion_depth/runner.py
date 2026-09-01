@@ -802,6 +802,7 @@ def _continue_cell(
             produced=unit.produced,
             reason=unit.detail,
             workspace_files_changed=unit.workspace_files_changed,
+            test_files=unit.test_files,
         )
     for unit in resumed.units:
         units.replay(unit)
@@ -1067,6 +1068,7 @@ async def _build_tree_units(
             produced=outcome.produced,
             reason=outcome.detail,
             workspace_files_changed=outcome.workspace_files_changed,
+            test_files=outcome.test_files,
         )
         units.append(_merge_record(parent, node, outcome))
         context.budget.spend(outcome.attempts)
@@ -1189,6 +1191,7 @@ async def _build_missing_leaves(
             produced=leaf.produced,
             reason=leaf.detail,
             workspace_files_changed=leaf.workspace_files_changed,
+            test_files=leaf.test_files,
         )
         # Deliberately synchronous inside a gathered coroutine. The append
         # write-flush-fsyncs, and running it on the loop is what serialises
@@ -1402,6 +1405,7 @@ def _leaf_record(
         missing_declared_paths=leaf.missing_declared_paths,
         terminations=leaf.terminations,
         workspace_files_changed=leaf.workspace_files_changed,
+        test_files=leaf.test_files,
     )
 
 
@@ -1436,6 +1440,7 @@ def _merge_record(
         missing_declared_paths=outcome.missing_declared_paths,
         terminations=outcome.terminations,
         workspace_files_changed=outcome.workspace_files_changed,
+        test_files=outcome.test_files,
     )
 
 

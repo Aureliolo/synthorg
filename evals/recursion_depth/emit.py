@@ -526,6 +526,23 @@ def _cost_cell(value: float | None) -> str:
     return "unpriced" if value is None else f"{value:.4f}"
 
 
+def _root_test_files(cell: CellRecord) -> int | None:
+    """How many test files the cell's delivered tree holds.
+
+    Taken from the SHALLOWEST merge, which is the root assembly and therefore
+    the tree the score was measured against. A deeper sub-merge's count says
+    what one subtree carried, which is a different question.
+
+    Returns:
+        The count, or ``None`` when the cell ran no merge or was recorded
+        before the field existed.
+    """
+    merges = [unit for unit in cell.units if unit.kind == MERGE]
+    if not merges:
+        return None
+    return min(merges, key=lambda unit: unit.depth).test_files
+
+
 def _cell_table(report: RecursionDepthReport) -> list[str]:
     """Render one row per recorded run.
 
@@ -533,12 +550,23 @@ def _cell_table(report: RecursionDepthReport) -> list[str]:
     already carries every column through its ``total_*`` fields, and a second
     holder of those figures is one that can come to disagree with them.
 
+    ``Test files`` sits beside ``Satisfied`` deliberately. The score is measured
+    by a held-out oracle that never reads the unit's own suite, so a tree that
+    carried its pieces' tests up and one that discarded them score alike: a live
+    cap-1 smoke returned 40 and 39 on trees holding thirteen test files and
+    zero. Without this column the curve cannot say whether the work it scored
+    was verified, and the per-merge table further down is the wrong place for a
+    fact that qualifies the headline number.
+
     Returns:
         The table lines.
     """
     table = [
-        "| Cell | Achieved | Satisfied | Required | Sessions | Tokens | Spend |",
-        "|---|---|---:|---:|---:|---:|---:|",
+        (
+            "| Cell | Achieved | Satisfied | Required | Test files "
+            "| Sessions | Tokens | Spend |"
+        ),
+        "|---|---|---:|---:|---:|---:|---:|---:|",
     ]
     required = report.provenance.requirement_count
     for cell in report.cells:
@@ -551,6 +579,7 @@ def _cell_table(report: RecursionDepthReport) -> list[str]:
         )
         table.append(
             f"| {key} | {achieved} | {satisfied} | {required} "
+            f"| {_files_changed_cell(_root_test_files(cell))} "
             f"| {cell.total_attempts} | {cell.total_tokens} "
             f"| {_cost_cell(cell.total_cost)} |"
         )
@@ -743,9 +772,10 @@ def _merge_table(report: RecursionDepthReport) -> list[str]:
     rows = [
         (
             "| Cell | Depth | Assembly | Assembled by | Judged by | Verdict "
-            "| Parked | Amendments | Delivered | Files changed | Attempts ended |"
+            "| Parked | Amendments | Delivered | Test files | Files changed "
+            "| Attempts ended |"
         ),
-        "|---|---:|---|---|---|---|---|---:|---|---:|---|",
+        "|---|---:|---|---|---|---|---|---:|---|---:|---:|---|",
     ]
     rows.extend(
         f"| {cell_key(cell.depth_cap, cell.arm, cell.repetition)} | {unit.depth} "
@@ -753,6 +783,7 @@ def _merge_table(report: RecursionDepthReport) -> list[str]:
         f"| {_cell(_pair_label(unit.reviewer))} | {_cell(unit.verdict or 'none')} "
         f"| {'yes' if unit.parked else 'no'} | {unit.amendments} "
         f"| {'yes' if unit.delivered else 'no'} "
+        f"| {_files_changed_cell(unit.test_files)} "
         f"| {_files_changed_cell(unit.workspace_files_changed)} "
         f"| {_cell(', '.join(unit.terminations) or 'not recorded')} |"
         for cell, unit in _merges_of(report)

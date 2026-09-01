@@ -367,6 +367,13 @@ class UnitRecord(BaseModel):
             transcript has to be opened to see. ``None`` on a recording made
             before this field existed, which is a different claim from ``0``:
             the earlier journal never asked the question at all.
+        test_files: How many test files the unit's produced tree holds.
+            ``delivered`` is one bit and cannot separate "carried its pieces'
+            tests up and two fail" from "carried none at all". A live cap-1
+            smoke scored those two shapes 40 and 39, indistinguishable in
+            ``merged_passing``, on trees holding thirteen test files and zero,
+            so a curve without this cannot say whether the work it scored was
+            verified. ``None`` on a recording made before this field existed.
     """
 
     # populate_by_name so the field is settable by its own name despite
@@ -402,6 +409,7 @@ class UnitRecord(BaseModel):
     )
     terminations: tuple[str, ...] = ()
     workspace_files_changed: int | None = Field(default=None, ge=0)
+    test_files: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def _delivered_units_carry_no_reason(self) -> Self:

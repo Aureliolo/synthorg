@@ -150,6 +150,27 @@ def files_changed(before: UnitFingerprint, after: UnitFingerprint) -> int:
     )
 
 
+def count_test_files(tree: UnitFingerprint) -> int:
+    """How many test files the produced tree holds.
+
+    Matched on the ``test_*.py`` basename rather than on a ``tests/`` prefix,
+    because where a unit puts its suite is its own decision and one that
+    varied across every cell measured. ``produced_tree`` has already excluded
+    ``.children/``, so a merge that left its pieces' tests where it found them
+    counts zero here, which is the case this exists to make visible.
+
+    Args:
+        tree: The unit's produced tree.
+
+    Returns:
+        The count.
+    """
+    return sum(
+        path.rsplit("/", 1)[-1].startswith("test_") and path.endswith(".py")
+        for path, _ in tree
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class UnitDelivery:
     """What a unit produced, kept apart from whether what it produced stands up.
@@ -185,11 +206,20 @@ class UnitDelivery:
             only when reconstructed from a recording made before this field
             existed; every delivery this module computes fresh carries a
             real count, including zero.
+        test_files: How many ``test_*.py`` files the produced tree holds.
+            ``delivered`` is one bit and cannot separate "carried twelve
+            tests up and two fail" from "carried none at all", and the two
+            scored one point apart on a live cap-1 smoke (40 against 39) on
+            trees holding thirteen test files and zero. The count is what
+            makes the published number readable; without it a curve cannot
+            say whether the work it scored was verified. ``None`` only when
+            reconstructed from a recording made before this field existed.
     """
 
     produced: bool
     reason: str
     workspace_files_changed: int | None = None
+    test_files: int | None = None
 
     @property
     def delivered(self) -> bool:
@@ -242,6 +272,7 @@ __all__ = [
     "UnitDelivery",
     "UnitFingerprint",
     "built_unit_workspace",
+    "count_test_files",
     "files_changed",
     "leaf_unit_key",
     "merge_unit_key",

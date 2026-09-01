@@ -40,6 +40,7 @@ from evals.recursion_depth.session import (
 from evals.recursion_depth.unit import (
     UnitDelivery,
     UnitFingerprint,
+    count_test_files,
     files_changed,
     probe_artifacts,
     produced_tree,
@@ -203,6 +204,11 @@ class MergeOutcome:
             the record without a transcript. This is exactly the signal the
             stopped depth-4 recording needed: four merges spent 167 tool calls
             between them and left it at ``0``.
+        test_files: How many test files the assembled tree holds. ``delivered``
+            is one bit and cannot separate a merge that carried its pieces'
+            tests up and failed two from one that carried none, and a live
+            cap-1 smoke scored those 40 and 39, indistinguishable in the
+            published number on trees holding thirteen test files and zero.
     """
 
     workspace: CellWorkspace
@@ -224,6 +230,7 @@ class MergeOutcome:
     detail: str = ""
     terminations: tuple[str, ...] = ()
     workspace_files_changed: int | None = None
+    test_files: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -519,6 +526,7 @@ async def run_merge(
         detail=delivery.reason,
         terminations=terminations,
         workspace_files_changed=delivery.workspace_files_changed,
+        test_files=delivery.test_files,
     )
 
 
@@ -648,6 +656,7 @@ async def _delivery(
             workspace_files_changed=0,
         )
     changed = files_changed(baseline, after)
+    tests = count_test_files(after)
     async with graded(
         deps, plan.workspace, owner=f"grade:{plan.execution_prefix}"
     ) as grader:
@@ -657,8 +666,14 @@ async def _delivery(
             produced=True,
             reason=f"the merged tree's own tests did not pass: {report}",
             workspace_files_changed=changed,
+            test_files=tests,
         )
-    return UnitDelivery(produced=True, reason="", workspace_files_changed=changed)
+    return UnitDelivery(
+        produced=True,
+        reason="",
+        workspace_files_changed=changed,
+        test_files=tests,
+    )
 
 
 def _trim(findings: tuple[str, ...]) -> tuple[str, ...]:

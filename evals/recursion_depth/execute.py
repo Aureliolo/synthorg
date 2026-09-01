@@ -39,6 +39,7 @@ from evals.recursion_depth.tree import SpecBrief
 from evals.recursion_depth.unit import (
     UnitDelivery,
     UnitFingerprint,
+    count_test_files,
     files_changed,
     probe_artifacts,
     produced_tree,
@@ -114,6 +115,10 @@ class LeafOutcome:
         workspace_files_changed: The symmetric difference between the tree
             before and after, so "spent turns, changed nothing" is readable
             from the record without a transcript.
+        test_files: How many test files the produced tree holds. The unit's
+            brief tells it to write its own tests (nobody downstream will),
+            so a leaf delivering code and no suite is a fact the record
+            should carry rather than one a merge discovers later.
     """
 
     workspace: CellWorkspace
@@ -130,6 +135,7 @@ class LeafOutcome:
     detail: str = ""
     terminations: tuple[str, ...] = ()
     workspace_files_changed: int | None = None
+    test_files: int | None = None
 
 
 def leaf_task(
@@ -308,6 +314,7 @@ async def run_leaf(
         detail=delivery.reason,
         terminations=spent.terminations,
         workspace_files_changed=delivery.workspace_files_changed,
+        test_files=delivery.test_files,
     )
 
 
@@ -469,6 +476,7 @@ async def _delivery(
             workspace_files_changed=0,
         )
     changed = files_changed(baseline, after)
+    tests = count_test_files(after)
     async with graded(deps, workspace, owner=f"grade:{task.id}") as grader:
         passed, report = await grader.own_tests_pass(workspace.project_dir)
     if not passed:
@@ -476,8 +484,14 @@ async def _delivery(
             produced=True,
             reason=f"the unit's own tests did not pass: {report}",
             workspace_files_changed=changed,
+            test_files=tests,
         )
-    return UnitDelivery(produced=True, reason="", workspace_files_changed=changed)
+    return UnitDelivery(
+        produced=True,
+        reason="",
+        workspace_files_changed=changed,
+        test_files=tests,
+    )
 
 
 __all__ = [
