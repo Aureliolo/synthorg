@@ -106,8 +106,9 @@ def _write_sync(resolved: Path, content: str, *, create_dirs: bool) -> tuple[int
 class WriteFileTool(BaseFileSystemTool):
     """Creates or overwrites a file within the workspace.
 
-    Optionally creates parent directories when ``create_directories``
-    is True.
+    Missing parent directories are created unless ``create_directories``
+    is False: a write into a directory that does not exist yet is the
+    ordinary first write of a module, not a mistake to refuse.
 
     Examples:
         Write a new file::
@@ -127,8 +128,9 @@ class WriteFileTool(BaseFileSystemTool):
             name="write_file",
             action_type=ActionType.CODE_WRITE,
             description=(
-                "Write content to a file, creating or overwriting it. "
-                "Set create_directories to true to create parent dirs."
+                "Write content to a file, creating or overwriting it; missing "
+                "parent directories are created unless create_directories is "
+                "false."
             ),
             parameters_schema=WriteFileArgs.model_json_schema(),
         )

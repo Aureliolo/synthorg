@@ -42,11 +42,26 @@ class TestWriteFileExecution:
         assert result.metadata["created"] is False
         assert (workspace / "hello.txt").read_text(encoding="utf-8") == "overwritten"
 
-    async def test_missing_parent_without_create_dirs(
-        self, write_tool: WriteFileTool
+    async def test_missing_parent_is_created_by_default(
+        self, workspace: Path, write_tool: WriteFileTool
     ) -> None:
         result = await write_tool.execute(
             arguments={"path": "no/such/dir/file.txt", "content": "x"}
+        )
+        assert not result.is_error
+        assert (workspace / "no" / "such" / "dir" / "file.txt").read_text(
+            encoding="utf-8"
+        ) == "x"
+
+    async def test_missing_parent_refused_when_asked_not_to_create(
+        self, write_tool: WriteFileTool
+    ) -> None:
+        result = await write_tool.execute(
+            arguments={
+                "path": "no/such/dir/file.txt",
+                "content": "x",
+                "create_directories": False,
+            }
         )
         assert result.is_error
         assert "Parent directory does not exist" in result.content

@@ -57,7 +57,7 @@ class TestReadFileArgs:
 class TestWriteFileArgs:
     def test_minimal_construction(self) -> None:
         args = WriteFileArgs(path="x.txt", content="hello")
-        assert args.create_directories is False
+        assert args.create_directories is True
 
     def test_empty_content_allowed(self) -> None:
         args = WriteFileArgs(path="x.txt", content="")

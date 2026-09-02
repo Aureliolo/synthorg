@@ -86,8 +86,8 @@ class WriteFileArgs(BaseModel):
     path: NotBlankStr = Field(description="File path relative to workspace")
     content: str = Field(description="Content to write")
     create_directories: bool = Field(
-        default=False,
-        description="Create parent directories if missing",
+        default=True,
+        description="Create missing parent directories (default true)",
     )
 
 
