@@ -178,7 +178,7 @@ names the entry.
 Every successful **scoped** `provider.complete()` call attributes a `CostRecord` to the agent and task that originated the work. Attribution flows through a `ContextVar` middleware rather than through per-call kwargs, which keeps the provider interface uniform across cloud APIs, OpenRouter, Ollama, and custom adapters. Calls made outside any `cost_recording_scope` -- infrastructure probes, model discovery, the engine turn loop, tests -- read `None` for the active context and are intentionally **not** attributed: the engine's post-execution recorder owns engine turns, and probe / discovery traffic is not user spend.
 
 - **Scope contract**: callers wrap a `provider.complete()` invocation in `cost_recording_scope(cost_tracker, agent_id, task_id, project_id, call_category, currency)` from `synthorg.providers.cost_recording`. The scope is an `@asynccontextmanager` that captures the current `ContextVar` value, sets the new context, yields, and restores the captured value on exit. It restores by plain `set(previous)` rather than `Token.reset` on purpose: a streaming or SSE body can drive the enter and the exit in different `asyncio` contexts, and `Token.reset` raises `ValueError` when the token is reset in a context other than the one that created it, whereas a plain set is always context-safe. Nested scopes shadow the outer one and are restored on exit; concurrent tasks see independent scopes.
-- **Chokepoint**: `BaseCompletionProvider.complete()` reads the scope's context after a successful response, builds a `CostRecord` from `result.usage` (token counts, cost, and the cached-prefix read / write counts) + `result.provider_metadata` (`_synthorg_latency_ms`, `_synthorg_retry_count`, `_synthorg_retry_reason`) + `result.finish_reason`, and submits it via `cost_tracker.record(record)`. Calls outside any scope (probes, model discovery, tests) are no-ops.
+- **Chokepoint**: `BaseCompletionProvider.complete()` reads the scope's context after a successful response, builds a `CostRecord` from `result.usage` + `result.provider_metadata` (`_synthorg_latency_ms`, `_synthorg_cache_hit`, `_synthorg_retry_count`, `_synthorg_retry_reason`) + `result.finish_reason`, and submits it via `cost_tracker.record(record)`. Calls outside any scope (probes, model discovery, tests) are no-ops.
 - **Skip rule**: usage with both zero tokens and zero cost is skipped (matches the engine post-execution recorder). Free-tier providers with non-zero tokens still record.
 - **Failure isolation**: any exception from `cost_tracker.record(...)` other than `MemoryError` / `RecursionError` is logged at WARNING (`PROVIDER_COST_FAILED`) and swallowed -- the user-visible provider response never depends on recording success.
 - **Engine path**: the engine loop deliberately does NOT open a scope around its turn-level `provider.complete()` call. The post-execution `record_execution_costs(...)` recorder remains authoritative for engine turns because it accumulates per-turn metadata (turn number, retry counts, tool-response tokens for PTE) that the chokepoint cannot see synchronously. The chokepoint reads `None` and is a no-op for engine calls -- no double-counting.
@@ -346,20 +346,15 @@ partial card supplements the probe instead of discarding it. Four fields fail
 generation), so a partial card that silently replaced the probe used to turn
 those features off with no operator-visible cause.
 
-Cached-token capture: `_cost.py::token_usage_from_response_usage` reads the
-response usage object's cached-prefix counts (`prompt_tokens_details.cached_tokens`,
-falling back to a flat `cache_read_input_tokens`, and `cache_creation_input_tokens`
-for the write side) onto `TokenUsage.cache_read_input_tokens` /
-`cache_write_input_tokens`. They are COUNTS, never a hit flag: the bill is
-proportional to them, so a call that reused one cached token and one that
-reused ninety thousand are different facts, and the dashboard's figure is the
-cached share of input tokens rather than a rate of calls. A provider that
-publishes no cache data reads as zero, which contributes nothing to the share
-rather than reading as every call missing. Both counts travel with the usage
-into `CostRecord` and `TurnRecord`, and both `cost_records` backends store
-them. Nothing corrects `supports_prompt_caching` from the observed share, on
-purpose: a wrong caching claim costs a cache-write premium on a prefix,
-attended and visible as a real cached share rather than unattended and
+Cached-token capture: `litellm_response.py::_extract_cache_hit` reads the
+response usage object's cached-input-token count (`prompt_tokens_details.cached_tokens`,
+falling back to `cache_read_input_tokens`) and sets `_synthorg_cache_hit` --
+`True`/`False` when the provider reported cache data, `None` (never `False`)
+when it reported none at all, since the two are different facts for
+`cache_hit_rate` analytics. This is the sole production writer of that key;
+nothing corrects `supports_prompt_caching` from the observed hit rate, on
+purpose -- a wrong caching claim costs a cache-write premium on a prefix,
+attended and visible as a real `cache_hit_rate` rather than unattended and
 catastrophic, so the fix is an operator setting the capability explicitly
 once the card is wrong, not a second automatic writer racing it.
 

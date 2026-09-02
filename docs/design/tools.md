@@ -285,7 +285,7 @@ task boundary (per-task destroys immediately; per-agent starts the grace
 timer so a subsequent task for the same agent within the window re-acquires
 the warm container).
 
-A container is reclaimed at four points, and each covers what the others
+A container is reclaimed at three points, and each covers what the others
 cannot see. The task boundary covers a task. The boot reconciliation pass
 covers a previous incarnation, finding orphans by the `synthorg.managed=true`
 label after an unclean exit. Between them sits the warm container a reuse
@@ -294,30 +294,6 @@ strategy is holding when this process stops, which shutdown reclaims:
 after every agent drain, so an in-flight command has finished and its own
 per-task release has run. Without that step the warm container waits for a next
 boot, and an operator scaling down is not an operator restarting.
-
-The fourth is the container whose task-boundary release never fired: a run
-that died between acquiring and releasing, or a task parked on a human whose
-agent holds a warm container across the wait. Boot reconciliation cannot be
-re-run for it, because its grounding ("is there a row") is right only at a
-moment this process has created nothing of its own; mid-process, a container
-with no row is as likely being created as orphaned. The reclamation sweep
-(`tools/sandbox/reclaim.py`, subsystem `sandbox_reclaim`, requiring
-persistence and the boot pass) asks a different question of a different
-source: it walks the keys the lifecycle strategy itself holds, reads the owner
-segment back out of each (the last colon segment once the mount-mode and
-image suffixes are stripped, which is unambiguous because an owner is a UUID),
-and asks the task table whether that owner's run has finished: a per-task
-owner whose task is no longer assigned, in progress or in review, or a
-per-agent owner with no such task at all. A finished owner is released through
-`release_key`, the same lifecycle path the execution service releases on, so
-the grace window, idle timer and background-job pin still apply and the sweep
-destroys nothing itself. It runs a first pass at wiring and then on
-`tools.sandbox_reclaim_interval_seconds` (paused by
-`tools.sandbox_reclaim_paused`, both live); it declines by name under the
-per-call strategy or a backend that holds nothing past a call; a key it cannot
-read is reported and kept, because a container it cannot attribute is one it
-cannot know to be finished. Distributed deployments are out of scope by the
-same rule run recovery states: a dead runner there is JetStream's to notice.
 
 The task-boundary point is no longer unconditional once background shell
 commands are wired: grace/idle destroy is now gated on the container's own
@@ -372,7 +348,7 @@ remains, so no separate sweep task is needed for the duration ceiling.
 Wiring `pin_check` has a real construction-order cycle: `create_lifecycle_strategy`
 must build the strategy before `build_sandbox_backends` can construct the
 `DockerSandbox` whose bound `pin_check` method the strategy needs, but the
-strategy needs that same callable to exist. Boot wiring (`tool_registry_assembly.py`)
+strategy needs that same callable to exist. Boot wiring (`_engine_assembly.py`)
 breaks the cycle in two steps -- the strategy is constructed first with no
 pin check, then, once the `DockerSandbox` exists, `strategy.bind_pin_check(docker_backend.pin_check)`
 sets it as a second step. `bind_pin_check_if_wired` (`workers/_background_job_wiring.py`)

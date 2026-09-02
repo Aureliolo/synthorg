@@ -47,35 +47,6 @@ ambient(all non-admin tools)  UNION  granted(agent's own mcp_capabilities)  UNIO
 Sub-ELEVATED agents keep the explicit operator `read_tool_allowlist` path
 (empty by default: no MCP for low-trust agents).
 
-### Retrieval after scoping
-
-Scoping answers what an agent MAY reach and is the security question. What
-is put in front of the model for one unit of work is a different question,
-asked afterwards of the survivors alone: the scoped surface is a couple of
-hundred tools, and past a few dozen offered tools a model's selection
-accuracy over the whole surface collapses. `engine/mcp_tool_retrieval.py`
-ranks the scoped tools against the text of the unit of work (a task's title
-and description; for a chat action, the most recent human instruction) by
-term overlap weighted by rarity across the surface, name matches counting
-double, and keeps `security.mcp_self_consumer_retrieval_top_k` of them
-(default `40`, `0` keeps every scoped tool), in the order scoping listed
-them. It is lexical on
-purpose: the vocabulary of a tool name and a task brief is the same, and an
-embedding model would add a network call and a second `(provider, model)`
-binding for nothing.
-
-Retrieval runs strictly after `visible_tools(...)` and over its result
-alone, so it can only drop from what the agent may reach and never add to
-it: a tool it drops was admissible and is merely not offered this time, and
-a tool scoping refused is never offered whatever its relevance. A caller with
-no text to rank against passes `retrieval_query=None` and is offered the
-scoped surface whole, which is the honest answer rather than a guess. Every
-narrowing logs `MCP_SELF_CONSUMER_RETRIEVAL_NARROWED` with the scoped and
-offered counts. The ceiling lives on `McpSelfConsumerConfig.retrieval_top_k`
-beside the mode and reaches a running agent the same way the mode does: the
-security bridge subscriber rebuilds the live config on a write and the
-runtime reload subscriber rebuilds the engine on it.
-
 Because sensitive tools are hidden until granted, a prompt-injected
 marketing agent cannot see or call `deploy` / `org_fire` / `delete`
 tools: the surface is not there to attack. And because ambient tools are

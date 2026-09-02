@@ -579,69 +579,17 @@ brief now names the plan's WORKSTREAMS rather than every leaf in the tree.
 
 ## The experiment
 
-`evals/recursion_depth/` sweeps the depth cap and emits one chart with three
-panels on one depth axis: the fraction of the specification a merged tree
-satisfies, the fraction of the delivered leaves' own claims the merge kept,
-and the headline, tokens per solved requirement with a 95% bootstrap
-interval over each bucket's runs. The headline is what ranks the arms: a
-published comparison of three harnesses (arXiv 2607.22585) measured a
-forty-fold cost separation while every pairwise pass-rate interval crossed
-zero, so a loop can be cheaper by an order of magnitude at a pass rate no
-interval separates, and a report ranking on satisfaction alone ranks two
-things it cannot tell apart. The interval is a seeded percentile bootstrap
-(`evals/recursion_depth/efficiency.py`), seeded from the runs themselves so a
-re-score reproduces it; a bucket under three runs reports the point with no
-interval rather than a fabricated one, and two arms whose intervals overlap
-at a depth are named in the caveats as indistinguishable there. The depth axis is not
-the one the question asks for, and [The metric](#the-metric) below says why it
-stands in.
+`evals/recursion_depth/` sweeps the depth cap and emits one chart: the fraction
+of the specification a merged tree satisfies, against the depth that tree
+actually reached, with a cost panel beside it. That axis is not the one the
+question asks for, and [The metric](#the-metric) below says why it stands in.
 
-Beside the score, and never folded into it, every measured cell carries a
-**liveness** verdict on the deliverable the specification names
-(`evals/recursion_depth/liveness.py`). The oracle says which requirements a
-tree satisfies; it does not say whether `python -m sqlcsv` runs, and the two
-can come apart: an agent can satisfy a hidden oracle while the requested
-artefact is dead (arXiv 2606.28430), and the gap between visible and held-out
-verdicts grows about 28 points per tenfold increase in code size (arXiv
-2605.21384), which is the direction a depth sweep pushes. The spec's
-`requirements.yaml` declares what must run (`liveness: modules` and
-`entry_points`); each module is imported and each entry point executed with
-`-I` in a throwaway container holding the tree ALONE, so nothing the probe
-runs can read an expectation, and the verdict is `live`, `dead` (with what
-died) or `not_probeable` (the spec declares nothing to run). A cell scoring
-well while its deliverable is dead is named in the caveats, because that is
-the published failure mode the probe exists to catch.
-
-The committed matrix records caps 1 to 4 at five repetitions each, one arm,
-because `MINIMUM_REPETITIONS` refuses to load a matrix asking for fewer: the
-same comparison found that below five trials a pass-rate difference is
-indistinguishable from the run-to-run spread. The harness still supports two
-arms, and the first recording used both; what changed and why is in
-[The gate](#the-gate).
+The committed matrix records caps 1 to 4 at three, three, two, and two
+repetitions, one arm. The harness still supports two arms, and the first
+recording used both; what changed and why is in [The gate](#the-gate).
 
 Run `make recursion-depth` to print the matrix and the bill without spending
 anything, and `make recursion-depth-record` to measure for real.
-
-### Before a matrix is paid for
-
-A recording refuses to start without a passing **wire-level smoke** for its
-own manifest digest (`scripts/record_recursion_depth.py --smoke`, read by
-`--record` from `<out-dir>/smoke/wiring.json`). A 200 response, a valid
-manifest and a green unit test are all compatible with a treatment being
-absent from the engine: the corpus this harness replaced measured an engine
-wired at 8 of the 51 points a deployment supplies, for eight recordings, and
-nothing at any layer could tell. The smoke runs one cell at the shallowest
-cap and reads each treatment off EVIDENCE rather than configuration
-(`evals/recursion_depth/wire_check.py`): the engine's own wiring summary
-(`AgentEngine.wiring`, the same facts its creation event logs, plus the tool
-surface the invoker was built with), the live settings the manifest was armed
-into, the cell ledger (cached-prefix tokens), and the recorded request bodies
-(the reasoning depth that actually reached the provider). Each becomes a
-finding with what was expected and what was seen; a treatment whose evidence
-cannot be read is `unverified`, which is neither a pass nor a failure and is
-said in those words. The findings travel in the report under `wiring`, so a
-published artefact states its own wiring rather than asserting it, and a
-recording made before the smoke existed says "not measured" there.
 
 ### What one run does
 
@@ -956,9 +904,9 @@ cap costs its branching to the POWER of its depth: one repetition fewer at the
 deepest cap buys back more time than any other single change, and the shallow
 end is nearly free either way. It takes `CAP:COUNT` pairs and changes only the
 caps named. Per run rather than by editing the file, because the committed
-counts are the experimental DESIGN (five at every cap, the floor
-`MINIMUM_REPETITIONS` refuses to load a matrix below, so per-depth spread is
-reportable everywhere rather than only where the transition is expected), and an
+counts are the experimental DESIGN (three at caps 1 and 2 and two at caps 3 and
+4, so per-depth spread is reportable everywhere rather than only where the
+transition is expected), and an
 operator trading one of them for a schedule should not leave the next reader
 inheriting a quota window as if it were an intended design: a cap dropped to one
 repetition reports a range of one draw, which is the thing the design exists to
@@ -1122,14 +1070,10 @@ where there is a population, and a matrix that repeats only the caps it expects
 to be interesting cannot say whether the flat ones are flat or merely too
 thinly sampled to tell.
 
-Repetitions are five at every cap, and the loader refuses fewer. The deep cells
-are where the sessions are: a cap-1 cell is 14 sessions against a cap-3 cell's
-135, and a cap-4 cell is projected near 300, so the earlier design tapered to
-two at the deep end to fit the ceiling. That taper is what the measurement it
-was written before overrides: with every pairwise pass-rate interval crossing
-zero at fewer repetitions (arXiv 2607.22585), a taper leaves exactly the cells
-the curve is about too thinly sampled to read. What the taper was hiding is
-still worth stating: two
+Repetitions are three at caps 1 and 2 and two at caps 3 and 4, because the deep
+cells are where the sessions are: a cap-1 cell is 14 sessions against a cap-3
+cell's 135, and a cap-4 cell is projected near 300. Three at every cap would
+not fit the ceiling. The cost of the taper is stated rather than hidden: two
 draws bound a range but do not give a median distinct from it, so caps 3 and 4
 report a spread that says how far apart two trees fell and not much more.
 
@@ -1313,8 +1257,8 @@ Caps 4 to 6. ARIES puts the transition at 3 to 4, so the depth where the
 literature expects a blow-up is exactly the one beyond this recording: the
 chart's right end is absent rather than flat.
 
-That is what the committed matrix now records: caps 1 to 4 at five repetitions
-each, one arm. It answers the two things this recording could
+That is what the committed matrix now records: caps 1 to 4 at three, three, two
+and two repetitions, one arm. It answers the two things this recording could
 not support, and takes the arm comparison off the table to pay for them.
 
 ### What the run keeps
