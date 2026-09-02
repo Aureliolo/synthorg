@@ -492,15 +492,28 @@ def caching_finding(records: Sequence[CostRecord]) -> WiringFinding:
     The first call is not evidence. A cached read on it can be a prefix an
     earlier cell left in the provider's cache, which proves nothing about
     this cell reusing its own; only a later call reading a prefix this cell
-    could have written says the treatment is on the wire.
+    could have written says the treatment is on the wire. Where the provider
+    reports cache WRITES at all, the read has to follow one of this cell's
+    own, for the same reason one step further: a later read with no write
+    before it is still an earlier cell's prefix. A provider whose automatic
+    prefix caching publishes reads and never writes cannot be held to that,
+    so there the order of the calls is the only evidence there is.
 
     Returns:
         The finding.
     """
+    writes_reported = any(record.cache_write_input_tokens > 0 for record in records)
     cached = [
         record
         for index, record in enumerate(records)
-        if index > 0 and record.cache_read_input_tokens > 0
+        if index > 0
+        and record.cache_read_input_tokens > 0
+        and (
+            not writes_reported
+            or any(
+                previous.cache_write_input_tokens > 0 for previous in records[:index]
+            )
+        )
     ]
     if not records:
         observed, passed = "no call was recorded", None

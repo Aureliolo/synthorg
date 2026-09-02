@@ -376,13 +376,19 @@ class TestBuilders:
         "binding",
         [
             "Engine = AgentEngine",
+            "Engine: TypeAlias = AgentEngine",
             "from synthorg.engine.agent_engine import AgentEngine as Engine",
             (
                 "from synthorg.engine.agent_engine import AgentEngine as Motor\n"
                 "Engine = Motor"
             ),
         ],
-        ids=["assignment", "import_as", "import_then_assignment"],
+        ids=[
+            "assignment",
+            "annotated_assignment",
+            "import_as",
+            "import_then_assignment",
+        ],
     )
     def test_an_engine_alias_does_not_escape_the_arity_check(
         self, tmp_path: Path, binding: str
@@ -402,10 +408,16 @@ class TestBuilders:
         "binding",
         [
             "Deps = EngineDependencies",
+            "Deps: TypeAlias = EngineDependencies",
             "from synthorg.engine.dependencies import EngineDependencies as Deps",
             "from synthorg.engine.dependencies import EngineCore as Deps",
         ],
-        ids=["assignment", "import_root_as", "import_bundle_as"],
+        ids=[
+            "assignment",
+            "annotated_assignment",
+            "import_root_as",
+            "import_bundle_as",
+        ],
     )
     def test_a_gated_type_alias_does_not_escape_the_splat_check(
         self, tmp_path: Path, binding: str

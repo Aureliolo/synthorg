@@ -1465,7 +1465,7 @@ def parse_repetitions(
     A cap the manifest does not sweep is REFUSED rather than ignored. The
     manifest validator only checks that every swept depth HAS a count, so an
     extra key validates cleanly and does nothing: ``--repetitions 41:1`` would
-    be a typo for ``4:1`` that plans the full three repetitions and reports
+    be a typo for ``4:1`` that plans the full five repetitions and reports
     nothing wrong, which is the shape of mistake that gets discovered a day into
     a paid run.
 

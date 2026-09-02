@@ -867,7 +867,7 @@ class TestRaisingRepetitionsPerRun:
     def test_a_cap_the_matrix_does_not_sweep_is_refused(self) -> None:
         # The manifest validator only checks that every SWEPT depth has a
         # count, so an extra key validates cleanly and does nothing: '41:1' is
-        # a typo for '4:1' that plans the full three repetitions and reports
+        # a typo for '4:1' that plans the full five repetitions and reports
         # nothing wrong, which is discovered a day into a paid run.
         with pytest.raises(ValueError, match="does not sweep"):
             narrow(load_manifest(_MANIFEST), None, None, "41:1")

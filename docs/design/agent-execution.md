@@ -731,7 +731,6 @@ runs is the strategy setting's decision alone.
 | `cycle_detection`      | `True`  | Whether to detect repeating patterns               |
 | `max_corrections`      | `1`     | Corrective prompts before terminating (0 = none)   |
 | `min_tool_turns`       | `2`     | Tool-bearing turns in the window before any check fires; never above `window_size` |
-| `min_tool_turns`       | `2`     | Minimum tool-bearing turns before any check fires  |
 
 ### Intervention Flow
 

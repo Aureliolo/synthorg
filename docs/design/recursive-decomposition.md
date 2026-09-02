@@ -753,7 +753,7 @@ and the JSON travel without this page.
 **What the repetitions buy.** Both curves POOL a bucket's runs into one
 fraction. That is the right shape for a rate over work and it cannot say
 whether a low point is one bad draw or a real drop, which is the entire reason
-a cap is recorded three times. So `DepthSpread` reports each bucket's range and
+a cap is recorded five times. So `DepthSpread` reports each bucket's range and
 its middle run per metric, and `depth_curve.md` also lists every cell on its
 own row. The middle is the LOW median, so it is always a figure some run
 actually recorded rather than one describing neither of two. The absent-point

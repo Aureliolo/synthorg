@@ -60,10 +60,11 @@ and ``EngineAssemblyInputs``, live outside the package and are named at their
 declared paths; a path that no longer declares its type is exit 2. A builder
 is recognised by its return annotation resolving to one of those names or to
 the engine class. Aliases are resolved first, per file, for the engine and for
-every gated type, in both spellings a name can be rebound (``Engine =
-AgentEngine`` and ``from ... import AgentEngine as Engine``) and transitively
-through each other, so neither the arity check nor the splat check can be
-bypassed by renaming what is constructed.
+every gated type, in every spelling a name can be rebound (``Engine =
+AgentEngine``, ``Engine: TypeAlias = AgentEngine`` and ``from ... import
+AgentEngine as Engine``) and transitively through each other, so neither the
+arity check nor the splat check can be bypassed by renaming what is
+constructed.
 
 Allowlist / opt-out
 -------------------
@@ -462,11 +463,11 @@ def _annotated_name(node: ast.expr | None) -> str | None:
 def _local_aliases(tree: ast.Module, names: frozenset[str]) -> frozenset[str]:
     """Return *names* plus every name *tree* binds to one of them.
 
-    ``Engine = AgentEngine`` and ``from ... import AgentEngine as Engine`` both
-    put a constructor behind a name the call checks would otherwise never
-    see, and ``Deps(**mapping)`` under an imported alias is the splat the
-    gate exists to refuse. Resolved transitively, so an alias of an alias
-    is still the type it names.
+    ``Engine = AgentEngine``, ``Engine: TypeAlias = AgentEngine`` and
+    ``from ... import AgentEngine as Engine`` all put a constructor behind a
+    name the call checks would otherwise never see, and ``Deps(**mapping)``
+    under an imported alias is the splat the gate exists to refuse. Resolved
+    transitively, so an alias of an alias is still the type it names.
 
     Returns:
         *names* and every alias of them, wherever in the module it is bound.
@@ -487,13 +488,21 @@ def _bindings_to(node: ast.AST, names: set[str]) -> Iterator[str]:
     """Yield each name *node* binds to one of *names*.
 
     Yields:
-        The target of an assignment whose value names one of them, and the
-        ``as`` name of a ``from`` import bringing one of them in.
+        The target of an assignment whose value names one of them, annotated
+        (``Engine: TypeAlias = AgentEngine``) or not, and the ``as`` name of
+        a ``from`` import bringing one of them in.
     """
     if isinstance(node, ast.Assign) and _rightmost_name(node.value) in names:
         for target in node.targets:
             if isinstance(target, ast.Name):
                 yield target.id
+    elif (
+        isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.value is not None
+        and _rightmost_name(node.value) in names
+    ):
+        yield node.target.id
     elif isinstance(node, ast.ImportFrom):
         for alias in node.names:
             if alias.name in names and alias.asname is not None:

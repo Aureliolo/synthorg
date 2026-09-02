@@ -85,7 +85,7 @@ def _wiring(**overrides: object) -> EngineWiringSummary:
     return EngineWiringSummary(**base)  # type: ignore[arg-type]
 
 
-def _record(cache_read: int) -> CostRecord:
+def _record(cache_read: int, *, cache_write: int = 0) -> CostRecord:
     """One cost record carrying *cache_read* cached tokens.
 
     Returns:
@@ -102,6 +102,7 @@ def _record(cache_read: int) -> CostRecord:
         currency="EUR",
         timestamp=datetime(2026, 9, 1, tzinfo=UTC),
         cache_read_input_tokens=cache_read,
+        cache_write_input_tokens=cache_write,
     )
 
 
@@ -457,6 +458,19 @@ class TestCachingOffTheLedger:
 
     def test_a_single_cached_call_is_unverified(self) -> None:
         assert caching_finding((_record(40),)).passed is None
+
+    def test_a_read_after_this_cells_own_write_passes(self) -> None:
+        finding = caching_finding((_record(0, cache_write=30), _record(40)))
+
+        assert finding.passed is True
+
+    def test_a_read_before_any_write_is_unverified_where_writes_are_reported(
+        self,
+    ) -> None:
+        """Writes are reported, so a read with none before it is an earlier cell's."""
+        records = (_record(0), _record(40), _record(0, cache_write=30))
+
+        assert caching_finding(records).passed is None
 
     def test_all_zeros_is_unverified(self) -> None:
         assert caching_finding((_record(0), _record(0))).passed is None
