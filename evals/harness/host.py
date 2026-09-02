@@ -89,6 +89,7 @@ from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.state import config_resolver_of, settings_service_of
 from synthorg.settings.write_governance import SettingsWriteGovernance
 from synthorg.tools.sandbox._image_resolution import (
@@ -253,6 +254,13 @@ class RecordingHostConfig:
             is what the gateway resolves a run bearer's bound provider against,
             so the manifest's capabilities must name providers present here.
         scratch_dir: Directory for the throwaway database, removed on exit.
+        coordination_pair: The ``(provider, model)`` the host publishes as its
+            ``coordination.decomposition_model``. The harness plans its own
+            trees, so nothing here dispatches on it, but the product's runtime
+            services stop at "no coordinator" without one, and the
+            completion-oracle peer-review gate that judges every filed unit
+            is built only past that point: a recording against a host that
+            names no pair measures leaves nobody on the roster ever reviewed.
         label: Names this recording, and through it the throwaway database and
             the seeded CEO account. Two harnesses recording at once would
             otherwise write the same filename under a shared scratch root and
@@ -274,6 +282,7 @@ class RecordingHostConfig:
 
     company_config: RootConfig
     scratch_dir: Path
+    coordination_pair: ModelRef
     label: str = DEFAULT_RECORDING_LABEL
     bind_host: str | None = None
     bind_port: int = 0
@@ -912,6 +921,14 @@ class RecordingGatewayHost:
             governance=_RECORDING_GATEWAY_GOVERNANCE,
         )
         await settings.set("engine", "max_turn_extensions", str(_NO_TURN_EXTENSIONS))
+        # The runtime services rebuild on this write, and the peer-review gate
+        # that judges every filed unit exists only in a runtime built past the
+        # coordinator: see ``RecordingHostConfig.coordination_pair``.
+        await settings.set(
+            "coordination",
+            "decomposition_model",
+            serialize_model_ref(self._config.coordination_pair),
+        )
 
 
 __all__ = [

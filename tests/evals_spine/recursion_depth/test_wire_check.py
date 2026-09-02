@@ -29,6 +29,7 @@ from evals.recursion_depth.wire_check import (
     load_wiring_report,
     matrix_digest,
     memory_finding,
+    peer_review_finding,
     reasoning_finding,
     require_passing_smoke,
     smoke_dir,
@@ -39,9 +40,11 @@ from evals.recursion_depth.wire_check import (
     write_wiring_report,
 )
 from synthorg.api.state import AppState
+from synthorg.approval.state import ApprovalStateSlice
 from synthorg.budget.cost_record import CostRecord
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.wiring_summary import EngineWiringSummary
 from synthorg.memory.state import MemoryStateSlice
 from synthorg.observability.events.evals import EVALS_RECURSION_SMOKE_UNVERIFIED
@@ -577,6 +580,32 @@ class TestTheRecordingIsGated:
         assert len(unverified) == 1
         assert unverified[0]["treatments"] == ["prompt caching"]
         assert unverified[0]["log_level"] == "warning"
+
+
+class TestPeerReviewFinding:
+    """A wired pipeline is not an attached reviewer, and this reads the gate."""
+
+    @staticmethod
+    def _state(gate: ReviewGateService | None) -> AppState:
+        return make_app_state(slices={ApprovalStateSlice: {"review_gate": gate}})
+
+    def test_an_attached_gate_passes(self) -> None:
+        gate = mock_of[ReviewGateService](completion_oracle_gate_attached=True)
+
+        assert peer_review_finding(self._state(gate)).passed is True
+
+    def test_a_review_gate_with_no_oracle_fails(self) -> None:
+        # The shape a host with no coordination pair boots into: the build/test
+        # gate alone judges every unit, and the engine's summary cannot tell.
+        gate = mock_of[ReviewGateService](completion_oracle_gate_attached=False)
+
+        finding = peer_review_finding(self._state(gate))
+
+        assert finding.passed is False
+        assert "no completion-oracle gate" in finding.observed
+
+    def test_no_review_gate_at_all_fails(self) -> None:
+        assert peer_review_finding(self._state(None)).passed is False
 
 
 class TestLeafReviewFinding:

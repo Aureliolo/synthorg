@@ -35,6 +35,7 @@ from evals.recursion_depth.manifest import Arm, ModelPair, RecursionDepthManifes
 from evals.recursion_depth.models import WiringFinding, WiringReport
 from evals.recursion_depth.session import LeafReview, SessionOutcome
 from synthorg.api.state import AppState
+from synthorg.approval.state import ApprovalStateSlice
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.core.completion_enums import REASONING_UNSET, ReasoningEffort
@@ -223,6 +224,7 @@ class WiringProbe:
             memory_finding(app_state, self._manifest),
             budget_finding(wiring, self._ledger),
             *governance_findings(wiring),
+            peer_review_finding(app_state),
             leaf_review_finding(self._leaf),
             # Off the loop: it walks and reads every transcript the cell
             # wrote, on the same loop the gateway is still serving.
@@ -241,6 +243,41 @@ class WiringProbe:
             unverified=list(report.unverified),
         )
         return report
+
+
+def peer_review_finding(app_state: AppState) -> WiringFinding:
+    """Whether the roster peer reviewer is attached to the host's review gate.
+
+    The pipeline being wired on the engine is one finding and this is
+    another: the completion-oracle gate that dispatches a roster reviewer is
+    built only in a runtime built past the coordinator, so a host whose
+    coordination pair is unset judges every filed unit with the build/test
+    gate alone while every wiring summary reads as fully reviewed. Read off
+    the live review gate rather than off the engine, because that is where
+    the gate is attached.
+
+    Args:
+        app_state: The live application the cell ran against.
+
+    Returns:
+        The finding.
+    """
+    expected = "a completion-oracle gate attached to the host's review gate"
+    gate = app_state.slice(ApprovalStateSlice).review_gate
+    if gate is None:
+        return WiringFinding(
+            treatment=NotBlankStr("peer review"),
+            expected=expected,
+            observed="the host wired no review gate",
+            passed=False,
+        )
+    attached = gate.completion_oracle_gate_attached
+    return WiringFinding(
+        treatment=NotBlankStr("peer review"),
+        expected=expected,
+        observed="attached" if attached else "no completion-oracle gate attached",
+        passed=attached,
+    )
 
 
 def leaf_review_finding(review: LeafReview | None) -> WiringFinding:

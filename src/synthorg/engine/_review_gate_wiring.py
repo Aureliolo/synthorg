@@ -206,3 +206,19 @@ class ReviewGateWiringMixin:
             or self._red_team_gate is not None
             or self._vision_gate is not None
         )
+
+    @property
+    def completion_oracle_gate_attached(self) -> bool:
+        """Whether the peer-review gate is attached, as distinct from wired.
+
+        A review pipeline being present on an engine says nothing about this
+        gate: it is attached only once a runtime built past the coordinator
+        hands one over, and a deployment whose coordination pair is unset
+        judges every completion with the build/test gate alone. A check that
+        reads the pipeline would report the reviewer present in exactly that
+        deployment.
+
+        Returns:
+            ``True`` when a completion-oracle gate is attached.
+        """
+        return self._completion_oracle_gate is not None

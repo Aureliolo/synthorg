@@ -141,6 +141,7 @@ from synthorg.persistence.completion_oracle_report_protocol import (
 )
 from synthorg.persistence.state import persistence_of
 from synthorg.providers.family import model_named
+from synthorg.settings.model_ref import ModelRef
 from synthorg.settings.state import config_resolver_of, settings_service_of
 from synthorg.workers._capability_policy_wiring import build_capability_policy
 
@@ -804,7 +805,12 @@ async def _record(
     completed = False
     try:
         async with RecordingGatewayHost(
-            _host_config(args, company_config=company_config, work_root=run_work_root)
+            _host_config(
+                args,
+                company_config=company_config,
+                work_root=run_work_root,
+                manifest=manifest,
+            )
         ) as host:
             binder = HarnessBinder(host=host)
             context = await _build_context(
@@ -870,7 +876,11 @@ async def _record(
 
 
 def _host_config(
-    args: argparse.Namespace, *, company_config: RootConfig, work_root: Path
+    args: argparse.Namespace,
+    *,
+    company_config: RootConfig,
+    work_root: Path,
+    manifest: RecursionDepthManifest,
 ) -> RecordingHostConfig:
     """Assemble the scratch backend the sweep dispatches through.
 
@@ -878,6 +888,8 @@ def _host_config(
         args: The parsed command line.
         company_config: The config the run boots against.
         work_root: This run's scratch root.
+        manifest: The matrix, for the pair the host publishes as its
+            coordination binding.
 
     Returns:
         The host configuration.
@@ -885,6 +897,12 @@ def _host_config(
     return RecordingHostConfig(
         company_config=company_config,
         scratch_dir=work_root / "host",
+        # The executor's own pair: the host never plans on it (the sweep
+        # does), so the choice only has to be a pair the config can resolve.
+        coordination_pair=ModelRef(
+            provider=manifest.executor.provider,
+            model_id=manifest.executor.model_id,
+        ),
         label=_LABEL,
         bind_host=args.bind_host,
         bind_port=args.bind_port,

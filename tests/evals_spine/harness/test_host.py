@@ -32,12 +32,13 @@ from synthorg.core.types import NotBlankStr
 from synthorg.llm.gateway_binding import mint_run_token
 from synthorg.llm.gateway_token import GatewaySigner
 from synthorg.persistence.state import persistence_of
-from synthorg.settings.model_ref import ModelRef
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.state import config_resolver_of
 from tests.evals_spine._recording import (
     RECORDING_MODEL,
     RECORDING_PROVIDER,
     recording_company_config,
+    recording_pair,
 )
 
 pytestmark = [
@@ -80,6 +81,7 @@ def _config(tmp_path: Path, *, scratch: Path | None = None) -> RecordingHostConf
     return RecordingHostConfig(
         company_config=recording_company_config(),
         scratch_dir=scratch if scratch is not None else tmp_path / "host",
+        coordination_pair=recording_pair(),
         bind_host="127.0.0.1",
     )
 
@@ -200,6 +202,18 @@ class TestEndpointSettings:
         assert await resolver.get_bool("providers", "gateway_enabled") is True
         assert f":{host.port}/" in host.container_gateway_url
 
+    async def test_the_coordination_pair_is_published(
+        self, host: RecordingGatewayHost
+    ) -> None:
+        # The peer-review gate is built only in a runtime built past the
+        # coordinator, which needs this pair; unset, every filed unit is judged
+        # by the build/test gate alone while the pipeline reads as wired.
+        resolver = config_resolver_of(host.app_state)
+
+        published = await resolver.get_str("coordination", "decomposition_model")
+
+        assert published == serialize_model_ref(recording_pair())
+
     async def test_container_urls_address_the_docker_host_alias(
         self, host: RecordingGatewayHost
     ) -> None:
@@ -215,6 +229,7 @@ class TestLifecycle:
         config = RecordingHostConfig(
             company_config=recording_company_config(),
             scratch_dir=scratch,
+            coordination_pair=recording_pair(),
             bind_host="127.0.0.1",
         )
 
@@ -244,6 +259,7 @@ class TestLifecycle:
         config = RecordingHostConfig(
             company_config=recording_company_config(),
             scratch_dir=scratch,
+            coordination_pair=recording_pair(),
             bind_host="127.0.0.1",
         )
 
@@ -332,6 +348,7 @@ class TestLifecycle:
         config = RecordingHostConfig(
             company_config=recording_company_config(),
             scratch_dir=tmp_path / "host",
+            coordination_pair=recording_pair(),
             bind_host="127.0.0.1",
         )
 
@@ -396,6 +413,7 @@ class TestGatewayEnabled:
         config = RecordingHostConfig(
             company_config=recording_company_config(),
             scratch_dir=tmp_path / "host",
+            coordination_pair=recording_pair(),
             bind_host="127.0.0.1",
         )
 
