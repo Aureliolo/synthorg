@@ -62,8 +62,10 @@ REWORK_NUDGE: Final[str] = (
     "Your work was reviewed and sent back rather than accepted.\n\n"
     "The reviewer said: {reason}\n\n"
     "Address that specifically, then finish. If the reason is that no test "
-    "run was recorded, actually run the tests with the tools you have; a "
-    "claim that they pass is not evidence that they do."
+    "run was recorded, run the tests with the tools you have, as the whole "
+    "command line so the runner's exit status is the line's (`pytest -q`, "
+    "never `pytest -q; echo $?`); a claim that they pass is not evidence "
+    "that they do."
 )
 
 #: Recorded on the run when the bound is spent, so the task fails saying which

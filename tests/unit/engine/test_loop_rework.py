@@ -151,3 +151,12 @@ class TestContinueRework:
         nudge = REWORK_NUDGE.format(reason=_REASON)
 
         assert "claim that they pass is not evidence" in nudge
+
+    def test_the_nudge_says_how_a_run_gets_recorded(self) -> None:
+        """A live agent ran its suite three times as `runner; echo $?`, was
+        told each time only that no run was recorded, and failed the task:
+        "actually run the tests" is not the instruction it was missing."""
+        nudge = REWORK_NUDGE.format(reason=_REASON)
+
+        assert "whole command line" in nudge
+        assert "echo $?" in nudge

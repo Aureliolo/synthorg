@@ -53,6 +53,21 @@ from synthorg.persistence.plan_protocol import PlanRepository
 logger = get_logger(__name__)
 
 _TEST_RECORD_QUERY_LIMIT: Final[int] = 1000
+
+#: Handed back to the agent as the review's own words, so it has to say what
+#: would satisfy the gate rather than only that nothing did. A recorded run is
+#: recognised from the invoked program and vouched for by the line's exit
+#: status, so a runner followed by ``; echo $?`` is a run the gate cannot see:
+#: a live agent ran its suite that way through three rework rounds, told each
+#: time only that it had "produced no test run", and failed the task having
+#: run the tests every round.
+NO_TEST_RUN_REASON: Final[str] = (
+    "No test run was recorded for this task, so there is no evidence the work "
+    "builds or its tests pass (failing closed). A run is recorded only when the "
+    "test runner is the whole command line, so that its exit status is the "
+    "line's: `pytest -q` is recorded, `pytest -q; echo $?` is not. Run the "
+    "suite that way."
+)
 """Upper bound on test records inspected per task.
 
 Newest-first, so the latest run (index 0) drives the verdict regardless of
@@ -411,10 +426,7 @@ class BuildTestOracle:
                 return OracleEvaluation(
                     verdict=OracleVerdict.UNVERIFIED,
                     requirement=requirement,
-                    reason=(
-                        "Code task produced no test run; there is no evidence "
-                        "the work builds or its tests pass (failing closed)."
-                    ),
+                    reason=NO_TEST_RUN_REASON,
                 )
             return OracleEvaluation(
                 verdict=OracleVerdict.NOT_APPLICABLE,
