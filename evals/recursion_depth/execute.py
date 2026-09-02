@@ -171,7 +171,7 @@ class LeafOutcome:
     terminations: tuple[str, ...] = ()
     workspace_files_changed: int | None = None
     compaction_tokens: int = 0
-    compaction_cost: float = 0.0
+    compaction_cost: float | None = 0.0
 
 
 def leaf_task(
@@ -400,7 +400,7 @@ class _Spend:
     output_tokens: int
     terminations: tuple[str, ...]
     compaction_tokens: int = 0
-    compaction_cost: float = 0.0
+    compaction_cost: float | None = 0.0
 
     @classmethod
     def of(cls, outcome: SessionOutcome) -> _Spend:
@@ -442,6 +442,7 @@ class _Spend:
             tokens=outcome.tokens,
             input_tokens=outcome.input_tokens,
             output_tokens=outcome.output_tokens,
+            compaction_cost=outcome.compaction_cost,
         )
         return _Spend(
             turns=self.turns + outcome.turns,
@@ -451,7 +452,7 @@ class _Spend:
             output_tokens=self.output_tokens + outcome.output_tokens,
             terminations=(*self.terminations, outcome.termination),
             compaction_tokens=self.compaction_tokens + outcome.compaction_tokens,
-            compaction_cost=self.compaction_cost + outcome.compaction_cost,
+            compaction_cost=sum_costs((self.compaction_cost, outcome.compaction_cost)),
         )
 
 

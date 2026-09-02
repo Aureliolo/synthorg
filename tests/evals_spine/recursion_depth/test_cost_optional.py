@@ -21,7 +21,9 @@ from evals.recursion_depth.emit import (
     derived_caveats,
     write_report,
 )
+from evals.recursion_depth.execute import _Spend
 from evals.recursion_depth.manifest import Arm, Independence, ModelPair
+from evals.recursion_depth.merge import _MergeSpend
 from evals.recursion_depth.models import (
     LEAF,
     CellRecord,
@@ -32,7 +34,7 @@ from evals.recursion_depth.models import (
     sum_costs,
 )
 from evals.recursion_depth.provenance import provider_is_priced
-from evals.recursion_depth.session import session_spend
+from evals.recursion_depth.session import SessionOutcome, session_spend
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.currency import CurrencyCode
@@ -156,6 +158,72 @@ class TestSessionSpendReportsAnHonestCost:
 
         assert spent.cost == pytest.approx(1.0)
         assert spent.tokens == 375
+
+
+def _session(*, compaction_cost: float | None) -> SessionOutcome:
+    """One finished session whose compaction summaries cost *compaction_cost*.
+
+    Returns:
+        The outcome, unpriced overall whenever its compaction is.
+    """
+    return SessionOutcome(
+        cost=None if compaction_cost is None else 0.5,
+        tokens=100,
+        turns=2,
+        termination="completed",
+        compaction_tokens=20,
+        compaction_cost=compaction_cost,
+    )
+
+
+class TestCompactionCostIsOnTheSameTermsAsCost:
+    """An unpriced summary is unknown, never free, through every accumulator."""
+
+    def test_a_leaf_sums_priced_compaction_costs(self) -> None:
+        spent = _Spend.of(_session(compaction_cost=0.25)).plus(
+            _session(compaction_cost=0.5)
+        )
+
+        assert spent.compaction_cost == pytest.approx(0.75)
+
+    def test_a_leaf_keeps_an_unpriced_compaction_cost_unknown(self) -> None:
+        spent = _Spend.of(_session(compaction_cost=None)).plus(
+            _session(compaction_cost=None)
+        )
+
+        assert spent.compaction_cost is None
+
+    def test_a_merge_keeps_an_unpriced_compaction_cost_unknown(self) -> None:
+        """A later priced session cannot repair a total already poisoned."""
+        spend = _MergeSpend().plus(
+            cost=None, tokens=10, input_tokens=5, output_tokens=5, compaction_cost=None
+        )
+        spend = spend.plus(
+            cost=0.1, tokens=10, input_tokens=5, output_tokens=5, compaction_cost=0.1
+        )
+
+        assert spend.compaction_cost is None
+
+    def test_a_negative_compaction_cost_is_refused_at_the_booking(self) -> None:
+        with pytest.raises(ValueError, match="compaction_cost"):
+            _Spend.of(_session(compaction_cost=0.0)).plus(
+                _session(compaction_cost=-0.1)
+            )
+
+    def test_a_unit_record_carries_an_unknown_compaction_cost(self) -> None:
+        record = UnitRecord(
+            unit_id=NotBlankStr("leaf-a"),
+            title=NotBlankStr("Build a thing"),
+            kind=LEAF,
+            depth=0,
+            delivered=True,
+            attempts=1,
+            turns=10,
+            cost=None,
+            compaction_cost=None,
+        )
+
+        assert record.compaction_cost is None
 
 
 class TestDerivedCaveats:

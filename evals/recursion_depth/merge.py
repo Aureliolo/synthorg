@@ -243,7 +243,7 @@ class MergeOutcome:
     terminations: tuple[str, ...] = ()
     workspace_files_changed: int | None = None
     compaction_tokens: int = 0
-    compaction_cost: float = 0.0
+    compaction_cost: float | None = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,7 +283,7 @@ class _MergeSpend:
     output_tokens: int = 0
     review_tokens: int = 0
     compaction_tokens: int = 0
-    compaction_cost: float = 0.0
+    compaction_cost: float | None = 0.0
 
     def plus(
         self,
@@ -295,7 +295,7 @@ class _MergeSpend:
         output_tokens: int,
         reviewing: bool = False,
         compaction_tokens: int = 0,
-        compaction_cost: float = 0.0,
+        compaction_cost: float | None = 0.0,
     ) -> _MergeSpend:
         """Add one further session's figures.
 
@@ -312,6 +312,7 @@ class _MergeSpend:
             tokens=tokens,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            compaction_cost=compaction_cost,
         )
         return _MergeSpend(
             sessions=self.sessions + 1,
@@ -322,7 +323,7 @@ class _MergeSpend:
             output_tokens=self.output_tokens + output_tokens,
             review_tokens=self.review_tokens + (tokens if reviewing else 0),
             compaction_tokens=self.compaction_tokens + compaction_tokens,
-            compaction_cost=self.compaction_cost + compaction_cost,
+            compaction_cost=sum_costs((self.compaction_cost, compaction_cost)),
         )
 
 

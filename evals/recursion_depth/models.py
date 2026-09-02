@@ -400,7 +400,9 @@ class UnitRecord(BaseModel):
             back by spending, and whether the trade paid is readable only
             with this held apart from the run's own figure.
         compaction_cost: What those summaries cost, on the same terms as
-            ``cost``; zero when the text summariser ran.
+            ``cost``: zero when the text summariser ran, ``None`` when the
+            connection does not price its calls, because an unpriced
+            summary and a free one are not the same claim.
         executor: The pair this unit was actually built on.
         reviewer: The pair that JUDGED it, on a gated merge. Recorded per unit
             rather than once per sweep because the gate is the treatment: a
@@ -481,7 +483,7 @@ class UnitRecord(BaseModel):
     output_tokens: int | None = Field(default=None, ge=0)
     review_tokens: int = Field(default=0, ge=0)
     compaction_tokens: int = Field(default=0, ge=0)
-    compaction_cost: float = Field(default=0.0, ge=0.0)
+    compaction_cost: float | None = Field(default=0.0, ge=0.0)
     executor: ModelPair | None = None
     reviewer: ModelPair | None = None
     detail: str = ""

@@ -389,7 +389,7 @@ class SessionOutcome:
     input_tokens: int = 0
     output_tokens: int = 0
     compaction_tokens: int = 0
-    compaction_cost: float = 0.0
+    compaction_cost: float | None = 0.0
     tool_surface: tuple[str, ...] | None = None
 
 
@@ -823,7 +823,11 @@ async def run_session(
             if compaction is not None
             else 0
         ),
-        compaction_cost=compaction.summary_cost if compaction is not None else 0.0,
+        compaction_cost=(
+            (compaction.summary_cost if compaction is not None else 0.0)
+            if session.priced
+            else None
+        ),
         tool_surface=result.execution_result.context.tool_surface,
     )
     if deps.on_session_finished is not None:
