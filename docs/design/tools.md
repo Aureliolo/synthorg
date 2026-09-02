@@ -29,12 +29,20 @@ Agents act on the world through tools. SynthOrg defines a pluggable tool system 
 
 ## Tool Execution Model
 
-When the LLM requests multiple tool calls in a single turn, `ToolInvoker.invoke_all` executes
-them **concurrently** using `asyncio.TaskGroup`. An optional `max_concurrency` parameter
-(default unbounded) limits parallelism via `asyncio.Semaphore`. Recoverable errors are captured
-as `ToolResult(is_error=True)` without aborting sibling invocations. Non-recoverable errors
-(`MemoryError`, `RecursionError`) are collected and re-raised after all tasks complete (bare
-exception for one, `ExceptionGroup` for multiple).
+When the LLM requests multiple tool calls in a single turn, `ToolInvoker.invoke_all` runs them
+in **program order**, the order the model issued them, which is the order it meant: a mutating
+call runs alone, after everything issued before it has finished, and only a run of consecutive
+read-only calls fans out under one `asyncio.TaskGroup`. Which calls are read-only is declared
+in `security/action_types.py::READ_ONLY_ACTION_TYPES` (`code:read`, `vcs:read`, `db:query`,
+`memory:read`), a claim about effect rather than about the verb (`test:run` reads like a read
+and leaves build artefacts behind), and a custom action type is mutating until declared
+otherwise. Running everything side by side was the first design: two edits of one file issued
+in one turn raced, and the second hunk was applied to text the first had already replaced. An
+optional `max_concurrency` parameter (default unbounded) limits a read stage's parallelism via
+`asyncio.Semaphore`. Recoverable errors are captured as `ToolResult(is_error=True)` without
+aborting sibling invocations. Non-recoverable errors (`MemoryError`, `RecursionError`) are
+collected and re-raised after all stages complete (bare exception for one, `ExceptionGroup`
+for multiple).
 
 **Permission checking** follows a priority-based system:
 
@@ -731,7 +739,7 @@ hierarchy inspired by Google ADK's skill loading pattern:
 
 | Level | Contents | When injected | Token cost |
 |-------|----------|---------------|------------|
-| **L1 metadata** | name, one-line description, category, cost tier | Always (system prompt) | ~100 tokens/tool |
+| **L1 metadata** | name, one-line description, category, cost tier, parameter names (required, then optional) | Always (system prompt) | ~100 tokens/tool |
 | **L2 body** | full description, JSON Schema, examples, failure modes | On demand via `load_tool()` | <5K tokens/tool |
 | **L3 resource** | markdown guides, code samples, example traces | Explicit via `load_tool_resource()` | Varies |
 
@@ -743,7 +751,11 @@ hierarchy inspired by Google ADK's skill loading pattern:
 
 **Context injection:**
 
-1. L1 metadata is injected into the system prompt for all permitted tools
+1. L1 metadata is injected into the system prompt for all permitted tools. It carries the
+   parameter names because a tool runs when called by name whether or not its body was
+   loaded, so the summary has to be enough to call it with: an agent that guessed
+   `write_file`'s parameters spent three refused calls and a `load_tool` round-trip before
+   its first write landed.
 2. Full `ToolDefinition` objects are sent via the provider API `tools` parameter
    only for loaded tools + discovery tools
 3. L3 resources are never auto-injected; returned inline from `load_tool_resource`
