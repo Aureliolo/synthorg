@@ -19,7 +19,10 @@ from synthorg.engine.loop_tool_execution import (
     ToolTurnControls,
     execute_tool_calls,
 )
-from synthorg.engine.loop_tool_output_budget import DEFAULT_TOOL_OUTPUT_MAX_CHARS
+from synthorg.engine.loop_tool_output_budget import (
+    DEFAULT_TOOL_OUTPUT_MAX_CHARS,
+    MIN_TOOL_OUTPUT_MAX_CHARS,
+)
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
@@ -100,6 +103,14 @@ def _bounded(max_chars: int) -> ToolTurnControls:
 
 
 class TestToolOutputCeiling:
+    def test_a_ceiling_under_the_floor_is_refused_at_construction(self) -> None:
+        with pytest.raises(ValueError, match="tool_output_max_chars"):
+            _bounded(MIN_TOOL_OUTPUT_MAX_CHARS - 1)
+
+    @pytest.mark.parametrize("max_chars", [0, MIN_TOOL_OUTPUT_MAX_CHARS])
+    def test_no_ceiling_and_the_floor_itself_are_admitted(self, max_chars: int) -> None:
+        assert _bounded(max_chars).tool_output_max_chars == max_chars
+
     async def test_an_oversized_result_is_abbreviated_before_it_is_fenced(
         self, sample_agent_context: AgentContext
     ) -> None:

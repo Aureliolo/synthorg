@@ -57,7 +57,6 @@ from evals.harness.host import (
     RecordingGatewayHost,
     RecordingHostConfig,
 )
-from evals.harness.provenance import manifest_digest
 from evals.harness.stall_watch import DEFAULT_STALL_IDLE_SECONDS
 from evals.recursion_depth.emit import (
     REPORT_JSON_NAME,
@@ -115,6 +114,7 @@ from evals.recursion_depth.wire_check import (
     WiringProbe,
     describe_findings,
     load_wiring_report,
+    matrix_digest,
     require_passing_smoke,
     smoke_dir,
     smoke_manifest,
@@ -640,22 +640,27 @@ class _RunMode:
     out_dir: Path
     probe: WiringProbe | None
     wiring: WiringReport | None
+    matrix_sha256: str
 
 
 def _run_mode(args: argparse.Namespace, manifest: RecursionDepthManifest) -> _RunMode:
     """Decide whether this invocation smokes or records, and what that needs.
 
-    A recording refuses to start without a passing smoke for the SAME manifest
-    file: every treatment it claims to measure was once absent from the engine
-    it ran on with nothing able to tell, and the smoke is what tells.
+    A recording refuses to start without a passing smoke for the SAME
+    effective matrix: the operator's manifest with every command-line override
+    applied, since an override changes the treatment without touching the file
+    and a smoke keyed on the file would vouch for a treatment it never saw.
+    Every treatment a recording claims to measure can be absent from the engine
+    it runs on with nothing able to tell, and the smoke is what tells.
 
     Returns:
         The mode.
 
     Raises:
         RecursionDepthSmokeRequiredError: A recording was asked for with no
-            passing smoke for its manifest.
+            passing smoke for its matrix.
     """
+    digest = matrix_digest(manifest)
     if args.smoke:
         narrowed = smoke_manifest(manifest)
         return _RunMode(
@@ -663,11 +668,16 @@ def _run_mode(args: argparse.Namespace, manifest: RecursionDepthManifest) -> _Ru
             out_dir=smoke_dir(args.out_dir),
             probe=WiringProbe(narrowed),
             wiring=None,
+            matrix_sha256=digest,
         )
-    wiring = require_passing_smoke(
-        args.out_dir, manifest_sha256=manifest_digest(args.manifest)
+    wiring = require_passing_smoke(args.out_dir, manifest_sha256=digest)
+    return _RunMode(
+        manifest=manifest,
+        out_dir=args.out_dir,
+        probe=None,
+        wiring=wiring,
+        matrix_sha256=digest,
     )
-    return _RunMode(manifest=manifest, out_dir=args.out_dir, probe=None, wiring=wiring)
 
 
 async def _sweep_under(
@@ -726,13 +736,14 @@ async def _finish_smoke(
     host: RecordingGatewayHost,
     context: SweepContext,
     report: RecursionDepthReport,
-    out_dir: Path,
+    mode: _RunMode,
 ) -> RecursionDepthReport:
     """Read the treatments off the evidence the smoke cell left, and keep them.
 
     Written beside the smoke's own journal, which is where the recording it
     gates looks, and folded into the smoke's report so that artefact states
-    what it found too.
+    what it found too. Keyed on the EFFECTIVE matrix rather than the file the
+    provenance hashes, because that is what the recording it gates will run.
 
     Returns:
         The smoke's report, carrying its findings.
@@ -740,9 +751,9 @@ async def _finish_smoke(
     wiring = await probe.report(
         host.app_state,
         transcript_root=context.deps.transcript_root,
-        manifest_sha256=report.provenance.manifest_sha256,
+        manifest_sha256=mode.matrix_sha256,
     )
-    path = await asyncio.to_thread(write_wiring_report, wiring, out_dir)
+    path = await asyncio.to_thread(write_wiring_report, wiring, mode.out_dir)
     print(describe_findings(wiring.findings))
     print(f"wiring findings written: {path}")
     return report.model_copy(update={"wiring": wiring})
@@ -828,7 +839,7 @@ async def _record(
                     host=host,
                     context=context,
                     report=report,
-                    out_dir=mode.out_dir,
+                    mode=mode,
                 )
             # Written inside the host's lifetime so a teardown that overruns
             # cannot discard a sweep that already cost real money to produce.
@@ -1393,9 +1404,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "into, the cell ledger (cached-prefix tokens) and the recorded "
             "request bodies (reasoning depth). Writes the findings under "
             "<out-dir>/smoke/wiring.json, which --record then requires for "
-            "the same manifest digest, and exits non-zero on a treatment "
-            "found absent. Costs one cheap cell; a whole matrix measured on "
-            "an engine missing a treatment cost eight recordings."
+            "the same effective matrix (the manifest with the same overrides "
+            "applied), and exits non-zero on a treatment found absent. Costs "
+            "one cheap cell; the alternative is discovering a missing "
+            "treatment only after the whole matrix has been paid for."
         ),
     )
     mode.add_argument(

@@ -24,7 +24,10 @@ from synthorg.core.tool_constraints import ToolAccessLevel
 from synthorg.engine.mcp_tool_retrieval import rank_tools
 from synthorg.meta.mcp.registry import MCPToolDef
 from synthorg.observability import get_logger
-from synthorg.observability.events.mcp import MCP_SELF_CONSUMER_RETRIEVAL_NARROWED
+from synthorg.observability.events.mcp import (
+    MCP_SELF_CONSUMER_RATE_LIMITED,
+    MCP_SELF_CONSUMER_RETRIEVAL_NARROWED,
+)
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.security.config import McpSelfConsumerConfig, McpSelfConsumerMode
 from synthorg.tools.base import BaseTool, ToolExecutionResult
@@ -168,6 +171,14 @@ class _SynthOrgMCPToolAdapter(BaseTool):
         if self._rate_limiter is not None and not self._rate_limiter.try_acquire(
             str(self._actor.id), self._mcp_def.name
         ):
+            # Said where it happens: the refusal reaches the agent as a tool
+            # error, and an operator asking why one agent keeps being told to
+            # slow down has nothing else to read.
+            logger.warning(
+                MCP_SELF_CONSUMER_RATE_LIMITED,
+                agent_id=str(self._actor.id),
+                tool=self._mcp_def.name,
+            )
             return ToolExecutionResult(
                 content=(
                     f"MCP tool {self._mcp_def.name!r} rate limit exceeded; "

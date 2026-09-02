@@ -71,6 +71,12 @@ _LIVENESS_OWNER_PREFIX: Final[str] = "liveness:"
 #: exit 2 and no traceback) from one that fell over.
 _TRACEBACK_MARKER: Final[str] = "Traceback (most recent call last)"
 
+#: The exit status floor a shell reports for a process a signal ended: 128
+#: plus the signal number. A program killed that way (a segfault in an
+#: extension, the container's memory limit) writes no traceback, so the
+#: marker alone would read it as having exited how it chose.
+_SIGNAL_EXIT_FLOOR: Final[int] = 128
+
 #: The key the spec's index declares the probe under.
 _LIVENESS_KEY: Final[str] = "liveness"
 
@@ -160,17 +166,35 @@ class LivenessDeclaration(BaseModel):
         return self
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class LivenessOutcome:
     """What the probe concluded, and why when it is not LIVE.
 
+    The verdict and its detail agree at construction, where a classifier
+    that forgot the reason is cheapest to catch, rather than only once the
+    outcome is folded into the cell record.
+
     Attributes:
         verdict: The verdict.
-        detail: What died, or why nothing could be asked. Empty on LIVE.
+        detail: What died, or why nothing could be asked. Empty on LIVE and
+            on nothing else.
     """
 
     verdict: Liveness
     detail: str = ""
+
+    def __post_init__(self) -> None:
+        """Refuse a live verdict carrying a death, or a death without one.
+
+        Raises:
+            ValueError: The verdict and the detail disagree.
+        """
+        if self.verdict is Liveness.LIVE and self.detail:
+            msg = f"a live outcome still says {self.detail!r}"
+            raise ValueError(msg)
+        if self.verdict is not Liveness.LIVE and not self.detail:
+            msg = f"a {self.verdict.value} outcome names no reason"
+            raise ValueError(msg)
 
 
 def declared_liveness(
@@ -256,7 +280,7 @@ def classify_import(result: SandboxResult, *, module: str) -> LivenessOutcome:
 
 
 def classify_entry(result: SandboxResult, *, entry: EntryPoint) -> LivenessOutcome:
-    """Decide an entry-point probe: a traceback or a hang is dead.
+    """Decide an entry-point probe: a traceback, a signal or a hang is dead.
 
     The exit status is the program's own to choose, and a usage error is an
     answer. What is not an answer is an uncaught exception, which is what a
@@ -271,6 +295,12 @@ def classify_entry(result: SandboxResult, *, entry: EntryPoint) -> LivenessOutco
         return LivenessOutcome(Liveness.DEAD, detail)
     if _TRACEBACK_MARKER in result.stderr:
         detail = f"running {what} raised: {tail_of(result.stderr)}"
+        return LivenessOutcome(Liveness.DEAD, detail)
+    if result.returncode < 0 or result.returncode >= _SIGNAL_EXIT_FLOOR:
+        detail = (
+            f"running {what} was ended by a signal (exit {result.returncode}) "
+            f"with no traceback: {tail_of(result.stderr)}"
+        )
         return LivenessOutcome(Liveness.DEAD, detail)
     return LivenessOutcome(Liveness.LIVE)
 

@@ -44,6 +44,7 @@ from synthorg.engine.prompt_result import (
     untrusted_content_directive_token_cost,
 )
 from synthorg.engine.prompt_safety import (
+    TAG_COMPACTION_SUMMARY,
     TAG_CONFIG_VALUE,
     TAG_PEER_CONTRIBUTION,
     TAG_TASK_DATA,
@@ -210,7 +211,7 @@ def build_system_prompt(  # noqa: PLR0913
         *((TAG_TASK_DATA,) if task is not None or has_async_tasks else ()),
         TAG_CONFIG_VALUE,
         *((TAG_TOOL_RESULT,) if fences_tool_results else ()),
-        *((TAG_PEER_CONTRIBUTION,) if task is not None else ()),
+        *((TAG_PEER_CONTRIBUTION, TAG_COMPACTION_SUMMARY) if task is not None else ()),
     )
 
     try:
@@ -310,6 +311,10 @@ def build_system_prompt(  # noqa: PLR0913
         # prompt is built once and reused across rework rounds, so the tag
         # has to be declared before the turn that carries it exists.
         *((TAG_PEER_CONTRIBUTION,) if task is not None else ()),
+        # Compaction splices its summary in at SYSTEM rank, fenced, once a
+        # task session's history crosses the fill threshold; a chat action
+        # is taskless and never compacts.
+        *((TAG_COMPACTION_SUMMARY,) if task is not None else ()),
     )
     result = append_untrusted_content_directive(result, directive_tags, estimator)
 

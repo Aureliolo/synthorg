@@ -4,9 +4,9 @@
 They travel together because the invariant is not a preference: a
 checkpoint nothing declares stale is a resume point that can be handed to
 two runners at once. Expressed as three optional parameters the invalid
-combination is representable, so every consumer has to refuse it at
-runtime, which four of them did with four different messages. Expressed as
-one type it cannot be built at all.
+combination is representable, and every consumer then has to notice it at
+runtime, each in its own words or (as one did) by silently building no
+callback. Expressed as one type it cannot be built at all.
 """
 
 from dataclasses import dataclass

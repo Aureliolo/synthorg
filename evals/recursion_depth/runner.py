@@ -1638,6 +1638,8 @@ def _leaf_record(
         missing_declared_paths=leaf.missing_declared_paths,
         terminations=leaf.terminations,
         workspace_files_changed=leaf.workspace_files_changed,
+        compaction_tokens=leaf.compaction_tokens,
+        compaction_cost=leaf.compaction_cost,
     )
 
 
@@ -1663,6 +1665,8 @@ def _merge_record(
         input_tokens=outcome.input_tokens,
         output_tokens=outcome.output_tokens,
         review_tokens=outcome.review_tokens,
+        compaction_tokens=outcome.compaction_tokens,
+        compaction_cost=outcome.compaction_cost,
         executor=outcome.executor,
         reviewer=outcome.reviewer,
         detail=outcome.detail,

@@ -8,19 +8,25 @@ refuses to say anything, and that a recording cannot start without it.
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
+from structlog.testing import capture_logs
 
 from evals.errors import RecursionDepthSmokeRequiredError
 from evals.harness.stall_watch import ProgressTrackingLedger
-from evals.recursion_depth.manifest import Arm, load_manifest
+from evals.recursion_depth.manifest import Arm, StagnationTreatment, load_manifest
 from evals.recursion_depth.models import WiringFinding, WiringReport
 from evals.recursion_depth.wire_check import (
     WIRING_REPORT_NAME,
+    WiringProbe,
     budget_finding,
     caching_finding,
+    compaction_finding,
     governance_findings,
     load_wiring_report,
+    matrix_digest,
+    memory_finding,
     reasoning_finding,
     require_passing_smoke,
     smoke_dir,
@@ -29,9 +35,19 @@ from evals.recursion_depth.wire_check import (
     tool_surface_finding,
     write_wiring_report,
 )
+from synthorg.api.state import AppState
 from synthorg.budget.cost_record import CostRecord
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.wiring_summary import EngineWiringSummary
+from synthorg.memory.state import MemoryStateSlice
+from synthorg.observability.events.evals import EVALS_RECURSION_SMOKE_UNVERIFIED
+from synthorg.settings.enums import SettingNamespace, SettingSource
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
+from synthorg.settings.models import SettingValue
+from synthorg.settings.service import SettingsService
+from synthorg.settings.state import SettingsStateSlice
+from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
 
@@ -131,6 +147,16 @@ class TestEngineFindings:
         assert stagnation_finding(_wiring(), manifest).passed is True
         assert stagnation_finding(other, manifest).passed is False
 
+    def test_a_matrix_declaring_no_detector_expects_none(self) -> None:
+        manifest = load_manifest(_MANIFEST).model_copy(
+            update={"stagnation": StagnationTreatment(strategy=NotBlankStr("off"))}
+        )
+
+        none = _wiring(has_stagnation_detector=False, stagnation_strategy=None)
+
+        assert stagnation_finding(none, manifest).passed is True
+        assert stagnation_finding(_wiring(), manifest).passed is False
+
     def test_the_budget_must_bound_the_cell_ledger_itself(self) -> None:
         ledger = ProgressTrackingLedger()
 
@@ -150,6 +176,174 @@ class TestEngineFindings:
             "approval gate": True,
             "policy engine": False,
         }
+
+
+def _app_state(
+    *,
+    threshold: str,
+    backend: object | None,
+    embedder_ref: str | None,
+    wiring_failure: str | None = None,
+) -> AppState:
+    """An application whose live settings and memory slice read as given.
+
+    Returns:
+        The state.
+    """
+    value = SettingValue(
+        namespace=SettingNamespace.ENGINE,
+        key=NotBlankStr("compaction_fill_threshold_percent"),
+        value=threshold,
+        source=SettingSource.DATABASE,
+    )
+    settings = mock_of[SettingsService](get=AsyncMock(return_value=value))
+    return make_app_state(
+        slices={
+            SettingsStateSlice: {"settings_service": settings},
+            MemoryStateSlice: {
+                "backend": backend,
+                "embedder_ref": embedder_ref,
+                "wiring_failure": wiring_failure,
+            },
+        }
+    )
+
+
+class TestLiveSettingsFindings:
+    """Read back through the same live settings the engine reads, not the manifest."""
+
+    async def test_compaction_passes_on_a_wired_callback_at_the_armed_threshold(
+        self,
+    ) -> None:
+        manifest = load_manifest(_MANIFEST)
+        declared = manifest.compaction.fill_threshold_percent
+        app_state = _app_state(threshold=str(declared), backend=None, embedder_ref=None)
+
+        finding = await compaction_finding(_wiring(), app_state, manifest)
+
+        assert finding.passed is True
+        assert f"live threshold {declared}" in finding.observed
+
+    async def test_compaction_fails_on_a_threshold_the_engine_did_not_get(
+        self,
+    ) -> None:
+        manifest = load_manifest(_MANIFEST)
+        app_state = _app_state(threshold="55.0", backend=None, embedder_ref=None)
+
+        finding = await compaction_finding(_wiring(), app_state, manifest)
+
+        assert finding.passed is False
+
+    async def test_compaction_fails_on_an_absent_callback(self) -> None:
+        manifest = load_manifest(_MANIFEST)
+        declared = manifest.compaction.fill_threshold_percent
+        app_state = _app_state(threshold=str(declared), backend=None, embedder_ref=None)
+
+        finding = await compaction_finding(
+            _wiring(has_compaction_callback=False), app_state, manifest
+        )
+
+        assert finding.passed is False
+        assert "callback absent" in finding.observed
+
+    async def test_compaction_fails_on_a_live_value_that_is_not_a_number(
+        self,
+    ) -> None:
+        manifest = load_manifest(_MANIFEST)
+        app_state = _app_state(threshold="eighty", backend=None, embedder_ref=None)
+
+        finding = await compaction_finding(_wiring(), app_state, manifest)
+
+        assert finding.passed is False
+
+    def test_memory_passes_on_a_backend_bound_to_the_declared_embedder(self) -> None:
+        manifest = load_manifest(_MANIFEST)
+        declared = serialize_model_ref(
+            ModelRef(
+                provider=manifest.embedder.provider,
+                model_id=manifest.embedder.model_id,
+            )
+        )
+        app_state = _app_state(
+            threshold="80.0", backend=object(), embedder_ref=declared
+        )
+
+        finding = memory_finding(app_state, manifest)
+
+        assert finding.passed is True
+
+    def test_memory_fails_on_another_embedder(self) -> None:
+        manifest = load_manifest(_MANIFEST)
+        other = serialize_model_ref(
+            ModelRef(provider="example-provider", model_id="example-other-001")
+        )
+        app_state = _app_state(threshold="80.0", backend=object(), embedder_ref=other)
+
+        finding = memory_finding(app_state, manifest)
+
+        assert finding.passed is False
+
+    def test_memory_fails_and_names_the_reason_with_no_backend(self) -> None:
+        manifest = load_manifest(_MANIFEST)
+        app_state = _app_state(
+            threshold="80.0",
+            backend=None,
+            embedder_ref=None,
+            wiring_failure="embedder unreachable",
+        )
+
+        finding = memory_finding(app_state, manifest)
+
+        assert finding.passed is False
+        assert "embedder unreachable" in finding.observed
+
+
+class TestTheProbe:
+    """What the smoke reads is the FIRST engine the cell built."""
+
+    async def test_a_cell_that_built_no_engine_has_nothing_to_read(self) -> None:
+        probe = WiringProbe(load_manifest(_MANIFEST))
+        app_state = _app_state(threshold="80.0", backend=None, embedder_ref=None)
+
+        with pytest.raises(RecursionDepthSmokeRequiredError, match="built no engine"):
+            await probe.report(app_state, transcript_root=None, manifest_sha256="x")
+
+    def test_the_first_engine_wins(self) -> None:
+        probe = WiringProbe(load_manifest(_MANIFEST))
+        first = mock_of[AgentEngine]()
+        second = mock_of[AgentEngine]()
+        ledger = ProgressTrackingLedger()
+
+        probe.observe(first, ledger)
+        probe.observe(second, ProgressTrackingLedger())
+
+        assert probe._engine is first
+        assert probe._ledger is ledger
+
+
+class TestTheMatrixDigest:
+    """Keyed on the matrix that RUNS, so an override needs its own smoke."""
+
+    def test_the_same_matrix_digests_the_same(self) -> None:
+        manifest = load_manifest(_MANIFEST)
+
+        assert matrix_digest(manifest) == matrix_digest(load_manifest(_MANIFEST))
+        assert matrix_digest(manifest).startswith("sha256:")
+
+    def test_an_override_that_changes_the_treatment_changes_the_digest(self) -> None:
+        manifest = load_manifest(_MANIFEST)
+        narrowed = manifest.model_copy(
+            update={"contract_stage": not manifest.contract_stage}
+        )
+
+        assert matrix_digest(narrowed) != matrix_digest(manifest)
+
+    def test_the_smoke_cell_is_not_the_matrix_it_gates(self) -> None:
+        # The smoke narrows to one cell, and a recording keyed on THAT digest
+        # could never match; the gate keys both on the operator's matrix.
+        manifest = load_manifest(_MANIFEST)
+
+        assert matrix_digest(smoke_manifest(manifest)) != matrix_digest(manifest)
 
 
 class TestReasoningOffTheWire:
@@ -291,3 +485,21 @@ class TestTheRecordingIsGated:
 
         assert report.passed is True
         assert report.unverified == ("prompt caching",)
+
+    def test_an_unverified_finding_is_named_at_the_gate(self, tmp_path: Path) -> None:
+        """The gate says which treatments it could not read, before the spend."""
+        write_wiring_report(
+            _report(digest="sha256:" + "a" * 64, passed=True), smoke_dir(tmp_path)
+        )
+
+        with capture_logs() as logs:
+            require_passing_smoke(tmp_path, manifest_sha256="sha256:" + "a" * 64)
+
+        unverified = [
+            entry
+            for entry in logs
+            if entry["event"] == EVALS_RECURSION_SMOKE_UNVERIFIED
+        ]
+        assert len(unverified) == 1
+        assert unverified[0]["treatments"] == ["prompt caching"]
+        assert unverified[0]["log_level"] == "warning"

@@ -127,20 +127,31 @@ def _cache_tokens(usage_obj: object) -> tuple[int, int]:
     write = getattr(
         usage_obj, "cache_creation_input_tokens", None
     )  # lint-allow: ghost-attribute-read -- litellm usage object
-    return _count(read), _count(write)
+    return (
+        _count(read, field="cache_read_input_tokens"),
+        _count(write, field="cache_write_input_tokens"),
+    )
 
 
-def _count(value: object) -> int:
+def _count(value: object, *, field: str) -> int:
     """Coerce a reported token count to a non-negative int, zero otherwise.
 
+    Absent is zero silently, because a provider that publishes no cache
+    figures is the ordinary case. A value that IS there and is not a count
+    (a boolean, a string, a negative number) is zero too, so the record is
+    kept rather than dropped, but it is said: a provider changing the shape
+    of the field would otherwise zero every cache figure with nothing to
+    read.
+
     Returns:
-        The count, or zero for an absent, boolean, negative or non-numeric
-        value: a corrupt field becomes a missing one rather than a dropped
-        record, which is what ``TokenUsage`` would otherwise make of it.
+        The count, or zero for an absent or malformed value.
     """
-    if isinstance(value, bool) or not isinstance(value, int | float):
+    if value is None:
         return 0
-    return max(int(value), 0)
+    if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
+        logger.warning(PROVIDER_COST_INVALID, field=field, value=repr(value))
+        return 0
+    return int(value)
 
 
 def token_usage_from_response_usage(

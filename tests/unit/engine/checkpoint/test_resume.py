@@ -102,6 +102,36 @@ class TestDeserializeAndReconcileSuccess:
         assert "rate limit exceeded" in last_msg.content
         assert "Review progress and continue" in last_msg.content
 
+    def test_reconciliation_notes_an_earlier_compaction(
+        self,
+        sample_agent: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """A resumed context that was compacted says so, with what was archived."""
+        from synthorg.engine.compaction.models import CompressionMetadata
+        from synthorg.engine.context import AgentContext
+
+        ctx = AgentContext.from_identity(sample_agent, task=sample_task_with_criteria)
+        ctx = ctx.model_copy(
+            update={
+                "turn_count": 9,
+                "compression_metadata": CompressionMetadata(
+                    compression_point=6, archived_turns=4, summary_tokens=120
+                ),
+            }
+        )
+        result = deserialize_and_reconcile(
+            ctx.model_dump_json(),
+            error_message="provider timeout",
+            agent_id="agent-1",
+            task_id="task-1",
+            failure_category=FailureCategory.TIMEOUT,
+        )
+        last_msg = result.conversation[-1]
+        assert last_msg.content is not None
+        assert "previously compacted" in last_msg.content
+        assert "archived 4 turns" in last_msg.content
+
     def test_reconciliation_includes_failure_category(
         self,
         sample_agent: AgentIdentity,

@@ -394,6 +394,12 @@ class UnitRecord(BaseModel):
             recorded gate sessions made 85, 159 and 257 shell calls on
             byte-identical configuration, and folded into one figure that
             variance is invisible to anything reading the artifact.
+        compaction_tokens: The share of ``tokens`` the unit's compaction
+            summaries spent, across its sessions. Compaction buys context
+            back by spending, and whether the trade paid is readable only
+            with this held apart from the run's own figure.
+        compaction_cost: What those summaries cost, on the same terms as
+            ``cost``; zero when the text summariser ran.
         executor: The pair this unit was actually built on.
         reviewer: The pair that JUDGED it, on a gated merge. Recorded per unit
             rather than once per sweep because the gate is the treatment: a
@@ -473,6 +479,8 @@ class UnitRecord(BaseModel):
     input_tokens: int | None = Field(default=None, ge=0)
     output_tokens: int | None = Field(default=None, ge=0)
     review_tokens: int = Field(default=0, ge=0)
+    compaction_tokens: int = Field(default=0, ge=0)
+    compaction_cost: float = Field(default=0.0, ge=0.0)
     executor: ModelPair | None = None
     reviewer: ModelPair | None = None
     detail: str = ""
@@ -596,8 +604,8 @@ class CellRecord(BaseModel):
             ``self`` when the verdict and its detail agree.
 
         Raises:
-            ValueError: An unavailable cell carries a verdict, or a live one
-                carries a detail.
+            ValueError: An unavailable cell carries a verdict, a live one
+                carries a detail, or a dead or unprobeable one carries none.
         """
         label = (
             f"cell depth={self.depth_cap} arm={self.arm.value} rep={self.repetition}"
@@ -607,6 +615,13 @@ class CellRecord(BaseModel):
             raise ValueError(msg)
         if self.liveness is Liveness.LIVE and self.liveness_detail:
             msg = f"{label} reads live and still says {self.liveness_detail!r}"
+            raise ValueError(msg)
+        if (
+            self.liveness is not None
+            and self.liveness is not Liveness.LIVE
+            and not self.liveness_detail
+        ):
+            msg = f"{label} reads {self.liveness.value} and names no reason"
             raise ValueError(msg)
         return self
 

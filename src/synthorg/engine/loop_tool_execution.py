@@ -24,6 +24,7 @@ from synthorg.engine.loop_protocol import (
 )
 from synthorg.engine.loop_tool_output_budget import (
     DEFAULT_TOOL_OUTPUT_MAX_CHARS,
+    MIN_TOOL_OUTPUT_MAX_CHARS,
     abbreviate_tool_output,
 )
 from synthorg.engine.loop_tool_result_fencing import wrap_tool_result
@@ -79,11 +80,27 @@ class ToolTurnControls:
         watch_background_jobs: Whether a backgrounded shell job is watched.
         tool_output_max_chars: Ceiling on one result's content before it
             enters the conversation; the loop resolves it live each turn.
+            Zero is no ceiling; any other value is at least
+            ``MIN_TOOL_OUTPUT_MAX_CHARS``, since the abbreviation marker has
+            to fit inside it.
     """
 
     clock: Clock
     watch_background_jobs: bool
     tool_output_max_chars: int
+
+    def __post_init__(self) -> None:
+        """Refuse a ceiling the abbreviation could not honour.
+
+        Raises:
+            ValueError: The ceiling is positive and below the floor.
+        """
+        if 0 < self.tool_output_max_chars < MIN_TOOL_OUTPUT_MAX_CHARS:
+            msg = (
+                f"tool_output_max_chars must be 0 or at least "
+                f"{MIN_TOOL_OUTPUT_MAX_CHARS}, got {self.tool_output_max_chars}"
+            )
+            raise ValueError(msg)
 
     @classmethod
     def defaults(cls) -> Self:
@@ -425,7 +442,9 @@ def _append_tool_results(
 
     Abbreviation runs first, on the raw result, so the elision marker sits
     inside the fence with the rest of the tool's bytes and the fence itself
-    is never what gets cut.
+    is never what gets cut. Injection detection still reads the WHOLE raw
+    result: what was elided never reaches the model, but the attempt is
+    what the telemetry records.
 
     Returns:
         The context with one ``TOOL`` message appended per result.
@@ -447,7 +466,7 @@ def _append_tool_results(
             bounded = result.model_copy(update={"content": content})
         # Fence the tool output before it enters context so the next
         # LLM turn cannot mistake tool content for instructions.
-        wrapped = wrap_tool_result(bounded)
+        wrapped = wrap_tool_result(bounded, scanned=result.content)
         tool_msg = ChatMessage(role=MessageRole.TOOL, tool_result=wrapped)
         ctx = ctx.with_message(tool_msg)
     return ctx

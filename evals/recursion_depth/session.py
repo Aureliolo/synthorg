@@ -60,6 +60,7 @@ from synthorg.observability.events.evals import (
 from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.model_ref import ModelRef
 from synthorg.tools.base import BaseTool
+from synthorg.tools.connection_tool_runtimes import ConnectionToolRuntimes
 from synthorg.tools.registry import ToolRegistry
 from synthorg.workers.engine_assembly import (
     EngineAssemblyInputs,
@@ -360,6 +361,12 @@ class SessionOutcome:
         output_tokens: The output half of ``tokens``.
         turns: How many turns it took.
         termination: Why the loop stopped, for a human reading a failure.
+        compaction_tokens: Tokens the session's compaction summaries spent,
+            read off the final context's compression metadata. Part of
+            ``tokens`` (the summariser bills into the same ledger), held
+            apart because compaction buys context back by spending, and
+            whether the trade paid is unreadable once it is blended in.
+        compaction_cost: What those summaries cost, on the same terms.
     """
 
     cost: float | None
@@ -368,6 +375,8 @@ class SessionOutcome:
     termination: str
     input_tokens: int = 0
     output_tokens: int = 0
+    compaction_tokens: int = 0
+    compaction_cost: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -787,6 +796,7 @@ async def run_session(
         # and then raised has still been paid for, and a unit that reports the
         # failure without the spend under-reports the sweep.
         spend = await session.spend(turns=turns)
+    compaction = result.execution_result.context.compression_metadata
     outcome = SessionOutcome(
         cost=spend.cost,
         tokens=spend.tokens,
@@ -794,6 +804,12 @@ async def run_session(
         output_tokens=spend.output_tokens,
         turns=result.total_turns,
         termination=result.termination_reason.value,
+        compaction_tokens=(
+            compaction.summary_input_tokens + compaction.summary_output_tokens
+            if compaction is not None
+            else 0
+        ),
+        compaction_cost=compaction.summary_cost if compaction is not None else 0.0,
     )
     logger.info(
         EVALS_RECURSION_UNIT_EXECUTED,
@@ -818,9 +834,9 @@ async def _build_engine(
 
     Built through the PRODUCT'S OWN assembly, against the application this
     sweep already stands up, so what is measured is what a deployment
-    runs. A second assembly here is how a corpus of eight recordings came
-    to measure an engine wired at 8 of the 51 points a deployment supplies,
-    silently, with nothing at any layer able to tell.
+    runs: a second construction path here is exactly how the measured
+    engine could silently diverge from the shipped one, with nothing at
+    any layer able to tell.
 
     Only what this session genuinely owns is supplied: its gateway-bound
     provider, its cell-scoped tool registry and the probe rooted at its own
@@ -856,7 +872,7 @@ async def _build_engine(
             # The sweep runs offline by construction, and its agents reach
             # no connection catalog, so neither surface has anything to bind.
             external_api_runtime=None,
-            connection_tool_runtimes=None,
+            connection_tool_runtimes=ConnectionToolRuntimes(),
             # Every exchange is already captured by the transcript recorder
             # in front of the gateway, which is a strictly wider record.
             flight_recorder_sink=None,

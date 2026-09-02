@@ -31,6 +31,7 @@ from synthorg.engine.quality.classifier import StepQualityClassifier
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.engine.stagnation.protocol import StagnationDetector
 from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.registry import ToolRegistry
 from tests._shared import (
@@ -162,6 +163,7 @@ class TestCheckpointRebuild:
         observer = _observe
         clock = FakeClock()
         gate = mock_of[ApprovalGate]()
+        resolver = mock_of[ConfigResolver]()
         original = ReactLoop(
             approval_gate=cast("ApprovalGate", gate),
             stagnation_detector=cast(
@@ -177,6 +179,7 @@ class TestCheckpointRebuild:
             background_job_watcher=cast(
                 "BackgroundJobWatcher", controls["background_job_watcher"]
             ),
+            config_resolver=cast("ConfigResolver", resolver),
         )
 
         async def _callback(ctx: AgentContext) -> None:
@@ -200,6 +203,9 @@ class TestCheckpointRebuild:
         assert rebuilt._turn_observer is observer
         assert rebuilt._clock is clock
         assert rebuilt.background_job_watcher is controls["background_job_watcher"]
+        # A real sentinel for the same reason as the gate: a ``None`` on both
+        # sides reads identically whether or not the rebuild carried it.
+        assert rebuilt._config_resolver is resolver
 
     def test_every_constructor_field_survives_a_rebuild(self) -> None:
         """Derived from the signature, so a field added later is covered.
@@ -224,6 +230,7 @@ class TestCheckpointRebuild:
             background_job_watcher=cast(
                 "BackgroundJobWatcher", mock_of[BackgroundJobWatcher]()
             ),
+            config_resolver=cast("ConfigResolver", mock_of[ConfigResolver]()),
         )
 
         async def _callback(ctx: AgentContext) -> None:
@@ -239,7 +246,11 @@ class TestCheckpointRebuild:
         assert carried, "the controls type declares no controls to check"
         for name in carried:
             attribute = f"_{name}"
-            assert getattr(rebuilt, attribute) is getattr(original, attribute), name
+            before = getattr(original, attribute)
+            # Every control is a real sentinel above, so an identity match
+            # here means it was carried rather than that both sides are None.
+            assert before is not None, name
+            assert getattr(rebuilt, attribute) is before, name
 
     def test_a_specialised_loop_rebuilds_as_itself(self) -> None:
         """A loop the engine did not build survives the resume rebuild.

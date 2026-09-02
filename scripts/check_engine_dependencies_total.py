@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """Pre-push / CI gate: an engine's wiring is declared in full, never omitted.
 
-``AgentEngine.__init__`` took 64 keyword arguments, 63 of them defaulting to
-``None``. A deployment passed 51 and the harness recording the loop passed 8,
-for eight recordings, and nothing at any layer could tell: omitting
-``compaction_callback`` looks exactly like deciding against it. The corpus that
-produced a root-cause analysis of the loop had therefore measured an engine the
-product does not ship.
+A keyword that defaults to ``None`` is indistinguishable from one nobody
+supplied, so a caller can build an engine missing a collaborator without
+anyone having decided to, and nothing at any layer can tell: omitting
+``compaction_callback`` looks exactly like deciding against it. A harness
+measuring such an engine measures one the product does not ship, and every
+layer above it stays green.
 
-The fix is that a partially wired engine is not CONSTRUCTABLE.
-``EngineDependencies`` and its bundles carry no defaults, so mypy refuses a
-partial literal by name. Absence stays allowed and stays common; absence by
-OMISSION does not, because ``compaction_callback=None`` is a decision a reader
-can see and a missing keyword is a decision nobody made.
+So a partially wired engine is not CONSTRUCTABLE. ``EngineDependencies`` and
+its bundles carry no defaults, so mypy refuses a partial literal by name.
+Absence stays allowed and stays common; absence by OMISSION does not, because
+``compaction_callback=None`` is a decision a reader can see and a missing
+keyword is a decision nobody made.
 
 This gate covers the three ways that contract is lost that a type-checker
 cannot see.
@@ -32,10 +32,14 @@ it at all.
 
 **A defaults-supplying builder appears.** A helper that fills in what a caller
 did not name re-creates the defect one layer up, and a type-checker is happy
-throughout. Exactly one is sanctioned, ``tests/_shared/engine_deps.py``, because
-a unit test about budget refusal is making no claim about the review pipeline
-and should not restate sixty absences to say so. The absences are spelled once,
-there, where a reviewer can read them.
+throughout. It is one whether it returns a bundle or the engine itself (a
+``make_engine(provider, *, clock=None) -> AgentEngine`` assembles the whole
+declaration internally and is the same omission one call further out), and
+whatever spelling its return annotation takes: a bare name, a string forward
+reference, or ``dependencies.EngineDependencies``. Exactly one is sanctioned,
+``tests/_shared/engine_deps.py``, because a unit test about budget refusal is
+making no claim about the review pipeline and should not restate sixty absences
+to say so. The absences are spelled once, there, where a reviewer can read them.
 
 **The instrument borrows the test helper.** ``evals/`` measures the product, so
 a harness that fills in what it forgot is precisely the defect under
@@ -43,11 +47,16 @@ measurement. Importing the tests helper from ``evals/`` fails.
 
 Derivation
 ----------
-The gated types are DERIVED, never listed: every dataclass declared in
-``src/synthorg/engine/dependencies/``, plus ``CheckpointWiring`` and
-``EngineAssemblyInputs`` at their declared paths. A twelfth bundle is covered
-the day it lands, and a list is one bundle away from disagreeing with the
-package it claims to enforce.
+The bundles are DERIVED, never listed: every dataclass declared in
+``src/synthorg/engine/dependencies/`` is gated, so a twelfth bundle is covered
+the day it lands, and a list would be one bundle away from disagreeing with
+the package it claims to enforce. Two satellite types, ``CheckpointWiring``
+and ``EngineAssemblyInputs``, live outside the package and are named at their
+declared paths; a path that no longer declares its type is exit 2. A builder
+is recognised by its return annotation resolving to one of those names or to
+the engine class, with a module-level alias of the engine (``Engine =
+AgentEngine``) resolved first so the arity check cannot be bypassed by
+renaming.
 
 Allowlist / opt-out
 -------------------
@@ -76,6 +85,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
+
+from synthorg.observability import safe_error_description
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -167,7 +178,10 @@ def _resolve_project_root(repo_root: Path | None) -> Path:
     try:
         resolved = repo_root.resolve(strict=True)
     except OSError as exc:
-        msg = f"--repo-root not accessible: {repo_root} ({exc})"
+        msg = (
+            f"--repo-root not accessible: {repo_root} "
+            f"({type(exc).__name__}: {safe_error_description(exc)})"
+        )
         raise ProjectRootError(msg) from exc
     if not resolved.is_dir():
         msg = f"--repo-root must be a directory: {resolved}"
@@ -197,8 +211,9 @@ def _git_tracked_python_files(
     except (subprocess.CalledProcessError, OSError) as exc:
         print(
             f"check_engine_dependencies_total: git ls-files failed in "
-            f"{project_root} ({type(exc).__name__}: {exc}); falling back to "
-            f"rglob (scope widens to untracked / gitignored files).",
+            f"{project_root} ({type(exc).__name__}: "
+            f"{safe_error_description(exc)}); falling back to rglob (scope "
+            f"widens to untracked / gitignored files).",
             file=sys.stderr,
         )
         return [
@@ -403,18 +418,70 @@ def _engine_faults(project_root: Path) -> list[str]:
     return []
 
 
+def _rightmost_name(node: ast.expr) -> str | None:
+    """Return the identifier an expression names, bare or attribute-qualified.
+
+    Returns:
+        The rightmost identifier, or ``None`` for any other shape.
+    """
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
+
+
+def _annotated_name(node: ast.expr | None) -> str | None:
+    """Return the type a return annotation names, in every spelling.
+
+    A bare name, an attribute-qualified name and a string forward reference
+    all name the same type, and a check reading only the first is bypassed
+    by writing either of the others.
+
+    Returns:
+        The rightmost identifier of the annotated type, or ``None``.
+    """
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        try:
+            parsed = ast.parse(node.value, mode="eval")
+        except SyntaxError:
+            return None
+        return _rightmost_name(parsed.body)
+    return _rightmost_name(node) if node is not None else None
+
+
+def _engine_aliases(tree: ast.Module) -> frozenset[str]:
+    """Return every module-level name bound to the engine class.
+
+    ``Engine = AgentEngine`` puts the constructor behind a name the arity
+    check would otherwise never see.
+
+    Returns:
+        The engine class name and every alias of it.
+    """
+    aliases = {_ENGINE_CLASS}
+    changed = True
+    while changed:
+        changed = False
+        for stmt in tree.body:
+            if not isinstance(stmt, ast.Assign):
+                continue
+            if _rightmost_name(stmt.value) not in aliases:
+                continue
+            for target in stmt.targets:
+                if isinstance(target, ast.Name) and target.id not in aliases:
+                    aliases.add(target.id)
+                    changed = True
+    return frozenset(aliases)
+
+
 def _call_name(node: ast.Call) -> str | None:
     """Return the constructed name of *node*, bare or attribute-qualified.
 
     Returns:
         The rightmost identifier of the callee, or ``None``.
     """
-    func = node.func
-    if isinstance(func, ast.Name):
-        return func.id
-    if isinstance(func, ast.Attribute):
-        return func.attr
-    return None
+    return _rightmost_name(node.func)
 
 
 def _imports_tests_package(tree: ast.Module) -> Iterator[int]:
@@ -462,14 +529,18 @@ def _scan_file(
         Each violation found in *tree*.
     """
     sanctioned = rel == _SANCTIONED_REL
+    engine_names = _engine_aliases(tree)
+    # A builder returning the engine assembles the whole declaration inside
+    # itself, which is the same omission one call further out.
+    builder_types = gated | engine_names
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
-            yield from _call_hits(rel, node, gated=gated)
+            yield from _call_hits(rel, node, gated=gated, engine_names=engine_names)
         elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             if sanctioned:
                 continue
-            returns = node.returns
-            if not isinstance(returns, ast.Name) or returns.id not in gated:
+            returned = _annotated_name(node.returns)
+            if returned not in builder_types:
                 continue
             reason = _supplies_defaults(node)
             if reason is not None:
@@ -478,7 +549,7 @@ def _scan_file(
                     lineno=node.lineno,
                     kind="builder",
                     detail=(
-                        f"{node.name}() returns {returns.id} and {reason}. A "
+                        f"{node.name}() returns {returned} and {reason}. A "
                         f"helper that fills in what a caller did not name "
                         f"rebuilds the defect one layer up; "
                         f"{_SANCTIONED_REL} is the one sanctioned place "
@@ -499,7 +570,13 @@ def _scan_file(
             )
 
 
-def _call_hits(rel: str, node: ast.Call, *, gated: frozenset[str]) -> Iterator[_Hit]:
+def _call_hits(
+    rel: str,
+    node: ast.Call,
+    *,
+    gated: frozenset[str],
+    engine_names: frozenset[str],
+) -> Iterator[_Hit]:
     """Yield every violation one call site carries.
 
     Yields:
@@ -518,7 +595,7 @@ def _call_hits(rel: str, node: ast.Call, *, gated: frozenset[str]) -> Iterator[_
                 f"field list is bypassed. Name the fields."
             ),
         )
-    if name == _ENGINE_CLASS and (
+    if name in engine_names and (
         len(node.args) != 1 or node.keywords or isinstance(node.args[0], ast.Starred)
     ):
         yield _Hit(

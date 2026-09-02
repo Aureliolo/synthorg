@@ -4,7 +4,10 @@ from collections.abc import Awaitable, Callable
 
 from synthorg.core.clock import Clock
 from synthorg.observability import get_logger
-from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
+from synthorg.tools.sandbox.lifecycle.config import (
+    LifecycleStrategy,
+    SandboxLifecycleConfig,
+)
 from synthorg.tools.sandbox.lifecycle.per_agent import PerAgentStrategy
 from synthorg.tools.sandbox.lifecycle.per_call import PerCallStrategy
 from synthorg.tools.sandbox.lifecycle.per_task import PerTaskStrategy
@@ -37,16 +40,11 @@ def create_lifecycle_strategy(
 
     Returns:
         A concrete ``SandboxLifecycleStrategy`` implementation.
-
-    Raises:
-        ValueError: If the strategy name is unrecognised.
     """
     match config.strategy:
-        case "per-agent":
+        case LifecycleStrategy.PER_AGENT:
             return PerAgentStrategy(config, clock=clock, pin_check=pin_check)
-        case "per-task":
+        case LifecycleStrategy.PER_TASK:
             return PerTaskStrategy(clock=clock, pin_check=pin_check)
-        case "per-call":
+        case LifecycleStrategy.PER_CALL:
             return PerCallStrategy()
-    msg = f"Unknown lifecycle strategy: {config.strategy!r}"  # type: ignore[unreachable]
-    raise ValueError(msg)

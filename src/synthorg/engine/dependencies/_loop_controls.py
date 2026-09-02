@@ -2,10 +2,10 @@
 """The in-flight controls the execution loop consults at a turn boundary.
 
 Grouped because they share one failure mode: each is consulted between
-turns, each is silent when absent, and the whole set was missing from the
-harness that measured this loop for eight recordings. Naming them together
-is what makes "which of these is this engine running without" one question
-with one answer.
+turns and each is silent when absent, so a loop running without the whole
+set looks exactly like one running with it. Naming them together is what
+makes "which of these is this engine running without" one question with one
+answer.
 """
 
 from dataclasses import dataclass

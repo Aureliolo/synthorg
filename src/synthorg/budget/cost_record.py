@@ -234,6 +234,29 @@ class CostRecord(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def _validate_cache_consistency(self) -> Self:
+        """Ensure a cached read is a share of the input it was read for.
+
+        A provider reports the cached prefix as part of the input it billed,
+        so a count above the input is a malformed response or a driver
+        defect, and refusing it here keeps every reader of the raw column
+        from having to guard against a share above one.
+
+        Returns:
+            Result of type ``Self``.
+
+        Raises:
+            ValueError: If the cached read exceeds the input tokens.
+        """
+        if self.cache_read_input_tokens > self.input_tokens:
+            msg = (
+                f"cache_read_input_tokens ({self.cache_read_input_tokens}) exceeds "
+                f"input_tokens ({self.input_tokens})"
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
     def _validate_retry_consistency(self) -> Self:
         """Ensure retry_reason and retry_count are consistent.
 

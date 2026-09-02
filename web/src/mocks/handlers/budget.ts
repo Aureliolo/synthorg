@@ -62,6 +62,7 @@ function buildCallAnalytics(): AnalyticsAggregation {
     success_rate: null,
     retry_count: 0,
     retry_rate: 0,
+    input_tokens: 0,
     cached_input_tokens: 0,
     cached_input_share: null,
     avg_latency_ms: null,

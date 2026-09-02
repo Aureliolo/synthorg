@@ -23,10 +23,7 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_OWNER_DEGRADED,
 )
 from synthorg.tools.sandbox._mount_mode import MountMode
-from synthorg.tools.sandbox.lifecycle.config import (
-    STRATEGY_PER_AGENT,
-    STRATEGY_PER_TASK,
-)
+from synthorg.tools.sandbox.lifecycle.config import LifecycleStrategy
 
 logger = get_logger(__name__)
 
@@ -37,6 +34,11 @@ logger = get_logger(__name__)
 # reuse key; the call degrades to ephemeral per-call instead.
 _OWNER_ID_MAX_LEN: Final[int] = 128
 _OWNER_ID_RE: Final[re.Pattern[str]] = re.compile(r"\A[A-Za-z0-9._:-]{1,128}\Z")
+# The UNQUALIFIED owner id admits no colon: the colon is the segment separator
+# of the qualified key, and the reclamation sweep reads the owner back as the
+# last segment. An owner carrying one would be read back as somebody else's
+# and released as theirs.
+_RAW_OWNER_ID_RE: Final[re.Pattern[str]] = re.compile(r"\A[A-Za-z0-9._-]{1,128}\Z")
 # Truncated SHA-256 length for the environment-image segment of a reuse
 # key: 12 hex chars (48 bits) make accidental cross-image collisions
 # negligible while keeping the owner key well under the 128-char cap.
@@ -61,7 +63,16 @@ def valid_owner(key: str) -> bool:
     return len(key) <= _OWNER_ID_MAX_LEN and _OWNER_ID_RE.match(key) is not None
 
 
-def context_owner(strategy_kind: str) -> str | None:
+def valid_raw_owner(key: str) -> bool:
+    """Return whether *key* may be the unqualified owner segment of a reuse key.
+
+    Returns:
+        ``True`` when *key* is a safe owner id carrying no segment separator.
+    """
+    return len(key) <= _OWNER_ID_MAX_LEN and _RAW_OWNER_ID_RE.match(key) is not None
+
+
+def context_owner(strategy_kind: LifecycleStrategy) -> str | None:
     """Return the owner id from the structlog correlation context, if any.
 
     Args:
@@ -72,12 +83,13 @@ def context_owner(strategy_kind: str) -> str | None:
         The resulting ``str``, or ``None`` when unavailable.
     """
     ctx = structlog.contextvars.get_contextvars()
-    if strategy_kind == STRATEGY_PER_AGENT:
-        ctx_key = ctx.get("agent_id")
-    elif strategy_kind == STRATEGY_PER_TASK:
-        ctx_key = ctx.get("task_id")
-    else:
-        ctx_key = None
+    match strategy_kind:
+        case LifecycleStrategy.PER_AGENT:
+            ctx_key = ctx.get("agent_id")
+        case LifecycleStrategy.PER_TASK:
+            ctx_key = ctx.get("task_id")
+        case LifecycleStrategy.PER_CALL:
+            ctx_key = None
     return str(ctx_key) if ctx_key else None
 
 
@@ -141,7 +153,7 @@ def project_prefixed(
 
 
 def _degrade(
-    strategy_kind: str, *, owner_source: str | None, reason: str
+    strategy_kind: LifecycleStrategy, *, owner_source: str | None, reason: str
 ) -> tuple[str, bool]:
     """Log a key that cannot be reused and return the ephemeral fallback.
 
@@ -154,7 +166,7 @@ def _degrade(
     Returns:
         ``(ephemeral_key, False)``, the caller's degraded result.
     """
-    fields = {"strategy": strategy_kind, "reason": reason}
+    fields = {"strategy": strategy_kind.value, "reason": reason}
     if owner_source is not None:
         fields["owner_source"] = owner_source
     logger.warning(SANDBOX_LIFECYCLE_OWNER_DEGRADED, **fields)
@@ -164,7 +176,7 @@ def _degrade(
 def resolve_lifecycle(
     owner_id: str | None,
     *,
-    strategy_kind: str,
+    strategy_kind: LifecycleStrategy,
     reuses_container: bool,
     project_id: str | None = None,
     image_override: str | None = None,
@@ -188,7 +200,7 @@ def resolve_lifecycle(
 
     Args:
         owner_id: Explicit lifecycle owner, or ``None``.
-        strategy_kind: The configured lifecycle strategy's name.
+        strategy_kind: The configured lifecycle strategy.
         reuses_container: Whether that strategy reuses containers at all.
         project_id: Owning project, or ``None`` for the no-project
             execution mode.
@@ -202,7 +214,7 @@ def resolve_lifecycle(
     """
     if owner_id is not None and owner_id.strip():
         key = owner_id.strip()
-        if not valid_owner(key):
+        if not valid_raw_owner(key):
             return _degrade(
                 strategy_kind,
                 owner_source="explicit",
@@ -232,7 +244,7 @@ def resolve_lifecycle(
         return ephemeral_key(), False
 
     ctx_key = context_owner(strategy_kind)
-    if ctx_key is not None and valid_owner(ctx_key):
+    if ctx_key is not None and valid_raw_owner(ctx_key):
         prefixed = project_prefixed(ctx_key, project_id, image_override, mount_mode)
         if not valid_owner(prefixed):
             return _degrade(

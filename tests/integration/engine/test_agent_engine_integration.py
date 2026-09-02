@@ -8,7 +8,6 @@ from collections.abc import AsyncIterator, Mapping
 from dataclasses import replace
 from datetime import date
 from typing import override
-from uuid import uuid4
 
 import pytest
 
@@ -137,7 +136,7 @@ class TestAgentEngineToolCallIntegration:
     async def test_full_tool_call_loop(self) -> None:
         """Agent makes a tool call, gets result, produces final answer."""
         identity = AgentIdentity(
-            id=uuid4(),
+            id=as_uuid("agent-integration"),
             name="Test Agent",
             role="Developer",
             department="Engineering",
@@ -218,7 +217,7 @@ class TestAgentEngineFullLifecycle:
     async def test_full_lifecycle_assigned_to_in_review(self) -> None:
         """Verify lifecycle parks at IN_REVIEW (review gate)."""
         identity = AgentIdentity(
-            id=uuid4(),
+            id=as_uuid("agent-lifecycle"),
             name="Lifecycle Agent",
             role="Developer",
             department="Engineering",
@@ -303,7 +302,7 @@ class TestPermissionDeniedToolCall:
     async def test_denied_tool_returns_permission_error(self) -> None:
         """Agent with SANDBOXED access gets denied for a DEPLOYMENT tool."""
         identity = AgentIdentity(
-            id=uuid4(),
+            id=as_uuid("agent-sandboxed"),
             name="Sandboxed Agent",
             role="Intern",
             department="Engineering",

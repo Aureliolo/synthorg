@@ -309,6 +309,45 @@ class TestBuilders:
 
         assert _run(tmp_path) == 1
 
+    @pytest.mark.parametrize(
+        "signature",
+        [
+            "def make(provider, *, clock=None) -> AgentEngine:",
+            'def make(provider, *, clock=None) -> "EngineDependencies":',
+            "def make(provider, *, clock=None) -> dependencies.EngineDependencies:",
+        ],
+        ids=["returns_engine", "string_annotation", "attribute_annotation"],
+    )
+    def test_a_builder_is_recognised_in_every_return_spelling(
+        self, tmp_path: Path, signature: str
+    ) -> None:
+        """A builder returning the engine assembles the whole declaration inside.
+
+        The same omission one call further out, and a return annotation can be
+        spelled three ways, each of which a bare-name check would wave past.
+        """
+        _baseline(tmp_path)
+        _plant(
+            tmp_path,
+            "evals/harness/wiring.py",
+            f'"""Harness."""\n\n\n{signature}\n    return provider\n',
+        )
+
+        assert _run(tmp_path) == 1
+
+    def test_an_engine_alias_does_not_escape_the_arity_check(
+        self, tmp_path: Path
+    ) -> None:
+        _baseline(tmp_path)
+        _plant(
+            tmp_path,
+            "evals/harness/wiring.py",
+            '"""Harness."""\n\nEngine = AgentEngine\n\n\n'
+            "def make(provider):\n    return Engine(provider=provider)\n",
+        )
+
+        assert _run(tmp_path) == 1
+
     def test_a_total_builder_is_not_one(self, tmp_path: Path) -> None:
         """Every parameter required means the caller still names everything."""
         _baseline(tmp_path)
@@ -400,5 +439,14 @@ class TestAnchors:
         """An unused exemption is one the next builder inherits silently."""
         _baseline(tmp_path)
         _plant(tmp_path, _MODULE._SANCTIONED_REL, _SANCTIONED_BUILDS_NOTHING)
+
+        assert _run(tmp_path) == 2
+
+    def test_a_source_that_does_not_parse_is_a_configuration_error(
+        self, tmp_path: Path
+    ) -> None:
+        """A file the scan cannot read is one it cannot vouch for."""
+        _baseline(tmp_path)
+        _plant(tmp_path, "evals/harness/broken.py", "def make(:\n")
 
         assert _run(tmp_path) == 2

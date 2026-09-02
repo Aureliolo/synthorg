@@ -26,6 +26,7 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.settings import (
     SETTINGS_CHANNEL_CREATED,
+    SETTINGS_DISPATCHER_BOOT_APPLY_FAILED,
     SETTINGS_DISPATCHER_CHANNEL_DEAD,
     SETTINGS_DISPATCHER_POLL_ERROR,
     SETTINGS_DISPATCHER_START_REJECTED,
@@ -38,6 +39,7 @@ from synthorg.observability.events.settings import (
 from synthorg.settings.dispatcher_config import DispatcherConfigReader
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.settings.subscriber import (
+    BootAppliedSettingsSubscriber,
     SettingChange,
     SettingsSubscriber,
     describe_changes,
@@ -355,6 +357,32 @@ class SettingsChangeDispatcher:
                 SETTINGS_DISPATCHER_STARTED,
                 subscriber_count=len(self._subscribers),
             )
+        await self._apply_persisted()
+
+    async def _apply_persisted(self) -> None:
+        """Replay each boot-applied subscriber's persisted values once.
+
+        A subscriber whose value is baked into a holder seeded from the
+        environment config would otherwise carry the environment's value
+        until the first write, however long ago an operator persisted a
+        different one. One failing subscriber is logged and the rest still
+        run: the process is the same one a write would reach later, and a
+        boot that failed here would leave every OTHER persisted value inert
+        too.
+        """
+        for subscriber in self._subscribers:
+            if not isinstance(subscriber, BootAppliedSettingsSubscriber):
+                continue
+            try:
+                await subscriber.apply_persisted()
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    SETTINGS_DISPATCHER_BOOT_APPLY_FAILED,
+                    subscriber=subscriber.subscriber_name,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
 
     async def stop(self) -> None:
         """Cancel the polling task.  Idempotent.

@@ -2,7 +2,10 @@
 
 import pytest
 
-from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
+from synthorg.tools.sandbox.lifecycle.config import (
+    LifecycleStrategy,
+    SandboxLifecycleConfig,
+)
 from synthorg.tools.sandbox.lifecycle.per_agent import PerAgentStrategy
 from synthorg.tools.sandbox.lifecycle.per_call import PerCallStrategy
 from synthorg.tools.sandbox.lifecycle.per_task import PerTaskStrategy
@@ -60,7 +63,9 @@ class TestReusesContainer:
         assert PerTaskStrategy().reuses_container is True
 
     def test_per_agent_reuses(self) -> None:
-        strategy = PerAgentStrategy(SandboxLifecycleConfig(strategy="per-agent"))
+        strategy = PerAgentStrategy(
+            SandboxLifecycleConfig(strategy=LifecycleStrategy.PER_AGENT)
+        )
         assert strategy.reuses_container is True
 
     @pytest.mark.parametrize(
@@ -68,7 +73,9 @@ class TestReusesContainer:
         [
             PerCallStrategy(),
             PerTaskStrategy(),
-            PerAgentStrategy(SandboxLifecycleConfig(strategy="per-agent")),
+            PerAgentStrategy(
+                SandboxLifecycleConfig(strategy=LifecycleStrategy.PER_AGENT)
+            ),
         ],
         ids=["per_call", "per_task", "per_agent"],
     )

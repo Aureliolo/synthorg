@@ -3,24 +3,21 @@
 
 ONE required argument, and every field of every bundle required with it.
 The point is not tidiness: it is that a partially wired engine must not be
-constructable.
+constructable. A keyword that defaults to ``None`` is indistinguishable from
+one nobody supplied, so a caller can build an engine missing a collaborator
+without anyone having decided to, and nothing at any layer can tell the two
+apart: omitting ``compaction_callback`` looks exactly like deciding against
+it.
 
-The shape this replaces took 64 keyword arguments, 63 of them defaulting to
-``None``. A deployment supplied 51 and the harness recording this loop
-supplied 8, for eight recordings, silently, and nothing at any layer could
-tell. Omitting ``compaction_callback`` looked exactly like deciding against
-it. So the corpus that produced a root-cause analysis of the loop had
-measured an engine the product does not ship.
-
-Absence is still allowed and still common. What is no longer allowed is
-absence by OMISSION: a caller writes ``compaction_callback=None`` and that
-is a decision a reader can see and a reviewer can question, where a missing
-keyword is a decision nobody made.
+Absence is still allowed and still common. What is not allowed is absence by
+OMISSION: a caller writes ``compaction_callback=None`` and that is a decision
+a reader can see and a reviewer can question, where a missing keyword is a
+decision nobody made.
 
 Grouped rather than flat because the groups are the ones the composition
 root already reads from (``BudgetStateSlice``, ``SecurityStateSlice``,
-``MemoryStateSlice``, ...), and because a single 64-field literal at each
-call site is a list nobody checks.
+``MemoryStateSlice``, ...), and because one sixty-field literal at each call
+site is a list nobody checks.
 """
 
 from dataclasses import dataclass

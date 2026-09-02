@@ -34,6 +34,7 @@ from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.state import persistence_of
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.security.audit import AuditLog
 from synthorg.settings.bridge_configs import EngineBridgeConfig
 from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.resolver import ConfigResolver
@@ -166,9 +167,11 @@ def _provider_app_state(  # noqa: PLR0913 -- test builder with keyword-only knob
         ),
         task_engine=mock_of[TaskEngine](),
         agent_registry=AgentRegistryService(),
-        # A real store: the engine builder's ``require_service`` needs a
-        # wired approval store, so the slice read must resolve to a real one.
+        # Real instances: the engine builder's ``require_service`` needs a
+        # wired approval store and audit log, so each slice read must resolve
+        # to a real one.
         approval_store=ApprovalStore(),
+        audit_log=AuditLog(),
         client_simulation_state=(
             mock_of[ClientSimulationState](
                 intake_engine=IntakeEngine(strategy=_AcceptingIntakeStrategy()),

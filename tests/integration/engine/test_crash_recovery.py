@@ -5,7 +5,6 @@ Engine.run() with failing provider -> task FAILED -> can_reassign checks.
 
 from collections.abc import AsyncIterator, Mapping
 from datetime import date
-from uuid import uuid4
 
 import pytest
 
@@ -75,7 +74,7 @@ class _FailingProvider:
 
 def _make_identity() -> AgentIdentity:
     return AgentIdentity(
-        id=uuid4(),
+        id=as_uuid("agent-recovery"),
         name="Recovery Agent",
         role="Developer",
         department="Engineering",

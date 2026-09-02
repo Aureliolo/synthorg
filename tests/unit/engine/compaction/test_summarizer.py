@@ -17,6 +17,7 @@ from synthorg.engine.loop_correction_budget import (
     NO_CALL_NUDGE,
     consecutive_corrections,
 )
+from synthorg.engine.prompt_safety import TAG_COMPACTION_SUMMARY, wrap_untrusted
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
@@ -465,7 +466,9 @@ class TestForcedCompaction:
         forced = await callback(ctx, force=True, preserve_markers=True)
 
         assert forced is not None
-        assert forced.conversation[1].content == "LLM SUMMARY"
+        assert forced.conversation[1].content == wrap_untrusted(
+            TAG_COMPACTION_SUMMARY, "LLM SUMMARY"
+        )
         assert provider.system_prompts
         assert "epistemic markers" in provider.system_prompts[0].lower()
 
@@ -643,7 +646,11 @@ class TestPhase2Compaction:
         )
         result = await callback(ctx)
         assert result is not None
-        assert result.conversation[1].content == "LLM SEMANTIC SUMMARY"
+        # Fenced: the summary is model output re-entering the prompt as a
+        # system message, so it is marked as data rather than instruction.
+        assert result.conversation[1].content == wrap_untrusted(
+            TAG_COMPACTION_SUMMARY, "LLM SEMANTIC SUMMARY"
+        )
 
     async def test_llm_failure_falls_back_to_text_summary(
         self,

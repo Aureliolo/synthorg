@@ -46,6 +46,7 @@ def _row(
         total_cost=cost,
         call_count=1,
         input_tokens=10,
+        cached_input_tokens=0,
         output_tokens=5,
         p95_latency_ms=p95,
         retry_rate=0.0,

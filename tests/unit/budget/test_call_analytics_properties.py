@@ -67,7 +67,9 @@ _record_strategy = st.builds(
         latency_ms=latency,
     ),
     retry=st.one_of(st.none(), st.integers(min_value=0, max_value=10)),
-    cache=st.integers(min_value=0, max_value=400),
+    # Never above the record's own input: a cached read larger than what
+    # was sent is refused at construction.
+    cache=st.integers(min_value=0, max_value=100),
     latency=st.one_of(
         st.none(), st.floats(min_value=0.0, max_value=10000.0, allow_nan=False)
     ),

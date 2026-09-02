@@ -259,8 +259,15 @@ LOCKED organisation a weaker response than it chose and said nothing.
    (role constraints, custom conventions, organisational policies).
 5. **Create context**: `AgentContext.from_identity()` with the configured
    `max_turns`.
-6. **Seed conversation**: injects system prompt, optional memory messages, and
-   formatted task instruction as initial messages.
+6. **Seed conversation**: injects the system prompt, optional memory messages,
+   and the formatted task instruction as initial messages. The task brief is
+   the ONE message the loop pins (`AgentContext.pinned_message_indices`): it
+   is the single owner of the task's title, description and criteria (the
+   system prompt carries no copy), and every compaction path (text summary,
+   LLM summary, memory offload) re-seats a pinned message verbatim rather than
+   archiving it, remapping the pin to its new index. Without the pin a
+   USER-role brief ages out of the preserved window, and a resumed session
+   works from a summary of its own replies.
 7. **Transition task**: `ASSIGNED` -> `IN_PROGRESS` (pass-through if already
    `IN_PROGRESS`). This is the entry sync to the central engine, and it is
    fail-loud: a refused transition raises `ExecutionStateError` rather than
@@ -893,7 +900,13 @@ shape every implementation and every caller agrees on.
 The default implementation (`make_compaction_callback` in
 `compaction/summarizer.py`) archives oldest conversation turns into a summary
 message when `context_fill_percent` exceeds a configurable threshold (default
-80%).
+80%). Pinned messages (the task brief) are removed from the archivable span
+and re-seated in front of the summary, never summarised. The summary itself is
+spliced in as a SYSTEM message fenced with `<compaction-summary>`, because it
+was made from tool output, task content and the model's own replies, and a
+summariser that repeats instruction-shaped text would otherwise hand it to
+every later turn at system rank; the system prompt's untrusted-content
+directive declares the fence for every task session.
 
 Compaction is configured through settings, in the `engine` namespace under the
 `Compaction` group, so an operator can see and tune it on the dashboard. Every

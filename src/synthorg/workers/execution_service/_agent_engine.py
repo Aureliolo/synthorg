@@ -44,11 +44,7 @@ from synthorg.tools.sandbox.active_environment import (
     ActiveSandboxEnvironment,
     active_sandbox_environment,
 )
-from synthorg.tools.sandbox.lifecycle.config import (
-    STRATEGY_PER_AGENT,
-    STRATEGY_PER_CALL,
-    STRATEGY_PER_TASK,
-)
+from synthorg.tools.sandbox.lifecycle.config import LifecycleStrategy
 from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.workers.execution_resume import ResumeDispatchMixin
 from synthorg.workers.execution_service._autonomy import read_project_autonomy_mode
@@ -115,7 +111,7 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
         autonomy_resolver: AutonomyResolver | None = None,
         project_repo: ProjectRepository | None = None,
         sandbox_backend: SandboxBackend | None = None,
-        lifecycle_strategy_kind: str = STRATEGY_PER_CALL,
+        lifecycle_strategy_kind: LifecycleStrategy = LifecycleStrategy.PER_CALL,
         project_workspace_service: ProjectWorkspaceService | None = None,
         environment_service: EnvironmentService | None = None,
         environment_runner_backend: SandboxBackend | None = None,
@@ -169,11 +165,11 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
         return self._sandbox_backend
 
     @property
-    def lifecycle_strategy_kind(self) -> str:
+    def lifecycle_strategy_kind(self) -> LifecycleStrategy:
         """Which lifecycle the sandbox backend reuses containers under.
 
         Returns:
-            The strategy name.
+            The strategy.
         """
         return self._lifecycle_strategy_kind
 
@@ -607,12 +603,13 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
         backend = self._sandbox_backend
         if backend is None:
             return
-        if self._lifecycle_strategy_kind == STRATEGY_PER_AGENT:
-            owner_id = str(identity.id)
-        elif self._lifecycle_strategy_kind == STRATEGY_PER_TASK:
-            owner_id = task_id
-        else:
-            return
+        match self._lifecycle_strategy_kind:
+            case LifecycleStrategy.PER_AGENT:
+                owner_id = str(identity.id)
+            case LifecycleStrategy.PER_TASK:
+                owner_id = task_id
+            case LifecycleStrategy.PER_CALL:
+                return
         try:
             await backend.release_owner(
                 owner_id, project_id=project_id, image_override=image_override

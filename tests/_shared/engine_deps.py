@@ -277,7 +277,7 @@ def assembly_inputs(
         run_probe=run_probe,
         coordination_metrics_collector=None,
         external_api_runtime=None,
-        connection_tool_runtimes=None,
+        connection_tool_runtimes=ConnectionToolRuntimes(),
         flight_recorder_sink=None,
         step_classifier=None,
         classification_detector_timeout_seconds=None,

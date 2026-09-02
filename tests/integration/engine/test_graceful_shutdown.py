@@ -103,14 +103,13 @@ class TestGracefulShutdownFlow:
         INTERRUPTED transition.
         """
         from datetime import date
-        from uuid import uuid4
 
         from synthorg.core.agent import AgentIdentity, ModelConfig
         from synthorg.core.task import Task
         from synthorg.core.task_enums import Complexity, Priority, TaskType
 
         identity = AgentIdentity(
-            id=uuid4(),
+            id=as_uuid("agent-shutdown"),
             name="Test Agent",
             role="Developer",
             department="Engineering",
@@ -162,14 +161,13 @@ class TestGracefulShutdownFlow:
     ) -> None:
         """Multi-turn execution interrupted by shutdown → INTERRUPTED."""
         from datetime import date
-        from uuid import uuid4
 
         from synthorg.core.agent import AgentIdentity, ModelConfig
         from synthorg.core.task import Task
         from synthorg.core.task_enums import Complexity, Priority, TaskType
 
         identity = AgentIdentity(
-            id=uuid4(),
+            id=as_uuid("agent-shutdown"),
             name="Test Agent",
             role="Developer",
             department="Engineering",

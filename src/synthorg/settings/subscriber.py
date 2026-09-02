@@ -33,6 +33,23 @@ def describe_changes(changes: Sequence[SettingChange]) -> str:
 
 
 @runtime_checkable
+class BootAppliedSettingsSubscriber(Protocol):
+    """A subscriber whose value is baked into something built before it ran.
+
+    A live holder seeded from the environment config at construction carries
+    the environment's value until the first watched WRITE, so a value an
+    operator persisted before the last restart is inert on a cold boot for as
+    long as nobody writes. The dispatcher calls :meth:`apply_persisted` once
+    when it starts, after the settings backend is reachable, so the persisted
+    value is applied on the same path a write would take.
+    """
+
+    async def apply_persisted(self) -> None:
+        """Apply the persisted values of the watched keys as a write would."""
+        ...
+
+
+@runtime_checkable
 class SettingsSubscriber(Protocol):
     """Structural interface for settings change subscribers.
 

@@ -956,9 +956,9 @@ cap costs its branching to the POWER of its depth: one repetition fewer at the
 deepest cap buys back more time than any other single change, and the shallow
 end is nearly free either way. It takes `CAP:COUNT` pairs and changes only the
 caps named. Per run rather than by editing the file, because the committed
-counts are the experimental DESIGN (three at caps 1 and 2 and two at caps 3 and
-4, so per-depth spread is reportable everywhere rather than only where the
-transition is expected), and an
+counts are the experimental DESIGN (five at every cap, the floor
+`MINIMUM_REPETITIONS` refuses to load a matrix below, so per-depth spread is
+reportable everywhere rather than only where the transition is expected), and an
 operator trading one of them for a schedule should not leave the next reader
 inheriting a quota window as if it were an intended design: a cap dropped to one
 repetition reports a range of one draw, which is the thing the design exists to
@@ -1122,10 +1122,14 @@ where there is a population, and a matrix that repeats only the caps it expects
 to be interesting cannot say whether the flat ones are flat or merely too
 thinly sampled to tell.
 
-Repetitions are three at caps 1 and 2 and two at caps 3 and 4, because the deep
-cells are where the sessions are: a cap-1 cell is 14 sessions against a cap-3
-cell's 135, and a cap-4 cell is projected near 300. Three at every cap would
-not fit the ceiling. The cost of the taper is stated rather than hidden: two
+Repetitions are five at every cap, and the loader refuses fewer. The deep cells
+are where the sessions are: a cap-1 cell is 14 sessions against a cap-3 cell's
+135, and a cap-4 cell is projected near 300, so the earlier design tapered to
+two at the deep end to fit the ceiling. That taper is what the measurement it
+was written before overrides: with every pairwise pass-rate interval crossing
+zero at fewer repetitions (arXiv 2607.22585), a taper leaves exactly the cells
+the curve is about too thinly sampled to read. What the taper was hiding is
+still worth stating: two
 draws bound a range but do not give a median distinct from it, so caps 3 and 4
 report a spread that says how far apart two trees fell and not much more.
 
@@ -1309,8 +1313,8 @@ Caps 4 to 6. ARIES puts the transition at 3 to 4, so the depth where the
 literature expects a blow-up is exactly the one beyond this recording: the
 chart's right end is absent rather than flat.
 
-That is what the committed matrix now records: caps 1 to 4 at three, three, two
-and two repetitions, one arm. It answers the two things this recording could
+That is what the committed matrix now records: caps 1 to 4 at five repetitions
+each, one arm. It answers the two things this recording could
 not support, and takes the arm comparison off the table to pay for them.
 
 ### What the run keeps

@@ -26,12 +26,15 @@ class AnalyticsAggregation(BaseModel):
             (``retry_count >= 1``).
         retry_rate: ``retry_count / total_calls``, or ``0.0`` when
             ``total_calls=0``.
+        input_tokens: Input tokens over every call, summed; the denominator
+            the cached share is read against, carried so the share can be
+            recomputed from the record rather than trusted.
         cached_input_tokens: Input tokens the provider served from its
             prompt cache, summed over every call.
-        cached_input_share: ``cached_input_tokens / input_tokens`` over
-            every call, or ``None`` when the calls carried no input tokens.
-            A share of tokens rather than a rate of calls, because the bill
-            moves with the tokens.
+        cached_input_share: ``cached_input_tokens / input_tokens``, derived,
+            or ``None`` when the calls carried no input tokens. A share of
+            tokens rather than a rate of calls, because the bill moves with
+            the tokens.
         avg_latency_ms: Mean latency over calls with latency data, or
             ``None`` when no records report latency.
         p95_latency_ms: 95th-percentile latency over calls with latency
@@ -52,17 +55,9 @@ class AnalyticsAggregation(BaseModel):
         le=1.0,
         description="Fraction of calls with at least one retry.",
     )
+    input_tokens: int = Field(ge=0, description="Input tokens over every call.")
     cached_input_tokens: int = Field(
         ge=0, description="Input tokens served from the prompt cache, summed."
-    )
-    cached_input_share: float | None = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description=(
-            "Share of all input tokens the prompt cache served, or None when "
-            "the calls carried no input tokens."
-        ),
     )
     avg_latency_ms: float | None = Field(
         default=None,
@@ -114,6 +109,17 @@ class AnalyticsAggregation(BaseModel):
             return None
         return round(self.success_count / reported, 4)
 
+    @computed_field
+    @property
+    def cached_input_share(self) -> float | None:
+        """Share of all input tokens the prompt cache served.
+
+        Returns:
+            The share in ``[0, 1]``, or ``None`` when the calls carried no
+            input tokens, since a share of nothing is not zero.
+        """
+        return cached_input_share(self.cached_input_tokens, self.input_tokens)
+
     @model_validator(mode="after")
     def _validate_count_consistency(self) -> Self:
         """Enforce count invariants across aggregation fields.
@@ -130,7 +136,25 @@ class AnalyticsAggregation(BaseModel):
         if self.success_count + self.failure_count > self.total_calls:
             msg = "success_count + failure_count cannot exceed total_calls"
             raise ValueError(msg)
+        if self.cached_input_tokens > self.input_tokens:
+            msg = "cached_input_tokens cannot exceed input_tokens"
+            raise ValueError(msg)
         return self
+
+
+def cached_input_share(cached_input_tokens: int, input_tokens: int) -> float | None:
+    """Read a cached share off its two counts.
+
+    The one owner of the ratio, so the aggregation and the per-class row
+    cannot compute it two ways.
+
+    Returns:
+        ``cached_input_tokens / input_tokens``, or ``None`` when there were
+        no input tokens to take a share of.
+    """
+    if input_tokens == 0:
+        return None
+    return cached_input_tokens / input_tokens
 
 
 def prompt_class_sort_key(prompt_class_id: str | None) -> tuple[bool, str]:
@@ -165,11 +189,12 @@ class PromptClassBreakdownRow(BaseModel):
         currency: ISO 4217 code shared by the class's records.
         call_count: Number of records for this class.
         input_tokens: Sum of input tokens.
+        cached_input_tokens: Input tokens the prompt cache served, summed.
         output_tokens: Sum of output tokens.
         avg_latency_ms: Mean latency over latency-reporting calls, or ``None``.
         p95_latency_ms: 95th-percentile latency, or ``None``.
         cached_input_share: Share of the class's input tokens the prompt
-            cache served, or ``None`` when it carried none.
+            cache served, derived, or ``None`` when it carried none.
         retry_rate: Fraction of calls with at least one retry.
         success_rate: Fraction of success-reporting calls that succeeded, or
             ``None`` when no record carries success data.
@@ -198,18 +223,15 @@ class PromptClassBreakdownRow(BaseModel):
         gt=0, description="Records for this class (a row aggregates at least one)."
     )
     input_tokens: int = Field(ge=0, description="Total input tokens.")
+    cached_input_tokens: int = Field(
+        ge=0, description="Input tokens served from the prompt cache, summed."
+    )
     output_tokens: int = Field(ge=0, description="Total output tokens.")
     avg_latency_ms: float | None = Field(
         default=None, ge=0.0, description="Mean latency in ms, or None."
     )
     p95_latency_ms: float | None = Field(
         default=None, ge=0.0, description="95th-percentile latency in ms, or None."
-    )
-    cached_input_share: float | None = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description="Share of input tokens served from the prompt cache, or None.",
     )
     retry_rate: float = Field(
         ge=0.0, le=1.0, description="Fraction of calls with at least one retry."
@@ -220,6 +242,32 @@ class PromptClassBreakdownRow(BaseModel):
         le=1.0,
         description="Success fraction over success-reporting calls, or None.",
     )
+
+    @computed_field
+    @property
+    def cached_input_share(self) -> float | None:
+        """Share of the class's input tokens the prompt cache served.
+
+        Returns:
+            The share in ``[0, 1]``, or ``None`` when the class carried no
+            input tokens.
+        """
+        return cached_input_share(self.cached_input_tokens, self.input_tokens)
+
+    @model_validator(mode="after")
+    def _cached_within_input(self) -> Self:
+        """Refuse a cache that served more than was sent.
+
+        Returns:
+            The validated row.
+
+        Raises:
+            ValueError: ``cached_input_tokens`` exceeds ``input_tokens``.
+        """
+        if self.cached_input_tokens > self.input_tokens:
+            msg = "cached_input_tokens cannot exceed input_tokens"
+            raise ValueError(msg)
+        return self
 
 
 class PromptClassBreakdown(BaseModel):

@@ -14,6 +14,7 @@ from synthorg.engine.prompt_safety import (
     INJECTION_HEURISTICS,
     TAG_BRAIN_STATE,
     TAG_CODE_DIFF,
+    TAG_COMPACTION_SUMMARY,
     TAG_CONFIG_VALUE,
     TAG_CRITERIA_JSON,
     TAG_DECIDER_NAME,
@@ -52,6 +53,7 @@ logger = get_logger(__name__)
 _FENCE_TAGS: Final[tuple[str, ...]] = (
     TAG_TASK_DATA,
     TAG_TASK_FACT,
+    TAG_COMPACTION_SUMMARY,
     TAG_TOOL_RESULT,
     TAG_TOOL_ARGUMENTS,
     TAG_UNTRUSTED_ARTIFACT,
@@ -94,21 +96,28 @@ _INJECTION_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
 )
 
 
-def wrap_tool_result(result: ToolResult) -> ToolResult:
+def wrap_tool_result(result: ToolResult, *, scanned: str | None = None) -> ToolResult:
     """Return *result* with its ``content`` wrapped in ``<tool-result>``.
 
-    Also emits ``TOOL_INJECTION_PATTERN_DETECTED`` when the raw
-    content matches a known injection pattern (see
-    :data:`_INJECTION_PATTERNS`). Detection is advisory; the wrap
-    happens unconditionally so a malicious tool cannot escape the
-    fence even if no pattern matches.
+    Also emits ``TOOL_INJECTION_PATTERN_DETECTED`` when the content matches a
+    known injection pattern (see :data:`_INJECTION_PATTERNS`). Detection is
+    advisory; the wrap happens unconditionally so a malicious tool cannot
+    escape the fence even if no pattern matches.
+
+    Args:
+        result: The tool result whose content is fenced.
+        scanned: What the detection reads, when it is not the fenced content
+            itself. A result abbreviated before it is fenced keeps its head
+            and tail, and a payload placed in the elided middle would
+            otherwise never reach the telemetry that records an attempt was
+            made; the fence still covers exactly what the model sees.
 
     Returns:
         *result* with its ``content`` replaced by the fenced text.
     """
     raw = result.content
     for pattern in _INJECTION_PATTERNS:
-        match = pattern.search(raw)
+        match = pattern.search(raw if scanned is None else scanned)
         if match is not None:
             # Scrub the telemetry sample before emitting -- if the
             # attacker embedded a credential inside the injection
@@ -118,7 +127,7 @@ def wrap_tool_result(result: ToolResult) -> ToolResult:
                 TOOL_INJECTION_PATTERN_DETECTED,
                 tool_call_id=result.tool_call_id,
                 pattern=pattern.pattern,
-                sample=scrub_secret_tokens(raw[: min(200, len(raw))]),
+                sample=scrub_secret_tokens(match.string[: min(200, len(match.string))]),
             )
             break
     return result.model_copy(

@@ -816,10 +816,14 @@ def _gate_table(report: RecursionDepthReport) -> list[str]:
     attempts = dict.fromkeys(Arm, 0)
     tokens = dict.fromkeys(Arm, 0)
     judging = dict.fromkeys(Arm, 0)
+    compacting = dict.fromkeys(Arm, 0)
     cost: dict[Arm, list[float | None]] = {arm: [] for arm in Arm}
     for cell, unit in _merges_of(report):
         merges[cell.arm] += 1
         judging[cell.arm] += unit.review_tokens
+        # Compaction buys context back by spending; blended into `Tokens` the
+        # trade is unreadable, so its share is a column of its own.
+        compacting[cell.arm] += unit.compaction_tokens
         # unit.parked reads only the LAST review, so a merge parked on
         # attempt 1 and approved on attempt 2 reads False there even though
         # a round genuinely escalated. parked_attempts counts every round
@@ -832,14 +836,14 @@ def _gate_table(report: RecursionDepthReport) -> list[str]:
         cost[cell.arm].append(unit.cost)
     rows = [
         (
-            "| Arm | Merges | Sessions | Tokens | Judging | Spend "
+            "| Arm | Merges | Sessions | Tokens | Judging | Compacting | Spend "
             "| Parked escalations | Contract amendments |"
         ),
-        "|---|---:|---:|---:|---:|---:|---:|---:|",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     rows.extend(
         f"| {arm.value} | {merges[arm]} | {attempts[arm]} | {tokens[arm]} "
-        f"| {judging[arm]} | {_cost_cell(sum_costs(cost[arm]))} "
+        f"| {judging[arm]} | {compacting[arm]} | {_cost_cell(sum_costs(cost[arm]))} "
         f"| {parked[arm]} | {amendments[arm]} |"
         for arm in Arm
     )

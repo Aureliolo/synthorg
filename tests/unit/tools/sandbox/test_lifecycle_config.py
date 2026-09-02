@@ -3,7 +3,10 @@
 import pytest
 from pydantic import ValidationError
 
-from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
+from synthorg.tools.sandbox.lifecycle.config import (
+    LifecycleStrategy,
+    SandboxLifecycleConfig,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -13,7 +16,7 @@ class TestSandboxLifecycleConfigDefaults:
 
     def test_defaults(self) -> None:
         config = SandboxLifecycleConfig()
-        assert config.strategy == "per-agent"
+        assert config.strategy is LifecycleStrategy.PER_AGENT
         assert config.grace_period_seconds == 30.0
         assert config.health_check_interval_seconds == 10.0
         assert config.max_idle_seconds == 300.0
@@ -21,16 +24,16 @@ class TestSandboxLifecycleConfigDefaults:
     def test_frozen(self) -> None:
         config = SandboxLifecycleConfig()
         with pytest.raises(ValidationError):
-            config.strategy = "per-call"  # type: ignore[misc]
+            config.strategy = LifecycleStrategy.PER_CALL  # type: ignore[misc]
 
 
 class TestSandboxLifecycleConfigValidation:
     """Field validation rules."""
 
     @pytest.mark.parametrize("strategy", ["per-agent", "per-task", "per-call"])
-    def test_valid_strategies(self, strategy: str) -> None:
+    def test_the_wire_form_is_read_into_the_enum(self, strategy: str) -> None:
         config = SandboxLifecycleConfig(strategy=strategy)  # type: ignore[arg-type]
-        assert config.strategy == strategy
+        assert config.strategy is LifecycleStrategy(strategy)
 
     def test_invalid_strategy_rejected(self) -> None:
         with pytest.raises(ValidationError, match="strategy"):

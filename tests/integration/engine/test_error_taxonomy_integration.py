@@ -6,7 +6,6 @@ patterns across all error categories.
 
 from datetime import date
 from unittest.mock import AsyncMock
-from uuid import uuid4
 
 import pytest
 
@@ -45,7 +44,7 @@ pytestmark = pytest.mark.integration
 
 def _identity() -> AgentIdentity:
     return AgentIdentity(
-        id=uuid4(),
+        id=as_uuid("agent-taxonomy"),
         name="Integration Test Agent",
         role="Developer",
         department="Engineering",

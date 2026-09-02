@@ -34,6 +34,26 @@ class ContainerHandle:
             raise ValueError(msg)
 
 
+@dataclass(frozen=True, slots=True)
+class TrackedOwner:
+    """An owner key a strategy holds, with the acquisition it is held under.
+
+    The generation is what lets a release decided from a snapshot refuse
+    itself once the snapshot is stale. A warm-cache reacquire hands back the
+    SAME handle object, so identity cannot tell "still the run the sweep
+    read as finished" from "reacquired and back in use"; the generation
+    moves on every acquire and can.
+
+    Attributes:
+        key: The owner key exactly as the strategy holds it.
+        generation: A number that changes on every acquire of this key and
+            is never reused by a later one.
+    """
+
+    key: NotBlankStr
+    generation: int
+
+
 # 3 impls (PerAgent/PerTask/PerCall) + create_lifecycle_strategy
 # config-discriminated factory.
 @runtime_checkable
@@ -99,6 +119,7 @@ class SandboxLifecycleStrategy(Protocol):
         *,
         owner_id: str,
         destroy_fn: Callable[[ContainerHandle], Awaitable[None]],
+        expected_generation: int | None = None,
     ) -> None:
         """Signal that *owner_id* no longer needs its container.
 
@@ -109,6 +130,13 @@ class SandboxLifecycleStrategy(Protocol):
             owner_id: The same identifier passed to ``acquire``.
             destroy_fn: Async callback that stops and removes the
                 container (and its sidecar, if any).
+            expected_generation: The generation :meth:`tracked_owners`
+                reported for this key when the caller decided to release
+                it. A strategy that reuses containers refuses the release
+                when the key has been acquired since, because the decision
+                was made about a run that is no longer the one holding the
+                container. ``None`` is the owner's own boundary release,
+                which is about whatever is held now.
         """
         ...
 
@@ -127,13 +155,14 @@ class SandboxLifecycleStrategy(Protocol):
         """
         ...
 
-    async def tracked_owners(self) -> tuple[str, ...]:
+    async def tracked_owners(self) -> tuple[TrackedOwner, ...]:
         """The owner keys this strategy currently holds a container for.
 
         Read by the reclamation sweep, which asks of each owner whether its
-        run has finished; a strategy that reuses nothing answers empty.
+        run has finished and hands the generation back on release; a
+        strategy that reuses nothing answers empty.
 
         Returns:
-            The keys, in no particular order.
+            The keys with their generations, in no particular order.
         """
         ...

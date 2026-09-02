@@ -16,6 +16,7 @@ from evals.recursion_depth.grading import ORACLE_SUITE_DIR, ORACLE_TREE_DIR
 from evals.recursion_depth.liveness import (
     EntryPoint,
     LivenessDeclaration,
+    LivenessOutcome,
     classify_entry,
     classify_import,
     declared_liveness,
@@ -133,6 +134,18 @@ class TestWhatCountsAsDead:
 
         assert outcome.verdict is Liveness.DEAD
         assert "did not finish" in outcome.detail
+
+    @pytest.mark.parametrize("returncode", [-11, 137, 139])
+    def test_a_program_a_signal_ended_is_dead(self, returncode: int) -> None:
+        # A segfault or the container's memory limit writes no traceback, so
+        # the marker alone would read the death as an exit the program chose.
+        outcome = classify_entry(
+            _result(returncode=returncode, stderr=""),
+            entry=EntryPoint(module="sqlcsv"),
+        )
+
+        assert outcome.verdict is Liveness.DEAD
+        assert "ended by a signal" in outcome.detail
 
     def test_a_module_that_does_not_import_is_dead(self) -> None:
         """An import has no exit of its own to choose, so non-zero is dead."""
@@ -274,3 +287,25 @@ class TestTheVerdictOnTheRecord:
                 unavailable_reason="gone",
                 liveness=Liveness.LIVE,
             )
+
+    @pytest.mark.parametrize("verdict", [Liveness.DEAD, Liveness.NOT_PROBEABLE])
+    def test_a_verdict_that_is_not_live_names_its_reason(
+        self, verdict: Liveness
+    ) -> None:
+        with pytest.raises(ValueError, match="names no reason"):
+            self._measured(liveness=verdict, liveness_detail="")
+
+
+class TestTheOutcomeAgreesWithItself:
+    """The probe's own value refuses the disagreement before the record does."""
+
+    def test_a_live_outcome_carrying_a_death_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="live outcome still says"):
+            LivenessOutcome(Liveness.LIVE, "raised")
+
+    @pytest.mark.parametrize("verdict", [Liveness.DEAD, Liveness.NOT_PROBEABLE])
+    def test_an_outcome_that_is_not_live_names_its_reason(
+        self, verdict: Liveness
+    ) -> None:
+        with pytest.raises(ValueError, match="names no reason"):
+            LivenessOutcome(verdict)

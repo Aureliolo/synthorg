@@ -18,10 +18,16 @@ Level-triggered on the same shape as run recovery: boot is the first pass
 and every tick is the same idempotent question. A key the sweep cannot read
 is reported and left alone, because a container it cannot attribute is one
 it cannot know to be finished.
+
+The decision and the release are two steps with a task-table read between
+them, and a run can reacquire the key in that gap: a warm reacquire hands
+back the same container, so nothing about the container says it is back in
+use. Every key is therefore read WITH the generation the lifecycle holds it
+under and released against that generation, and the lifecycle refuses a
+release whose generation has moved on.
 """
 
 import re
-from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final, Protocol, override, runtime_checkable
 
@@ -45,10 +51,8 @@ from synthorg.persistence.task_protocol import TaskFilterSpec, TaskRepository
 from synthorg.settings.kill_switch import resolve_bool_with_fallback
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.tools.sandbox._mount_mode import MOUNT_MODES
-from synthorg.tools.sandbox.lifecycle.config import (
-    STRATEGY_PER_AGENT,
-    STRATEGY_PER_TASK,
-)
+from synthorg.tools.sandbox.lifecycle.config import LifecycleStrategy
+from synthorg.tools.sandbox.lifecycle.protocol import TrackedOwner
 
 logger = get_logger(__name__)
 
@@ -63,15 +67,16 @@ class ReclaimableSandbox(Protocol):
     empty. The Docker backend satisfies it structurally.
     """
 
-    async def tracked_owners(self) -> tuple[str, ...]:
+    async def tracked_owners(self) -> tuple[TrackedOwner, ...]:
         """The fully qualified lifecycle keys holding a container right now.
 
         Returns:
-            The keys exactly as the lifecycle holds them.
+            The keys exactly as the lifecycle holds them, each with the
+            generation it is held under.
         """
         ...
 
-    async def release_key(self, owner_key: str) -> None:
+    async def release_key(self, owner_key: str, *, generation: int) -> None:
         """Release one lifecycle key exactly as it is held.
 
         The complement of ``release_owner``, which rebuilds the keys from an
@@ -81,6 +86,8 @@ class ReclaimableSandbox(Protocol):
 
         Args:
             owner_key: A key :meth:`tracked_owners` returned.
+            generation: The generation it was returned under. A key acquired
+                again since is refused rather than released.
         """
         ...
 
@@ -108,23 +115,28 @@ _BOOT_TRIGGER: Final[str] = "boot"
 _PERIODIC_TRIGGER: Final[str] = "periodic"
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class OwnerKey:
     """A qualified lifecycle key, read back into the parts it was built from.
+
+    Keyword-only because four of its fields are strings of the same shape,
+    and a positional construction that transposed two of them would type
+    check and release somebody else's container.
 
     Attributes:
         key: The key exactly as the lifecycle holds it.
         project_id: The project prefix, or ``None`` when the key carried
             none.
         owner: The agent id (per-agent) or task id (per-task) the container
-            was acquired for.
+            was acquired for; never blank, since a key with no owner segment
+            is not an owner key at all.
         image_segment: The environment-image digest segment, if any.
         mount_mode: The workspace mount mode suffix, if any.
     """
 
     key: str
     project_id: str | None
-    owner: str
+    owner: NotBlankStr
     image_segment: str | None
     mount_mode: str | None
 
@@ -134,9 +146,9 @@ def parse_owner_key(key: str) -> OwnerKey | None:
 
     The inverse of ``_owner_key.project_prefixed``. The owner is the LAST
     colon-separated segment once the mount-mode and image suffixes are
-    stripped, which is unambiguous because an owner is an agent or task id
-    (a UUID, which carries no colon) while a project id may carry anything
-    ``valid_owner`` admits.
+    stripped, which is unambiguous because ``_owner_key.valid_raw_owner``
+    refuses a colon in the unqualified owner id, while a project id may carry
+    anything ``valid_owner`` admits.
 
     Returns:
         The parts, or ``None`` when the key has no owner segment.
@@ -160,15 +172,18 @@ def parse_owner_key(key: str) -> OwnerKey | None:
     return OwnerKey(
         key=key,
         project_id=project or None,
-        owner=owner,
+        owner=NotBlankStr(owner),
         image_segment=image_segment,
         mount_mode=mount_mode,
     )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ReclaimOutcome:
     """What one sweep did.
+
+    Three tuples of the same type, so keyword-only: nothing but the name
+    tells a released key from a kept one.
 
     Attributes:
         released: Keys whose owner had finished and were handed to the
@@ -197,7 +212,7 @@ class SandboxOwnerReclaimer:
         self,
         *,
         backend: ReclaimableSandbox,
-        strategy_kind: str,
+        strategy_kind: LifecycleStrategy,
         tasks: TaskRepository,
     ) -> None:
         self._backend = backend
@@ -216,7 +231,8 @@ class SandboxOwnerReclaimer:
         released: list[str] = []
         kept: list[str] = []
         unparseable: list[str] = []
-        for key in await self._backend.tracked_owners():
+        for tracked in await self._backend.tracked_owners():
+            key = str(tracked.key)
             parsed = parse_owner_key(key)
             if parsed is None:
                 logger.warning(SANDBOX_RECLAIM_OWNER_UNPARSEABLE, owner_id=key)
@@ -225,7 +241,7 @@ class SandboxOwnerReclaimer:
             if not await self._owner_finished(parsed):
                 kept.append(key)
                 continue
-            if await self._release(parsed):
+            if await self._release(parsed, generation=tracked.generation):
                 released.append(key)
             else:
                 kept.append(key)
@@ -254,11 +270,16 @@ class SandboxOwnerReclaimer:
             ``True`` when the owner's run is over.
         """
         try:
-            if self._strategy_kind == STRATEGY_PER_TASK:
-                task = await self._tasks.get(parsed.owner)
-                return task is None or task.status not in RUNNING_STATUSES
-            if self._strategy_kind == STRATEGY_PER_AGENT:
-                return not await self._agent_has_a_run(parsed.owner)
+            match self._strategy_kind:
+                case LifecycleStrategy.PER_TASK:
+                    task = await self._tasks.get(parsed.owner)
+                    return task is None or task.status not in RUNNING_STATUSES
+                case LifecycleStrategy.PER_AGENT:
+                    return not await self._agent_has_a_run(parsed.owner)
+                case LifecycleStrategy.PER_CALL:
+                    # Holds nothing past a command, so there is nothing to
+                    # attribute and nothing this sweep may release.
+                    return False
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
@@ -269,9 +290,6 @@ class SandboxOwnerReclaimer:
                 error=safe_error_description(exc),
             )
             return False
-        # Per-call holds nothing, and any other strategy is one this sweep
-        # does not know how to attribute.
-        return False
 
     async def _agent_has_a_run(self, agent_id: str) -> bool:
         """Whether any task assigned to *agent_id* is still running.
@@ -288,18 +306,20 @@ class SandboxOwnerReclaimer:
                 return True
         return False
 
-    async def _release(self, parsed: OwnerKey) -> bool:
+    async def _release(self, parsed: OwnerKey, *, generation: int) -> bool:
         """Hand one finished owner's key to the lifecycle's own release.
 
         A failed release is logged and the key is kept, so one container's
         fault never stops the sweep reaching the rest; the next pass
-        retries it.
+        retries it. The generation travels with the key so a run that
+        reacquired it while the task table was being read keeps its
+        container.
 
         Returns:
             Whether the release was accepted.
         """
         try:
-            await self._backend.release_key(parsed.key)
+            await self._backend.release_key(parsed.key, generation=generation)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             logger.warning(
@@ -420,15 +440,6 @@ def describe_outcome(outcome: ReclaimOutcome) -> dict[str, int]:
     }
 
 
-def running_statuses() -> Sequence[TaskStatus]:
-    """The statuses under which an owner is still running, in a stable order.
-
-    Returns:
-        The statuses.
-    """
-    return tuple(sorted(RUNNING_STATUSES, key=lambda status: status.value))
-
-
 __all__ = [
     "DEFAULT_RECLAIM_INTERVAL_SECONDS",
     "RUNNING_STATUSES",
@@ -440,5 +451,4 @@ __all__ = [
     "boot_trigger",
     "describe_outcome",
     "parse_owner_key",
-    "running_statuses",
 ]

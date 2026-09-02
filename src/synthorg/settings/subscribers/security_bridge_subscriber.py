@@ -77,6 +77,16 @@ class SecurityBridgeSettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "security-bridge-config"
 
+    async def apply_persisted(self) -> None:
+        """Swap in the persisted toggles once, at boot.
+
+        The live holder is seeded from the environment config, so a value an
+        operator persisted before the last restart (the bridge mode, the
+        retrieval top-k) stays inert on a cold boot until somebody writes
+        one of the six keys. The dispatcher calls this once it is running.
+        """
+        await self.on_settings_changed(tuple(sorted(_WATCHED)))
+
     async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
         """Re-resolve the four toggles, rebuild the config, and swap it in.
 

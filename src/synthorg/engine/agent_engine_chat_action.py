@@ -331,6 +331,10 @@ class AgentEngineChatActionMixin:
         loop = ReactLoop(
             approval_gate=self._approval_gate,
             turn_observer=turn_observer,
+            # The tool-output ceiling is read per turn through this; without
+            # it every chat action ran on the registered default for the
+            # life of the process while the task loop honoured the setting.
+            config_resolver=self._config_resolver,
         )
         return await loop.execute(
             context=ctx,

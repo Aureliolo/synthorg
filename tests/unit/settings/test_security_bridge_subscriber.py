@@ -18,7 +18,10 @@ from synthorg.config.schema import RootConfig
 from synthorg.security.config import McpSelfConsumerMode
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
-from synthorg.settings.subscriber import SettingsSubscriber
+from synthorg.settings.subscriber import (
+    BootAppliedSettingsSubscriber,
+    SettingsSubscriber,
+)
 from synthorg.settings.subscribers.security_bridge_subscriber import (
     SecurityBridgeSettingsSubscriber,
 )
@@ -34,6 +37,7 @@ def _make_subscriber(
     post_tool_scanning_enabled: bool = True,
     output_scan_policy_type: str = "autonomy_tiered",
     mcp_self_consumer_mode: str = "disabled",
+    retrieval_top_k: int = 40,
     bool_side_effect: BaseException | None = None,
 ) -> tuple[SecurityBridgeSettingsSubscriber, AppState]:
     """Build the subscriber over a real AppState + spec'd resolver."""
@@ -63,7 +67,7 @@ def _make_subscriber(
 
     async def _get_int(namespace: str, key: str) -> int:
         del namespace
-        return {"mcp_self_consumer_retrieval_top_k": 40}[key]
+        return {"mcp_self_consumer_retrieval_top_k": retrieval_top_k}[key]
 
     resolver.get_int.side_effect = _get_int
     app_state = make_app_state(
@@ -133,6 +137,33 @@ class TestSwap:
         live = app_state.security_runtime_config.current
         assert live is not None
         assert live.mcp_self_consumer.mode is McpSelfConsumerMode.TRUST_SCOPED
+
+    async def test_retrieval_top_k_applies_live(self) -> None:
+        sub, app_state = _make_subscriber(retrieval_top_k=7)
+
+        await sub.on_settings_changed(
+            [("security", "mcp_self_consumer_retrieval_top_k")]
+        )
+
+        live = app_state.security_runtime_config.current
+        assert live is not None
+        assert live.mcp_self_consumer.retrieval_top_k == 7
+
+    async def test_persisted_values_are_applied_at_boot(self) -> None:
+        # The holder is seeded from the environment config, so a value
+        # persisted before the last restart is inert until somebody writes;
+        # the dispatcher replays it through this once it is running.
+        sub, app_state = _make_subscriber(
+            mcp_self_consumer_mode="trust_scoped", retrieval_top_k=9
+        )
+        assert isinstance(sub, BootAppliedSettingsSubscriber)
+
+        await sub.apply_persisted()
+
+        live = app_state.security_runtime_config.current
+        assert live is not None
+        assert live.mcp_self_consumer.mode is McpSelfConsumerMode.TRUST_SCOPED
+        assert live.mcp_self_consumer.retrieval_top_k == 9
 
     async def test_the_rest_of_the_bridge_block_is_carried_forward(self) -> None:
         # Every other field on the block is compose-time, so replacing the

@@ -9,21 +9,17 @@ import { getCallAnalytics } from '@/api/endpoints/budget'
 import type { AnalyticsAggregation } from '@/api/types/budget'
 import { createLogger } from '@/lib/logger'
 import { isAxiosError } from '@/utils/errors'
-import { formatNumber } from '@/utils/format'
+import { formatNumber, formatShare } from '@/utils/format'
 
 const log = createLogger('CallAnalyticsSection')
-
-function pct(value: number): string {
-  return `${Math.round(value * 100)}%`
-}
-
-function optionalPct(value: number | null): string {
-  return value === null ? '--' : pct(value)
-}
 
 function optionalMs(value: number | null): string {
   return value === null ? '--' : `${Math.round(value)} ms`
 }
+
+// The metric cards below, so the loading skeleton has the same shape as
+// the loaded grid instead of one row popping into two.
+const METRIC_COUNT = 8
 
 function AnalyticsMetrics({ data }: { data: AnalyticsAggregation }) {
   // The rate is derived server-side over the calls that REPORTED an outcome.
@@ -36,18 +32,18 @@ function AnalyticsMetrics({ data }: { data: AnalyticsAggregation }) {
       <MetricCard label="Total calls" value={formatNumber(data.total_calls)} />
       <MetricCard
         label="Success rate"
-        value={optionalPct(data.success_rate)}
+        value={formatShare(data.success_rate)}
         subText={
           judged === data.total_calls
             ? undefined
             : `of ${formatNumber(judged)} calls that reported one`
         }
       />
-      <MetricCard label="Retry rate" value={pct(data.retry_rate)} />
-      <MetricCard label="Cached input share" value={optionalPct(data.cached_input_share)} />
+      <MetricCard label="Retry rate" value={formatShare(data.retry_rate)} />
+      <MetricCard label="Cached input share" value={formatShare(data.cached_input_share)} />
       <MetricCard label="Avg latency" value={optionalMs(data.avg_latency_ms)} />
       <MetricCard label="P95 latency" value={optionalMs(data.p95_latency_ms)} />
-      <MetricCard label="Orchestration ratio" value={pct(data.orchestration_ratio.ratio)} />
+      <MetricCard label="Orchestration ratio" value={formatShare(data.orchestration_ratio.ratio)} />
       <MetricCard label="Failures" value={formatNumber(data.failure_count)} />
     </div>
   )
@@ -92,14 +88,17 @@ export function CallAnalyticsSection() {
     const controller = new AbortController()
     getCallAnalytics(undefined, controller.signal)
       .then((result) => {
+        if (controller.signal.aborted) return
         setData(result)
-        setLoading(false)
       })
       .catch((err: unknown) => {
+        if (controller.signal.aborted) return
         if (isAxiosError(err) && err.code === 'ERR_CANCELED') return
         log.warn('call analytics fetch failed', err)
         setError('Could not load call analytics.')
-        setLoading(false)
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
       })
     return () => controller.abort()
   }, [])
@@ -108,7 +107,7 @@ export function CallAnalyticsSection() {
     <SectionCard title="Call analytics" icon={Activity}>
       {loading ? (
         <div className="grid grid-cols-4 gap-grid-gap max-[1023px]:grid-cols-2 max-[639px]:grid-cols-1">
-          {[1, 2, 3, 4].map((i) => (
+          {Array.from({ length: METRIC_COUNT }, (_, i) => (
             <SkeletonMetric key={i} />
           ))}
         </div>

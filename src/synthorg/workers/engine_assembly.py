@@ -1,11 +1,12 @@
 # module-kind: orchestrator
-"""The ONE place an ``AgentEngine`` is constructed.
+"""The ONE place a deployment's ``AgentEngine`` is constructed.
 
 Public because it has to be: the runtime-services builder calls it at
-boot and the recording harness calls it per session, and a second
-assembly is how a harness came to build an engine with 8 of the 51
-collaborators a deployment supplies, for eight recordings, with nothing
-at any layer able to tell.
+boot and the recording harness calls it per session, so what the harness
+measures is what a deployment runs. A second assembly is how the two come
+to differ with nothing at any layer able to tell. The golden-company
+benchmark (``evals/run.py``) stands up no application state and declares
+every bundle itself, in full, which is the other honest shape.
 
 Owns the engine-side construction steps: the sandbox + tool registry, the
 optional external-access runtime, the compaction callback, and
@@ -44,7 +45,6 @@ from synthorg.engine.dependencies import (
 )
 from synthorg.engine.flight_recording import FlightRecorderSink
 from synthorg.engine.mcp_self_consumer import build_mcp_self_consumer
-from synthorg.engine.recovery import RecoveryStrategy
 from synthorg.engine.recovery_factory import build_recovery_strategy
 from synthorg.engine.stagnation import create_stagnation_detector
 from synthorg.engine.stagnation.settings import resolve_stagnation_config
@@ -61,17 +61,12 @@ from synthorg.observability.events.context_budget import (
 )
 from synthorg.observability.events.evolution import EVOLUTION_PROPOSER_MODEL_UNSET
 from synthorg.persistence.agent_state_protocol import AgentStateRepository
-from synthorg.persistence.memory_protocol import OrgFactRepository
 from synthorg.persistence.parked_context_protocol import ParkedContextRepository
 from synthorg.persistence.state import (
     PersistenceStateSlice,
     project_repository_of,
 )
-from synthorg.persistence.tracked_container_protocol import (
-    TrackedContainerRepository,
-)
 from synthorg.providers.model_binding import resolve_bound_completion
-from synthorg.security.audit import AuditLog
 from synthorg.security.config import SecurityConfig
 from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.enums import SettingNamespace
@@ -111,12 +106,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_WEB_TIMEOUT_NS: str = "tools"
-_WEB_TIMEOUT_KEY: str = "web_request_timeout_seconds"
-_TOOLS_NS: str = "tools"
-_GIT_LOG_MAX_COUNT_KEY: str = "git_log_max_count"
-_CODE_RUNNER_OUTPUT_TAIL_KEY: str = "code_runner_output_tail_limit"
-_EXTERNAL_API_NS: str = SettingNamespace.EXTERNAL_API.value
 _COMPACTION_SUMMARY_MODEL_KEY: str = "compaction_summary_model"
 
 
@@ -172,8 +161,7 @@ async def _build_evolution_service_or_none(
     persistence = app_state.slice(PersistenceStateSlice).backend
     if (
         persistence is None
-        or not getattr(persistence, "is_connected", False)
-        or not hasattr(persistence, "identity_versions")
+        or not persistence.is_connected
         or hr.agent_registry is None
         or hr.performance_tracker is None
     ):
@@ -226,16 +214,6 @@ def _live_security(app_state: AppState) -> SecurityConfig:
     return app_state.security_runtime_config.current or app_state.config.security
 
 
-def _org_fact_store_or_none(app_state: AppState) -> OrgFactRepository | None:
-    """Resolve the org-fact store, or ``None`` before persistence connects.
-
-    Returns:
-        The repository, or ``None``.
-    """
-    persistence = app_state.slice(PersistenceStateSlice).backend
-    return None if persistence is None else persistence.org_facts
-
-
 def agent_state_repository_provider(
     app_state: AppState,
 ) -> AgentStateRepositoryProvider:
@@ -276,26 +254,6 @@ def _parked_context_repo_or_none(app_state: AppState) -> ParkedContextRepository
     if persistence is None or not persistence.is_connected:
         return None
     return persistence.parked_contexts
-
-
-def _tracked_container_repo_or_none(
-    app_state: AppState,
-) -> TrackedContainerRepository | None:
-    """Resolve the tracked-container store, or ``None`` before persistence connects.
-
-    A Docker backend built without this repository tracks its containers
-    in a dict that dies with the process, so the boot reconciliation pass
-    reads an empty table and every live sandbox looks like an orphan. The
-    repository is what makes "no row" mean orphan rather than "we never
-    wrote one".
-
-    Returns:
-        The repository, or ``None``.
-    """
-    persistence = app_state.slice(PersistenceStateSlice).backend
-    if persistence is None or not persistence.is_connected:
-        return None
-    return persistence.tracked_containers
 
 
 async def _build_compaction_callback(app_state: AppState) -> CompactionCallback:
@@ -386,7 +344,9 @@ class EngineAssemblyInputs:
             one exists, so multi-agent metrics compare against the same
             single-agent baselines.
         external_api_runtime: The governed external-access runtime.
-        connection_tool_runtimes: Per-family connection tool runtimes.
+        connection_tool_runtimes: Per-family connection tool runtimes. An
+            empty ``ConnectionToolRuntimes()`` is the declared "no
+            connections", the same rule the tooling bundle holds it to.
         flight_recorder_sink: Durable per-turn frames.
         step_classifier: Per-step quality scoring.
         classification_detector_timeout_seconds: How long the failure
@@ -399,7 +359,7 @@ class EngineAssemblyInputs:
     run_probe: RunBaselineProbe | None
     coordination_metrics_collector: CoordinationMetricsCollector | None
     external_api_runtime: ExternalApiRuntime | None
-    connection_tool_runtimes: ConnectionToolRuntimes | None
+    connection_tool_runtimes: ConnectionToolRuntimes
     flight_recorder_sink: FlightRecorderSink | None
     step_classifier: StepQualityClassifier | None
     classification_detector_timeout_seconds: float | None
@@ -411,15 +371,13 @@ async def build_agent_engine(
 ) -> AgentEngine:
     """Assemble an ``AgentEngine`` from live application state.
 
-    The ONE place an engine is constructed. A boot instance is shared by
-    the worker execution service and the coordinator's parallel executor,
-    so both observe the same interrupt store, event stream hub and clock
-    seam; a recording harness calls the same function against its own
-    application state so what it measures is what a deployment runs.
-
-    A second assembly is how a harness came to build an engine with 8 of
-    the 51 collaborators a deployment supplies, for eight recordings,
-    with nothing at any layer able to tell.
+    The ONE place a deployment's engine is constructed. A boot instance is
+    shared by the worker execution service and the coordinator's parallel
+    executor, so both observe the same interrupt store, event stream hub
+    and clock seam; a recording harness calls the same function against
+    its own application state so what it measures is what a deployment
+    runs, since a second construction path is exactly how the measured
+    engine could diverge from the shipped one unnoticed.
 
     Args:
         app_state: The live application state every other collaborator is
@@ -439,6 +397,10 @@ async def build_agent_engine(
     approval = app_state.slice(ApprovalStateSlice)
     communication = app_state.slice(CommunicationStateSlice)
     security = app_state.slice(SecurityStateSlice)
+    # Read once and handed to both holders: the recovery strategy and the
+    # engine's own field are two readers of one fact, and two reads could
+    # straddle persistence connecting.
+    checkpointing = _checkpoint_wiring_or_none(app_state)
     return AgentEngine(
         EngineDependencies(
             core=EngineCore(
@@ -472,10 +434,11 @@ async def build_agent_engine(
                 security_config_provider=(
                     lambda: app_state.security_runtime_config.current
                 ),
-                # Named here rather than defaulted inside the engine: an
-                # engine auditing into a fresh in-memory log is a decision,
-                # and this is where the deployment gets to make it.
-                audit_log=security.audit_log or AuditLog(),
+                # Required like the approval store beside it: an engine that
+                # fell back to a fresh in-memory log would audit every
+                # governed action into something nothing else reads and the
+                # process exit discards.
+                audit_log=require_service(security.audit_log, "Audit Log"),
                 approval_store=require_service(approval.store, "Approval Store"),
                 approval_gate=approval.gate,
                 parked_context_repo=_parked_context_repo_or_none(app_state),
@@ -545,9 +508,7 @@ async def build_agent_engine(
             ),
             tooling=EngineTooling(
                 external_api_runtime=inputs.external_api_runtime,
-                connection_tool_runtimes=(
-                    inputs.connection_tool_runtimes or ConnectionToolRuntimes()
-                ),
+                connection_tool_runtimes=inputs.connection_tool_runtimes,
                 tool_invocation_tracker=None,
                 brain_tool_factory_provider=boot_brain_tool_factory_provider(app_state),
                 knowledge_tool_factory_provider=(
@@ -581,13 +542,16 @@ async def build_agent_engine(
                 ),
             ),
             recovery=EngineRecovery(
-                recovery_strategy=_build_recovery_strategy(app_state),
+                # The checkpoint strategy needs both repositories and the
+                # operator-tunable ``CheckpointConfig``, supplied together so
+                # selecting ``recovery.strategy = checkpoint`` gets a working,
+                # correctly-tuned strategy rather than a boot-time
+                # ``RecoveryConfigError``. The fail-reassign default ignores it.
+                recovery_strategy=build_recovery_strategy(
+                    app_state.config.recovery, checkpointing=checkpointing
+                ),
                 run_probe=inputs.run_probe,
-                # The engine's own checkpointing is the recovery strategy's
-                # concern here: the strategy holds the same wiring, and a
-                # second copy on the engine is a second answer to whether
-                # this run is checkpointed.
-                checkpointing=_checkpoint_wiring_or_none(app_state),
+                checkpointing=checkpointing,
             ),
             behaviour=EngineBehaviour(
                 clarification_enabled=await resolver.get_bool(
@@ -609,28 +573,10 @@ def _checkpoint_wiring_or_none(app_state: AppState) -> CheckpointWiring | None:
     from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
 
     backend = app_state.slice(PersistenceStateSlice).backend
-    if backend is None or not getattr(backend, "is_connected", False):
+    if backend is None or not backend.is_connected:
         return None
     return CheckpointWiring(
         checkpoint_repo=backend.checkpoints,
         heartbeat_repo=backend.heartbeats,
         config=app_state.config.recovery.checkpoint,
-    )
-
-
-def _build_recovery_strategy(app_state: AppState) -> RecoveryStrategy:
-    """Wire the configured crash-recovery strategy with its persistence deps.
-
-    The checkpoint strategy needs both repositories and the
-    operator-tunable ``CheckpointConfig`` from ``config.recovery.checkpoint``,
-    supplied together so an operator selecting ``recovery.strategy =
-    checkpoint`` gets a working, correctly-tuned strategy instead of a
-    boot-time ``RecoveryConfigError``. The fail-reassign default ignores it.
-
-    Returns:
-        The recovery strategy for this ``AgentEngine``.
-    """
-    return build_recovery_strategy(
-        app_state.config.recovery,
-        checkpointing=_checkpoint_wiring_or_none(app_state),
     )

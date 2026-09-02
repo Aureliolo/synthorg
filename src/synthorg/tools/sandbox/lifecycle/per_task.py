@@ -8,11 +8,13 @@ the per-agent strategy's grace/idle expiry do.
 """
 
 import asyncio
+import itertools
 from collections.abc import Awaitable, Callable
 from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_ACQUIRE,
@@ -28,7 +30,7 @@ from synthorg.tools.sandbox.lifecycle._liveness import (
     probe_alive,
     reap,
 )
-from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
+from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle, TrackedOwner
 
 logger = get_logger(__name__)
 
@@ -73,6 +75,12 @@ class PerTaskStrategy:
                 ``pin_check`` is ``None``.
         """
         self._containers: dict[str, ContainerHandle] = {}
+        # One number per acquire, never reused: a release decided from a
+        # snapshot of `tracked_owners()` carries the number it saw, and a
+        # reacquire in between (which hands back the SAME handle, so identity
+        # cannot see it) moves the number on and refuses that release.
+        self._generations: dict[str, int] = {}
+        self._next_generation = itertools.count(1)
         self._clock: Clock = clock if clock is not None else SystemClock()
         self._pin_check = pin_check
         self._pin_recheck_seconds = pin_recheck_seconds
@@ -159,6 +167,8 @@ class PerTaskStrategy:
             # "reacquired and back in active use".
             self._cancel_pending_teardown(owner_id)
             handle = self._containers.get(owner_id)
+            if handle is not None:
+                self._bump_generation(owner_id)
         if handle is None:
             return None
 
@@ -188,7 +198,7 @@ class PerTaskStrategy:
             # container somebody else is about to use.
             evicted = self._containers.get(owner_id) is handle
             if evicted:
-                self._containers.pop(owner_id, None)
+                self._forget(owner_id)
         # Teardown follows the eviction, not the observation. Two acquires can
         # read the same dead handle and both reach here, and a concurrent
         # `release` can take the entry from under both; reaping on the
@@ -239,6 +249,7 @@ class PerTaskStrategy:
 
         loser: ContainerHandle | None = None
         async with self._lock:
+            self._bump_generation(owner_id)
             # Re-check: a concurrent acquire may have won the race.
             if owner_id in self._containers:
                 logger.info(
@@ -283,6 +294,7 @@ class PerTaskStrategy:
         *,
         owner_id: str,
         destroy_fn: Callable[[ContainerHandle], Awaitable[None]],
+        expected_generation: int | None = None,
     ) -> None:
         """Destroy the container immediately, unless a live job pins it.
 
@@ -293,9 +305,17 @@ class PerTaskStrategy:
         destroys once unpinned -- the same shape per-agent's grace/idle
         expiry already use, just triggered at release instead of on a
         timer.
+
+        A release carrying *expected_generation* is refused once the key
+        has been acquired again since that generation was read: the
+        reacquire hands back the same handle, so only the generation can
+        tell the container is back in use.
         """
         async with self._lock:
             handle = self._containers.get(owner_id)
+            if handle is not None and self._reacquired(owner_id, expected_generation):
+                self._log_reacquired(owner_id, handle)
+                return
         if handle is None:
             return
 
@@ -309,10 +329,14 @@ class PerTaskStrategy:
             # replaced or removed the entry while the pin check above
             # was in flight, and popping that would destroy a container
             # somebody else is about to use (or double-destroy one this
-            # call already tore down via a deferred teardown).
+            # call already tore down via a deferred teardown). The
+            # generation covers the reacquire that identity cannot see.
             if self._containers.get(owner_id) is not handle:
                 return
-            self._containers.pop(owner_id, None)
+            if self._reacquired(owner_id, expected_generation):
+                self._log_reacquired(owner_id, handle)
+                return
+            self._forget(owner_id)
         logger.info(
             SANDBOX_LIFECYCLE_RELEASE,
             strategy="per-task",
@@ -338,6 +362,39 @@ class PerTaskStrategy:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
+
+    def _bump_generation(self, owner_id: str) -> None:
+        """Record a fresh acquisition of *owner_id* (must hold ``_lock``)."""
+        self._generations[owner_id] = next(self._next_generation)
+
+    def _forget(self, owner_id: str) -> None:
+        """Drop *owner_id*'s entry and its generation (must hold ``_lock``)."""
+        self._containers.pop(owner_id, None)
+        self._generations.pop(owner_id, None)
+
+    def _reacquired(self, owner_id: str, expected_generation: int | None) -> bool:
+        """Whether *owner_id* was acquired since *expected_generation* was read.
+
+        Must hold ``_lock``. ``None`` is the owner's own boundary release,
+        which is never stale.
+
+        Returns:
+            ``True`` when the release was decided about an earlier run.
+        """
+        return (
+            expected_generation is not None
+            and self._generations.get(owner_id) != expected_generation
+        )
+
+    @staticmethod
+    def _log_reacquired(owner_id: str, handle: ContainerHandle) -> None:
+        logger.info(
+            SANDBOX_LIFECYCLE_RELEASE,
+            strategy="per-task",
+            owner_id=owner_id,
+            action="kept-reacquired",
+            container_id=handle.container_id,
+        )
 
     def _cancel_pending_teardown(self, owner_id: str) -> None:
         """Cancel a deferred pinned-release teardown (must hold ``_lock``)."""
@@ -394,7 +451,7 @@ class PerTaskStrategy:
                 self._pending_teardowns.pop(owner_id, None)
                 if self._containers.get(owner_id) is not handle:
                     return
-                self._containers.pop(owner_id, None)
+                self._forget(owner_id)
             logger.info(
                 SANDBOX_LIFECYCLE_RELEASE,
                 strategy="per-task",
@@ -465,6 +522,7 @@ class PerTaskStrategy:
             handles = list(self._containers.values())
             count = len(handles)
             self._containers.clear()
+            self._generations.clear()
 
         for task in pending:
             task.cancel()
@@ -490,11 +548,14 @@ class PerTaskStrategy:
             destroyed_count=count,
         )
 
-    async def tracked_owners(self) -> tuple[str, ...]:
-        """The owner keys currently holding a container.
+    async def tracked_owners(self) -> tuple[TrackedOwner, ...]:
+        """The owner keys currently holding a container, with their generations.
 
         Returns:
             The keys.
         """
         async with self._lock:
-            return tuple(self._containers)
+            return tuple(
+                TrackedOwner(key=NotBlankStr(key), generation=self._generations[key])
+                for key in self._containers
+            )

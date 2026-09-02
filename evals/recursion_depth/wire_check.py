@@ -2,10 +2,9 @@
 """Read each treatment off the wire before a matrix is paid for.
 
 A 200 response, a valid manifest and a green unit test are all compatible
-with the treatment being absent. The corpus this harness replaced measured
-an engine wired at eight of fifty-one points for eight recordings, and every
-layer above it was green throughout, because a config that PARSES is not one
-that APPLIES and nothing asked the difference.
+with the treatment being absent, and every layer above the engine stays
+green throughout, because a config that PARSES is not one that APPLIES and
+nothing asks the difference unless something is built to.
 
 So one cell is run first, and what it ran under is read from the evidence
 rather than the configuration: the engine's own wiring summary (what was
@@ -22,6 +21,8 @@ cache figures has not failed the caching check, and a smoke that found no
 request to read has not passed the reasoning one.
 """
 
+import asyncio
+import hashlib
 import json
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
@@ -41,7 +42,10 @@ from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.wiring_summary import EngineWiringSummary
 from synthorg.memory.state import MemoryStateSlice
 from synthorg.observability import get_logger
-from synthorg.observability.events.evals import EVALS_RECURSION_WIRING_CHECKED
+from synthorg.observability.events.evals import (
+    EVALS_RECURSION_SMOKE_UNVERIFIED,
+    EVALS_RECURSION_WIRING_CHECKED,
+)
 from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.state import settings_service_of
 
@@ -75,6 +79,24 @@ def smoke_dir(out_dir: Path) -> Path:
         The directory.
     """
     return out_dir / SMOKE_DIR_NAME
+
+
+def matrix_digest(manifest: RecursionDepthManifest) -> str:
+    """Hash the matrix a run EFFECTIVELY records, overrides applied.
+
+    The manifest file's own digest is what the journal pins, and it is the
+    wrong key here: every command-line override (``--depths``,
+    ``--leaf-reasoning-effort``, ``--contract-stage``, ...) changes the
+    treatment without touching the file, so a smoke keyed on the file would
+    vouch for a recording running a treatment it never read off the wire.
+    Hashed over the loaded model's canonical dump, so two invocations that
+    narrow to the same matrix agree whatever flags spelled it.
+
+    Returns:
+        A ``sha256:``-prefixed digest of the narrowed matrix.
+    """
+    canonical = manifest.model_dump_json(exclude_none=False)
+    return f"sha256:{hashlib.sha256(canonical.encode('utf-8')).hexdigest()}"
 
 
 def smoke_manifest(manifest: RecursionDepthManifest) -> RecursionDepthManifest:
@@ -126,7 +148,8 @@ class WiringProbe:
         Args:
             app_state: The live application the cell ran against.
             transcript_root: Where the tap wrote the cell's request bodies.
-            manifest_sha256: The matrix file this smoke was run for.
+            manifest_sha256: The effective matrix this smoke was run for,
+                as :func:`matrix_digest` spells it.
 
         Returns:
             The findings.
@@ -146,7 +169,9 @@ class WiringProbe:
             memory_finding(app_state, self._manifest),
             budget_finding(wiring, self._ledger),
             *governance_findings(wiring),
-            reasoning_finding(transcript_root, self._manifest),
+            # Off the loop: it walks and reads every transcript the cell
+            # wrote, on the same loop the gateway is still serving.
+            await asyncio.to_thread(reasoning_finding, transcript_root, self._manifest),
             caching_finding(await collect_all_records(self._ledger)),
         )
         report = WiringReport(
@@ -286,7 +311,7 @@ def budget_finding(
 
 
 def governance_findings(wiring: EngineWiringSummary) -> tuple[WiringFinding, ...]:
-    """The three seams the withdrawn corpus ran without.
+    """The three governance seams a measured engine can silently run without.
 
     Returns:
         One finding each for review, approval and policy.
@@ -480,7 +505,9 @@ def require_passing_smoke(out_dir: Path, *, manifest_sha256: str) -> WiringRepor
 
     Args:
         out_dir: The recording's output directory.
-        manifest_sha256: The matrix file the recording is about to run.
+        manifest_sha256: The effective matrix the recording is about to run,
+            as :func:`matrix_digest` spells it, so an override that changes
+            the treatment needs its own smoke as much as an edit does.
 
     Returns:
         The smoke's findings, to travel in the recording's report.
@@ -514,6 +541,16 @@ def require_passing_smoke(out_dir: Path, *, manifest_sha256: str) -> WiringRepor
             f"run --smoke again before recording"
         )
         raise RecursionDepthSmokeRequiredError(msg)
+    if report.unverified:
+        # Not a refusal: a flat-rate connection publishes no cache figures
+        # and never will, and the report already carries the gap. What it
+        # must not be is silent at the one moment the operator can still
+        # stop.
+        logger.warning(
+            EVALS_RECURSION_SMOKE_UNVERIFIED,
+            treatments=list(report.unverified),
+            smoke_dir=str(where),
+        )
     return report
 
 
@@ -541,6 +578,7 @@ __all__ = [
     "describe_findings",
     "governance_findings",
     "load_wiring_report",
+    "matrix_digest",
     "memory_finding",
     "reasoning_finding",
     "require_passing_smoke",

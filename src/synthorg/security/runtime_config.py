@@ -6,7 +6,7 @@ fresh from it on each agent run. To make the operator-tunable security toggles
 (``security.enabled`` / ``audit_enabled`` / ``post_tool_scanning_enabled`` /
 ``output_scan_policy_type``) hot-reloadable, the engine reads the live config
 through this holder instead of the boot-frozen attribute, and
-``SecurityBridgeSubscriber`` swaps a rebuilt config in on an operator change.
+``SecurityBridgeSettingsSubscriber`` swaps a rebuilt config in on an operator change.
 
 Seeded at startup with the boot ``SecurityConfig`` so the holder always returns
 a valid value (the engine never sees a transient ``None`` from a missing swap).
@@ -26,7 +26,7 @@ class MutableSecurityConfig:
 
     Mirrors the ``WsAuthLimits`` owner pattern: a single mutable primitive a
     frozen feature slice cannot hold. The per-request interceptor factory
-    reads :attr:`current`; ``SecurityBridgeSubscriber`` replaces it via
+    reads :attr:`current`; ``SecurityBridgeSettingsSubscriber`` replaces it via
     :meth:`swap` under the lock. ``current`` may be ``None`` only when the
     process booted with no ``SecurityConfig`` at all (security feature absent).
     """

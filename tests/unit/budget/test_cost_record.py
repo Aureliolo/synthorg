@@ -401,6 +401,24 @@ class TestCostRecordAnalyticsFields:
         assert record.cache_read_input_tokens == 40
         assert record.cache_write_input_tokens == 12
 
+    def test_a_cached_read_larger_than_the_input_is_refused(self) -> None:
+        # A cached prefix is part of the input it was billed under, so a count
+        # above the input is a malformed response, refused here rather than
+        # clamped by whoever reads the share later.
+        with pytest.raises(ValidationError, match="exceeds"):
+            CostRecord(
+                agent_id="agent-1",
+                task_id="task-1",
+                provider="test",
+                model="test-model",
+                input_tokens=100,
+                output_tokens=50,
+                cost=0.01,
+                currency="EUR",
+                timestamp=datetime(2026, 2, 27, tzinfo=UTC),
+                cache_read_input_tokens=101,
+            )
+
     def test_negative_cache_tokens_rejected(self) -> None:
         with pytest.raises(ValidationError):
             CostRecord(

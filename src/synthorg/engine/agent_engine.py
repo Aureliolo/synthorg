@@ -181,14 +181,22 @@ class AgentEngine(
         Returns:
             The summary, with the tool surface of the last built invoker.
         """
-        detector = self._stagnation_detector
+        # The loop controls reach only a loop the engine built: an injected
+        # loop was constructed elsewhere with whatever it was given, so a
+        # detector or a callback bound here is held and never consulted, and
+        # a summary reporting it present would be the lie this record exists
+        # to make impossible.
+        reaches_loop = self._deps.core.execution_loop is None
+        detector = self._stagnation_detector if reaches_loop else None
         return EngineWiringSummary(
             loop_type=self._loop.get_loop_type(),
             has_tool_registry=self._tool_registry is not None,
             has_cost_tracker=self._cost_tracker is not None,
             has_budget_enforcer=self._budget_enforcer is not None,
             has_coordinator=self._coordinator is not None,
-            has_compaction_callback=self._compaction_callback is not None,
+            has_compaction_callback=(
+                reaches_loop and self._compaction_callback is not None
+            ),
             has_stagnation_detector=detector is not None,
             stagnation_strategy=(
                 detector.get_detector_type() if detector is not None else None
@@ -196,7 +204,7 @@ class AgentEngine(
             has_review_pipeline=self._review_pipeline is not None,
             has_memory_backend=self._memory_backend is not None,
             has_sub_agent_runner=self._sub_agent_runner is not None,
-            has_approval_gate=self._approval_gate is not None,
+            has_approval_gate=reaches_loop and self._approval_gate is not None,
             has_policy_engine=self._policy_engine is not None,
             cost_tracker=self._cost_tracker,
             tool_surface=self._tool_surface,

@@ -23,6 +23,7 @@ from synthorg.engine.compaction.models import (
 )
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_correction_budget import correction_tail_messages
+from synthorg.engine.prompt_safety import TAG_COMPACTION_SUMMARY, wrap_untrusted
 from synthorg.engine.sanitization import sanitize_message
 from synthorg.engine.token_estimation import PromptTokenEstimator
 from synthorg.observability import get_logger
@@ -257,9 +258,13 @@ def _compress(
         of the summary, and where the pins have moved to.
     """
     head, archivable, recent = split.head, split.archivable, split.recent
+    # Fenced, because the summary is spliced in at SYSTEM rank and was made
+    # from the turns it replaces: tool output, task content and the model's
+    # own replies, any of which an injection may have steered into
+    # instruction-shaped text the summariser then repeats.
     summary_msg = ChatMessage(
         role=MessageRole.SYSTEM,
-        content=summary_text,
+        content=wrap_untrusted(TAG_COMPACTION_SUMMARY, summary_text),
     )
     summary_tokens = estimator.estimate_tokens(summary_text)
     compressed = (*head, *split.rescued, summary_msg, *recent)
@@ -302,14 +307,9 @@ def extract_task_complexity(ctx: AgentContext) -> Complexity:
         The :class:`Complexity` declared on the bound task; falls
         back to :attr:`Complexity.COMPLEX` when no task is wired.
     """
-    task_exec = getattr(ctx, "task_execution", None)
-    if task_exec is not None:
-        task = getattr(task_exec, "task", None)
-        if task is not None:
-            complexity = getattr(task, "estimated_complexity", None)
-            if isinstance(complexity, Complexity):
-                return complexity
-    return Complexity.COMPLEX
+    if ctx.task_execution is None:
+        return Complexity.COMPLEX
+    return ctx.task_execution.task.estimated_complexity
 
 
 def build_summary(

@@ -26,6 +26,7 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
+from synthorg.security.audit import AuditLog
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import SettingsStateSlice
 from synthorg.workers.engine_assembly import build_agent_engine
@@ -75,6 +76,7 @@ def _app_state(
         clock=FakeClock(),
         persistence=persistence,
         approval_store=ApprovalStore(),
+        audit_log=AuditLog(),
         agent_registry=AgentRegistryService(),
         task_engine=mock_of[TaskEngine](),
         slices={SettingsStateSlice: {"config_resolver": resolver}},

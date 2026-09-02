@@ -30,6 +30,9 @@ SETTINGS_DEFAULT_DRIFT: Final[str] = "settings.default.drift"
 # ── Dispatcher & subscriber events ────────────────────────────────
 
 SETTINGS_DISPATCHER_STARTED: Final[str] = "settings.dispatcher.started"
+SETTINGS_DISPATCHER_BOOT_APPLY_FAILED: Final[str] = (
+    "settings.dispatcher.boot_apply_failed"
+)
 SETTINGS_DISPATCHER_START_REJECTED: Final[str] = "settings.dispatcher.start.rejected"
 """Emitted when ``SettingsChangeDispatcher.start()`` refuses to start or
 rolls back partway through -- already running, unrestartable after a

@@ -15,10 +15,10 @@ class EngineRecovery:
     Attributes:
         recovery_strategy: What happens to a run that failed, or ``None``
             to opt out of recovery entirely, which leaves a failed task
-            where the loop left it. Nullable but never defaulted: the
-            module-level shared strategy it replaces was invisible wiring
-            of exactly the kind this package removes, while opting out is
-            a real mode a caller may want.
+            where the loop left it. Nullable but never defaulted: a shared
+            default would be wiring no call site names, so opting out of
+            recovery has to be written down at each construction rather
+            than inherited silently.
         run_probe: Captures how the workspace looked before the run, so
             "did this run deliver" is a question about the run rather
             than about the workspace. ``None`` leaves the delivery check

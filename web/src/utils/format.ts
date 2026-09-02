@@ -361,6 +361,16 @@ export function formatNumber(
 }
 
 /**
+ * Format a 0..1 share as a whole percentage. `null` is a share of nothing
+ * (no input tokens, no judged calls) and renders as an absence rather than
+ * as `0%`, which would claim a measured zero.
+ */
+export function formatShare(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return '--'
+  return `${Math.round(value * 100)}%`
+}
+
+/**
  * Format a count of tokens for display. Values under 1000 use
  * locale-appropriate separators (typically just the number); larger
  * values use compact notation (e.g. "12K", "1.5M").

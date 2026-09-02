@@ -564,3 +564,120 @@ class TestPerTaskPinning:
         # strategy's own cleanup.
         await strategy.cleanup_all(destroy_fn=destroy_fn)
         assert destroyed == ["cleanup-pinned"]
+
+
+class TestGenerationGuardedRelease:
+    """A release decided from a snapshot refuses itself once the snapshot is stale.
+
+    A warm reacquire hands back the SAME handle, so the identity check the
+    release already carries cannot tell "still the run the sweep read as
+    finished" from "reacquired and back in use". The generation can.
+    """
+
+    async def test_a_release_against_the_current_generation_destroys(self) -> None:
+        strategy = PerTaskStrategy()
+        destroyed: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            return _make_handle("gen-1")
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        await strategy.acquire(
+            owner_id="t1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
+        )
+        (tracked,) = await strategy.tracked_owners()
+
+        await strategy.release(
+            owner_id="t1",
+            destroy_fn=destroy_fn,
+            expected_generation=tracked.generation,
+        )
+
+        assert destroyed == ["gen-1"]
+        assert await strategy.tracked_owners() == ()
+
+    async def test_a_reacquire_between_snapshot_and_release_keeps_it(self) -> None:
+        strategy = PerTaskStrategy()
+        destroyed: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            return _make_handle("gen-2")
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        first = await strategy.acquire(
+            owner_id="t1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
+        )
+        (snapshot,) = await strategy.tracked_owners()
+        # The warm path: the same handle comes back, and only the generation
+        # records that anything happened.
+        again = await strategy.acquire(
+            owner_id="t1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
+        )
+        assert again is first
+        (current,) = await strategy.tracked_owners()
+        assert current.generation != snapshot.generation
+
+        await strategy.release(
+            owner_id="t1",
+            destroy_fn=destroy_fn,
+            expected_generation=snapshot.generation,
+        )
+
+        assert destroyed == []
+        assert (await strategy.tracked_owners())[0].key == "t1"
+
+    async def test_the_owners_own_release_carries_no_generation(self) -> None:
+        strategy = PerTaskStrategy()
+        destroyed: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            return _make_handle("gen-3")
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        await strategy.acquire(
+            owner_id="t1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
+        )
+        await strategy.acquire(
+            owner_id="t1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
+        )
+
+        await strategy.release(owner_id="t1", destroy_fn=destroy_fn)
+
+        assert destroyed == ["gen-3"]
+
+    async def test_a_fresh_acquire_after_a_release_never_reuses_a_generation(
+        self,
+    ) -> None:
+        strategy = PerTaskStrategy()
+        destroyed: list[str] = []
+        created = 0
+
+        async def create_fn() -> ContainerHandle:
+            nonlocal created
+            created += 1
+            return _make_handle(f"gen-4-{created}")
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        await strategy.acquire(
+            owner_id="t1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
+        )
+        (stale,) = await strategy.tracked_owners()
+        await strategy.release(owner_id="t1", destroy_fn=destroy_fn)
+        await strategy.acquire(
+            owner_id="t1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
+        )
+
+        await strategy.release(
+            owner_id="t1", destroy_fn=destroy_fn, expected_generation=stale.generation
+        )
+
+        # Only the first container went; the second is a different run.
+        assert destroyed == ["gen-4-1"]

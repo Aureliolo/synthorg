@@ -6,7 +6,9 @@ import pytest
 
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.dependencies import EngineLoopControls
+from synthorg.engine.loop_protocol import ExecutionLoop
 from synthorg.engine.stagnation.detector import ToolRepetitionDetector
+from tests._shared import mock_of
 from tests._shared.engine_deps import engine_deps
 from tests._shared.scripted_provider import ScriptedProvider
 
@@ -42,6 +44,31 @@ class TestTheWiringSummary:
 
         assert wiring.has_stagnation_detector is True
         assert wiring.stagnation_strategy == expected
+
+    def test_an_injected_loop_reports_the_controls_it_never_consults(self) -> None:
+        """A control bound beside a loop built elsewhere is held, not wired.
+
+        The summary exists so a harness can ask what it measured; reporting a
+        detector as present when the loop driving turns was constructed
+        without it is the lie the record is for.
+        """
+        deps = engine_deps(ScriptedProvider())
+        controls = dataclasses.replace(
+            deps.loop_controls, stagnation_detector=ToolRepetitionDetector()
+        )
+        loop = mock_of[ExecutionLoop](get_loop_type=lambda: "injected")
+        core = dataclasses.replace(deps.core, execution_loop=loop)
+        engine = AgentEngine(
+            dataclasses.replace(deps, core=core, loop_controls=controls)
+        )
+
+        wiring = engine.wiring
+
+        assert wiring.loop_type == "injected"
+        assert wiring.has_stagnation_detector is False
+        assert wiring.stagnation_strategy is None
+        assert wiring.has_compaction_callback is False
+        assert wiring.has_approval_gate is False
 
     def test_the_log_fields_carry_no_object_reference(self) -> None:
         engine = AgentEngine(engine_deps(ScriptedProvider()))

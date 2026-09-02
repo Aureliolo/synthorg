@@ -20,6 +20,7 @@ const callCategoryArb = fc.oneof(
   fc.constant('coordination' as const),
   fc.constant('system' as const),
   fc.constant('embedding' as const),
+  fc.constant('image_generation' as const),
   fc.constant(null),
 )
 

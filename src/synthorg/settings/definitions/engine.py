@@ -1020,7 +1020,9 @@ _r.register(
             " only recover it later. The head and tail are kept and an"
             " elision marker states how much was dropped, so the agent can"
             " narrow its next call rather than assume it saw everything."
-            " Read live on every tool turn. 0 disables the ceiling."
+            " Read live on every tool turn. 0 disables the ceiling; a value"
+            " between 1 and 255 is applied as 256, the smallest ceiling the"
+            " marker fits inside."
         ),
         group="Execution",
         level=SettingLevel.ADVANCED,

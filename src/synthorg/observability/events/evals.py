@@ -90,6 +90,11 @@ EVALS_HARNESS_SANDBOX_RELEASE_FAILED: Final[str] = (
 EVALS_RECURSION_ORACLE_RUN: Final[str] = "evals.recursion_depth.oracle_run"
 EVALS_RECURSION_LIVENESS_PROBED: Final[str] = "evals.recursion_depth.liveness_probed"
 EVALS_RECURSION_WIRING_CHECKED: Final[str] = "evals.recursion_depth.wiring_checked"
+EVALS_RECURSION_SMOKE_UNVERIFIED: Final[str] = "evals.recursion_depth.smoke_unverified"
+"""A recording is starting on a smoke that could read no evidence for a
+treatment. Logged at WARNING at the gate, because a smoke passes on what it
+could verify and a treatment it could not is otherwise named only inside the
+report file nobody opens before the money is spent."""
 EVALS_RECURSION_UNIT_STARTED: Final[str] = "evals.recursion_depth.unit_started"
 """A sweep unit is about to open a session that spends real provider tokens.
 Logged at DEBUG before the dispatch, because its INFO sibling

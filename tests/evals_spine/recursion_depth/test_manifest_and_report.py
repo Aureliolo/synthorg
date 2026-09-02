@@ -906,8 +906,9 @@ class TestTheReportNamesBothPartiesPerMerge:
         # off this table or nowhere.
         rendered = self._markdown(tmp_path)
 
-        # Columns: Arm, Merges, Sessions, Tokens, Judging, Spend,
-        # Parked escalations, Contract amendments. Judging is 0 here because
-        # these fixtures carry no reviewing spend of their own.
-        assert "| gated | 1 | 4 | 900 | 0 | 1.2500 | 0 | 2 |" in rendered
-        assert "| ungated | 1 | 4 | 900 | 0 | 1.2500 | 0 | 2 |" in rendered
+        # Columns: Arm, Merges, Sessions, Tokens, Judging, Compacting, Spend,
+        # Parked escalations, Contract amendments. Judging and Compacting are
+        # 0 here because these fixtures carry no reviewing or summarising
+        # spend of their own.
+        assert "| gated | 1 | 4 | 900 | 0 | 0 | 1.2500 | 0 | 2 |" in rendered
+        assert "| ungated | 1 | 4 | 900 | 0 | 0 | 1.2500 | 0 | 2 |" in rendered

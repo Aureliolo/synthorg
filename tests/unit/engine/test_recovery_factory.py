@@ -2,6 +2,7 @@
 
 import pytest
 
+from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.checkpoint.strategy import CheckpointRecoveryStrategy
@@ -18,7 +19,7 @@ from synthorg.persistence.checkpoint_protocol import (
     HeartbeatRepository,
 )
 from synthorg.persistence.protocol import PersistenceBackend
-from synthorg.workers.engine_assembly import _build_recovery_strategy
+from synthorg.workers.engine_assembly import _checkpoint_wiring_or_none
 from tests._shared import make_app_state, mock_of
 
 
@@ -93,16 +94,25 @@ class TestRecoveryConfigWiring:
         assert cfg.recovery.checkpoint.max_resume_attempts == 5
 
 
+def _from_app_state(app_state: AppState) -> RecoveryStrategy:
+    """Build the strategy the way the assembly does: one wiring read, handed on.
+
+    Returns:
+        The strategy.
+    """
+    return build_recovery_strategy(
+        app_state.config.recovery,
+        checkpointing=_checkpoint_wiring_or_none(app_state),
+    )
+
+
 @pytest.mark.unit
 class TestBuildRecoveryStrategyFromAppState:
-    """``_build_recovery_strategy`` threads backend deps + checkpoint tuning."""
+    """The assembly's wiring read threads backend deps + checkpoint tuning."""
 
     def test_disconnected_backend_uses_fail_reassign_default(self) -> None:
         app_state = make_app_state(persistence=None)
-        assert isinstance(
-            _build_recovery_strategy(app_state),
-            FailAndReassignStrategy,
-        )
+        assert isinstance(_from_app_state(app_state), FailAndReassignStrategy)
 
     def test_checkpoint_strategy_without_backend_fails_fast(self) -> None:
         # Selecting CHECKPOINT without a connected persistence backend must
@@ -117,7 +127,7 @@ class TestBuildRecoveryStrategyFromAppState:
             persistence=None,
         )
         with pytest.raises(RecoveryConfigError):
-            _build_recovery_strategy(app_state)
+            _from_app_state(app_state)
 
     def test_connected_backend_threads_config_checkpoint_tuning(self) -> None:
         backend = mock_of[PersistenceBackend](
@@ -139,7 +149,7 @@ class TestBuildRecoveryStrategyFromAppState:
             persistence=backend,
         )
 
-        strategy = _build_recovery_strategy(app_state)
+        strategy = _from_app_state(app_state)
 
         assert isinstance(strategy, CheckpointRecoveryStrategy)
         # The connected-backend branch must forward config.recovery.checkpoint,

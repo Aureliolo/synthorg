@@ -4,10 +4,12 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.budget.call_analytics import CallAnalyticsService
 from synthorg.budget.call_analytics_config import CallAnalyticsConfig, RetryAlertConfig
-from synthorg.budget.call_category import LLMCallCategory
+from synthorg.budget.call_analytics_models import AnalyticsAggregation
+from synthorg.budget.call_category import LLMCallCategory, OrchestrationAlertLevel
 from synthorg.budget.category_analytics import OrchestrationRatio
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.errors import MixedCurrencyAggregationError
@@ -249,6 +251,40 @@ class TestGetAggregationCounts:
         service = _make_service(records)
         agg = await service.get_aggregation()
         assert agg.cached_input_share is None
+
+    async def test_cached_input_share_is_derived_from_the_counts_it_carries(
+        self,
+    ) -> None:
+        """The share is read off two stored counts, so a reader can recompute it."""
+        records = (_record(input_tokens=200, cache_read_input_tokens=50),)
+        service = _make_service(records)
+        agg = await service.get_aggregation()
+        assert agg.input_tokens == 200
+        assert agg.cached_input_tokens == 50
+        assert agg.cached_input_share == pytest.approx(
+            agg.cached_input_tokens / agg.input_tokens
+        )
+
+    def test_a_cache_that_served_more_than_was_sent_is_refused(self) -> None:
+        with pytest.raises(ValidationError, match="cached_input_tokens"):
+            AnalyticsAggregation(
+                total_calls=1,
+                success_count=1,
+                failure_count=0,
+                retry_count=0,
+                retry_rate=0.0,
+                input_tokens=10,
+                cached_input_tokens=11,
+                orchestration_ratio=OrchestrationRatio(
+                    ratio=0.0,
+                    alert_level=OrchestrationAlertLevel.NORMAL,
+                    total_tokens=0,
+                    productive_tokens=0,
+                    coordination_tokens=0,
+                    system_tokens=0,
+                ),
+                by_finish_reason=(),
+            )
 
     async def test_avg_latency(self) -> None:
         records = (

@@ -22,7 +22,10 @@ from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import SettingsStateSlice
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
-from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
+from synthorg.tools.sandbox.lifecycle.config import (
+    LifecycleStrategy,
+    SandboxLifecycleConfig,
+)
 from synthorg.tools.sandbox.lifecycle.per_agent import PerAgentStrategy
 from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
 from synthorg.workers._background_job_wiring import (
@@ -75,7 +78,7 @@ def _per_agent_docker_config() -> RootConfig:
         sandboxing=SandboxingConfig(
             default_backend="docker",
             docker=DockerSandboxConfig(
-                lifecycle=SandboxLifecycleConfig(strategy="per-agent"),
+                lifecycle=SandboxLifecycleConfig(strategy=LifecycleStrategy.PER_AGENT),
             ),
         ),
     )

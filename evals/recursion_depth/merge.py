@@ -242,6 +242,8 @@ class MergeOutcome:
     detail: str = ""
     terminations: tuple[str, ...] = ()
     workspace_files_changed: int | None = None
+    compaction_tokens: int = 0
+    compaction_cost: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -280,6 +282,8 @@ class _MergeSpend:
     input_tokens: int = 0
     output_tokens: int = 0
     review_tokens: int = 0
+    compaction_tokens: int = 0
+    compaction_cost: float = 0.0
 
     def plus(
         self,
@@ -290,6 +294,8 @@ class _MergeSpend:
         input_tokens: int,
         output_tokens: int,
         reviewing: bool = False,
+        compaction_tokens: int = 0,
+        compaction_cost: float = 0.0,
     ) -> _MergeSpend:
         """Add one further session's figures.
 
@@ -315,6 +321,8 @@ class _MergeSpend:
             input_tokens=self.input_tokens + input_tokens,
             output_tokens=self.output_tokens + output_tokens,
             review_tokens=self.review_tokens + (tokens if reviewing else 0),
+            compaction_tokens=self.compaction_tokens + compaction_tokens,
+            compaction_cost=self.compaction_cost + compaction_cost,
         )
 
 
@@ -555,6 +563,8 @@ async def run_merge(
             tokens=outcome.tokens,
             input_tokens=outcome.input_tokens,
             output_tokens=outcome.output_tokens,
+            compaction_tokens=outcome.compaction_tokens,
+            compaction_cost=outcome.compaction_cost,
         )
         terminations = (*terminations, outcome.termination)
         review = await reviewer.review(_review_request(plan, attempt))
@@ -594,6 +604,8 @@ async def run_merge(
         input_tokens=spend.input_tokens,
         output_tokens=spend.output_tokens,
         review_tokens=spend.review_tokens,
+        compaction_tokens=spend.compaction_tokens,
+        compaction_cost=spend.compaction_cost,
         executor=ModelPair.of(plan.owner, deps.declared_pairs),
         reviewer=review.reviewer,
         verdict=review.verdict,

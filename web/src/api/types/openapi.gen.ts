@@ -6434,12 +6434,20 @@ export type components = {
                 string,
                 number
             ])[];
-            /** @description Share of all input tokens the prompt cache served, or None when the calls carried no input tokens. */
+            /**
+             * @description Share of all input tokens the prompt cache served.
+             *
+             *     Returns:
+             *         The share in ``[0, 1]``, or ``None`` when the calls carried no
+             *         input tokens, since a share of nothing is not zero.
+             */
             readonly cached_input_share: number | null;
             /** @description Input tokens served from the prompt cache, summed. */
             readonly cached_input_tokens: number;
             /** @description Calls with success=False. */
             readonly failure_count: number;
+            /** @description Input tokens over every call. */
+            readonly input_tokens: number;
             readonly orchestration_ratio: components["schemas"]["OrchestrationRatio"];
             /** @description 95th-percentile latency in ms, or None when no latency data. */
             readonly p95_latency_ms: number | null;
@@ -14997,8 +15005,16 @@ export type components = {
         readonly PromptClassBreakdownRow: {
             /** @description Mean latency in ms, or None. */
             readonly avg_latency_ms: number | null;
-            /** @description Share of input tokens served from the prompt cache, or None. */
+            /**
+             * @description Share of the class's input tokens the prompt cache served.
+             *
+             *     Returns:
+             *         The share in ``[0, 1]``, or ``None`` when the class carried no
+             *         input tokens.
+             */
             readonly cached_input_share: number | null;
+            /** @description Input tokens served from the prompt cache, summed. */
+            readonly cached_input_tokens: number;
             /** @description Records for this class (a row aggregates at least one). */
             readonly call_count: number;
             /**

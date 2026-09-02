@@ -3,13 +3,16 @@
 
 The facts the engine's creation event logs, held as a value rather than
 scattered across a log line: a harness that measures the engine has to be
-able to ASK what it measured, because a corpus of eight recordings was built
-on an engine wired at eight of fifty-one points and nothing at any layer could
-say so. The event and this record are one owner; the event is rendered from
-it.
+able to ASK what it measured, because a log line is evidence only for whoever
+captured it. The event and this record are one owner; the event is rendered
+from it.
 
 The tool surface is the one fact that is not known at construction. It is
 final where the tool invoker is built, once per run, and is recorded there.
+The in-flight controls (compaction, stagnation, the approval gate) are
+reported as wired only when they reach the loop that drives turns: an
+injected loop was built elsewhere, so a control bound on the engine beside
+it is held and never consulted.
 """
 
 from dataclasses import dataclass

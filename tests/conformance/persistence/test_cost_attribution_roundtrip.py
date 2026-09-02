@@ -100,6 +100,43 @@ class TestCostAttributionRoundTrip:
         assert rerank.cached_input_share == pytest.approx(0.0)
         assert rerank.success_rate is None
 
+    async def test_cache_token_columns_round_trip_unswapped(
+        self, backend: PersistenceBackend
+    ) -> None:
+        """The two cache columns come back as written, each in its own place.
+
+        Both migrations add the columns in one statement and both repositories
+        name them in one INSERT and one SELECT, so a swap between them on
+        either backend is the defect a zero-only round trip cannot see.
+        """
+        record = CostRecord(
+            provider="test-provider",
+            model="example-basic-001",
+            input_tokens=100,
+            output_tokens=50,
+            cost=0.02,
+            currency="EUR",
+            timestamp=datetime(2026, 5, 1, 12, tzinfo=UTC),
+            cache_read_input_tokens=40,
+            cache_write_input_tokens=12,
+        )
+
+        await backend.cost_records.append(record)
+
+        persisted = await backend.cost_records.query(CostRecordFilterSpec())
+        (stored,) = [r for r in persisted if r.claim_id == record.claim_id]
+        assert stored.cache_read_input_tokens == 40
+        assert stored.cache_write_input_tokens == 12
+
+        tracker = CostTracker()
+        await tracker.record(stored)
+        service = CallAnalyticsService(
+            cost_tracker=tracker, config=CallAnalyticsConfig()
+        )
+        aggregation = await service.get_aggregation()
+        assert aggregation.cached_input_tokens == 40
+        assert aggregation.cached_input_share == pytest.approx(0.4)
+
     async def test_subsystem_spend_persists_with_no_owner(
         self, backend: PersistenceBackend
     ) -> None:

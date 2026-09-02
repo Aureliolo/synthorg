@@ -16,7 +16,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.api import API_APP_STARTUP
 from synthorg.persistence.state import PersistenceStateSlice
 from synthorg.settings.state import SettingsStateSlice
-from synthorg.tools.sandbox.lifecycle.config import STRATEGY_PER_CALL
+from synthorg.tools.sandbox.lifecycle.config import LifecycleStrategy
 from synthorg.tools.sandbox.reclaim import (
     ReclaimableSandbox,
     SandboxOwnerReclaimer,
@@ -58,7 +58,7 @@ async def wire_sandbox_reclaim(app_state: AppState) -> None:
     if backend is None or not isinstance(backend, ReclaimableSandbox):
         msg = "no reusable sandbox backend; nothing holds a container past a call"
         raise SubsystemDeclinedError(msg)
-    if service.lifecycle_strategy_kind == STRATEGY_PER_CALL:
+    if service.lifecycle_strategy_kind is LifecycleStrategy.PER_CALL:
         msg = "per-call sandbox lifecycle; no container outlives its command"
         raise SubsystemDeclinedError(msg)
 

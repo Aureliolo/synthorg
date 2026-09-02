@@ -8,13 +8,9 @@ import { getPromptClassBreakdown } from '@/api/endpoints/budget'
 import type { PromptClassBreakdownRow } from '@/api/types/budget'
 import { createLogger } from '@/lib/logger'
 import { isAxiosError } from '@/utils/errors'
-import { formatCurrency, formatNumber } from '@/utils/format'
+import { formatCurrency, formatNumber, formatShare } from '@/utils/format'
 
 const log = createLogger('PromptClassSection')
-
-function pct(value: number | null): string {
-  return value === null ? '--' : `${Math.round(value * 100)}%`
-}
 
 function ms(value: number | null): string {
   return value === null ? '--' : `${Math.round(value)} ms`
@@ -27,7 +23,7 @@ const COLUMNS: readonly string[] = [
   'Calls',
   'Avg latency',
   'P95 latency',
-  'Cached input',
+  'Cached input %',
   'Retry',
   'Success',
 ]
@@ -85,9 +81,11 @@ function PromptClassTable({ rows }: { rows: readonly PromptClassBreakdownRow[] }
               </td>
               <td className="py-2 pr-4 text-right tabular-nums">{ms(row.avg_latency_ms)}</td>
               <td className="py-2 pr-4 text-right tabular-nums">{ms(row.p95_latency_ms)}</td>
-              <td className="py-2 pr-4 text-right tabular-nums">{pct(row.cached_input_share)}</td>
-              <td className="py-2 pr-4 text-right tabular-nums">{pct(row.retry_rate)}</td>
-              <td className="py-2 pr-4 text-right tabular-nums">{pct(row.success_rate)}</td>
+              <td className="py-2 pr-4 text-right tabular-nums">
+                {formatShare(row.cached_input_share)}
+              </td>
+              <td className="py-2 pr-4 text-right tabular-nums">{formatShare(row.retry_rate)}</td>
+              <td className="py-2 pr-4 text-right tabular-nums">{formatShare(row.success_rate)}</td>
             </tr>
           ))}
         </tbody>
