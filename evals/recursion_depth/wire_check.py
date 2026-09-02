@@ -38,18 +38,19 @@ from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker_protocol import collect_all_records
+from synthorg.config.schema import RootConfig
 from synthorg.core.completion_enums import REASONING_UNSET, ReasoningEffort
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.wiring_summary import EngineWiringSummary
+from synthorg.memory.embedding.dispatch import format_model_ref
 from synthorg.memory.state import MemoryStateSlice
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
     EVALS_RECURSION_SMOKE_UNVERIFIED,
     EVALS_RECURSION_WIRING_CHECKED,
 )
-from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.state import settings_service_of
 
 logger = get_logger(__name__)
@@ -223,12 +224,20 @@ class WiringProbe:
             await compaction_finding(wiring, app_state, self._manifest),
             memory_finding(app_state, self._manifest),
             budget_finding(wiring, self._ledger),
-            *governance_findings(wiring),
+            *governance_findings(
+                wiring,
+                configured_policy_engine=app_state.config.security.policy_engine.engine,
+            ),
             peer_review_finding(app_state),
             leaf_review_finding(self._leaf),
             # Off the loop: it walks and reads every transcript the cell
             # wrote, on the same loop the gateway is still serving.
-            await asyncio.to_thread(reasoning_finding, transcript_root, self._manifest),
+            await asyncio.to_thread(
+                reasoning_finding,
+                transcript_root,
+                self._manifest,
+                routed_ids=routed_model_ids(app_state.config, self._manifest.executor),
+            ),
             caching_finding(await collect_all_records(self._ledger)),
         )
         report = WiringReport(
@@ -424,9 +433,11 @@ def memory_finding(
         The finding.
     """
     declared = manifest.embedder
-    expected = serialize_model_ref(
-        ModelRef(provider=declared.provider, model_id=declared.model_id)
-    )
+    # Spelled as the embedder port spells its own reference, because that is
+    # the string compared against: the settings serialisation is a different
+    # spelling of the same pair, and a comparison across the two read a
+    # correctly bound backend as bound to something else.
+    expected = format_model_ref(declared.provider, declared.model_id)
     memory = app_state.slice(MemoryStateSlice)
     if memory.backend is None:
         failure = memory.wiring_failure or "no reason recorded"
@@ -465,26 +476,68 @@ def budget_finding(
     )
 
 
-def governance_findings(wiring: EngineWiringSummary) -> tuple[WiringFinding, ...]:
+#: The policy-engine kind under which the product builds no engine at all.
+_NO_POLICY_ENGINE: Final[str] = "none"
+
+
+def governance_findings(
+    wiring: EngineWiringSummary, *, configured_policy_engine: str
+) -> tuple[WiringFinding, ...]:
     """The three governance seams a measured engine can silently run without.
+
+    The review pipeline and the approval gate are always expected. The
+    policy engine is expected exactly when the host's configuration names
+    one: the product builds none by default, so a smoke that demanded one
+    read every default deployment as under-wired.
+
+    Args:
+        wiring: What the measured engine was built with.
+        configured_policy_engine: The ``security.policy_engine.engine`` the
+            host booted with.
 
     Returns:
         One finding each for review, approval and policy.
     """
+    configured = configured_policy_engine != _NO_POLICY_ENGINE
     seams = (
-        ("review pipeline", wiring.has_review_pipeline),
-        ("approval gate", wiring.has_approval_gate),
-        ("policy engine", wiring.has_policy_engine),
+        ("review pipeline", wiring.has_review_pipeline, True),
+        ("approval gate", wiring.has_approval_gate, True),
+        ("policy engine", wiring.has_policy_engine, configured),
     )
     return tuple(
         WiringFinding(
             treatment=NotBlankStr(name),
-            expected="present",
+            expected=(
+                "present"
+                if expected
+                else f"absent (configured engine {configured_policy_engine!r})"
+            ),
             observed="present" if present else "absent",
-            passed=present,
+            passed=present == expected,
         )
-        for name, present in seams
+        for name, present, expected in seams
     )
+
+
+def routed_model_ids(config: RootConfig, pair: ModelPair) -> frozenset[str]:
+    """Every id a request for *pair* may carry on the wire.
+
+    A manifest names a model by the alias the company config gives it, and
+    the recorded request carries the id that alias routes to; matched on the
+    alias alone, every request of a real recording read as absent.
+
+    Returns:
+        The declared id plus every id the pair's provider routes it to.
+    """
+    ids = {pair.model_id}
+    provider = config.providers.get(pair.provider)
+    if provider is not None:
+        ids.update(
+            model.id
+            for model in provider.models
+            if pair.model_id in {model.alias, model.id}
+        )
+    return frozenset(ids)
 
 
 def declared_effort(pair: ModelPair) -> str | None:
@@ -500,7 +553,10 @@ def declared_effort(pair: ModelPair) -> str | None:
 
 
 def reasoning_finding(
-    transcript_root: Path | None, manifest: RecursionDepthManifest
+    transcript_root: Path | None,
+    manifest: RecursionDepthManifest,
+    *,
+    routed_ids: frozenset[str] = frozenset(),
 ) -> WiringFinding:
     """Whether the executor's requests carried the declared reasoning depth.
 
@@ -509,10 +565,17 @@ def reasoning_finding(
     model must carry one of the depths the matrix declares (its own, or the
     shallow leaf pool's); a request carrying none, or another, fails.
 
+    Args:
+        transcript_root: Where the tap wrote the request bodies.
+        manifest: The matrix, for the declared depth and the executor.
+        routed_ids: The ids a request for the executor may carry, from
+            :func:`routed_model_ids`; the executor's own id always counts.
+
     Returns:
         The finding, unverified when no request could be read.
     """
     executor = manifest.executor
+    model_ids = routed_ids | {executor.model_id}
     admissible = {declared_effort(executor)}
     if manifest.leaf_reasoning_effort is not None:
         admissible.add(manifest.leaf_reasoning_effort.value)
@@ -524,13 +587,13 @@ def reasoning_finding(
             observed="no transcripts were recorded",
             passed=None,
         )
-    seen, unparseable = _efforts_seen(transcript_root, model_id=executor.model_id)
+    seen, unparseable = _efforts_seen(transcript_root, model_ids=model_ids)
     if not seen:
         return WiringFinding(
             treatment=NotBlankStr("reasoning effort"),
             expected=expected,
             observed=(
-                f"no request for {executor.model_id} could be read "
+                f"no request for {', '.join(sorted(model_ids))} could be read "
                 f"({unparseable} unparseable lines)"
             ),
             passed=None,
@@ -548,9 +611,9 @@ def reasoning_finding(
 
 
 def _efforts_seen(
-    transcript_root: Path, *, model_id: str
+    transcript_root: Path, *, model_ids: frozenset[str]
 ) -> tuple[dict[str | None, int], int]:
-    """Count the reasoning depth each recorded request for *model_id* carried.
+    """Count the reasoning depth each recorded request for *model_ids* carried.
 
     Tolerant of a line that does not parse, because the tap interleaves under
     concurrency; the count of those is reported rather than hidden.
@@ -566,7 +629,7 @@ def _efforts_seen(
             if request is None:
                 unparseable += 1
                 continue
-            if request.get("model") != model_id:
+            if request.get("model") not in model_ids:
                 continue
             value = request.get(_REASONING_FIELD)
             key = str(value) if value is not None else None

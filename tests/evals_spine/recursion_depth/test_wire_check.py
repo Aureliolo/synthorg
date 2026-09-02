@@ -32,6 +32,7 @@ from evals.recursion_depth.wire_check import (
     peer_review_finding,
     reasoning_finding,
     require_passing_smoke,
+    routed_model_ids,
     smoke_dir,
     smoke_manifest,
     spec_identity,
@@ -42,14 +43,16 @@ from evals.recursion_depth.wire_check import (
 from synthorg.api.state import AppState
 from synthorg.approval.state import ApprovalStateSlice
 from synthorg.budget.cost_record import CostRecord
+from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
+from synthorg.config.schema import RootConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.wiring_summary import EngineWiringSummary
+from synthorg.memory.embedding.dispatch import format_model_ref
 from synthorg.memory.state import MemoryStateSlice
 from synthorg.observability.events.evals import EVALS_RECURSION_SMOKE_UNVERIFIED
 from synthorg.settings.enums import SettingNamespace, SettingSource
-from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.models import SettingValue
 from synthorg.settings.service import SettingsService
 from synthorg.settings.state import SettingsStateSlice
@@ -180,7 +183,9 @@ class TestEngineFindings:
         assert "another tracker" in other.observed
 
     def test_the_three_governance_seams_are_each_their_own_finding(self) -> None:
-        findings = governance_findings(_wiring(has_policy_engine=False))
+        findings = governance_findings(
+            _wiring(has_policy_engine=False), configured_policy_engine="cedar"
+        )
 
         verdicts = {finding.treatment: finding.passed for finding in findings}
         assert verdicts == {
@@ -188,6 +193,25 @@ class TestEngineFindings:
             "approval gate": True,
             "policy engine": False,
         }
+
+    def test_the_policy_engine_is_expected_only_where_the_host_configured_one(
+        self,
+    ) -> None:
+        # The product builds none by default; a smoke demanding one read
+        # every default deployment as under-wired.
+        absent_as_configured = governance_findings(
+            _wiring(has_policy_engine=False), configured_policy_engine="none"
+        )
+        present_unconfigured = governance_findings(
+            _wiring(has_policy_engine=True), configured_policy_engine="none"
+        )
+
+        policy = {f.treatment: f for f in absent_as_configured}["policy engine"]
+        assert policy.passed is True
+        assert "none" in policy.expected
+        assert {f.treatment: f.passed for f in present_unconfigured}[
+            "policy engine"
+        ] is False
 
 
 def _app_state(
@@ -269,12 +293,12 @@ class TestLiveSettingsFindings:
         assert finding.passed is False
 
     def test_memory_passes_on_a_backend_bound_to_the_declared_embedder(self) -> None:
+        # The reference is compared as the embedder port spells it; a live
+        # smoke compared the settings serialisation against it and read a
+        # correctly bound backend as bound to something else.
         manifest = load_manifest(_MANIFEST)
-        declared = serialize_model_ref(
-            ModelRef(
-                provider=manifest.embedder.provider,
-                model_id=manifest.embedder.model_id,
-            )
+        declared = format_model_ref(
+            manifest.embedder.provider, manifest.embedder.model_id
         )
         app_state = _app_state(
             threshold="80.0", backend=object(), embedder_ref=declared
@@ -286,9 +310,7 @@ class TestLiveSettingsFindings:
 
     def test_memory_fails_on_another_embedder(self) -> None:
         manifest = load_manifest(_MANIFEST)
-        other = serialize_model_ref(
-            ModelRef(provider="example-provider", model_id="example-other-001")
-        )
+        other = format_model_ref("example-provider", "example-other-001")
         app_state = _app_state(threshold="80.0", backend=object(), embedder_ref=other)
 
         finding = memory_finding(app_state, manifest)
@@ -445,6 +467,56 @@ class TestReasoningOffTheWire:
         finding = reasoning_finding(None, load_manifest(_MANIFEST))
 
         assert finding.passed is None
+
+    def test_a_request_for_the_routed_id_counts(self, tmp_path: Path) -> None:
+        # The manifest names the alias; the wire carries what it routes to.
+        # Matched on the alias alone, every request of a live recording read
+        # as absent and the finding stayed unverified.
+        manifest = load_manifest(_MANIFEST)
+        body = {"model": "upstream-model-9", "reasoning_effort": "high"}
+        root = self._transcripts(
+            tmp_path, [{"request": json.dumps(body), "response": "{}"}]
+        )
+
+        unrouted = reasoning_finding(root, manifest)
+        routed = reasoning_finding(
+            root, manifest, routed_ids=frozenset({"upstream-model-9"})
+        )
+
+        assert unrouted.passed is None
+        assert routed.passed is True
+
+    def test_routed_ids_come_from_the_provider_config(self) -> None:
+        manifest = load_manifest(_MANIFEST)
+        executor = manifest.executor
+        config = RootConfig(
+            company_name=NotBlankStr("Routed"),
+            providers={
+                executor.provider: ProviderConfig(
+                    connection_name=NotBlankStr(executor.provider),
+                    models=(
+                        ProviderModelConfig(
+                            id=NotBlankStr("upstream-model-9"),
+                            alias=NotBlankStr(executor.model_id),
+                        ),
+                        ProviderModelConfig(id=NotBlankStr("unrelated-model")),
+                    ),
+                )
+            },
+        )
+
+        assert routed_model_ids(config, executor) == {
+            executor.model_id,
+            "upstream-model-9",
+        }
+
+    def test_an_unknown_provider_routes_to_the_declared_id_alone(self) -> None:
+        manifest = load_manifest(_MANIFEST)
+        config = RootConfig(company_name=NotBlankStr("Empty"))
+
+        assert routed_model_ids(config, manifest.executor) == {
+            manifest.executor.model_id
+        }
 
 
 class TestCachingOffTheLedger:
