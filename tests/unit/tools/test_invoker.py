@@ -1,19 +1,98 @@
 """Tests for ToolInvoker."""
 
-from typing import TYPE_CHECKING, cast
+import asyncio
+from typing import TYPE_CHECKING, cast, override
 
 import pytest
 
 from synthorg.providers.models import ToolCall, ToolResult
+from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.tools.base import BaseTool, ToolExecutionResult
+from synthorg.tools.invoker import ToolInvoker
+from synthorg.tools.registry import ToolRegistry
 from tests._shared import JsonDict
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from synthorg.tools.invoker import ToolInvoker
-    from synthorg.tools.registry import ToolRegistry
-
     from .conftest import _ConcurrencyTrackingTool
+
+
+class _OrderedMutator(BaseTool):
+    """A mutating tool that records the order its calls finished in."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="mutate",
+            description="Changes something",
+            category=ToolCategory.FILE_SYSTEM,
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string"},
+                    "delay": {"type": "number"},
+                },
+                "required": ["label", "delay"],
+                "additionalProperties": False,
+            },
+        )
+        self.finished: list[str] = []
+        self.peak = 0
+        self._current = 0
+
+    @override
+    async def execute(self, *, arguments: JsonDict) -> ToolExecutionResult:
+        self._current += 1
+        self.peak = max(self.peak, self._current)
+        await asyncio.sleep(arguments["delay"])
+        self._current -= 1
+        self.finished.append(arguments["label"])
+        return ToolExecutionResult(content=arguments["label"])
+
+
+class _Store:
+    """One value a write tool sets and a read tool returns."""
+
+    def __init__(self) -> None:
+        self.value = ""
+
+
+class _StoreWrite(BaseTool):
+    def __init__(self, store: _Store) -> None:
+        super().__init__(
+            name="store_write",
+            description="Sets the value, slowly",
+            category=ToolCategory.FILE_SYSTEM,
+            parameters_schema={
+                "type": "object",
+                "properties": {"value": {"type": "string"}},
+                "required": ["value"],
+                "additionalProperties": False,
+            },
+        )
+        self._store = store
+
+    @override
+    async def execute(self, *, arguments: JsonDict) -> ToolExecutionResult:
+        await asyncio.sleep(0.02)
+        self._store.value = arguments["value"]
+        return ToolExecutionResult(content="set")
+
+
+class _StoreRead(BaseTool):
+    def __init__(self, store: _Store) -> None:
+        super().__init__(
+            name="store_read",
+            description="Returns the value",
+            category=ToolCategory.FILE_SYSTEM,
+            action_type="code:read",
+            parameters_schema={"type": "object", "properties": {}},
+        )
+        self._store = store
+
+    @override
+    async def execute(self, *, arguments: JsonDict) -> ToolExecutionResult:
+        return ToolExecutionResult(content=self._store.value)
 
 
 @pytest.mark.unit
@@ -589,6 +668,65 @@ class TestInvokeAllConcurrency:
             await concurrency_invoker.invoke_all(calls)
         assert len(exc_info.value.exceptions) == 2
         assert all(isinstance(e, RecursionError) for e in exc_info.value.exceptions)
+
+
+@pytest.mark.unit
+class TestInvokeAllOrdersMutations:
+    """A turn's calls run in the order the model issued them, except reads.
+
+    Two edits of one file issued in one turn used to race, and the second
+    hunk was applied to text the first had already replaced. A mutating
+    call now runs alone, after everything issued before it; only a run of
+    read-only calls fans out.
+    """
+
+    async def test_mutating_calls_run_one_at_a_time_in_program_order(
+        self,
+    ) -> None:
+        mutator = _OrderedMutator()
+        invoker = ToolInvoker(ToolRegistry([mutator]))
+        calls = [
+            ToolCall(id="a", name="mutate", arguments={"label": "a", "delay": 0.03}),
+            ToolCall(id="b", name="mutate", arguments={"label": "b", "delay": 0.0}),
+            ToolCall(id="c", name="mutate", arguments={"label": "c", "delay": 0.01}),
+        ]
+
+        results = await invoker.invoke_all(calls)
+
+        assert mutator.finished == ["a", "b", "c"]
+        assert mutator.peak == 1
+        assert [r.content for r in results] == ["a", "b", "c"]
+
+    async def test_a_read_issued_after_a_write_sees_the_write(self) -> None:
+        store = _Store()
+        invoker = ToolInvoker(ToolRegistry([_StoreWrite(store), _StoreRead(store)]))
+        calls = [
+            ToolCall(id="w", name="store_write", arguments={"value": "v1"}),
+            ToolCall(id="r", name="store_read", arguments={}),
+        ]
+
+        results = await invoker.invoke_all(calls)
+
+        assert results[1].content == "v1"
+
+    async def test_reads_between_writes_still_fan_out(
+        self, concurrency_tracking_tool: _ConcurrencyTrackingTool
+    ) -> None:
+        mutator = _OrderedMutator()
+        invoker = ToolInvoker(ToolRegistry([mutator, concurrency_tracking_tool]))
+        calls = [
+            ToolCall(id="a", name="mutate", arguments={"label": "a", "delay": 0.0}),
+            *(
+                ToolCall(id=f"r{i}", name="tracking", arguments={"duration": 0.02})
+                for i in range(3)
+            ),
+            ToolCall(id="b", name="mutate", arguments={"label": "b", "delay": 0.0}),
+        ]
+
+        await invoker.invoke_all(calls)
+
+        assert concurrency_tracking_tool.peak >= 2
+        assert mutator.finished == ["a", "b"]
 
 
 @pytest.mark.unit

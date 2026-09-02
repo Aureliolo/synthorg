@@ -117,6 +117,24 @@ WORKTREE_CONFINED_ACTION_TYPES: Final[frozenset[str]] = frozenset(
     }
 )
 
+#: Action types whose whole effect is a READ: they change nothing a later
+#: call could observe, so the calls of one turn that carry them may run side
+#: by side. Every other call runs one at a time in the order the model
+#: issued it, which is the order it meant: a live run had two edits of one
+#: file in one turn race each other, and the second hunk was applied to text
+#: the first had already replaced. Declared rather than derived from the
+#: verb because ``test:run`` reads like a read and leaves build artefacts
+#: behind, and a custom type registered later must earn its way in rather
+#: than be admitted by its spelling.
+READ_ONLY_ACTION_TYPES: Final[frozenset[str]] = frozenset(
+    {
+        ActionType.CODE_READ,
+        ActionType.VCS_READ,
+        ActionType.DB_QUERY,
+        ActionType.MEMORY_READ,
+    }
+)
+
 
 class ActionTypeRegistry:
     """Validates built-in and custom action types.

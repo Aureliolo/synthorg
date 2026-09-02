@@ -35,6 +35,7 @@ from synthorg.observability.events.security import (
 from synthorg.observability.events.tool import (
     TOOL_INVOKE_ALL_COMPLETE,
     TOOL_INVOKE_ALL_FATAL,
+    TOOL_INVOKE_ALL_ORDERED,
     TOOL_INVOKE_ALL_START,
     TOOL_INVOKE_CONFIG_INVALID,
     TOOL_INVOKE_EXECUTION_ERROR,
@@ -51,6 +52,7 @@ from synthorg.observability.events.tool import (
 from synthorg.observability.tracing import tool_span
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.models import ToolCall, ToolResult
+from synthorg.security.action_types import READ_ONLY_ACTION_TYPES
 from synthorg.security.models import SecurityContext, SecurityVerdictType
 from synthorg.security.policy_engine.protocol import PolicyEngine
 from synthorg.security.protocol import SecurityInterceptionStrategy
@@ -83,7 +85,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             invoker = ToolInvoker(registry)
             result = await invoker.invoke(tool_call)
 
-        Invoke multiple tool calls concurrently::
+        Invoke a turn's tool calls (reads side by side, the rest in order)::
 
             results = await invoker.invoke_all(tool_calls)
 
@@ -1055,6 +1057,38 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         except (MemoryError, RecursionError) as exc:
             fatal_errors.append(exc)
 
+    def _stages(self, calls: list[ToolCall]) -> list[list[tuple[int, ToolCall]]]:
+        """Split a batch into the groups that may run side by side.
+
+        Returns:
+            Groups in program order: each mutating call alone, each
+            maximal run of read-only calls together.
+        """
+        stages: list[list[tuple[int, ToolCall]]] = []
+        reads: list[tuple[int, ToolCall]] = []
+        for index, call in enumerate(calls):
+            if self._is_read_only(call):
+                reads.append((index, call))
+                continue
+            if reads:
+                stages.append(reads)
+                reads = []
+            stages.append([(index, call)])
+        if reads:
+            stages.append(reads)
+        return stages
+
+    def _is_read_only(self, call: ToolCall) -> bool:
+        """Whether *call* can change nothing a later call could observe.
+
+        Returns:
+            ``True`` for a declared read-only action type, and for a name
+            no tool answers to, since that call runs nothing.
+        """
+        if call.name not in self._registry:
+            return True
+        return self._registry.get(call.name).action_type in READ_ONLY_ACTION_TYPES
+
     @staticmethod
     def _raise_fatal_errors(fatal_errors: list[Exception]) -> None:
         """Re-raise collected fatal errors after all tasks complete.
@@ -1081,7 +1115,12 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         max_concurrency: int | None = None,
         execution_id: str | None = None,
     ) -> tuple[ToolResult, ...]:
-        """Execute multiple tool calls concurrently.
+        """Execute a batch of tool calls: reads side by side, the rest in order.
+
+        A run of consecutive read-only calls (``READ_ONLY_ACTION_TYPES``)
+        fans out; every other call runs alone, after everything issued
+        before it has finished, because the order the model issued them
+        in is the order it meant.
 
         Args:
             tool_calls: Tool calls to execute.
@@ -1128,17 +1167,25 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             asyncio.Semaphore(max_concurrency) if max_concurrency is not None else None
         )
 
-        async with asyncio.TaskGroup() as tg:
-            for idx, call in enumerate(calls):
-                _ = tg.create_task(
-                    self._run_guarded(
-                        idx,
-                        call,
-                        results,
-                        fatal_errors,
-                        semaphore,
-                    ),
-                )
+        stages = self._stages(calls)
+        if len(stages) > 1:
+            logger.debug(
+                TOOL_INVOKE_ALL_ORDERED,
+                count=len(calls),
+                stages=len(stages),
+            )
+        for stage in stages:
+            async with asyncio.TaskGroup() as tg:
+                for idx, call in stage:
+                    _ = tg.create_task(
+                        self._run_guarded(
+                            idx,
+                            call,
+                            results,
+                            fatal_errors,
+                            semaphore,
+                        ),
+                    )
 
         logger.info(
             TOOL_INVOKE_ALL_COMPLETE,
