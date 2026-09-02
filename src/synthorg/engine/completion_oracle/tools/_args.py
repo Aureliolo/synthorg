@@ -9,7 +9,7 @@ these args, so the reviewer cannot spoof who reviewed whom.
 
 from typing import Final
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.completion_oracle.review_models import (
@@ -47,8 +47,20 @@ class SubmitCompletionOracleVerdictArgs(BaseModel):
     execution_id: NotBlankStr
     task_id: NotBlankStr
     verdict: CompletionOracleVerdict
-    findings: tuple[CompletionOracleFinding, ...] = ()
-    summary: NotBlankStr
+    findings: tuple[CompletionOracleFinding, ...] = Field(
+        default=(),
+        description=(
+            "What the assignee has to fix, one entry per defect. The rework "
+            "brief reads this list and never the summary, so a reject whose "
+            "findings sit in the summary alone is refused."
+        ),
+    )
+    summary: NotBlankStr = Field(
+        description=(
+            "One paragraph for the operator. Not read by the rework brief: a "
+            "defect named only here reaches nobody who can fix it."
+        ),
+    )
     build_evidence_cited: bool = False
     test_evidence_cited: bool = False
     test_command: NotBlankStr | None = None

@@ -27,6 +27,22 @@ def _args(**overrides: object) -> SubmitCompletionOracleVerdictArgs:
     return SubmitCompletionOracleVerdictArgs.model_validate(payload)
 
 
+class TestTheSchemaSaysWhichFieldTheBriefReads:
+    """Every round's first submission put its findings in the summary.
+
+    The refusal taught the model one turn late; the schema the model reads
+    before calling is where the rule has to be.
+    """
+
+    def test_findings_description_names_the_rework_brief(self) -> None:
+        schema = SubmitCompletionOracleVerdictArgs.model_json_schema()
+        findings = schema["properties"]["findings"]["description"]
+        summary = schema["properties"]["summary"]["description"]
+        assert "rework brief reads this list" in findings
+        assert "never the summary" in findings
+        assert "Not read by the rework brief" in summary
+
+
 class TestAnAbsentCommandHasManySpellings:
     @pytest.mark.parametrize("spelling", ["null", "None", "NULL", "", "  "])
     def test_the_null_spellings_read_as_no_command(self, spelling: str) -> None:
