@@ -125,6 +125,40 @@ class TestWhatTheDigestKeeps:
         assert "characters elided" in text
         assert text.count("x" * 100) >= 1
 
+    def test_a_non_streamed_final_reply_is_rendered(self, tmp_path: Path) -> None:
+        # The planning session records a completion object rather than a
+        # stream; its reply and its call must survive the same as a leaf's.
+        path = _transcript(tmp_path)
+        lines = path.read_text(encoding="utf-8").splitlines()
+        last = json.loads(lines[-1])
+        last["response"] = {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "Plan is ready.",
+                        "tool_calls": [
+                            {
+                                "id": "c9",
+                                "function": {
+                                    "name": "submit_decomposition_plan",
+                                    "arguments": '{"subtasks": []}',
+                                },
+                            }
+                        ],
+                    }
+                }
+            ]
+        }
+        path.write_text(
+            "\n".join([*lines[:-1], json.dumps(last)]) + "\n", encoding="utf-8"
+        )
+
+        text = digest(path)
+
+        assert "Plan is ready." in text
+        assert "**call** `submit_decomposition_plan`" in text
+
     def test_an_unreadable_line_is_reported_not_skipped(self, tmp_path: Path) -> None:
         path = _transcript(tmp_path)
         path.write_text(

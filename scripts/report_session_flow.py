@@ -239,8 +239,59 @@ class SessionFlow:
         return repeats
 
 
-def _stream_totals(raw: str) -> tuple[int, int, tuple[Call, ...], int]:
-    """Read one SSE response for what the model emitted.
+def deltas_of(response: object) -> tuple[list[dict[str, object]], int]:
+    """The deltas one recorded response carries, whichever shape it took.
+
+    A streamed response is the raw SSE text and its deltas are the frames. A
+    non-streamed one (the planning session's, whose strategy asks for a whole
+    completion) is the completion object itself, and its one delta is the
+    message: read as text it holds no frames at all, so every planning turn
+    counted as idle and its calls as none.
+
+    Returns:
+        The deltas in order, and how many frames would not parse.
+    """
+    if isinstance(response, dict):
+        deltas: list[dict[str, object]] = []
+        choices = response.get("choices")
+        for choice in choices if isinstance(choices, list) else []:
+            message = choice.get("message") if isinstance(choice, dict) else None
+            if isinstance(message, dict):
+                calls = message.get("tool_calls")
+                deltas.append(
+                    {
+                        **message,
+                        "tool_calls": [
+                            {**call, "index": call.get("index", position)}
+                            for position, call in enumerate(calls)
+                            if isinstance(call, dict)
+                        ]
+                        if isinstance(calls, list)
+                        else [],
+                    }
+                )
+        return deltas, 0
+    dropped = 0
+    frames: list[dict[str, object]] = []
+    for payload in _DATA.findall(str(response or "")):
+        try:
+            chunk = json.loads(payload)
+        except json.JSONDecodeError:
+            # Counted, not skipped. Every figure this script reports is
+            # computed from these chunks rather than from the lines around
+            # them, so a silently dropped one takes a real tool call out of
+            # the tally and leaves the result looking exactly as clean as a
+            # session that made fewer.
+            dropped += 1
+            continue
+        frames.extend(
+            choice.get("delta") or {} for choice in chunk.get("choices") or []
+        )
+    return frames, dropped
+
+
+def _stream_totals(response: object) -> tuple[int, int, tuple[Call, ...], int]:
+    """Read one recorded response for what the model emitted.
 
     Tool calls stream as fragments keyed by index: the name arrives once and
     the arguments arrive a few characters at a time, so they are accumulated
@@ -256,36 +307,28 @@ def _stream_totals(raw: str) -> tuple[int, int, tuple[Call, ...], int]:
     """
     reasoning = 0
     content = 0
-    dropped = 0
     names: dict[int, str] = {}
     arguments: dict[int, list[str]] = {}
-    for payload in _DATA.findall(raw):
-        try:
-            chunk = json.loads(payload)
-        except json.JSONDecodeError:
-            # Counted, not skipped. Every figure this script reports is
-            # computed from these chunks rather than from the lines around
-            # them, so a silently dropped one takes a real tool call out of
-            # the tally and leaves the result looking exactly as clean as a
-            # session that made fewer.
-            dropped += 1
-            continue
-        for choice in chunk.get("choices") or []:
-            delta = choice.get("delta") or {}
-            reasoning += len(delta.get("reasoning_content") or "")
-            content += len(delta.get("content") or "")
-            for call in delta.get("tool_calls") or []:
-                index = int(call.get("index", 0))
-                function = call.get("function") or {}
-                if function.get("name"):
-                    # Filtered where it is CAPTURED, not where it is printed.
-                    # This name comes off the model's own deltas rather than
-                    # off the tools the harness offered, so it is arbitrary
-                    # text; stripping it once here covers every consumer,
-                    # including the ones that only key on it.
-                    names[index] = one_line(str(function["name"]))
-                if function.get("arguments"):
-                    arguments.setdefault(index, []).append(str(function["arguments"]))
+    deltas, dropped = deltas_of(response)
+    for delta in deltas:
+        reasoning += len(str(delta.get("reasoning_content") or ""))
+        content += len(str(delta.get("content") or ""))
+        calls = delta.get("tool_calls")
+        for call in calls if isinstance(calls, list) else []:
+            if not isinstance(call, dict):
+                continue
+            index = int(str(call.get("index", 0)))
+            function = call.get("function")
+            function = function if isinstance(function, dict) else {}
+            if function.get("name"):
+                # Filtered where it is CAPTURED, not where it is printed.
+                # This name comes off the model's own deltas rather than
+                # off the tools the harness offered, so it is arbitrary
+                # text; stripping it once here covers every consumer,
+                # including the ones that only key on it.
+                names[index] = one_line(str(function["name"]))
+            if function.get("arguments"):
+                arguments.setdefault(index, []).append(str(function["arguments"]))
     return (
         reasoning,
         content,
@@ -320,9 +363,7 @@ def read_session(path: Path) -> SessionFlow:
         request = record.get("request") or {}
         sent = request.get("reasoning_effort")
         efforts.append(str(sent) if sent is not None else None)
-        reasoning, content, called, lost = _stream_totals(
-            str(record.get("response") or "")
-        )
+        reasoning, content, called, lost = _stream_totals(record.get("response"))
         dropped += lost
         turns.append(
             Turn(

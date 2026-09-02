@@ -112,8 +112,8 @@ def _tool_calls(message: dict[str, object]) -> tuple[_ToolCall, ...]:
     return tuple(calls)
 
 
-def _final_reply(raw: str) -> tuple[str, tuple[_ToolCall, ...]]:
-    """What the last stream emitted as content and as calls.
+def _final_reply(response: object) -> tuple[str, tuple[_ToolCall, ...]]:
+    """What the last response emitted as content and as calls.
 
     Returns:
         The content text and the calls, accumulated across fragments.
@@ -121,21 +121,20 @@ def _final_reply(raw: str) -> tuple[str, tuple[_ToolCall, ...]]:
     content: list[str] = []
     names: dict[int, str] = {}
     arguments: dict[int, list[str]] = {}
-    for payload in _DATA.findall(raw):
-        try:
-            chunk = json.loads(payload)
-        except json.JSONDecodeError:
-            continue
-        for choice in chunk.get("choices") or []:
-            delta = choice.get("delta") or {}
-            content.append(str(delta.get("content") or ""))
-            for call in delta.get("tool_calls") or []:
-                index = int(call.get("index", 0))
-                function = call.get("function") or {}
-                if function.get("name"):
-                    names[index] = str(function["name"])
-                if function.get("arguments"):
-                    arguments.setdefault(index, []).append(str(function["arguments"]))
+    deltas, _dropped = _flow.deltas_of(response)
+    for delta in deltas:
+        content.append(str(delta.get("content") or ""))
+        calls = delta.get("tool_calls")
+        for call in calls if isinstance(calls, list) else []:
+            if not isinstance(call, dict):
+                continue
+            index = int(str(call.get("index", 0)))
+            function = call.get("function")
+            function = function if isinstance(function, dict) else {}
+            if function.get("name"):
+                names[index] = str(function["name"])
+            if function.get("arguments"):
+                arguments.setdefault(index, []).append(str(function["arguments"]))
     calls = tuple(
         _ToolCall(
             name=names[index], arguments="".join(arguments.get(index, ())), call_id=""
@@ -263,7 +262,7 @@ def digest(path: Path) -> str:
             break
     lines.extend(["## Turns", ""])
     lines.extend(_turn_lines(messages, flow))
-    content, calls = _final_reply(str(last.get("response") or ""))
+    content, calls = _final_reply(last.get("response"))
     lines.extend([f"### Final reply (turn {len(flow.turns)})", ""])
     if content:
         lines.extend([_trim(content), ""])
