@@ -43,6 +43,7 @@ _HTML_COMMENT_RE: Final[re.Pattern[str]] = re.compile(
     r"<!--.*?-->",
     re.DOTALL,
 )
+_XML_DECLARATION: Final[re.Pattern[str]] = re.compile(r"^[\s﻿]*<\?xml\b[^>]*\?>")
 
 
 class XXEDetectedError(
@@ -140,11 +141,18 @@ def parse_html_safely(raw: str) -> HtmlElement:
 
     from lxml import html as lxml_html  # noqa: PLC0415
 
+    # lxml refuses a ``str`` that opens with an XML declaration naming an
+    # encoding (the bytes it would decode are already decoded), and the
+    # refusal is a ``ValueError`` the callers treat as a parse failure, so
+    # an XHTML page arrived blank. The declaration says nothing the parser
+    # needs from a decoded string.
+    body = _XML_DECLARATION.sub("", raw, count=1)
+
     # Use the lxml.html fromstring so the returned element supports
     # ``text_content()`` / ``drop_tree()`` which the sanitiser relies
     # on. Pass this thread's safe parser explicitly so our no-network +
     # huge_tree guards apply.
-    return lxml_html.fromstring(raw, parser=_SAFE_PARSERS.parser)
+    return lxml_html.fromstring(body, parser=_SAFE_PARSERS.parser)
 
 
 def _build_safe_parser() -> HTMLParser:

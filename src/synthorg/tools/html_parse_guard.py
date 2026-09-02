@@ -31,6 +31,17 @@ logger = get_logger(__name__)
 # Patterns that indicate the content is likely HTML.
 _HTML_TAG_PATTERN = re.compile(r"<[a-zA-Z][^>]*>")
 
+# A tool RESULT is rewritten only when it is an HTML document. A tag
+# anywhere is not that: TypeScript generics, JSX, a here-document
+# redirect, a unified diff and a JUnit report all carry one, and reading
+# them as HTML returned generics without their arguments, a diff without
+# its lines and an XML report as nothing at all, to an agent about to edit
+# what it had just read.
+_HTML_DOCUMENT_PATTERN = re.compile(
+    r"<(?:!doctype\s+html|html|head|body)[\s>]",
+    re.IGNORECASE,
+)
+
 # CSS patterns for hidden elements.
 #
 # Text a human never sees but a model reads in full is the whole point of an
@@ -175,6 +186,29 @@ def _passthrough_result(content: str) -> HTMLSanitizeResult:
     )
 
 
+def _rejected_result() -> HTMLSanitizeResult:
+    """Return the safe-empty verdict for a payload that could not be judged.
+
+    Returns:
+        Result of type ``HTMLSanitizeResult``.
+    """
+    return HTMLSanitizeResult(
+        cleaned="",
+        gap_detected=True,
+        gap_ratio=1.0,
+        stripped_element_count=0,
+    )
+
+
+def looks_like_html_document(raw: str) -> bool:
+    """Whether *raw* is an HTML document rather than text with a tag in it.
+
+    Returns:
+        ``True`` when a document-level tag opens somewhere in *raw*.
+    """
+    return bool(_HTML_DOCUMENT_PATTERN.search(raw))
+
+
 class HTMLParseGuard:
     """Sanitize HTML tool output by stripping hidden injection vectors.
 
@@ -211,19 +245,57 @@ class HTMLParseGuard:
         if not raw or not _HTML_TAG_PATTERN.search(raw):
             return _passthrough_result(raw)
 
+        stripped = self._strip_or_reject(raw)
+        if stripped is None:
+            return _rejected_result()
+        return stripped[1]
+
+    def guard_tool_output(self, raw: str) -> tuple[str, HTMLSanitizeResult]:
+        """Hand a tool result to the model as the tool returned it, or safer.
+
+        :meth:`sanitize` answers with the TEXT of anything carrying a tag,
+        which is the reading a fetched page wants and the wrong one for a
+        tool RESULT: an agent edits what it reads, so a TypeScript file
+        returned without its generics, or a JUnit report returned as nothing,
+        cannot be matched back to the file it came from. Only an HTML
+        DOCUMENT is judged here, and one with nothing hidden in it is
+        returned byte for byte.
+
+        Returns:
+            The content to hand the model, and the verdict behind it: the
+            original when it is not a document or nothing was stripped, the
+            re-serialised document when something was, and empty when the
+            payload was refused.
+        """
+        if not self._config.enabled or not raw or not looks_like_html_document(raw):
+            return raw, _passthrough_result(raw)
+
+        stripped = self._strip_or_reject(raw)
+        if stripped is None:
+            return "", _rejected_result()
+        doc, result = stripped
+        if result.stripped_element_count == 0 and not result.gap_detected:
+            return raw, result
+        return tostring(doc, encoding="unicode", method="html"), result
+
+    def _strip_or_reject(
+        self,
+        raw: str,
+    ) -> tuple[HtmlElement, HTMLSanitizeResult] | None:
+        """Parse and strip *raw*, or answer ``None`` for a payload refused.
+
+        Returns:
+            The stripped document with its verdict, or ``None`` when the
+            payload was rejected by the XXE pre-scan or could not be parsed.
+        """
         try:
-            return self._sanitize_html(raw)
+            doc = parse_html_safely(raw)
         except XXEDetectedError:
             # XXE rejection was already logged via
             # ``TOOL_HTML_PARSE_XXE_DETECTED`` inside the pre-scan; do
             # not double-emit a generic parse-error event with a
             # traceback attached to the attacker-controlled payload.
-            return HTMLSanitizeResult(
-                cleaned="",
-                gap_detected=True,
-                gap_ratio=1.0,
-                stripped_element_count=0,
-            )
+            return None
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
             # Parse failure on untrusted HTML: scrub the exception
@@ -236,14 +308,8 @@ class HTMLParseGuard:
                 error=safe_error_description(exc),
                 content_length=len(raw),
             )
-            # Return safe empty result instead of raw attacker-
-            # controlled content.
-            return HTMLSanitizeResult(
-                cleaned="",
-                gap_detected=True,
-                gap_ratio=1.0,
-                stripped_element_count=0,
-            )
+            return None
+        return doc, self._strip_and_measure(doc)
 
     def sanitize_document(self, raw: str) -> tuple[str, HTMLSanitizeResult]:
         """Strip hidden and dangerous content, re-serialised as HTML.
@@ -349,8 +415,12 @@ class HTMLParseGuard:
                 element.drop_tree()
                 stripped += 1
 
+        # A comment is text a renderer never shows, so it counts as hidden
+        # content: a document whose only concealment is a comment is still
+        # one that was rewritten.
         for comment in doc.iter(etree.Comment):
             comment.drop_tree()
+            stripped += 1
 
         # Strip SVG script injection vectors.
         for element in doc.iter("{http://www.w3.org/2000/svg}script"):
@@ -426,5 +496,6 @@ __all__ = [
     "HTMLParseGuard",
     "HTMLParseGuardConfig",
     "HTMLSanitizeResult",
+    "looks_like_html_document",
     "sanitize_html_document",
 ]

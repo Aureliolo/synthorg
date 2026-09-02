@@ -999,11 +999,13 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         self,
         result: ToolExecutionResult,
     ) -> ToolExecutionResult:
-        """Apply HTML parse guard to sanitize tool output.
+        """Strip what an HTML document hides from a human reader.
 
-        Strips scripts, styles, hidden elements, and detects
-        render-gap injection attacks.  Returns the original result
-        unchanged if the output is not HTML or on parse errors.
+        Only an HTML DOCUMENT is touched, and only when something in it was
+        hidden: source code with angle brackets in it, an XML report and a
+        page with nothing to strip all reach the model as the tool returned
+        them, because an agent edits what it reads and a rewritten read
+        cannot be matched back to the file.
 
         Returns:
             Result of type ``ToolExecutionResult``.
@@ -1018,12 +1020,12 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
 
             self._html_guard = HTMLParseGuard()
 
-        sanitized = self._html_guard.sanitize(result.content)
-        if sanitized.cleaned == result.content:
+        content, sanitized = self._html_guard.guard_tool_output(result.content)
+        if content == result.content:
             return result
         return result.model_copy(
             update={
-                "content": sanitized.cleaned,
+                "content": content,
                 "metadata": {
                     **result.metadata,
                     "html_guard": {
