@@ -10,7 +10,7 @@ import copy
 from typing import Never
 
 import jsonschema
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 from pydantic import ValidationError as PydanticValidationError
 from referencing import Registry as JsonSchemaRegistry
 from referencing.exceptions import NoSuchResource
@@ -22,6 +22,7 @@ from synthorg.observability import (
     safe_error_description,
 )
 from synthorg.observability.events.tool import (
+    TOOL_INVOKE_ARGUMENT_DECODED,
     TOOL_INVOKE_DEEPCOPY_ERROR,
     TOOL_INVOKE_NON_RECOVERABLE,
     TOOL_INVOKE_PARAMETER_ERROR,
@@ -29,6 +30,7 @@ from synthorg.observability.events.tool import (
     TOOL_INVOKE_VALIDATION_UNEXPECTED,
 )
 from synthorg.providers.models import ToolCall, ToolResult
+from synthorg.tools._argument_decoding import decode_json_encoded_arguments
 from synthorg.tools.base import BaseTool
 from synthorg.tools.errors import ToolParameterError
 
@@ -74,9 +76,10 @@ class ToolInvokerValidationMixin:
     ) -> ToolResult | dict[str, object] | None:
         """Validate tool call arguments.
 
-        Tries the typed ``args_model`` when the subclass declares one
-        and falls back to JSON-Schema validation against
-        ``parameters_schema`` otherwise.
+        A structured argument that arrived as JSON text is decoded first,
+        where the schema declares it structured. Then the typed
+        ``args_model`` is tried when the subclass declares one, and
+        JSON-Schema validation against ``parameters_schema`` otherwise.
 
         Returns:
           * ``ToolResult`` on validation failure (caller short-circuits).
@@ -85,22 +88,36 @@ class ToolInvokerValidationMixin:
             coercions, and ``AfterValidator`` results are baked in;
             callers MUST pass this dict to ``tool.execute`` instead of
             the raw ``tool_call.arguments`` so the typed-boundary
-            promise actually reaches the tool body.
-          * ``None`` when there is no ``args_model`` and the tool's
-            JSON-Schema check passed; callers fall back to the raw
-            deepcopied arguments.
+            promise actually reaches the tool body. Also the decoded
+            arguments when the JSON-Schema path decoded any.
+          * ``None`` when there is no ``args_model``, nothing was
+            decoded and the tool's JSON-Schema check passed; callers
+            fall back to the raw deepcopied arguments.
         """
+        schema = tool.parameters_schema
+        arguments, decoded = decode_json_encoded_arguments(schema, tool_call.arguments)
+        if decoded:
+            logger.info(
+                TOOL_INVOKE_ARGUMENT_DECODED,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                parameters=decoded,
+            )
         args_model = tool.args_model
         if args_model is not None:
-            return self._validate_args_model(args_model, tool_call)
-        return self._validate_json_schema(tool, tool_call)
+            return self._validate_args_model(args_model, tool_call, arguments)
+        outcome = self._validate_json_schema(schema, tool_call, arguments)
+        if outcome is not None:
+            return outcome
+        return arguments if decoded else None
 
     def _validate_args_model(
         self,
         args_model: type[BaseModel],
         tool_call: ToolCall,
+        arguments: dict[str, object],
     ) -> ToolResult | dict[str, object]:
-        """Validate ``tool_call.arguments`` against a Pydantic args model.
+        """Validate *arguments* against a Pydantic args model.
 
         Returns the validated ``model_dump(mode="python")`` on success
         so coercions / defaults / ``AfterValidator`` results propagate
@@ -115,7 +132,7 @@ class ToolInvokerValidationMixin:
             RecursionError: If the related operation fails.
         """
         try:
-            validated = args_model.model_validate(dict(tool_call.arguments))
+            validated = args_model.model_validate(arguments)
             # ``model_dump`` is inside the same ``try`` so a
             # serialization failure (custom serializer raising,
             # unbounded recursion in nested types, etc.) flows through
@@ -149,10 +166,11 @@ class ToolInvokerValidationMixin:
 
     def _validate_json_schema(
         self,
-        tool: BaseTool,
+        schema: dict[str, JsonValue] | None,
         tool_call: ToolCall,
+        arguments: dict[str, object],
     ) -> ToolResult | None:
-        """Validate ``tool_call.arguments`` against a free-form JSON Schema.
+        """Validate *arguments* against a free-form JSON Schema.
 
         This path is reached only by tools with no ``args_model``. Every
         concrete first-party tool declares a Pydantic ``args_model``, so
@@ -171,12 +189,11 @@ class ToolInvokerValidationMixin:
             MemoryError: If the related operation fails.
             RecursionError: If the related operation fails.
         """
-        schema = tool.parameters_schema
         if schema is None:
             return None
         try:
             jsonschema.validate(
-                instance=dict(tool_call.arguments),
+                instance=arguments,
                 schema=schema,
                 registry=SAFE_REGISTRY,
             )
