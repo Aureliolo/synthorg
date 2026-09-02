@@ -309,8 +309,32 @@ def redacted_tail(output: str, *, limit: int) -> str | None:
     """
     if not output:
         return None
-    masked, _findings = redact_credentials(output)
-    return scrub_secret_tokens(masked)[-limit:]
+    return _masked(output)[-limit:]
+
+
+def redacted_command(command: str, *, limit: int) -> str:
+    """The first *limit* characters of *command*, with credentials masked.
+
+    The command is persisted and rendered beside the output tails as the
+    evidence a verdict cites, and an agent types its secrets into it as
+    readily as a suite prints them: ``API_TOKEN=... pytest`` is the ordinary
+    way to hand a key to a run. Masked BEFORE the cut for the same reason the
+    tail is, so a credential straddling the limit is recognised whole.
+
+    Returns:
+        The masked command head.
+    """
+    return _masked(command)[:limit]
+
+
+def _masked(text: str) -> str:
+    """*text* with every credential and secret token replaced.
+
+    Returns:
+        The masked text.
+    """
+    masked, _findings = redact_credentials(text)
+    return scrub_secret_tokens(masked)
 
 
 async def record_if_test_run(
@@ -369,6 +393,7 @@ async def record_if_test_run(
     if not purposes:
         return
     executed_at = clock.now()
+    persisted_command = redacted_command(command, limit=command_repr_limit)
     try:
         for purpose in purposes:
             # One row per gate the line satisfied, each carrying the whole
@@ -381,7 +406,7 @@ async def record_if_test_run(
                     execution_id=identity.execution_id,
                     project_id=identity.project_id,
                     purpose=purpose,
-                    command=command[:command_repr_limit],
+                    command=persisted_command,
                     returncode=result.returncode,
                     passed=result.success,
                     timed_out=result.timed_out,

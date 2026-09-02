@@ -432,9 +432,12 @@ The copy holds:
   rather than by name, because a name list re-opens the hole the day a tool
   joins the category.
 - **`REVIEW_DENIED_TOOLS`** (`write_file`, `edit_file`, `delete_file`,
-  `git_commit`): the mutating members of the two categories the reviewer
-  keeps, `FILE_SYSTEM` for opening the artefact and `VERSION_CONTROL` for
-  reading its history. Held by name only because withholding the category
+  `git_commit`, `git_branch`): the mutating members of the two categories
+  the reviewer keeps, `FILE_SYSTEM` for opening the artefact and
+  `VERSION_CONTROL` for reading its history. `git_branch` is there because
+  `GitAccess.LOCAL_ONLY` withholds only what reaches a remote, and creating,
+  switching or deleting a branch rewrites the checkout under review without
+  leaving the machine. Held by name only because withholding the category
   would take `read_file` and `git_diff` with it.
 - **`REVIEW_SUB_CONSTRAINTS`** (`TerminalAccess.NONE`, `GitAccess.LOCAL_ONLY`),
   holding the same line at the sub-constraint enforcer that runs after

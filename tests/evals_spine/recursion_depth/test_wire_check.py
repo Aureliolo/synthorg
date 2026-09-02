@@ -445,11 +445,18 @@ class TestReasoningOffTheWire:
 class TestCachingOffTheLedger:
     """Never a failure: the provider may simply not publish the figure."""
 
-    def test_a_cached_read_passes(self) -> None:
-        finding = caching_finding((_record(0), _record(40)))
+    def test_a_cached_read_after_the_first_call_passes(self) -> None:
+        finding = caching_finding((_record(0), _record(40), _record(0)))
 
         assert finding.passed is True
         assert "1 of 2" in finding.observed
+
+    def test_a_cached_read_on_the_first_call_alone_is_unverified(self) -> None:
+        """A prefix an earlier cell left behind proves nothing about this one."""
+        assert caching_finding((_record(40), _record(0))).passed is None
+
+    def test_a_single_cached_call_is_unverified(self) -> None:
+        assert caching_finding((_record(40),)).passed is None
 
     def test_all_zeros_is_unverified(self) -> None:
         assert caching_finding((_record(0), _record(0))).passed is None

@@ -175,11 +175,16 @@ def _interval(runs: Sequence[_Run]) -> tuple[float | None, float | None, bool]:
     """
     if len(runs) < MIN_CELLS_FOR_INTERVAL:
         return None, None, False
-    # A resampling draw, not a secret: the seed is public by design so a
-    # re-score reproduces the interval.
-    rng = random.Random(_seed(runs))  # noqa: S311
+    # Drawn over the runs in ONE order, whatever order they arrived in: a
+    # draw picks positions, so the same seed over a reordered sequence is a
+    # different resample and two scorings of one journal would publish two
+    # intervals. A resampling draw, not a secret: the seed is public by
+    # design so a re-score reproduces the interval.
+    ordered = sorted(runs)
+    rng = random.Random(_seed(ordered))  # noqa: S311
     ratios = sorted(
-        _pooled(rng.choices(runs, k=len(runs))) for _ in range(BOOTSTRAP_RESAMPLES)
+        _pooled(rng.choices(ordered, k=len(ordered)))
+        for _ in range(BOOTSTRAP_RESAMPLES)
     )
     low = ratios[_index(_LOW_QUANTILE)]
     high = ratios[_index(_HIGH_QUANTILE)]
@@ -208,13 +213,13 @@ def _index(quantile: float) -> int:
     return round(quantile * (BOOTSTRAP_RESAMPLES - 1))
 
 
-def _seed(runs: Sequence[_Run]) -> str:
-    """A seed that is a pure function of the runs, whatever order they came in.
+def _seed(ordered: Sequence[_Run]) -> str:
+    """A seed that is a pure function of the runs.
 
     Returns:
         The seed text.
     """
-    return "|".join(f"{tokens}/{solved}" for tokens, solved in sorted(runs))
+    return "|".join(f"{tokens}/{solved}" for tokens, solved in ordered)
 
 
 __all__ = [

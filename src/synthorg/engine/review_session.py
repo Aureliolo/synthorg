@@ -91,11 +91,15 @@ REVIEW_DENIED_CATEGORIES: Final[tuple[ToolCategory, ...]] = (
 #: cannot judge it. A name list is the weaker shape (a tool joining the
 #: category later is not covered), which is why the categories that CAN be
 #: withheld whole are, above, and only these two are held by name.
+#: ``git_branch`` is named because ``GitAccess.LOCAL_ONLY`` below withholds
+#: only what reaches a remote: creating, switching or deleting a branch
+#: rewrites the checkout under review without leaving the machine.
 REVIEW_DENIED_TOOLS: Final[tuple[NotBlankStr, ...]] = (
     NotBlankStr("write_file"),
     NotBlankStr("edit_file"),
     NotBlankStr("delete_file"),
     NotBlankStr("git_commit"),
+    NotBlankStr("git_branch"),
 )
 
 #: Sub-constraints holding the same line at the enforcer that runs after

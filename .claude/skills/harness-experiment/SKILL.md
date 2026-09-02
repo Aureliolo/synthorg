@@ -63,11 +63,14 @@ Each rule has an incident behind it. The incident is the reason.
   while a sweep holds the interpreter replaces the packages under it. Use
   `.venv/Scripts/python.exe` (Windows) or `.venv/bin/python` directly for
   anything run while cells are in flight.
-- **Forecast before spending.** `make recursion-depth` prints the matrix and
-  the projected session count and spends nothing. The session figure is a
-  FLOOR: the real count is a product of branching factors the manifest cannot
-  predict, and a uniform branching model priced depth 4 twelve times too high.
-  Read the forecast, read the ceiling, then record.
+- **Forecast, then confirm, before spending.** `make recursion-depth` prints
+  the matrix and the projected session count and spends nothing. The session
+  figure is a FLOOR: the real count is a product of branching factors the
+  manifest cannot predict, and a uniform branching model priced depth 4 twelve
+  times too high. Read the forecast, read the ceiling, put both in front of
+  the operator with `AskUserQuestion`, and record only on an explicit yes. A
+  forecast the operator has not seen authorises nothing, and a paid cell
+  cannot be un-bought.
 - **Resume, never restart.** `--resume` replays every MEASURED cell for free
   and attempts the unavailable ones again. A killed sweep restarted whole
   re-pays every cell it had already bought, and a killed sweep resumed from a
@@ -123,7 +126,17 @@ hard ceiling. If the ceiling is below the floor, the manifest is wrong; fix it
 before spending. Confirm the sandbox image resolves: the recorded 404 on a
 tag that did not exist cost two cells, because the preflight never asked.
 
-### 3. Smoke
+### 3. Confirm the spend
+
+Ask with `AskUserQuestion`, naming the projected session floor and the hard
+ceiling the forecast printed, and offer exactly two answers: record, or stop.
+Nothing below runs on a timeout, a default, or an answer inferred from the
+question having been asked before; the smoke and the record command each
+spend provider sessions, and only the operator's explicit yes authorises
+that. A changed manifest, a changed pair or a changed ceiling is a new
+question.
+
+### 4. Smoke
 
 ```bash
 make recursion-depth-record ARGS="--smoke --company-config <yours> --sandbox-image <image>"
@@ -135,7 +148,7 @@ finding that is `null` was not verified, not passed, and the recording will
 say so beside the result. Do not proceed on an unverified treatment that the
 question depends on.
 
-### 4. Record
+### 5. Record
 
 ```bash
 make recursion-depth-record ARGS="--company-config <yours> --sandbox-image <image> --depths 1,2"
@@ -150,7 +163,7 @@ directory. Every session is journalled the moment it returns, with its tree on
 the planning row, so a killed sweep has lost nothing but the session in
 flight.
 
-### 5. Read the result
+### 6. Read the result
 
 The report is `depth_curve.md` and `chart.svg`. The headline is tokens per
 solved requirement with its interval; spec satisfaction is the top panel and
@@ -158,7 +171,7 @@ the caption says which is which. Open the trees of the cells behind any number
 that surprises you. A dead deliverable beside a high score is the published
 failure mode and the report marks it as such in the "Deliverable" column.
 
-### 6. Write the row
+### 7. Write the row
 
 Add the round to the harness round log before doing anything about what it
 found. Name the treatment, what the wiring report verified, how far it got,

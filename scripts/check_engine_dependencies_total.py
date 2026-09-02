@@ -59,9 +59,11 @@ the package it claims to enforce. Two satellite types, ``CheckpointWiring``
 and ``EngineAssemblyInputs``, live outside the package and are named at their
 declared paths; a path that no longer declares its type is exit 2. A builder
 is recognised by its return annotation resolving to one of those names or to
-the engine class, with a module-level alias of the engine (``Engine =
-AgentEngine``) resolved first so the arity check cannot be bypassed by
-renaming.
+the engine class. Aliases are resolved first, per file, for the engine and for
+every gated type, in both spellings a name can be rebound (``Engine =
+AgentEngine`` and ``from ... import AgentEngine as Engine``) and transitively
+through each other, so neither the arity check nor the splat check can be
+bypassed by renaming what is constructed.
 
 Allowlist / opt-out
 -------------------
@@ -457,29 +459,45 @@ def _annotated_name(node: ast.expr | None) -> str | None:
     return _rightmost_name(node) if node is not None else None
 
 
-def _engine_aliases(tree: ast.Module) -> frozenset[str]:
-    """Return every module-level name bound to the engine class.
+def _local_aliases(tree: ast.Module, names: frozenset[str]) -> frozenset[str]:
+    """Return *names* plus every name *tree* binds to one of them.
 
-    ``Engine = AgentEngine`` puts the constructor behind a name the arity
-    check would otherwise never see.
+    ``Engine = AgentEngine`` and ``from ... import AgentEngine as Engine`` both
+    put a constructor behind a name the call checks would otherwise never
+    see, and ``Deps(**mapping)`` under an imported alias is the splat the
+    gate exists to refuse. Resolved transitively, so an alias of an alias
+    is still the type it names.
 
     Returns:
-        The engine class name and every alias of it.
+        *names* and every alias of them, wherever in the module it is bound.
     """
-    aliases = {_ENGINE_CLASS}
+    aliases = set(names)
     changed = True
     while changed:
         changed = False
-        for stmt in tree.body:
-            if not isinstance(stmt, ast.Assign):
-                continue
-            if _rightmost_name(stmt.value) not in aliases:
-                continue
-            for target in stmt.targets:
-                if isinstance(target, ast.Name) and target.id not in aliases:
-                    aliases.add(target.id)
+        for node in ast.walk(tree):
+            for bound in _bindings_to(node, aliases):
+                if bound not in aliases:
+                    aliases.add(bound)
                     changed = True
     return frozenset(aliases)
+
+
+def _bindings_to(node: ast.AST, names: set[str]) -> Iterator[str]:
+    """Yield each name *node* binds to one of *names*.
+
+    Yields:
+        The target of an assignment whose value names one of them, and the
+        ``as`` name of a ``from`` import bringing one of them in.
+    """
+    if isinstance(node, ast.Assign) and _rightmost_name(node.value) in names:
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                yield target.id
+    elif isinstance(node, ast.ImportFrom):
+        for alias in node.names:
+            if alias.name in names and alias.asname is not None:
+                yield alias.asname
 
 
 def _call_name(node: ast.Call) -> str | None:
@@ -552,13 +570,16 @@ def _scan_file(
         Each violation found in *tree*.
     """
     sanctioned = rel == _SANCTIONED_REL
-    engine_names = _engine_aliases(tree)
+    engine_names = _local_aliases(tree, frozenset({_ENGINE_CLASS}))
+    gated_names = _local_aliases(tree, gated)
     # A builder returning the engine assembles the whole declaration inside
     # itself, which is the same omission one call further out.
-    builder_types = gated | engine_names
+    builder_types = gated_names | engine_names
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
-            yield from _call_hits(rel, node, gated=gated, engine_names=engine_names)
+            yield from _call_hits(
+                rel, node, gated=gated_names, engine_names=engine_names
+            )
         elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             if sanctioned:
                 continue

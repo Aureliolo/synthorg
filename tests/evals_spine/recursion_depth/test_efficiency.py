@@ -165,11 +165,18 @@ class TestWhenAnIntervalIsReported:
             _cell(tokens=1000, passing=("R01",)),
             _cell(tokens=3000, passing=("R01", "R02"), repetition=1),
             _cell(tokens=9000, passing=("R01",), repetition=2),
+            _cell(tokens=5000, passing=("R01", "R02"), repetition=3),
+            _cell(tokens=2000, passing=("R01",), repetition=4),
         )
+        assert len(cells) >= MIN_CELLS_FOR_INTERVAL
 
         first = tokens_per_solved_by_achieved_depth(cells)[0]
         second = tokens_per_solved_by_achieved_depth(tuple(reversed(cells)))[0]
 
+        # Below the floor both calls answer no interval, and an equality of
+        # two absences would pass without an interval ever being computed.
+        assert first.ci_low is not None
+        assert first.ci_high is not None
         assert (first.ci_low, first.ci_high) == (second.ci_low, second.ci_high)
 
     def test_runs_that_sometimes_solve_nothing_leave_the_top_open(self) -> None:

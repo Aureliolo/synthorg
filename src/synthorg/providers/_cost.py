@@ -138,10 +138,11 @@ def _count(value: object, *, field: str) -> int:
 
     Absent is zero silently, because a provider that publishes no cache
     figures is the ordinary case. A value that IS there and is not a count
-    (a boolean, a string, a negative number) is zero too, so the record is
-    kept rather than dropped, but it is said: a provider changing the shape
-    of the field would otherwise zero every cache figure with nothing to
-    read.
+    (a boolean, a string, a negative number, a fraction of a token) is zero
+    too, so the record is kept rather than dropped, but it is said: a
+    provider changing the shape of the field would otherwise zero every
+    cache figure with nothing to read, and truncating ``1.5`` to ``1`` would
+    persist a figure nobody measured.
 
     Returns:
         The count, or zero for an absent or malformed value.
@@ -153,6 +154,7 @@ def _count(value: object, *, field: str) -> int:
         or not isinstance(value, int | float)
         or not math.isfinite(value)
         or value < 0
+        or (isinstance(value, float) and not value.is_integer())
     ):
         logger.warning(PROVIDER_COST_INVALID, field=field, value=repr(value))
         return 0

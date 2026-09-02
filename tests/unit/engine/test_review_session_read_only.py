@@ -33,6 +33,7 @@ class TestTheReviewerIsReadOnly:
             ("edit_file", ToolCategory.FILE_SYSTEM),
             ("delete_file", ToolCategory.FILE_SYSTEM),
             ("git_commit", ToolCategory.VERSION_CONTROL),
+            ("git_branch", ToolCategory.VERSION_CONTROL),
             ("shell_command", ToolCategory.TERMINAL),
             ("run_code", ToolCategory.CODE_EXECUTION),
             ("deploy_release", ToolCategory.EXTERNAL_DATA),
@@ -50,6 +51,7 @@ class TestTheReviewerIsReadOnly:
             ("list_directory", ToolCategory.FILE_SYSTEM),
             ("git_diff", ToolCategory.VERSION_CONTROL),
             ("git_log", ToolCategory.VERSION_CONTROL),
+            ("git_status", ToolCategory.VERSION_CONTROL),
             (SUBMIT_COMPLETION_ORACLE_VERDICT_TOOL_NAME, ToolCategory.OTHER),
         ],
     )

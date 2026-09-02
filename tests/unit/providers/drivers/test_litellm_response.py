@@ -157,6 +157,22 @@ class TestCacheTokens:
             )
         ) == (0, 0)
 
+    @pytest.mark.parametrize("value", [1.5, 0.25])
+    def test_a_fractional_count_becomes_a_missing_one(self, value: float) -> None:
+        """A token count is whole; truncating a fraction persists a made-up figure."""
+        assert _cache_tokens(
+            SimpleNamespace(
+                cache_read_input_tokens=value, cache_creation_input_tokens=value
+            )
+        ) == (0, 0)
+
+    def test_a_whole_float_count_is_still_a_count(self) -> None:
+        assert _cache_tokens(
+            SimpleNamespace(
+                cache_read_input_tokens=40.0, cache_creation_input_tokens=7.0
+            )
+        ) == (40, 7)
+
     def test_a_cached_read_above_the_prompt_is_dropped_and_the_record_kept(
         self,
     ) -> None:

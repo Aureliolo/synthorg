@@ -960,9 +960,12 @@ counts are the experimental DESIGN (five at every cap, the floor
 `MINIMUM_REPETITIONS` refuses to load a matrix below, so per-depth spread is
 reportable everywhere rather than only where the transition is expected), and an
 operator trading one of them for a schedule should not leave the next reader
-inheriting a quota window as if it were an intended design: a cap dropped to one
-repetition reports a range of one draw, which is the thing the design exists to
-avoid. All three levers are folded into the
+inheriting a quota window as if it were an intended design. The floor binds the
+override as well as the file: the NARROWED matrix is re-checked against it
+after the counts are folded in, so `--repetitions` can raise a cap or hold it
+at five and is refused below that, because a cap dropped to one repetition
+reports a range of one draw, which is the thing the design exists to avoid.
+All three levers are folded into the
 manifest OBJECT and none touches the manifest FILE, which is what the journal's
 identity pins, so none of them turns a resumable matrix into a foreign one. A
 COMMIT does, because the identity pins that too, and that is the constraint that

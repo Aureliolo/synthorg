@@ -372,18 +372,68 @@ class TestBuilders:
 
         assert _run(tmp_path) == 0
 
+    @pytest.mark.parametrize(
+        "binding",
+        [
+            "Engine = AgentEngine",
+            "from synthorg.engine.agent_engine import AgentEngine as Engine",
+            (
+                "from synthorg.engine.agent_engine import AgentEngine as Motor\n"
+                "Engine = Motor"
+            ),
+        ],
+        ids=["assignment", "import_as", "import_then_assignment"],
+    )
     def test_an_engine_alias_does_not_escape_the_arity_check(
-        self, tmp_path: Path
+        self, tmp_path: Path, binding: str
     ) -> None:
+        """Both ways a name is rebound, and one through the other."""
         _baseline(tmp_path)
         _plant(
             tmp_path,
             "evals/harness/wiring.py",
-            '"""Harness."""\n\nEngine = AgentEngine\n\n\n'
+            f'"""Harness."""\n\n{binding}\n\n\n'
             "def make(provider):\n    return Engine(provider=provider)\n",
         )
 
         assert _run(tmp_path) == 1
+
+    @pytest.mark.parametrize(
+        "binding",
+        [
+            "Deps = EngineDependencies",
+            "from synthorg.engine.dependencies import EngineDependencies as Deps",
+            "from synthorg.engine.dependencies import EngineCore as Deps",
+        ],
+        ids=["assignment", "import_root_as", "import_bundle_as"],
+    )
+    def test_a_gated_type_alias_does_not_escape_the_splat_check(
+        self, tmp_path: Path, binding: str
+    ) -> None:
+        """``Deps(**mapping)`` is the splat the gate exists to refuse."""
+        _baseline(tmp_path)
+        _plant(
+            tmp_path,
+            "evals/harness/wiring.py",
+            f'"""Harness."""\n\n{binding}\n\n\n'
+            "def make(mapping):\n    return Deps(**mapping)\n",
+        )
+
+        assert _run(tmp_path) == 1
+
+    def test_an_unaliased_import_of_another_name_binds_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """Only a binding TO a gated name is an alias of it."""
+        _baseline(tmp_path)
+        _plant(
+            tmp_path,
+            "evals/harness/wiring.py",
+            '"""Harness."""\n\nfrom synthorg.engine import agent_engine as Deps\n\n\n'
+            "def make(mapping):\n    return Deps(**mapping)\n",
+        )
+
+        assert _run(tmp_path) == 0
 
     def test_a_total_builder_is_not_one(self, tmp_path: Path) -> None:
         """Every parameter required means the caller still names everything."""

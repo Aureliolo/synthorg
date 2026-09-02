@@ -26,6 +26,7 @@ from synthorg.persistence.code_execution_protocol import (
 from synthorg.tools._test_run_capture import (
     is_test_run,
     record_if_test_run,
+    redacted_command,
     redacted_tail,
 )
 from synthorg.tools.sandbox.result import SandboxResult
@@ -507,6 +508,32 @@ class TestRecordIfTestRun:
         assert "3 passed" in record.stdout_tail
         assert record.stderr_tail is not None
         assert "AKIAIOSFODNN7EXAMPLE" not in record.stderr_tail
+
+    async def test_a_credential_in_the_command_is_masked_before_the_row_exists(
+        self,
+    ) -> None:
+        """``KEY=secret pytest`` is how an agent hands a key to a run.
+
+        The command is rendered beside the tails as verification evidence,
+        so a secret typed into it reaches the reviewer's prompt the same way
+        a printed one would.
+        """
+        store = RecordingCodeExecutionStore()
+
+        await _capture(store, "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE pytest -q")
+
+        record = store.records[0]
+        assert record.purpose is CodeExecutionPurpose.TESTS
+        assert "AKIAIOSFODNN7EXAMPLE" not in record.command
+        assert "pytest -q" in record.command
+
+    def test_a_credential_straddling_the_command_cut_is_still_masked(self) -> None:
+        command = "Authorization: Bearer secretvalue1234567890 " + "x" * 40
+
+        head = redacted_command(command, limit=30)
+
+        assert "secretvalue" not in head
+        assert len(head) <= 30
 
     def test_a_credential_straddling_the_tail_cut_is_still_masked(self) -> None:
         """Masking runs before the cut, so half a secret cannot survive it."""

@@ -489,19 +489,31 @@ def caching_finding(records: Sequence[CostRecord]) -> WiringFinding:
     zero on every call, exactly as one that never hit would, and the two
     cannot be told apart from here.
 
+    The first call is not evidence. A cached read on it can be a prefix an
+    earlier cell left in the provider's cache, which proves nothing about
+    this cell reusing its own; only a later call reading a prefix this cell
+    could have written says the treatment is on the wire.
+
     Returns:
         The finding.
     """
-    cached = [record for record in records if record.cache_read_input_tokens > 0]
+    cached = [
+        record
+        for index, record in enumerate(records)
+        if index > 0 and record.cache_read_input_tokens > 0
+    ]
     if not records:
         observed, passed = "no call was recorded", None
     elif cached:
-        observed = f"{len(cached)} of {len(records)} calls read a cached prefix"
+        observed = (
+            f"{len(cached)} of {len(records) - 1} calls after the first read a "
+            f"cached prefix"
+        )
         passed = True
     else:
         observed = (
-            f"none of {len(records)} calls reported cached tokens; the provider "
-            f"may not publish them"
+            f"no call after the first of {len(records)} reported cached tokens; "
+            f"the provider may not publish them"
         )
         passed = None
     return WiringFinding(

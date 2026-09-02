@@ -11,6 +11,13 @@ You are running in **OpenCode**, not Claude Code. Apply these overrides:
 This skill spawns no Task subagents: the experimenter drives the sweep
 personally and reads its journal back. No subagent-type mapping is needed.
 
+### Spend confirmation
+
+OpenCode has no `AskUserQuestion` tool. Where the skill asks the operator to
+confirm the spend, put the projected session floor and the hard ceiling in a
+plain chat message and wait for an explicit yes before running the smoke or
+record command. No answer is not consent.
+
 ### Shell compatibility
 
 This runs on Windows with PowerShell. `make`, `docker` and `git` behave the

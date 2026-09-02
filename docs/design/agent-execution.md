@@ -720,13 +720,17 @@ sorted per-turn for order-independent comparison.
 
 ### Configuration (`StagnationConfig`)
 
+The tuning of the detector `engine.stagnation_strategy` selected (the system
+default is `tool_repetition`). There is no `enabled` field: whether detection
+runs is the strategy setting's decision alone.
+
 | Field                  | Default | Description                                       |
 |------------------------|---------|---------------------------------------------------|
-| `enabled`              | `True`  | Per-detector switch within `StagnationConfig`; only consulted once `strategy: tool_repetition` selects this detector (the system default is `strategy: off`, no detector) |
 | `window_size`          | `5`     | Number of recent tool-bearing turns to analyse     |
 | `repetition_threshold` | `0.6`   | Duplicate ratio that triggers detection            |
 | `cycle_detection`      | `True`  | Whether to detect repeating patterns               |
 | `max_corrections`      | `1`     | Corrective prompts before terminating (0 = none)   |
+| `min_tool_turns`       | `2`     | Tool-bearing turns in the window before any check fires; never above `window_size` |
 | `min_tool_turns`       | `2`     | Minimum tool-bearing turns before any check fires  |
 
 ### Intervention Flow
