@@ -493,6 +493,7 @@ class TestTheRecordingIsGated:
         write_wiring_report(written, smoke_dir(tmp_path))
         loaded = load_wiring_report(smoke_dir(tmp_path))
 
+        assert loaded is not None
         assert loaded == written
         assert loaded.passed is True
         assert loaded.unverified == ("prompt caching",)
