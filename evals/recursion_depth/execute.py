@@ -392,7 +392,7 @@ async def run_leaf(
         compaction_tokens=spent.compaction_tokens,
         compaction_cost=spent.compaction_cost,
         verdict=review.verdict,
-        parked=review.task_status == TaskStatus.BLOCKED.value,
+        parked=review.task_status in _PARKED,
         task_status=review.task_status,
     )
 
@@ -441,14 +441,23 @@ async def _reviewed(deps: SweepDeps, task: Task) -> LeafReview:
     return review
 
 
+#: Statuses in which the product's review path has parked the row on a
+#: question nobody in a sweep can answer: an escalated review, an unstaffed
+#: gate role, or a spent turn budget waiting for an operator to grant more.
+#: A park keeps the workspace, so the tree is still graded; what it is not is
+#: a delivery the product signed off.
+_PARKED: Final[frozenset[str]] = frozenset(
+    {TaskStatus.BLOCKED.value, TaskStatus.AWAITING_INPUT.value}
+)
+
 #: Statuses the product's post-execution path leaves a row in once it has
 #: DECIDED the run: a resume against any of these is refused at the entry hop.
 _HOST_SETTLED: Final[frozenset[str]] = frozenset(
     {
         TaskStatus.FAILED.value,
-        TaskStatus.BLOCKED.value,
         TaskStatus.IN_REVIEW.value,
         TaskStatus.COMPLETED.value,
+        *_PARKED,
     }
 )
 

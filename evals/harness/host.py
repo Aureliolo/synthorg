@@ -107,10 +107,6 @@ _GATEWAY_PATH: Final[str] = "/api/v1/gateway/v1"
 #: the wiring gives the sidecar this alias and nothing else resolves.
 DEFAULT_CONTAINER_HOST: Final[str] = "host.docker.internal"
 
-#: Turn extensions granted during a recording. Zero, so a brief's declared
-#: ceiling is the budget every cell was actually scored against.
-_NO_TURN_EXTENSIONS: Final[int] = 0
-
 #: ``providers.gateway_enabled`` ships off, so the first stored ``true`` is the
 #: write that opens the egress and takes the confirm+reason+actor guardrail.
 #: Starting a recording IS that deliberate act: the operator running the sweep
@@ -906,12 +902,15 @@ class RecordingGatewayHost:
         merely unrouted. It is set here rather than left to an operator so a
         recording cannot silently measure nothing.
 
-        The turn-extension allowance is zeroed so a brief's declared ceiling is
-        the real one. A run that earns further turn budgets while it is still
-        calling tools runs past the ceiling its cell was scored against:
-        measured, 7 of 27 sessions did, one of them by 3.8x. Extensions are a
-        production behaviour; a matrix that lets some cells take them and not
-        others is comparing runs on different budgets.
+        The turn-extension allowance is deliberately NOT written. It was once
+        zeroed so a brief's declared ceiling was the budget every cell was
+        scored against, which made cells comparable by measuring a loop the
+        product does not ship: on the shipped loop a run still calling tools
+        earns further budgets and then PARKS with its workspace intact, and
+        with the allowance zeroed five of eight live leaves ended at exactly
+        their base budget as hard failures, tree discarded and nothing asked.
+        What keeps cells comparable is the token ceiling every session
+        carries, which is the bound the manifest names as the real one.
         """
         settings = settings_service_of(self.app_state)
         await settings.set(
@@ -920,7 +919,6 @@ class RecordingGatewayHost:
             "true",
             governance=_RECORDING_GATEWAY_GOVERNANCE,
         )
-        await settings.set("engine", "max_turn_extensions", str(_NO_TURN_EXTENSIONS))
         # The runtime services rebuild on this write, and the peer-review gate
         # that judges every filed unit exists only in a runtime built past the
         # coordinator: see ``RecordingHostConfig.coordination_pair``.

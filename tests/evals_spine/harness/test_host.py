@@ -29,6 +29,7 @@ from evals.harness.host import (
 )
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.loop_budget_defaults import DEFAULT_MAX_TURN_EXTENSIONS
 from synthorg.llm.gateway_binding import mint_run_token
 from synthorg.llm.gateway_token import GatewaySigner
 from synthorg.persistence.state import persistence_of
@@ -213,6 +214,19 @@ class TestEndpointSettings:
         published = await resolver.get_str("coordination", "decomposition_model")
 
         assert published == serialize_model_ref(recording_pair())
+
+    async def test_turn_extensions_are_the_products_own(
+        self, host: RecordingGatewayHost
+    ) -> None:
+        # Zeroed, a run still calling tools ended at its base budget as a hard
+        # failure with nothing asked; the shipped loop earns further budgets
+        # and parks. A recording that is measuring the product runs its
+        # allowance, and the token ceiling is what keeps cells comparable.
+        resolver = config_resolver_of(host.app_state)
+
+        allowance = await resolver.get_int("engine", "max_turn_extensions")
+
+        assert allowance == DEFAULT_MAX_TURN_EXTENSIONS
 
     async def test_container_urls_address_the_docker_host_alias(
         self, host: RecordingGatewayHost

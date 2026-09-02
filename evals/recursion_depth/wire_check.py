@@ -327,10 +327,16 @@ def leaf_review_finding(review: LeafReview | None) -> WiringFinding:
 
 
 # Statuses the post-execution path assigns WITHOUT offering the run to review:
-# a run that hit its turn cap, budget or stagnation is FAILED, and a park at
-# entry (stakes nobody on the roster can take) is BLOCKED before any turn.
+# a run that hit its budget or stagnation is FAILED, a park at entry (stakes
+# nobody on the roster can take) is BLOCKED before any turn, and a run that
+# spent its turn budget and every extension parks AWAITING_INPUT for an
+# operator to grant more, which a sweep has nobody to do.
 _NEVER_OFFERED_FOR_REVIEW: Final[frozenset[str]] = frozenset(
-    {TaskStatus.FAILED.value, TaskStatus.BLOCKED.value}
+    {
+        TaskStatus.FAILED.value,
+        TaskStatus.BLOCKED.value,
+        TaskStatus.AWAITING_INPUT.value,
+    }
 )
 
 

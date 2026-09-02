@@ -284,11 +284,16 @@ compaction:
 # rather than a looseness introduced here: a run that used a tool in the budget
 # it just spent earns another budget of the same size, up to
 # `engine.max_turn_extensions` times, so the effective cap is this number times
-# one plus that allowance. Measuring the product means inheriting that, so the
-# bound that actually stops a unit running away is the token ceiling below, and
-# it is set with that job in mind. A live run put 52 turns and 1.58M tokens
-# into one leaf that delivered nothing.
-unit_max_turns: 40
+# one plus that allowance, and a run that spends the lot PARKS with its tree
+# intact rather than failing. Measuring the product means inheriting that, so
+# the bound that actually stops a unit running away is the token ceiling
+# below, and it is set with that job in mind. The recording host once zeroed
+# the allowance to make cells comparable on turns, and under that regime five
+# of eight live leaves ended at exactly 40 turns as hard failures, 0.45M to
+# 1.15M tokens each, nowhere near their ceilings: the harness was the bound,
+# not the product. Eighty now, so a leaf that is working has room before it
+# earns its first extension at all.
+unit_max_turns: 80
 # The planning session's own budget, separate because a planner writes a plan
 # and a unit builds software: the two need different amounts of room, and the
 # shipped decomposition config refuses anything above 50, so a shared value
@@ -358,8 +363,10 @@ unit_token_cap: 4000000
 # behaviour, so it needs less room than a leaf; it declares every module the
 # plan named and one failing test per requirement, so it needs more breadth
 # than any one of them. Turns matter more than tokens here because the work is
-# many small files rather than one hard problem.
-contract_max_turns: 60
+# many small files rather than one hard problem: a live contract session wrote
+# 25 files in 60 turns and was cut off before the contract document itself,
+# so the units it seeded read as built against nothing.
+contract_max_turns: 120
 contract_token_ceiling: 2500000
 # A merge must read every child before it can write one line; a leaf reads
 # nothing. Sizing both off `unit_token_ceiling` is what starved the recording

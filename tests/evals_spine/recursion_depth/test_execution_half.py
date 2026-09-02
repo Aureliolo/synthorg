@@ -2884,6 +2884,50 @@ class TestLeafReview:
         assert len(ran) == 2
         assert outcome.attempts == 2
 
+    async def test_a_run_parked_out_of_turns_is_a_park_not_a_resume(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A run that spent its budget and every extension parks AWAITING_INPUT
+        # with its tree intact, asking an operator for more. A sweep has
+        # nobody to answer, so the leaf is recorded parked: not delivered, not
+        # resumed, and never a second attempt against a row the host holds.
+        ran: list[Task] = []
+        workspace = _workspace(tmp_path, "leaf")
+
+        async def _file(_task: Task) -> None:
+            pass
+
+        async def _read(_task_id: str) -> LeafReview:
+            return LeafReview(task_status="awaiting_input", verdict=None)
+
+        async def _scripted(
+            _deps_arg: SweepDeps, *, task: Task, **_rest: object
+        ) -> SessionOutcome:
+            ran.append(task)
+            (workspace.project_dir / "src").mkdir(parents=True, exist_ok=True)
+            (workspace.project_dir / "src" / "unit.py").write_text(
+                "half the work", encoding="utf-8"
+            )
+            return SessionOutcome(cost=0.5, tokens=1200, turns=160, termination="error")
+
+        monkeypatch.setattr(execute_module, "run_session", _scripted)
+        deps = replace(_deps(), file_task=_file, read_review=_read)
+
+        outcome = await run_leaf(
+            deps,
+            task=self._task(),
+            owner=_identity("Builder"),
+            workspace=workspace,
+            execution_id="d1-gated-r0-leaf",
+            limits=SessionLimits(max_turns=40, cost_ceiling=5.0, token_ceiling=100_000),
+        )
+
+        assert len(ran) == 1
+        assert outcome.parked is True
+        assert outcome.task_status == "awaiting_input"
+        # The tree it left is still evidence: a park keeps the workspace.
+        assert outcome.produced is True
+
     async def test_the_task_is_filed_assigned_to_its_owner_before_the_session(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

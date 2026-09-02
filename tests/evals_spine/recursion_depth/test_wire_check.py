@@ -665,6 +665,16 @@ class TestLeafReviewFinding:
 
         assert finding.passed is None
 
+    def test_a_leaf_parked_out_of_turns_is_unverified(self) -> None:
+        # Every extension spent, the run parks for an operator to grant more
+        # rather than failing; the pipeline was never asked, so nothing here
+        # says whether it is wired.
+        finding = leaf_review_finding(
+            LeafReview(task_status="awaiting_input", verdict=None)
+        )
+
+        assert finding.passed is None
+
     def test_a_completed_leaf_with_no_verdict_still_fails(self) -> None:
         # Completed means the pipeline WAS asked, so no verdict is its absence.
         finding = leaf_review_finding(LeafReview(task_status="in_review", verdict=None))
