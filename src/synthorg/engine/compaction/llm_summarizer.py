@@ -11,6 +11,8 @@ silent.
 
 from typing import Final, Protocol, runtime_checkable
 
+from pydantic import BaseModel, ConfigDict
+
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.core.critical_errors import reraise_critical
@@ -21,6 +23,9 @@ from synthorg.engine.prompt_safety import (
     untrusted_content_directive,
     wrap_untrusted,
 )
+from synthorg.llm.metadata import ModelPinMetadata
+from synthorg.llm.model_pins import pin_for
+from synthorg.llm.prompt_purpose import PromptPurposeId
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.context_budget import (
     CONTEXT_BUDGET_COMPACTION_LLM_COMPLETED,
@@ -29,7 +34,13 @@ from synthorg.observability.events.context_budget import (
 )
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage, CompletionConfig, CompletionResponse
+from synthorg.providers.models import (
+    ZERO_TOKEN_USAGE,
+    ChatMessage,
+    CompletionConfig,
+    CompletionResponse,
+    TokenUsage,
+)
 
 logger = get_logger(__name__)
 
@@ -54,9 +65,32 @@ _PRESERVE_MARKERS_INSTRUCTION = (
 
 # Mirror ``CompactionConfig.llm_summary_{temperature,max_tokens}`` so a
 # directly-constructed summariser matches the wired path, which sources
-# these from the compaction domain config (workers/_engine_assembly.py).
+# these from the compaction domain config (workers/engine_assembly.py).
 _DEFAULT_TEMPERATURE: Final[float] = 0.3
 _DEFAULT_MAX_TOKENS: Final[int] = 500
+
+
+class SummaryOutcome(BaseModel):
+    """What one summarisation attempt produced, and what it cost.
+
+    The spend is reported rather than inferred. Compaction buys context back
+    by spending tokens, so a run's compaction bill is the only thing that
+    says whether the trade paid; blended into the run's own total it is
+    unreadable. ``usage`` is the driver's own figure for this call, read
+    rather than recomputed, so it agrees with the ``CostRecord`` the same
+    call emitted under the compaction prompt purpose.
+
+    Attributes:
+        text: The summary to splice into the conversation. On any failure
+            this is the caller's fallback text.
+        usage: Tokens and cost for the call. Zero when no call was made,
+            which is what a fallback is.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    text: str
+    usage: TokenUsage
 
 
 @runtime_checkable
@@ -92,6 +126,17 @@ class LLMSummarizer:
             recording a no-op).
     """
 
+    _PURPOSE_ID: Final[PromptPurposeId] = PromptPurposeId.COMPACTION_SUMMARY
+
+    @property
+    def metadata(self) -> ModelPinMetadata:
+        """Return the model pin for this prompt class.
+
+        Returns:
+            The pin the drift benchmark and cost attribution both read.
+        """
+        return pin_for(self._PURPOSE_ID)
+
     def __init__(
         self,
         *,
@@ -115,7 +160,7 @@ class LLMSummarizer:
         *,
         fallback_text: str,
         preserve_markers: bool = False,
-    ) -> str:
+    ) -> SummaryOutcome:
         """Summarise the archived batch, falling back to ``fallback_text``.
 
         The run id (used for log correlation AND the cost-record
@@ -132,8 +177,9 @@ class LLMSummarizer:
                 the text-only summariser.
 
         Returns:
-            The LLM summary text, or ``fallback_text`` when the provider
-            yields no content or raises a non-critical error.
+            The summary and what it cost. The text is ``fallback_text`` when
+            the provider yields no content or raises a non-critical error;
+            the usage is the call's own, and zero only when no call was made.
         """
         transcript = _build_transcript(archivable)
         if not transcript:
@@ -142,7 +188,7 @@ class LLMSummarizer:
                 reason="empty_transcript",
                 archived_count=len(archivable),
             )
-            return fallback_text
+            return SummaryOutcome(text=fallback_text, usage=ZERO_TOKEN_USAGE)
         identity = current_execution_identity()
         execution_id = (
             identity.execution_id if identity is not None else NotBlankStr("unknown")
@@ -163,8 +209,12 @@ class LLMSummarizer:
         try:
             async with cost_recording_scope(
                 cost_tracker=self._cost_tracker,
-                # Context-budget compaction is not a registered prompt class.
-                purpose=None,
+                purpose=self._PURPOSE_ID,
+                # Framework overhead, like every other call the loop makes on
+                # its own behalf. What separates compaction from its siblings
+                # in the analytics is the PURPOSE, which is the axis the
+                # prompt-class breakdown already slices on; a sixth category
+                # would be a second answer to the same question.
                 call_category=LLMCallCategory.SYSTEM,
             ):
                 response = await self._provider.complete(
@@ -180,7 +230,7 @@ class LLMSummarizer:
                 error_type=type(exc).__name__,
                 error=safe_error_description(exc),
             )
-            return fallback_text
+            return SummaryOutcome(text=fallback_text, usage=ZERO_TOKEN_USAGE)
         content = (response.content or "").strip()
         if not content:
             logger.warning(
@@ -188,13 +238,17 @@ class LLMSummarizer:
                 execution_id=execution_id,
                 reason="empty_content",
             )
-            return fallback_text
+            # The call happened and was billed, so its usage is reported even
+            # though the fallback text is what gets spliced: a compaction that
+            # paid for nothing is exactly the case the spend column exists to
+            # make visible.
+            return SummaryOutcome(text=fallback_text, usage=response.usage)
         logger.info(
             CONTEXT_BUDGET_COMPACTION_LLM_COMPLETED,
             execution_id=execution_id,
             summary_chars=len(content),
         )
-        return content
+        return SummaryOutcome(text=content, usage=response.usage)
 
 
 def _build_transcript(messages: tuple[ChatMessage, ...]) -> str:

@@ -6434,12 +6434,20 @@ export type components = {
                 string,
                 number
             ])[];
-            /** @description Calls with cache_hit=True. */
-            readonly cache_hit_count: number;
-            /** @description Fraction of cache-reporting calls that were cache hits, or None when no records carry cache hit data. */
-            readonly cache_hit_rate: number | null;
+            /**
+             * @description Share of all input tokens the prompt cache served.
+             *
+             *     Returns:
+             *         The share in ``[0, 1]``, or ``None`` when the calls carried no
+             *         input tokens, since a share of nothing is not zero.
+             */
+            readonly cached_input_share: number | null;
+            /** @description Input tokens served from the prompt cache, summed. */
+            readonly cached_input_tokens: number;
             /** @description Calls with success=False. */
             readonly failure_count: number;
+            /** @description Input tokens over every call. */
+            readonly input_tokens: number;
             readonly orchestration_ratio: components["schemas"]["OrchestrationRatio"];
             /** @description 95th-percentile latency in ms, or None when no latency data. */
             readonly p95_latency_ms: number | null;
@@ -9478,18 +9486,18 @@ export type components = {
         };
         /** CompletionOracleReport */
         readonly CompletionOracleReport: {
+            /** @default false */
+            readonly build_evidence_cited: boolean;
             readonly execution_id: string;
             readonly executor_agent_id: string;
             /** @default [] */
             readonly findings: readonly components["schemas"]["CompletionOracleFinding"][];
-            /** @default false */
-            readonly ran_build: boolean;
-            /** @default false */
-            readonly ran_tests: boolean;
             readonly reviewer_agent_id: string | null;
             readonly summary: string;
             readonly task_id: string;
             readonly test_command: string | null;
+            /** @default false */
+            readonly test_evidence_cited: boolean;
             readonly verdict: components["schemas"]["CompletionOracleVerdict"];
         };
         /** CompletionOracleReportRecord */
@@ -9878,8 +9886,16 @@ export type components = {
             /** @description Owning agent; None for work no agent owns */
             readonly agent_id: string | null;
             readonly billing_model: components["schemas"]["BillingModel"];
-            /** @description Whether the provider served this call from cache */
-            readonly cache_hit: boolean | null;
+            /**
+             * @description Input tokens the provider served from a cached prompt prefix. A count, because the bill is proportional to it; zero when the provider reported no cache data, which is also what a miss is
+             * @default 0
+             */
+            readonly cache_read_input_tokens: number;
+            /**
+             * @description Input tokens the provider wrote into its prompt cache
+             * @default 0
+             */
+            readonly cache_write_input_tokens: number;
             /**
              * @description LLM call category (productive, coordination, system, embedding, image_generation)
              * @enum {string|null}
@@ -14989,8 +15005,16 @@ export type components = {
         readonly PromptClassBreakdownRow: {
             /** @description Mean latency in ms, or None. */
             readonly avg_latency_ms: number | null;
-            /** @description Cache-hit fraction over cache-reporting calls, or None. */
-            readonly cache_hit_rate: number | null;
+            /**
+             * @description Share of the class's input tokens the prompt cache served.
+             *
+             *     Returns:
+             *         The share in ``[0, 1]``, or ``None`` when the class carried no
+             *         input tokens.
+             */
+            readonly cached_input_share: number | null;
+            /** @description Input tokens served from the prompt cache, summed. */
+            readonly cached_input_tokens: number;
             /** @description Records for this class (a row aggregates at least one). */
             readonly call_count: number;
             /**

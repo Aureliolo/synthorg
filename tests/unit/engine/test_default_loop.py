@@ -12,7 +12,7 @@ rebuild naming its fields at the call site drops whichever control is added
 next.
 """
 
-import inspect
+from dataclasses import replace
 from typing import cast, override
 
 import pytest
@@ -31,9 +31,17 @@ from synthorg.engine.quality.classifier import StepQualityClassifier
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.engine.stagnation.protocol import StagnationDetector
 from synthorg.security.autonomy.enums import ToolCategory
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.registry import ToolRegistry
-from tests._shared import FakeClock, mock_of
+from tests._shared import (
+    UNWIRED_LOOP_CONTROLS,
+    FakeClock,
+    engine_with,
+    mock_of,
+    unwired_core,
+    unwired_governance,
+)
 from tests._shared.scripted_provider import ScriptedProvider
 
 pytestmark = pytest.mark.unit
@@ -73,18 +81,28 @@ def _controls() -> dict[str, object]:
 
 
 def _engine(controls: dict[str, object]) -> AgentEngine:
-    return AgentEngine(
-        provider=ScriptedProvider([]),
-        tool_registry=ToolRegistry(
-            [_StubTool(name="stub", category=ToolCategory.OTHER)]
+    return engine_with(
+        ScriptedProvider([]),
+        core=replace(
+            unwired_core(ScriptedProvider([])),
+            tool_registry=ToolRegistry(
+                [_StubTool(name="stub", category=ToolCategory.OTHER)]
+            ),
         ),
-        approval_store=ApprovalStore(),
-        stagnation_detector=cast("StagnationDetector", controls["stagnation_detector"]),
-        step_classifier=cast("StepQualityClassifier", controls["step_classifier"]),
-        steering_inbox=cast("SteeringInbox", controls["steering_inbox"]),
-        compaction_callback=cast("CompactionCallback", controls["compaction_callback"]),
-        background_job_watcher=cast(
-            "BackgroundJobWatcher", controls["background_job_watcher"]
+        governance=replace(unwired_governance(), approval_store=ApprovalStore()),
+        loop_controls=replace(
+            UNWIRED_LOOP_CONTROLS,
+            stagnation_detector=cast(
+                "StagnationDetector", controls["stagnation_detector"]
+            ),
+            step_classifier=cast("StepQualityClassifier", controls["step_classifier"]),
+            steering_inbox=cast("SteeringInbox", controls["steering_inbox"]),
+            compaction_callback=cast(
+                "CompactionCallback", controls["compaction_callback"]
+            ),
+            background_job_watcher=cast(
+                "BackgroundJobWatcher", controls["background_job_watcher"]
+            ),
         ),
     )
 
@@ -118,14 +136,20 @@ class TestEngineDefaultLoop:
     def test_no_gate_when_no_approval_store(self) -> None:
         """Without a store there is nothing to park against, so no gate."""
         controls = _controls()
-        engine = AgentEngine(
-            provider=ScriptedProvider([]),
-            tool_registry=ToolRegistry(
-                [_StubTool(name="stub", category=ToolCategory.OTHER)]
+        engine = engine_with(
+            ScriptedProvider([]),
+            core=replace(
+                unwired_core(ScriptedProvider([])),
+                tool_registry=ToolRegistry(
+                    [_StubTool(name="stub", category=ToolCategory.OTHER)]
+                ),
             ),
-            approval_store=None,
-            stagnation_detector=cast(
-                "StagnationDetector", controls["stagnation_detector"]
+            governance=replace(unwired_governance(), approval_store=None),
+            loop_controls=replace(
+                UNWIRED_LOOP_CONTROLS,
+                stagnation_detector=cast(
+                    "StagnationDetector", controls["stagnation_detector"]
+                ),
             ),
         )
         loop = engine._loop
@@ -139,6 +163,7 @@ class TestCheckpointRebuild:
         observer = _observe
         clock = FakeClock()
         gate = mock_of[ApprovalGate]()
+        resolver = mock_of[ConfigResolver]()
         original = ReactLoop(
             approval_gate=cast("ApprovalGate", gate),
             stagnation_detector=cast(
@@ -154,6 +179,7 @@ class TestCheckpointRebuild:
             background_job_watcher=cast(
                 "BackgroundJobWatcher", controls["background_job_watcher"]
             ),
+            config_resolver=cast("ConfigResolver", resolver),
         )
 
         async def _callback(ctx: AgentContext) -> None:
@@ -177,6 +203,9 @@ class TestCheckpointRebuild:
         assert rebuilt._turn_observer is observer
         assert rebuilt._clock is clock
         assert rebuilt.background_job_watcher is controls["background_job_watcher"]
+        # A real sentinel for the same reason as the gate: a ``None`` on both
+        # sides reads identically whether or not the rebuild carried it.
+        assert rebuilt._config_resolver is resolver
 
     def test_every_constructor_field_survives_a_rebuild(self) -> None:
         """Derived from the signature, so a field added later is covered.
@@ -201,6 +230,7 @@ class TestCheckpointRebuild:
             background_job_watcher=cast(
                 "BackgroundJobWatcher", mock_of[BackgroundJobWatcher]()
             ),
+            config_resolver=cast("ConfigResolver", mock_of[ConfigResolver]()),
         )
 
         async def _callback(ctx: AgentContext) -> None:
@@ -210,15 +240,17 @@ class TestCheckpointRebuild:
             cast("CheckpointCallback", _callback)
         )
 
-        carried = [
-            name
-            for name in inspect.signature(ReactLoop.__init__).parameters
-            if name not in {"self", "checkpoint_callback"}
-        ]
-        assert carried, "signature introspection found no controls to check"
+        carried = sorted(
+            LoopControls.__required_keys__ | LoopControls.__optional_keys__
+        )
+        assert carried, "the controls type declares no controls to check"
         for name in carried:
             attribute = f"_{name}"
-            assert getattr(rebuilt, attribute) is getattr(original, attribute), name
+            before = getattr(original, attribute)
+            # Every control is a real sentinel above, so an identity match
+            # here means it was carried rather than that both sides are None.
+            assert before is not None, name
+            assert getattr(rebuilt, attribute) is before, name
 
     def test_a_specialised_loop_rebuilds_as_itself(self) -> None:
         """A loop the engine did not build survives the resume rebuild.

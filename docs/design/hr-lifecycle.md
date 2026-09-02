@@ -446,7 +446,7 @@ evolution:
 !!! note "Runtime wiring status"
     The evolution config, service, and factory are implemented and wired:
     ``build_evolution_service()`` is called from the worker engine assembly
-    (``workers/_engine_assembly.py``). Runtime evolution management has no REST
+    (``workers/engine_assembly.py``). Runtime evolution management has no REST
     API or dashboard UI; it is configured in the application code that wires the
     service.
 

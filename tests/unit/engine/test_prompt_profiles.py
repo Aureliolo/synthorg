@@ -25,7 +25,6 @@ class TestPromptProfile:
 
         assert profile.capability == "expert"
         assert profile.include_org_policies is True
-        assert profile.simplify_acceptance_criteria is False
         assert profile.autonomy_detail_level == "full"
 
     def test_standard_profile_has_reduced_settings(self) -> None:
@@ -34,7 +33,6 @@ class TestPromptProfile:
 
         assert profile.capability == "capable"
         assert profile.include_org_policies is True
-        assert profile.simplify_acceptance_criteria is False
         assert profile.autonomy_detail_level == "summary"
 
     def test_basic_profile_has_minimal_settings(self) -> None:
@@ -43,7 +41,6 @@ class TestPromptProfile:
 
         assert profile.capability == "basic"
         assert profile.include_org_policies is False
-        assert profile.simplify_acceptance_criteria is True
         assert profile.autonomy_detail_level == "minimal"
 
     def test_profile_is_frozen(self) -> None:

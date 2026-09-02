@@ -15,7 +15,14 @@ from pydantic import JsonValue
 
 from synthorg.core.completion_enums import FinishReason
 from synthorg.engine.context import AgentContext
-from synthorg.engine.loop_tool_execution import execute_tool_calls
+from synthorg.engine.loop_tool_execution import (
+    ToolTurnControls,
+    execute_tool_calls,
+)
+from synthorg.engine.loop_tool_output_budget import (
+    DEFAULT_TOOL_OUTPUT_MAX_CHARS,
+    MIN_TOOL_OUTPUT_MAX_CHARS,
+)
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
     ChatMessage,
@@ -77,6 +84,75 @@ def _invoker_returning(result: ToolExecutionResult) -> ToolInvoker:
     return ToolInvoker(ToolRegistry([_ScriptedShellCommandTool(result)]))
 
 
+def _watching(clock: FakeClock) -> ToolTurnControls:
+    """Controls for a turn that watches background jobs on *clock*."""
+    return ToolTurnControls(
+        clock=clock,
+        watch_background_jobs=True,
+        tool_output_max_chars=DEFAULT_TOOL_OUTPUT_MAX_CHARS,
+    )
+
+
+def _bounded(max_chars: int) -> ToolTurnControls:
+    """Controls for a turn whose results are capped at *max_chars*."""
+    return ToolTurnControls(
+        clock=FakeClock(),
+        watch_background_jobs=False,
+        tool_output_max_chars=max_chars,
+    )
+
+
+class TestToolOutputCeiling:
+    def test_a_ceiling_under_the_floor_is_refused_at_construction(self) -> None:
+        with pytest.raises(ValueError, match="tool_output_max_chars"):
+            _bounded(MIN_TOOL_OUTPUT_MAX_CHARS - 1)
+
+    @pytest.mark.parametrize("max_chars", [0, MIN_TOOL_OUTPUT_MAX_CHARS])
+    def test_no_ceiling_and_the_floor_itself_are_admitted(self, max_chars: int) -> None:
+        assert _bounded(max_chars).tool_output_max_chars == max_chars
+
+    async def test_an_oversized_result_is_abbreviated_before_it_is_fenced(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        response = _tool_use_response(background=False)
+        invoker = _invoker_returning(
+            ToolExecutionResult(content="x" * 5_000, is_error=False)
+        )
+
+        result = await execute_tool_calls(
+            ctx, invoker, response, 1, [], controls=_bounded(1_000)
+        )
+
+        assert isinstance(result, AgentContext)
+        tool_result = result.conversation[-1].tool_result
+        assert tool_result is not None
+        assert "characters elided" in tool_result.content
+        # The fence wraps the abbreviated bytes, so the marker sits inside it
+        # and the fence itself is never what gets cut.
+        assert tool_result.content.rstrip().endswith("</tool-result>")
+        assert len(tool_result.content) < 5_000
+
+    async def test_a_result_within_the_ceiling_is_left_whole(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        response = _tool_use_response(background=False)
+        invoker = _invoker_returning(
+            ToolExecutionResult(content="fits", is_error=False)
+        )
+
+        result = await execute_tool_calls(
+            ctx, invoker, response, 1, [], controls=_bounded(1_000)
+        )
+
+        assert isinstance(result, AgentContext)
+        tool_result = result.conversation[-1].tool_result
+        assert tool_result is not None
+        assert "fits" in tool_result.content
+        assert "elided" not in tool_result.content
+
+
 class TestBackgroundJobWatchCapture:
     async def test_captures_job_id_from_a_successful_background_call(
         self, sample_agent_context: AgentContext
@@ -89,7 +165,7 @@ class TestBackgroundJobWatchCapture:
         clock = FakeClock()
 
         result = await execute_tool_calls(
-            ctx, invoker, response, 1, [], clock=clock, watch_background_jobs=True
+            ctx, invoker, response, 1, [], controls=_watching(clock)
         )
 
         assert isinstance(result, AgentContext)
@@ -117,7 +193,7 @@ class TestBackgroundJobWatchCapture:
         )
 
         result = await execute_tool_calls(
-            ctx, invoker, response, 1, [], clock=FakeClock(), watch_background_jobs=True
+            ctx, invoker, response, 1, [], controls=_watching(FakeClock())
         )
 
         assert isinstance(result, AgentContext)
@@ -143,7 +219,7 @@ class TestBackgroundJobWatchCapture:
         )
 
         result = await execute_tool_calls(
-            ctx, invoker, response, 1, [], clock=FakeClock(), watch_background_jobs=True
+            ctx, invoker, response, 1, [], controls=_watching(FakeClock())
         )
 
         assert isinstance(result, AgentContext)
@@ -159,7 +235,7 @@ class TestBackgroundJobWatchCapture:
         )
 
         result = await execute_tool_calls(
-            ctx, invoker, response, 1, [], clock=FakeClock(), watch_background_jobs=True
+            ctx, invoker, response, 1, [], controls=_watching(FakeClock())
         )
 
         assert isinstance(result, AgentContext)
@@ -174,9 +250,7 @@ class TestBackgroundJobWatchCapture:
             ToolExecutionResult(content='{"job_id": "abc"}', is_error=False)
         )
 
-        result = await execute_tool_calls(
-            ctx, invoker, response, 1, [], clock=FakeClock()
-        )
+        result = await execute_tool_calls(ctx, invoker, response, 1, [])
 
         assert isinstance(result, AgentContext)
         assert result.background_job_watch.records == ()
@@ -193,7 +267,7 @@ class TestBackgroundJobWatchCapture:
         )
 
         result = await execute_tool_calls(
-            ctx, invoker, response, 1, [], clock=FakeClock(), watch_background_jobs=True
+            ctx, invoker, response, 1, [], controls=_watching(FakeClock())
         )
 
         assert isinstance(result, AgentContext)

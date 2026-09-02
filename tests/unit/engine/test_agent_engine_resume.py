@@ -6,6 +6,7 @@ decision continues the original run to a terminal result, and a
 parked context with no task is rejected.
 """
 
+from dataclasses import replace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -14,7 +15,6 @@ from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.agent_execute_request import AgentExecuteRequest
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError
@@ -22,7 +22,7 @@ from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.providers.enums import MessageRole
-from tests._shared import mock_of
+from tests._shared import UNWIRED_ORG, engine_with, mock_of
 
 from .conftest import MockCompletionProvider
 from .conftest import make_completion_response as _make_completion_response
@@ -43,7 +43,7 @@ class TestResumeParkedRun:
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         provider = mock_provider_factory([_make_completion_response()])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
         parked = AgentContext.from_identity(
             sample_agent,
             task=sample_task_with_criteria,
@@ -68,7 +68,7 @@ class TestResumeParkedRun:
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         provider = mock_provider_factory([_make_completion_response()])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
         parked = AgentContext.from_identity(
             sample_agent,
             task=sample_task_with_criteria,
@@ -103,7 +103,7 @@ class TestResumeParkedRun:
         un-awaited coroutine, which fails the ``isinstance`` check.
         """
         provider = mock_provider_factory([_make_completion_response()])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         async def _exhaust(_request: AgentExecuteRequest) -> AgentRunResult:
             msg = "monthly hard stop crossed"
@@ -141,7 +141,9 @@ class TestResumeParkedRun:
             get_task=AsyncMock(return_value=paused),
             transition_task=AsyncMock(return_value=(paused, TaskStatus.AWAITING_INPUT)),
         )
-        engine = AgentEngine(provider=provider, task_engine=task_engine)
+        engine = engine_with(
+            provider, org=replace(UNWIRED_ORG, task_engine=task_engine)
+        )
         parked = AgentContext.from_identity(
             sample_agent,
             task=sample_task_with_criteria,
@@ -173,7 +175,9 @@ class TestResumeParkedRun:
             get_task=AsyncMock(return_value=running),
             transition_task=AsyncMock(return_value=(running, TaskStatus.IN_PROGRESS)),
         )
-        engine = AgentEngine(provider=provider, task_engine=task_engine)
+        engine = engine_with(
+            provider, org=replace(UNWIRED_ORG, task_engine=task_engine)
+        )
         parked = AgentContext.from_identity(
             sample_agent,
             task=sample_task_with_criteria,
@@ -194,7 +198,7 @@ class TestResumeParkedRun:
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         provider = mock_provider_factory([_make_completion_response()])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
         # No task bound -> task_execution is None.
         parked = AgentContext.from_identity(sample_agent)
 

@@ -35,8 +35,12 @@ class StagnationReason(StrEnum):
 class StagnationConfig(BaseModel):
     """Configuration for stagnation detection.
 
+    Whether detection runs at all is
+    :attr:`StagnationDetectionConfig.strategy`'s decision and only its own: a
+    second switch here would let a detector be built, held and consulted while
+    silently answering nothing.
+
     Attributes:
-        enabled: Whether stagnation detection is active.
         window_size: Number of recent tool-bearing turns to analyze.
         repetition_threshold: Excess-duplicate ratio that triggers
             detection.  Lower values are more sensitive.  ``0.0``
@@ -53,10 +57,6 @@ class StagnationConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
 
-    enabled: bool = Field(
-        default=True,
-        description="Whether stagnation detection is active",
-    )
     window_size: int = Field(
         default=5,
         ge=2,

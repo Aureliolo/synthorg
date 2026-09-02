@@ -2,7 +2,7 @@
 
 Both builders here degrade to a safe no-op when persistence is absent so a
 persistence-less dev boot (or an empty company) starts cleanly instead of
-crashing. They are threaded into ``_construct_agent_engine``.
+crashing. They are threaded into ``build_agent_engine``.
 """
 
 from collections.abc import Callable

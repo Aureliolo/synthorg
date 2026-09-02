@@ -12,6 +12,7 @@ from evals.errors import RecursionDepthJudgeNotIndependentError
 from evals.recursion_depth.claims import RequirementId
 from evals.recursion_depth.emit import derived_caveats, load_report, write_report
 from evals.recursion_depth.manifest import (
+    MINIMUM_REPETITIONS,
     Arm,
     Independence,
     ModelPair,
@@ -30,6 +31,7 @@ from evals.recursion_depth.models import (
     RecursionDepthReport,
     SpendSource,
     SurvivalPoint,
+    TokensPerSolvedPoint,
     UnitRecord,
 )
 from evals.recursion_depth.spend_repair import SPEND_REPAIRED_CAVEAT
@@ -72,6 +74,10 @@ def _manifest_payload(**overrides: object) -> dict[str, object]:
             "family": "example-family-a",
         },
         "independence": "same_family",
+        "embedder": {"provider": "example-provider", "model_id": "example-embed-001"},
+        "stagnation": {"strategy": "tool_repetition"},
+        "compaction": {"fill_threshold_percent": 80.0, "summariser": None},
+        "leaf_deep_claims": 4,
         "merge_attempts": 3,
         "unit_max_turns": 40,
         "planner_max_turns": 40,
@@ -348,18 +354,15 @@ class TestTheMatrixIsCoherent:
         manifest = load_manifest(_COMMITTED_MANIFEST)
 
         assert manifest.depths == (1, 2, 3, 4)
-        # Repetitions are concentrated where a cell is cheap. Every depth needs
-        # a population or it reports a point rather than a range, and cap 1
-        # earned its three: independently planned trees at that cap scored 37,
-        # 37 and 23 of 42. The deep end is bracketed rather than sampled,
-        # because one more cap-4 cell costs more than every cap-1 and cap-2
-        # cell in the matrix put together.
-        assert manifest.repetitions[1] == 3
-        assert manifest.repetitions[2] == 3
-        assert manifest.repetitions[3] == 2
-        assert manifest.repetitions[4] == 2
-        assert all(manifest.repetitions[depth] >= 2 for depth in manifest.depths)
-        assert manifest.planned_cells == 10
+        # Five at every cap, held by the loader: the benchmark protocol's five
+        # trials per task, below which a sample cannot say whether a low point
+        # is one bad tree or a real drop, which is the one question a repeated
+        # cap is paid to answer.
+        assert all(
+            manifest.repetitions[depth] == MINIMUM_REPETITIONS
+            for depth in manifest.depths
+        )
+        assert manifest.planned_cells == 4 * MINIMUM_REPETITIONS
         assert all(manifest.expected_sessions(depth) >= 1 for depth in manifest.depths)
 
     def test_the_shipped_manifest_names_no_vendor(self) -> None:
@@ -407,9 +410,9 @@ def _report(*, cells: tuple[CellRecord, ...]) -> RecursionDepthReport:
                 arm=Arm.GATED,
                 required=4,
                 satisfied=3,
-                # Set, not defaulted: `_cost_series` skips a point holding no
-                # runs, so a fixture leaving this at 0 renders no cost panel
-                # and every assertion about that panel passes on an empty one.
+                # Set, not defaulted: a point holding no runs has nothing to
+                # render, so a fixture leaving this at 0 asserts every claim
+                # about the spend columns against an empty table.
                 cells=1,
                 cost=1.5,
                 attempts=6,
@@ -444,6 +447,23 @@ def _report(*, cells: tuple[CellRecord, ...]) -> RecursionDepthReport:
         survival_by_depth_cap=(
             SurvivalPoint(
                 depth=2, arm=Arm.GATED, delivered_claims=4, surviving_claims=3, cells=1
+            ),
+        ),
+        # Set so the headline panel draws a line and a whisker: one arm
+        # carries an interval and the other none, which is the pair of shapes
+        # the renderer has to tell apart.
+        tokens_per_solved_by_achieved_depth=(
+            TokensPerSolvedPoint(
+                depth=2,
+                arm=Arm.GATED,
+                tokens=6000,
+                solved=3,
+                cells=3,
+                ci_low=1500.0,
+                ci_high=2500.0,
+            ),
+            TokensPerSolvedPoint(
+                depth=2, arm=Arm.UNGATED, tokens=6000, solved=1, cells=1
             ),
         ),
         # The key shape `achieved_depth_histogram` actually emits, arm
@@ -885,8 +905,9 @@ class TestTheReportNamesBothPartiesPerMerge:
         # off this table or nowhere.
         rendered = self._markdown(tmp_path)
 
-        # Columns: Arm, Merges, Sessions, Tokens, Judging, Spend,
-        # Parked escalations, Contract amendments. Judging is 0 here because
-        # these fixtures carry no reviewing spend of their own.
-        assert "| gated | 1 | 4 | 900 | 0 | 1.2500 | 0 | 2 |" in rendered
-        assert "| ungated | 1 | 4 | 900 | 0 | 1.2500 | 0 | 2 |" in rendered
+        # Columns: Arm, Merges, Sessions, Tokens, Judging, Compacting, Spend,
+        # Parked escalations, Contract amendments. Judging and Compacting are
+        # 0 here because these fixtures carry no reviewing or summarising
+        # spend of their own.
+        assert "| gated | 1 | 4 | 900 | 0 | 0 | 1.2500 | 0 | 2 |" in rendered
+        assert "| ungated | 1 | 4 | 900 | 0 | 0 | 1.2500 | 0 | 2 |" in rendered

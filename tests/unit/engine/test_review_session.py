@@ -118,12 +118,18 @@ class TestNarrowing:
             "some_future_external_tool", ToolCategory.EXTERNAL_DATA
         )
 
-    def test_reading_and_testing_the_deliverable_still_works(self) -> None:
-        """The narrowing keeps what judging actually rests on."""
+    def test_reading_the_deliverable_still_works_and_writing_does_not(self) -> None:
+        """The narrowing keeps what judging rests on and nothing that authors.
+
+        A judge that writes or runs a shell is authoring what it judges; the
+        recorded build and test runs reach it through the completion gates'
+        own record instead.
+        """
         session = as_review_session(_privileged_holder())
         permissions = ToolPermissionChecker.from_permissions(session.tools)
         assert permissions.is_permitted("read_file", ToolCategory.FILE_SYSTEM)
-        assert permissions.is_permitted("shell_command", ToolCategory.TERMINAL)
+        assert not permissions.is_permitted("write_file", ToolCategory.FILE_SYSTEM)
+        assert not permissions.is_permitted("shell_command", ToolCategory.TERMINAL)
 
     def test_the_roster_identity_is_untouched(self) -> None:
         holder = _privileged_holder()

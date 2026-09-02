@@ -37,12 +37,10 @@ from synthorg.core.company_handoffs import EscalationPath, WorkflowHandoff
 from synthorg.core.role import CustomRole
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.background_job_watch import BackgroundJobStalenessConfig
-from synthorg.engine.compaction.models import CompactionConfig
 from synthorg.engine.coordination.section_config import CoordinationSectionConfig
 from synthorg.engine.evolution.config import EvolutionConfig
 from synthorg.engine.recovery_config import EngineRecoveryConfig
 from synthorg.engine.routing_policy.config import CapabilityPolicyConfig
-from synthorg.engine.stagnation.models import StagnationDetectionConfig
 from synthorg.engine.strategy.models import StrategyConfig
 from synthorg.engine.task_engine_config import TaskEngineConfig
 from synthorg.engine.workflow.config import WorkflowConfig
@@ -129,7 +127,6 @@ class RootConfig(BaseModel):
         queue: Distributed task queue configuration (opt-in, requires
             a distributed bus backend such as NATS).
         coordination: Multi-agent coordination configuration.
-        stagnation: Intra-loop stagnation detection selector and sub-configs.
         background_job_staleness: Background-job stall-nudge threshold
             (off by default).
         strategy: Strategy and trendslop mitigation configuration.
@@ -280,14 +277,6 @@ class RootConfig(BaseModel):
         description="Multi-agent coordination configuration",
     )
     evolution: EvolutionConfig = Field(default_factory=EvolutionConfig)
-    compaction: CompactionConfig = Field(
-        default_factory=CompactionConfig,
-        description="Context compaction (oldest-turns summarisation) selector",
-    )
-    stagnation: StagnationDetectionConfig = Field(
-        default_factory=StagnationDetectionConfig,
-        description="Intra-loop stagnation detection selector and sub-configs",
-    )
     background_job_staleness: BackgroundJobStalenessConfig = Field(
         default_factory=BackgroundJobStalenessConfig,
         description="Background-job stall-nudge threshold (off by default)",

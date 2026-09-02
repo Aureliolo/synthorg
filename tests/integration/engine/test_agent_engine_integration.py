@@ -5,9 +5,9 @@ real ReactLoop, and a mock provider that returns tool calls.
 """
 
 from collections.abc import AsyncIterator, Mapping
+from dataclasses import replace
 from datetime import date
 from typing import override
-from uuid import uuid4
 
 import pytest
 
@@ -20,7 +20,6 @@ from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
 from synthorg.core.tool_constraints import ToolAccessLevel
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.providers.capabilities import ModelCapabilities
 from synthorg.providers.models import (
@@ -35,7 +34,7 @@ from synthorg.providers.models import (
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.registry import ToolRegistry
-from tests._shared import as_uuid
+from tests._shared import as_uuid, engine_with, unwired_core
 
 pytestmark = pytest.mark.integration
 
@@ -137,7 +136,7 @@ class TestAgentEngineToolCallIntegration:
     async def test_full_tool_call_loop(self) -> None:
         """Agent makes a tool call, gets result, produces final answer."""
         identity = AgentIdentity(
-            id=uuid4(),
+            id=as_uuid("agent-integration"),
             name="Test Agent",
             role="Developer",
             department="Engineering",
@@ -174,9 +173,8 @@ class TestAgentEngineToolCallIntegration:
         registry = ToolRegistry([tool])
         provider = _ToolCallingProvider()
 
-        engine = AgentEngine(
-            provider=provider,
-            tool_registry=registry,
+        engine = engine_with(
+            provider, core=replace(unwired_core(provider), tool_registry=registry)
         )
 
         result = await engine.run(
@@ -219,7 +217,7 @@ class TestAgentEngineFullLifecycle:
     async def test_full_lifecycle_assigned_to_in_review(self) -> None:
         """Verify lifecycle parks at IN_REVIEW (review gate)."""
         identity = AgentIdentity(
-            id=uuid4(),
+            id=as_uuid("agent-lifecycle"),
             name="Lifecycle Agent",
             role="Developer",
             department="Engineering",
@@ -259,9 +257,8 @@ class TestAgentEngineFullLifecycle:
         registry = ToolRegistry([tool])
         provider = _ToolCallingProvider()
 
-        engine = AgentEngine(
-            provider=provider,
-            tool_registry=registry,
+        engine = engine_with(
+            provider, core=replace(unwired_core(provider), tool_registry=registry)
         )
 
         result = await engine.run(
@@ -305,7 +302,7 @@ class TestPermissionDeniedToolCall:
     async def test_denied_tool_returns_permission_error(self) -> None:
         """Agent with SANDBOXED access gets denied for a DEPLOYMENT tool."""
         identity = AgentIdentity(
-            id=uuid4(),
+            id=as_uuid("agent-sandboxed"),
             name="Sandboxed Agent",
             role="Intern",
             department="Engineering",
@@ -349,9 +346,8 @@ class TestPermissionDeniedToolCall:
         registry = ToolRegistry([tool])
         provider = _ToolCallingProvider()
 
-        engine = AgentEngine(
-            provider=provider,
-            tool_registry=registry,
+        engine = engine_with(
+            provider, core=replace(unwired_core(provider), tool_registry=registry)
         )
 
         result = await engine.run(

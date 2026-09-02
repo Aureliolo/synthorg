@@ -38,9 +38,6 @@ class PromptProfile(BaseModel):
     Attributes:
         capability: The rung this profile targets.
         include_org_policies: Whether to include the org policies section.
-        simplify_acceptance_criteria: Whether to render acceptance
-            criteria as a flat semicolon-separated line instead of a
-            nested list.
         autonomy_detail_level: Level of detail for autonomy instructions
             (``"full"`` | ``"summary"`` | ``"minimal"``).
     """
@@ -51,10 +48,6 @@ class PromptProfile(BaseModel):
     include_org_policies: bool = Field(
         default=True,
         description="Whether to include org policies in prompt",
-    )
-    simplify_acceptance_criteria: bool = Field(
-        default=False,
-        description="Simplify acceptance criteria to flat list",
     )
     autonomy_detail_level: AutonomyDetailLevel = Field(
         default="full",
@@ -67,21 +60,18 @@ class PromptProfile(BaseModel):
 _FULL_PROFILE = PromptProfile(
     capability="expert",
     include_org_policies=True,
-    simplify_acceptance_criteria=False,
     autonomy_detail_level="full",
 )
 
 _STANDARD_PROFILE = PromptProfile(
     capability="capable",
     include_org_policies=True,
-    simplify_acceptance_criteria=False,
     autonomy_detail_level="summary",
 )
 
 _BASIC_PROFILE = PromptProfile(
     capability="basic",
     include_org_policies=False,
-    simplify_acceptance_criteria=True,
     autonomy_detail_level="minimal",
 )
 

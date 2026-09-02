@@ -18,6 +18,10 @@ EXECUTION_LOOP_START: Final[str] = "execution.loop.start"
 EXECUTION_LOOP_TURN_START: Final[str] = "execution.loop.turn_start"
 EXECUTION_LOOP_TURN_COMPLETE: Final[str] = "execution.loop.turn_complete"
 EXECUTION_LOOP_TOOL_CALLS: Final[str] = "execution.loop.tool_calls"
+EXECUTION_TOOL_OUTPUT_ABBREVIATED: Final[str] = "execution.tool_output.abbreviated"
+EXECUTION_TOOL_OUTPUT_CEILING_RAISED: Final[str] = (
+    "execution.tool_output.ceiling_raised"
+)
 EXECUTION_LOOP_TERMINATED: Final[str] = "execution.loop.terminated"
 EXECUTION_LOOP_EMPTY_RUN_NUDGED: Final[str] = "execution.loop.empty_run_nudged"
 EXECUTION_BACKGROUND_JOB_NUDGED: Final[str] = "execution.background_job.nudged"

@@ -14,12 +14,13 @@ import pytest
 if TYPE_CHECKING:
     from pathlib import Path
 
+from dataclasses import replace
+
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.agent import ModelConfig, ToolPermissions
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.tool_constraints import ToolAccessLevel
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_budget_defaults import DEFAULT_BUDGET_SIGNAL_TERMINAL_PERCENT
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.integrations.connections.catalog import ConnectionCatalog
@@ -30,7 +31,13 @@ from synthorg.providers.models import ToolCall
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.tools.file_system.write_file import WriteFileTool
 from synthorg.tools.registry import ToolRegistry
-from tests._shared import make_in_memory_catalog, mock_of
+from tests._shared import (
+    UNWIRED_BUDGET,
+    engine_with,
+    make_in_memory_catalog,
+    mock_of,
+    unwired_core,
+)
 
 from .conftest import (
     ScriptedProvider,
@@ -80,10 +87,10 @@ class TestFileToolAgent:
             ]
         )
 
-        engine = AgentEngine(
-            provider=provider,
-            tool_registry=registry,
-            cost_tracker=cost_tracker,
+        engine = engine_with(
+            provider,
+            core=replace(unwired_core(provider), tool_registry=registry),
+            budget=replace(UNWIRED_BUDGET, cost_tracker=cost_tracker),
         )
         result = await engine.run(
             identity=identity,
@@ -151,9 +158,8 @@ class TestTextOnlyAgent:
             ]
         )
 
-        engine = AgentEngine(
-            provider=provider,
-            cost_tracker=cost_tracker,
+        engine = engine_with(
+            provider, budget=replace(UNWIRED_BUDGET, cost_tracker=cost_tracker)
         )
         result = await engine.run(
             identity=identity,
@@ -239,10 +245,10 @@ class TestPermissionDeniedRecovery:
             ]
         )
 
-        engine = AgentEngine(
-            provider=provider,
-            tool_registry=registry,
-            cost_tracker=cost_tracker,
+        engine = engine_with(
+            provider,
+            core=replace(unwired_core(provider), tool_registry=registry),
+            budget=replace(UNWIRED_BUDGET, cost_tracker=cost_tracker),
         )
         result = await engine.run(
             identity=identity,
@@ -370,11 +376,14 @@ class TestMaxTurnsExhausted:
 
         provider = _writing_forever(2)
 
-        engine = AgentEngine(
-            provider=provider,
-            tool_registry=registry,
-            cost_tracker=cost_tracker,
-            config_resolver=_extensions(0),
+        engine = engine_with(
+            provider,
+            core=replace(
+                unwired_core(provider),
+                tool_registry=registry,
+                config_resolver=_extensions(0),
+            ),
+            budget=replace(UNWIRED_BUDGET, cost_tracker=cost_tracker),
         )
         result = await engine.run(
             identity=identity,
@@ -445,11 +454,14 @@ class TestMaxTurnsExhausted:
 
         provider = _writing_forever(8)
 
-        engine = AgentEngine(
-            provider=provider,
-            tool_registry=registry,
-            cost_tracker=cost_tracker,
-            config_resolver=_extensions(3),
+        engine = engine_with(
+            provider,
+            core=replace(
+                unwired_core(provider),
+                tool_registry=registry,
+                config_resolver=_extensions(3),
+            ),
+            budget=replace(UNWIRED_BUDGET, cost_tracker=cost_tracker),
         )
         result = await engine.run(
             identity=identity,
@@ -560,9 +572,8 @@ class TestRealLLMIntegration:
             description="Reply with the single word 'ack'.",
         )
 
-        engine = AgentEngine(
-            provider=provider,
-            cost_tracker=cost_tracker,
+        engine = engine_with(
+            provider, budget=replace(UNWIRED_BUDGET, cost_tracker=cost_tracker)
         )
         result = await engine.run(
             identity=identity,

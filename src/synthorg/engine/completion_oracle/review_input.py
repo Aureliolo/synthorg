@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.task_enums import Complexity, Stakes
 from synthorg.core.types import NotBlankStr
+from synthorg.persistence.code_execution_protocol import CodeExecutionRecord
 
 
 class CompletionOracleReviewInput(BaseModel):
@@ -46,6 +47,13 @@ class CompletionOracleReviewInput(BaseModel):
         token_ceiling: The same override, counted in tokens, applied via the
             transient review task's ``hard_token_ceiling``. ``None`` leaves
             token enforcement to the engine's own wiring.
+        verification_runs: The build, test, lint, format and dependency
+            runs the completion gates recorded for the reviewed execution,
+            newest first. The reviewer holds no shell and no code-execution
+            tool, so this is the ONLY evidence it can cite for a code
+            deliverable having built and tested green. Empty when nothing
+            was recorded, which the prompt tells the reviewer to read as
+            unverified rather than as passing.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -60,3 +68,4 @@ class CompletionOracleReviewInput(BaseModel):
     project_id: NotBlankStr | None = None
     max_turns: int | None = Field(default=None, ge=1)
     token_ceiling: int | None = Field(default=None, ge=0)
+    verification_runs: tuple[CodeExecutionRecord, ...] = ()

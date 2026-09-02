@@ -16,7 +16,10 @@ import pytest
 from evals.harness.binding import HarnessBinder
 from evals.harness.host import RecordingGatewayHost
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
-from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
+from synthorg.tools.sandbox.lifecycle.config import (
+    LifecycleStrategy,
+    SandboxLifecycleConfig,
+)
 from tests._shared import mock_of
 
 
@@ -153,7 +156,7 @@ def _arm_host(binder: HarnessBinder) -> None:
     # as the frozen properties they are. The mock is a plain attribute bag at
     # runtime; only the checker sees a model here.
     host.app_state.config.sandboxing.docker = DockerSandboxConfig(  # type: ignore[misc]
-        lifecycle=SandboxLifecycleConfig(strategy="per-call")
+        lifecycle=SandboxLifecycleConfig(strategy=LifecycleStrategy.PER_CALL)
     )
 
 

@@ -7,7 +7,7 @@ returns a boot-scoped runtime bundle only when its feature flag is on AND
 its bound surface is non-empty, else ``None`` (so the tools are not
 registered). Fail-open at distinct log levels so operators can tell a
 transient flag-resolution miss (WARNING) from a misconfigured-once-enabled
-feature (ERROR). Kept out of ``_engine_assembly`` so that orchestrator module
+feature (ERROR). Kept out of ``engine_assembly`` so that orchestrator module
 stays within its size budget.
 
 Forge and chat each bind ONE connection; deploy and publish bind an operator

@@ -1,7 +1,7 @@
 # module-kind: adapter
 """Background-shell-command boot wiring for engine assembly.
 
-Split out of ``_engine_assembly.py`` (which sits at its module-size
+Split out of ``engine_assembly.py`` (which sits at its module-size
 cap) rather than added there: the repository lookup, the two Shape-B
 settings reads, and the ``pin_check`` construction-order bind are one
 cohesive unit of "does this deployment have background shell commands

@@ -9,6 +9,7 @@ driver. The replay must reproduce the run byte-for-byte while making
 """
 
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from pathlib import Path
 from typing import override
 
@@ -17,7 +18,6 @@ import pytest
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task_enums import TaskStatus
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.providers.base import BaseCompletionProvider
@@ -41,6 +41,7 @@ from synthorg.providers.models import (
 )
 from synthorg.tools.file_system.write_file import WriteFileTool
 from synthorg.tools.registry import ToolRegistry
+from tests._shared import UNWIRED_BUDGET, engine_with, unwired_core
 
 from .conftest import e2e_tool_workspace, make_e2e_identity, make_e2e_task
 
@@ -133,10 +134,10 @@ async def _run_task(
         title="Create output file",
         description="Write 'Hello cassette' to output.txt.",
     )
-    engine = AgentEngine(
-        provider=provider,
-        tool_registry=registry,
-        cost_tracker=CostTracker(),
+    engine = engine_with(
+        provider,
+        core=replace(unwired_core(provider), tool_registry=registry),
+        budget=replace(UNWIRED_BUDGET, cost_tracker=CostTracker()),
     )
     return await engine.run(identity=identity, task=task, max_turns=5)
 

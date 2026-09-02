@@ -17,6 +17,7 @@ from synthorg.engine.loop_correction_budget import (
     NO_CALL_NUDGE,
     consecutive_corrections,
 )
+from synthorg.engine.prompt_safety import TAG_COMPACTION_SUMMARY, wrap_untrusted
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import (
@@ -444,7 +445,6 @@ class TestForcedCompaction:
             min_messages_to_compact=4,
             preserve_recent_turns=1,
             llm_summarizer_enabled=True,
-            llm_summary_model="example-basic-001",
         )
         summarizer = LLMSummarizer(
             provider=provider,
@@ -466,7 +466,9 @@ class TestForcedCompaction:
         forced = await callback(ctx, force=True, preserve_markers=True)
 
         assert forced is not None
-        assert forced.conversation[1].content == "LLM SUMMARY"
+        assert forced.conversation[1].content == wrap_untrusted(
+            TAG_COMPACTION_SUMMARY, "LLM SUMMARY"
+        )
         assert provider.system_prompts
         assert "epistemic markers" in provider.system_prompts[0].lower()
 
@@ -574,10 +576,15 @@ class TestCompactionSanitization:
 
 class _FakeProvider:
     def __init__(
-        self, *, content: str | None = None, error: Exception | None = None
+        self,
+        *,
+        content: str | None = None,
+        error: Exception | None = None,
+        usage: TokenUsage | None = None,
     ) -> None:
         self._content = content
         self._error = error
+        self._usage = usage or TokenUsage(input_tokens=1, output_tokens=1, cost=0.0)
 
     async def complete(
         self,
@@ -592,7 +599,7 @@ class _FakeProvider:
         return CompletionResponse(
             content=self._content,
             finish_reason=FinishReason.STOP,
-            usage=TokenUsage(input_tokens=1, output_tokens=1, cost=0.0),
+            usage=self._usage,
             model="example-basic-001",
         )
 
@@ -623,7 +630,6 @@ class TestPhase2Compaction:
             min_messages_to_compact=4,
             preserve_recent_turns=1,
             llm_summarizer_enabled=True,
-            llm_summary_model="example-basic-001",
         )
         summarizer = LLMSummarizer(
             provider=_FakeProvider(content="LLM SEMANTIC SUMMARY"),
@@ -640,7 +646,11 @@ class TestPhase2Compaction:
         )
         result = await callback(ctx)
         assert result is not None
-        assert result.conversation[1].content == "LLM SEMANTIC SUMMARY"
+        # Fenced: the summary is model output re-entering the prompt as a
+        # system message, so it is marked as data rather than instruction.
+        assert result.conversation[1].content == wrap_untrusted(
+            TAG_COMPACTION_SUMMARY, "LLM SEMANTIC SUMMARY"
+        )
 
     async def test_llm_failure_falls_back_to_text_summary(
         self,
@@ -651,7 +661,6 @@ class TestPhase2Compaction:
             min_messages_to_compact=4,
             preserve_recent_turns=1,
             llm_summarizer_enabled=True,
-            llm_summary_model="example-basic-001",
         )
         summarizer = LLMSummarizer(
             provider=_FakeProvider(error=RuntimeError("down")),
@@ -670,6 +679,74 @@ class TestPhase2Compaction:
         assert result is not None
         # Text summary used on LLM failure.
         assert "Archived" in (result.conversation[1].content or "")
+
+    async def test_semantic_summary_spend_is_recorded_on_the_metadata(
+        self,
+        sample_agent: AgentIdentity,
+    ) -> None:
+        """Compaction buys context back by spending, so the bill is kept.
+
+        Blended into the run's own total it says nothing about whether the
+        trade paid, which is the question a depth curve asks of it.
+        """
+        config = CompactionConfig(
+            fill_threshold_percent=80.0,
+            min_messages_to_compact=4,
+            preserve_recent_turns=1,
+            llm_summarizer_enabled=True,
+        )
+        summarizer = LLMSummarizer(
+            provider=_FakeProvider(
+                content="LLM SEMANTIC SUMMARY",
+                usage=TokenUsage(input_tokens=900, output_tokens=120, cost=0.25),
+            ),
+            model="example-basic-001",
+            temperature=0.3,
+            max_tokens=100,
+        )
+        callback = make_compaction_callback(config=config, summarizer=summarizer)
+        ctx = _build_context(
+            sample_agent,
+            messages=_phase2_messages(),
+            capacity=1000,
+            fill=850,
+        )
+
+        result = await callback(ctx)
+
+        assert result is not None
+        metadata = result.compression_metadata
+        assert metadata is not None
+        assert metadata.summary_cost == pytest.approx(0.25)
+        assert metadata.summary_input_tokens == 900
+        assert metadata.summary_output_tokens == 120
+
+    async def test_text_summary_costs_nothing(
+        self,
+        sample_agent: AgentIdentity,
+    ) -> None:
+        """No call was made, so zero is the honest figure rather than absent."""
+        config = CompactionConfig(
+            fill_threshold_percent=80.0,
+            min_messages_to_compact=4,
+            preserve_recent_turns=1,
+        )
+        callback = make_compaction_callback(config=config)
+        ctx = _build_context(
+            sample_agent,
+            messages=_phase2_messages(),
+            capacity=1000,
+            fill=850,
+        )
+
+        result = await callback(ctx)
+
+        assert result is not None
+        metadata = result.compression_metadata
+        assert metadata is not None
+        assert metadata.summary_cost == pytest.approx(0.0)
+        assert metadata.summary_input_tokens == 0
+        assert metadata.summary_output_tokens == 0
 
     async def test_offload_called_when_enabled(
         self,

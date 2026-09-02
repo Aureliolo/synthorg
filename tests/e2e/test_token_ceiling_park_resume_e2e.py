@@ -16,6 +16,7 @@ ceiling raised through the one route an operator has.
 Zero real LLM spend: the provider is scripted with fixed token usage.
 """
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -31,6 +32,7 @@ from synthorg.engine.resume_message import build_resume_message
 from synthorg.providers.models import CompletionResponse, ToolCall
 from synthorg.tools.file_system.write_file import WriteFileTool
 from synthorg.tools.registry import ToolRegistry
+from tests._shared import UNWIRED_BUDGET, engine_with, unwired_core, unwired_governance
 from tests.unit.api.fakes import FakeParkedContextRepository
 
 from .conftest import (
@@ -110,14 +112,19 @@ def _engine(
     run_hard_token_ceiling: int,
     gate: ApprovalGate,
 ) -> AgentEngine:
-    return AgentEngine(
-        provider=provider,
-        tool_registry=registry,
-        budget_enforcer=BudgetEnforcer(
-            budget_config=_budget_config(run_hard_token_ceiling=run_hard_token_ceiling),
-            cost_tracker=cost_tracker,
+    return engine_with(
+        provider,
+        core=replace(unwired_core(provider), tool_registry=registry),
+        budget=replace(
+            UNWIRED_BUDGET,
+            budget_enforcer=BudgetEnforcer(
+                budget_config=_budget_config(
+                    run_hard_token_ceiling=run_hard_token_ceiling
+                ),
+                cost_tracker=cost_tracker,
+            ),
         ),
-        approval_gate=gate,
+        governance=replace(unwired_governance(), approval_gate=gate),
     )
 
 
@@ -203,23 +210,39 @@ async def test_the_same_run_is_unbounded_without_the_token_ceiling(
     """
     registry = ToolRegistry([WriteFileTool(workspace_root=e2e_workspace)])
     identity = make_e2e_identity()
-    engine = AgentEngine(
-        provider=ScriptedProvider(
+    engine = engine_with(
+        ScriptedProvider(
             [_flat_rate_tool_turn(), _flat_rate_text_turn("Finished, unbounded.")]
         ),
-        tool_registry=registry,
-        budget_enforcer=BudgetEnforcer(
-            budget_config=BudgetConfig(
-                total_monthly=0.0,
-                # A money ceiling far below anything a metered run would
-                # reach, and still never crossed: cost stays 0.0.
-                run_hard_ceiling=0.000_1,
-                run_hard_token_ceiling=0,
-                forecast_required=False,
+        core=replace(
+            unwired_core(
+                ScriptedProvider(
+                    [
+                        _flat_rate_tool_turn(),
+                        _flat_rate_text_turn("Finished, unbounded."),
+                    ]
+                )
             ),
-            cost_tracker=CostTracker(),
+            tool_registry=registry,
         ),
-        approval_gate=_approval_gate(FakeParkedContextRepository()),
+        budget=replace(
+            UNWIRED_BUDGET,
+            budget_enforcer=BudgetEnforcer(
+                budget_config=BudgetConfig(
+                    total_monthly=0.0,
+                    # A money ceiling far below anything a metered run would
+                    # reach, and still never crossed: cost stays 0.0.
+                    run_hard_ceiling=0.000_1,
+                    run_hard_token_ceiling=0,
+                    forecast_required=False,
+                ),
+                cost_tracker=CostTracker(),
+            ),
+        ),
+        governance=replace(
+            unwired_governance(),
+            approval_gate=_approval_gate(FakeParkedContextRepository()),
+        ),
     )
 
     result = await engine.run(

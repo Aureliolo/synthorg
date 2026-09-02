@@ -3,7 +3,7 @@
 
 Builds the error-taxonomy config + classification sinks fed by every
 classified execution, and bridges the operator-tunable per-detector
-timeout onto the config. Split out of ``_engine_assembly`` so that
+timeout onto the config. Split out of ``engine_assembly`` so that
 orchestrator stays under its module-size cap.
 """
 

@@ -17,10 +17,11 @@ function row(overrides: Partial<PromptClassBreakdownRow> = {}): PromptClassBreak
     currency: 'USD',
     call_count: 10,
     input_tokens: 1000,
+    cached_input_tokens: 500,
     output_tokens: 400,
     avg_latency_ms: 500,
     p95_latency_ms: 900,
-    cache_hit_rate: 0.5,
+    cached_input_share: 0.5,
     retry_rate: 0.1,
     success_rate: 0.9,
     ...overrides,
@@ -78,7 +79,9 @@ describe('PromptClassSection', () => {
       row({
         avg_latency_ms: null,
         p95_latency_ms: null,
-        cache_hit_rate: null,
+        input_tokens: 0,
+        cached_input_tokens: 0,
+        cached_input_share: null,
         success_rate: null,
       }),
     ])

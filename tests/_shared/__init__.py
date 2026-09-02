@@ -20,6 +20,22 @@ from tests._shared.connection_catalog import (
     make_in_memory_catalog,
 )
 from tests._shared.coordination_wiring import wire_decomposition_model
+from tests._shared.engine_deps import (
+    DEFAULT_BEHAVIOUR,
+    UNWIRED_BUDGET,
+    UNWIRED_LOOP_CONTROLS,
+    UNWIRED_MEMORY,
+    UNWIRED_OBSERVABILITY,
+    UNWIRED_ORG,
+    UNWIRED_ROUTING,
+    assembly_inputs,
+    engine_deps,
+    engine_with,
+    unwired_core,
+    unwired_governance,
+    unwired_recovery,
+    unwired_tooling,
+)
 from tests._shared.fake_clock import FakeClock
 from tests._shared.fake_docker import FakeDockerClient
 from tests._shared.fake_sandbox import FakeSandbox
@@ -62,10 +78,17 @@ from tests._shared.work_pipeline import (
 
 __all__ = [
     "CARD_SHAPED_DIGIT_RUN_RE",
+    "DEFAULT_BEHAVIOUR",
     "FIXTURE_SOURCE",
     "OFFSETLESS_TZ",
     "TEST_MODEL_ID",
     "TEST_PROVIDER",
+    "UNWIRED_BUDGET",
+    "UNWIRED_LOOP_CONTROLS",
+    "UNWIRED_MEMORY",
+    "UNWIRED_OBSERVABILITY",
+    "UNWIRED_ORG",
+    "UNWIRED_ROUTING",
     "UUID_RE",
     "AsgiDict",
     "CapturingErrorLogger",
@@ -85,12 +108,15 @@ __all__ = [
     "StubWorkPipeline",
     "as_pk",
     "as_uuid",
+    "assembly_inputs",
     "assert_no_card_shaped_run",
     "bound_model",
     "bound_ref",
     "build_test_app",
     "coerce_id",
     "connections",
+    "engine_deps",
+    "engine_with",
     "make_app_state",
     "make_company",
     "make_in_memory_catalog",
@@ -108,5 +134,9 @@ __all__ = [
     "staffing_with",
     "task_from_work_item",
     "torch_double",
+    "unwired_core",
+    "unwired_governance",
+    "unwired_recovery",
+    "unwired_tooling",
     "wire_decomposition_model",
 ]

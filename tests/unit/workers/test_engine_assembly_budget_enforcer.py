@@ -1,6 +1,6 @@
 """Boot-wiring coverage for the budget enforcer.
 
-``_construct_agent_engine`` is the one production call site for
+``build_agent_engine`` is the one production call site for
 ``AgentEngine(...)``. Monthly, daily, project and run-hard-ceiling
 enforcement all gate on ``AgentEngine._budget_enforcer`` being set; a
 boot path that builds a ``BudgetEnforcer`` without threading it into the
@@ -20,6 +20,7 @@ from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.state import BudgetStateSlice
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import RootConfig
+from synthorg.core.domain_errors import ServiceUnavailableError
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
 from synthorg.engine.agent_engine import AgentEngine
@@ -27,12 +28,18 @@ from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.registry import AgentRegistryService
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
-from synthorg.providers.registry import ProviderRegistry
+from synthorg.security.audit import AuditLog
+from synthorg.security.state import SecurityStateSlice
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.state import SettingsStateSlice
-from synthorg.tools.registry import ToolRegistry
-from synthorg.workers._engine_assembly import _construct_agent_engine
-from tests._shared import FakeClock, as_uuid, make_app_state, mock_of
+from synthorg.workers.engine_assembly import build_agent_engine
+from tests._shared import FakeClock, as_uuid, assembly_inputs, make_app_state, mock_of
+from tests._shared.registered_defaults import (
+    default_bool,
+    default_float,
+    default_int,
+    default_str,
+)
 from tests._shared.scripted_provider import ScriptedProvider
 
 pytestmark = pytest.mark.unit
@@ -49,10 +56,10 @@ def _app_state(
         ``(app_state, None)`` when *wire_enforcer* is ``False``.
     """
     resolver = mock_of[ConfigResolver](
-        get_float=AsyncMock(return_value=0.5),
-        get_int=AsyncMock(return_value=1),
-        get_str=AsyncMock(return_value=""),
-        get_bool=AsyncMock(return_value=False),
+        get_float=AsyncMock(side_effect=default_float),
+        get_int=AsyncMock(side_effect=default_int),
+        get_str=AsyncMock(side_effect=default_str),
+        get_bool=AsyncMock(side_effect=default_bool),
         get_provider_configs=AsyncMock(return_value={}),
     )
     persistence = mock_of[PersistenceBackend](
@@ -64,6 +71,7 @@ def _app_state(
         clock=FakeClock(),
         persistence=persistence,
         approval_store=ApprovalStore(),
+        audit_log=AuditLog(),
         agent_registry=AgentRegistryService(),
         task_engine=mock_of[TaskEngine](),
         slices={SettingsStateSlice: {"config_resolver": resolver}},
@@ -83,13 +91,7 @@ def _app_state(
 
 
 async def _engine_for(app_state: AppState) -> AgentEngine:
-    return await _construct_agent_engine(
-        app_state,
-        ScriptedProvider([]),
-        registry=ProviderRegistry(drivers={}),
-        tool_registry=ToolRegistry([]),
-        coordination_metrics_collector=None,
-    )
+    return await build_agent_engine(app_state, assembly_inputs(ScriptedProvider([])))
 
 
 class TestBudgetEnforcerBootWiring:
@@ -99,7 +101,7 @@ class TestBudgetEnforcerBootWiring:
         assert engine._budget_enforcer is enforcer
 
     async def test_cost_tracker_identity_invariant_holds(self) -> None:
-        """Regression guard on ``_construct_agent_engine``'s own wiring:
+        """Regression guard on ``build_agent_engine``'s own wiring:
         ``cost_tracker=`` and ``budget_enforcer=`` are two independent
         reads of the same ``BudgetStateSlice``, so a future edit that
         sources either from somewhere else would desynchronise them.
@@ -129,13 +131,26 @@ class TestBudgetEnforcerBootWiring:
             budget_enforcer=enforcer,
         )
 
-        with pytest.raises(ValueError, match="cost_tracker must match"):
+        with pytest.raises(ValueError, match="cost_tracker must be the same object"):
             await _engine_for(app_state)
 
     async def test_unwired_enforcer_leaves_engine_without_one(self) -> None:
         app_state, _ = _app_state(wire_enforcer=False)
         engine = await _engine_for(app_state)
         assert engine._budget_enforcer is None
+
+    async def test_an_unwired_audit_log_refuses_the_engine(self) -> None:
+        """An engine auditing into a throwaway log is not a fallback anyone chose.
+
+        The approval store beside it already refuses; a log that silently
+        substituted an in-memory one would record every governed action
+        into something nothing else reads and the process exit discards.
+        """
+        app_state, _ = _app_state(wire_enforcer=False)
+        app_state.wire(SecurityStateSlice, audit_log=None)
+
+        with pytest.raises(ServiceUnavailableError, match="Audit Log"):
+            await _engine_for(app_state)
 
     async def test_wired_enforcer_actually_enforces_the_run_hard_ceiling(
         self,

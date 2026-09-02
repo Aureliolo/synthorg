@@ -65,7 +65,7 @@ if TYPE_CHECKING:
     from synthorg.core.clock import Clock
     from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.engine._agent_engine_callables import ApplyRecovery
-    from synthorg.engine.checkpoint.models import CheckpointConfig
+    from synthorg.engine.checkpoint.wiring import CheckpointWiring
     from synthorg.engine.classification.protocol import ClassificationSink
     from synthorg.engine.evolution.service import EvolutionService
     from synthorg.engine.flight_recording import FlightRecorderSink
@@ -76,10 +76,6 @@ if TYPE_CHECKING:
     from synthorg.memory.procedural.models import ProceduralMemoryConfig
     from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
     from synthorg.memory.protocol import MemoryBackend
-    from synthorg.persistence.checkpoint_protocol import (
-        CheckpointRepository,
-        HeartbeatRepository,
-    )
     from synthorg.settings.resolver import ConfigResolver
 
 logger = get_logger(__name__)
@@ -105,11 +101,9 @@ class AgentEnginePostExecMixin:
     _run_probe: RunBaselineProbe | None
     _apply_recovery: ApplyRecovery
     _recovery_strategy: RecoveryStrategy | None
-    _checkpoint_repo: CheckpointRepository | None
-    _heartbeat_repo: HeartbeatRepository | None
+    _checkpointing: CheckpointWiring | None
     _error_taxonomy_config: ErrorTaxonomyConfig | None
     _classification_sinks: tuple[ClassificationSink, ...]
-    _checkpoint_config: CheckpointConfig
     _coordination_metrics_collector: CoordinationMetricsCollector | None
     _distillation_capture_enabled: bool
     _log_completion: Callable[[AgentRunResult, str, str, float], None]
@@ -303,11 +297,7 @@ class AgentEnginePostExecMixin:
         exec_id = execution_result.context.execution_id
         if self._recovery_strategy is not None:
             await self._recovery_strategy.finalize(exec_id)
-        await cleanup_checkpoint_artifacts(
-            self._checkpoint_repo,
-            self._heartbeat_repo,
-            exec_id,
-        )
+        await cleanup_checkpoint_artifacts(self._checkpointing, exec_id)
 
     async def _handle_error_recovery(
         self,
@@ -535,14 +525,11 @@ class AgentEnginePostExecMixin:
 
         Returns:
             The original loop wrapped with a checkpoint-write callback
-            when ``_checkpoint_config`` and the repositories are
-            wired; otherwise the loop is returned unchanged.
+            when checkpointing is wired; otherwise the loop unchanged.
         """
         return make_loop_with_callback(
             loop,
-            checkpoint_repo=self._checkpoint_repo,
-            heartbeat_repo=self._heartbeat_repo,
-            checkpoint_config=self._checkpoint_config,
+            wiring=self._checkpointing,
             agent_id=agent_id,
             task_id=task_id,
         )

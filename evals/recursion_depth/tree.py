@@ -33,6 +33,7 @@ from evals.recursion_depth.claims import (
     criterion_for,
     requirement_ids_of,
 )
+from evals.recursion_depth.manifest import RecursionDepthManifest
 from evals.recursion_depth.oracle import (
     declared,
     entry_field,
@@ -51,6 +52,7 @@ from synthorg.observability.events.evals import (
     EVALS_RECURSION_SETTINGS_ARMED,
     EVALS_RECURSION_TREE_BUILT,
 )
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
@@ -373,6 +375,56 @@ async def arm_recursion(settings: SettingsService, *, enabled: bool) -> None:
     logger.info(EVALS_RECURSION_SETTINGS_ARMED, **armed)
 
 
+async def arm_treatments(
+    settings: SettingsService, manifest: RecursionDepthManifest
+) -> None:
+    """Write the manifest's declared treatments into the live settings.
+
+    The same route :func:`arm_recursion` takes, for the same reason: the
+    engine every session runs on is the product's own assembly reading the
+    product's own settings, so a treatment written anywhere else measures a
+    code path no deployment takes. Each value is stated in the manifest
+    rather than inherited from the host, because a recording that cannot
+    say what its agents remembered with, whether a looping session was
+    watched, or how its context was compacted cannot say what it measured.
+
+    Callers must not dispatch work until this returns: the writes are
+    sequential, and the subsystems they rebuild (memory on its embedder, the
+    runtime on its compaction and stagnation keys) are rebuilt by the
+    reconciler's next pass.
+
+    Args:
+        settings: The booted application's settings service.
+        manifest: The matrix whose treatments are written.
+    """
+    declared = manifest.embedder
+    embedder = serialize_model_ref(
+        ModelRef(provider=declared.provider, model_id=declared.model_id)
+    )
+    summariser = manifest.compaction.summariser
+    armed: dict[str, str] = {
+        "memory.embedder_model": embedder,
+        "engine.stagnation_strategy": manifest.stagnation.strategy,
+        "engine.compaction_fill_threshold_percent": str(
+            manifest.compaction.fill_threshold_percent
+        ),
+        "engine.compaction_llm_summarizer_enabled": (
+            "true" if summariser is not None else "false"
+        ),
+        "engine.compaction_summary_model": (
+            ""
+            if summariser is None
+            else serialize_model_ref(
+                ModelRef(provider=summariser.provider, model_id=summariser.model_id)
+            )
+        ),
+    }
+    for qualified, value in armed.items():
+        namespace, key = qualified.split(".", 1)
+        await settings.set(namespace, key, value)
+    logger.info(EVALS_RECURSION_SETTINGS_ARMED, **armed)
+
+
 def objective_task(brief: SpecBrief, *, project: str, created_by: str) -> Task:
     """Build the root task the whole run is decomposed from.
 
@@ -642,6 +694,7 @@ __all__ = [
     "SpecBrief",
     "achieved_levels",
     "arm_recursion",
+    "arm_treatments",
     "build_tree",
     "claimed_requirements",
     "load_spec_brief",

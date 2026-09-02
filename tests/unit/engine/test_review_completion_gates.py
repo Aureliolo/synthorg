@@ -31,7 +31,10 @@ from synthorg.core.task_enums import (
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._review_completion_gates import run_completion_gates
 from synthorg.engine._review_oracle_gates import GateOutcome
-from synthorg.engine._review_oracle_stage import apply_oracle_review_stage
+from synthorg.engine._review_oracle_stage import (
+    OracleStageConfig,
+    apply_oracle_review_stage,
+)
 from synthorg.engine.completion_oracle.build_test_models import (
     GroundingRequirement,
     OracleEvaluation,
@@ -120,9 +123,9 @@ async def test_an_escalated_task_is_not_re_judged_by_the_gate_that_escalated() -
     )
 
     outcome, _input = await apply_oracle_review_stage(
-        completion_oracle_gate=gate,
-        completion_oracle_shadow_mode=False,
-        completion_oracle_min_stakes=Stakes.LOW,
+        oracle=OracleStageConfig(
+            gate=gate, shadow_mode=False, min_stakes=Stakes.LOW, records=None
+        ),
         deliverable_input_builder=builder,
         red_team_active=False,
         output_policy_active=False,
@@ -165,9 +168,9 @@ async def test_a_task_blocked_for_another_reason_is_still_judged(
     )
 
     await apply_oracle_review_stage(
-        completion_oracle_gate=gate,
-        completion_oracle_shadow_mode=False,
-        completion_oracle_min_stakes=Stakes.LOW,
+        oracle=OracleStageConfig(
+            gate=gate, shadow_mode=False, min_stakes=Stakes.LOW, records=None
+        ),
         deliverable_input_builder=builder,
         red_team_active=False,
         output_policy_active=False,
@@ -197,9 +200,9 @@ async def test_the_escalated_skip_still_builds_the_deliverable() -> None:
     )
 
     _outcome, deliverable = await apply_oracle_review_stage(
-        completion_oracle_gate=gate,
-        completion_oracle_shadow_mode=False,
-        completion_oracle_min_stakes=Stakes.LOW,
+        oracle=OracleStageConfig(
+            gate=gate, shadow_mode=False, min_stakes=Stakes.LOW, records=None
+        ),
         deliverable_input_builder=builder,
         red_team_active=True,
         output_policy_active=False,
@@ -677,9 +680,9 @@ async def test_an_unstaffed_park_is_re_judged_on_the_next_pass() -> None:
     )
 
     await apply_oracle_review_stage(
-        completion_oracle_gate=gate,
-        completion_oracle_shadow_mode=False,
-        completion_oracle_min_stakes=Stakes.LOW,
+        oracle=OracleStageConfig(
+            gate=gate, shadow_mode=False, min_stakes=Stakes.LOW, records=None
+        ),
         deliverable_input_builder=builder,
         red_team_active=False,
         output_policy_active=False,

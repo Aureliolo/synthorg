@@ -4,6 +4,7 @@
 import asyncio
 import math
 from collections import Counter, defaultdict
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Final, NamedTuple
 
@@ -392,9 +393,7 @@ def _build_aggregation(
     )
     retry_rate = retried / total if total > 0 else 0.0
 
-    cache_reporting = [r for r in records if r.cache_hit is not None]
-    cache_hit_count = sum(1 for r in cache_reporting if r.cache_hit is True)
-    cache_hit_rate = cache_hit_count / len(cache_reporting) if cache_reporting else None
+    input_tokens, cached_input_tokens = _input_token_sums(records)
 
     latencies = [r.latency_ms for r in records if r.latency_ms is not None]
     avg_latency_ms = sum(latencies) / len(latencies) if latencies else None
@@ -406,8 +405,8 @@ def _build_aggregation(
         failure_count=failure_count,
         retry_count=retried,
         retry_rate=retry_rate,
-        cache_hit_count=cache_hit_count,
-        cache_hit_rate=cache_hit_rate,
+        input_tokens=input_tokens,
+        cached_input_tokens=cached_input_tokens,
         avg_latency_ms=avg_latency_ms,
         p95_latency_ms=p95_latency_ms,
         orchestration_ratio=orchestration_ratio,
@@ -485,12 +484,7 @@ def _build_breakdown_row(
         for r in records
         if r.retry_count is not None and r.retry_count >= _MIN_RETRY_COUNT
     )
-    cache_reporting = [r for r in records if r.cache_hit is not None]
-    cache_hit_rate = (
-        sum(1 for r in cache_reporting if r.cache_hit is True) / len(cache_reporting)
-        if cache_reporting
-        else None
-    )
+    input_tokens, cached_input_tokens = _input_token_sums(records)
     success_reporting = [r for r in records if r.success is not None]
     success_rate = (
         sum(1 for r in success_reporting if r.success is True) / len(success_reporting)
@@ -507,11 +501,11 @@ def _build_breakdown_row(
         total_cost=math.fsum(r.cost for r in records),
         currency=currency if currency is not None else DEFAULT_CURRENCY,
         call_count=total,
-        input_tokens=sum(r.input_tokens for r in records),
+        input_tokens=input_tokens,
+        cached_input_tokens=cached_input_tokens,
         output_tokens=sum(r.output_tokens for r in records),
         avg_latency_ms=(sum(latencies) / len(latencies) if latencies else None),
         p95_latency_ms=_p95(latencies) if latencies else None,
-        cache_hit_rate=cache_hit_rate,
         retry_rate=retried / total if total > 0 else 0.0,
         success_rate=success_rate,
     )
@@ -541,6 +535,28 @@ def _build_prompt_class_breakdown(
         )
     )
     return PromptClassBreakdown(rows=rows)
+
+
+def _input_token_sums(records: Sequence[CostRecord]) -> tuple[int, int]:
+    """Sum the input tokens and the cached reads among them.
+
+    Both counts travel to the model, which derives the share: a share of
+    TOKENS rather than a rate of calls, because that is the number the bill
+    moves with. A hit that reused ten tokens and one that reused a hundred
+    thousand are the same "hit", and only the token share says what caching
+    saved. Records that reported no cache data contribute zero to the cached
+    count and their input to the total, which is the honest reading (nothing
+    was served from cache) rather than an unknown.
+
+    Returns:
+        ``(input_tokens, cached_input_tokens)``. The second never exceeds
+        the first: every record refuses a cached read larger than its own
+        input at construction, so the sums keep the same order.
+    """
+    return (
+        sum(r.input_tokens for r in records),
+        sum(r.cache_read_input_tokens for r in records),
+    )
 
 
 def _p95(values: list[float]) -> float:

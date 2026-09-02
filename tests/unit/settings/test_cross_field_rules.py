@@ -254,3 +254,58 @@ class TestEngineLadders:
 
     async def test_a_write_touching_neither_ladder_reads_nothing(self) -> None:
         await self._ladder([("engine", "completion_oracle_enabled", "false")])
+
+
+_STAGNATION_DEFAULTS = {
+    ("engine", "stagnation_window_size"): "5",
+    ("engine", "stagnation_min_tool_turns"): "2",
+}
+
+
+class TestStagnationFloorFitsWindow:
+    """The repetition detector's floor has to fit inside its window.
+
+    ``StagnationConfig`` refuses the pair when it is built, which happens at
+    coordinator assembly and on every runtime rebuild a settings write
+    triggers, so a pair accepted at the write is one the loop never runs
+    under and one that fails every later engine write's rebuild.
+    """
+
+    async def _stagnation(
+        self, items: list[tuple[str, str, str]], **stored: str
+    ) -> None:
+        await _enforce(
+            items,
+            stored={("engine", key): value for key, value in stored.items()},
+            defaults=_STAGNATION_DEFAULTS,
+        )
+
+    async def test_a_floor_above_the_window_is_refused(self) -> None:
+        with pytest.raises(SettingValidationError, match="exceeds"):
+            await self._stagnation([("engine", "stagnation_min_tool_turns", "50")])
+
+    async def test_narrowing_the_window_under_a_stored_floor_is_refused(
+        self,
+    ) -> None:
+        with pytest.raises(SettingValidationError, match="exceeds"):
+            await self._stagnation(
+                [("engine", "stagnation_window_size", "3")],
+                stagnation_min_tool_turns="4",
+            )
+
+    async def test_a_floor_equal_to_the_window_is_allowed(self) -> None:
+        await self._stagnation([("engine", "stagnation_min_tool_turns", "5")])
+
+    async def test_both_may_move_in_one_write(self) -> None:
+        await self._stagnation(
+            [
+                ("engine", "stagnation_window_size", "40"),
+                ("engine", "stagnation_min_tool_turns", "30"),
+            ]
+        )
+
+    async def test_a_malformed_value_is_left_to_the_type_validator(self) -> None:
+        await self._stagnation([("engine", "stagnation_min_tool_turns", "many")])
+
+    async def test_a_write_touching_neither_key_reads_nothing(self) -> None:
+        await self._stagnation([("engine", "stagnation_strategy", "off")])

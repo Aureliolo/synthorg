@@ -5,52 +5,31 @@ turns into a summary message when the context fill level exceeds a
 configurable threshold.
 """
 
-from typing import Final
-
-from synthorg.core.execution_identity import current_execution_identity
-from synthorg.core.task_enums import Complexity
-from synthorg.core.text_clipping import clip_with_ellipsis
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.compaction.epistemic import (
-    extract_marker_sentences,
-    should_preserve_message,
+from synthorg.engine.compaction._conversation import (
+    ConversationSplit,
+    build_text_summary,
+    finalise,
+    resolve_preserve_markers,
+    split_conversation,
 )
 from synthorg.engine.compaction.llm_summarizer import LLMSummarizer
 from synthorg.engine.compaction.memory_offload import MemoryOffloader
-from synthorg.engine.compaction.models import (
-    CompactionConfig,
-    CompressionMetadata,
-)
+from synthorg.engine.compaction.models import CompactionConfig
 from synthorg.engine.compaction.protocol import CompactionCallback
 from synthorg.engine.context import AgentContext
-from synthorg.engine.loop_correction_budget import correction_tail_messages
-from synthorg.engine.sanitization import sanitize_message
 from synthorg.engine.token_estimation import (
     DefaultTokenEstimator,
     PromptTokenEstimator,
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.context_budget import (
-    CONTEXT_BUDGET_COMPACTION_COMPLETED,
-    CONTEXT_BUDGET_COMPACTION_FALLBACK,
     CONTEXT_BUDGET_COMPACTION_SKIPPED,
     CONTEXT_BUDGET_COMPACTION_STARTED,
 )
-from synthorg.providers.enums import MessageRole
-from synthorg.providers.models import ChatMessage
+from synthorg.providers.models import ZERO_TOKEN_USAGE
 
 logger = get_logger(__name__)
-
-type _ConversationSplit = tuple[
-    tuple[ChatMessage, ...],
-    tuple[ChatMessage, ...],
-    tuple[ChatMessage, ...],
-]
-
-_MAX_SUMMARY_CHARS: Final[int] = 500
-"""Defensive cap on the snippet-join summary length; prevents bloated
-summaries when many long assistant messages are archived. Not exposed to
-the settings registry (the LLM summariser has its own token cap)."""
 
 
 def make_compaction_callback(
@@ -129,20 +108,19 @@ def _do_compaction(
     Returns:
         New compacted ``AgentContext`` or ``None`` if no compaction needed.
     """
-    prep = _prepare_compaction(ctx, config, force=force)
-    if prep is None:
+    split = _prepare_compaction(ctx, config, force=force)
+    if split is None:
         return None
-    head, archivable, recent = prep
-    summary_text = _build_text_summary(
-        ctx, archivable, config, preserve_markers_override=preserve_markers_override
-    )
-    return _finalise(
+    return finalise(
         ctx,
-        head=head,
-        archivable=archivable,
-        recent=recent,
+        split,
         estimator=estimator,
-        summary_text=summary_text,
+        summary_text=build_text_summary(
+            ctx,
+            split.archivable,
+            config,
+            preserve_markers_override=preserve_markers_override,
+        ),
     )
 
 
@@ -176,33 +154,35 @@ async def _do_semantic_compaction(
     Returns:
         New compacted ``AgentContext`` or ``None`` if no compaction needed.
     """
-    prep = _prepare_compaction(ctx, config, force=force)
-    if prep is None:
+    split = _prepare_compaction(ctx, config, force=force)
+    if split is None:
         return None
-    head, archivable, recent = prep
-    summary_text = _build_text_summary(
+    archivable = split.archivable
+    summary_text = build_text_summary(
         ctx, archivable, config, preserve_markers_override=preserve_markers_override
     )
+    summary_usage = ZERO_TOKEN_USAGE
     if summarizer is not None and config.llm_summarizer_enabled:
-        summary_text = await summarizer.summarize(
+        outcome = await summarizer.summarize(
             archivable,
             fallback_text=summary_text,
-            preserve_markers=_resolve_preserve_markers(
+            preserve_markers=resolve_preserve_markers(
                 config, override=preserve_markers_override
             ),
         )
+        summary_text = outcome.text
+        summary_usage = outcome.usage
     if offloader is not None and config.memory_offload_enabled:
         await offloader.offload(
             agent_id=NotBlankStr(str(ctx.identity.id)),
             archivable=archivable,
         )
-    return _finalise(
+    return finalise(
         ctx,
-        head=head,
-        archivable=archivable,
-        recent=recent,
+        split,
         estimator=estimator,
         summary_text=summary_text,
+        summary_usage=summary_usage,
     )
 
 
@@ -211,7 +191,7 @@ def _prepare_compaction(
     config: CompactionConfig,
     *,
     force: bool,
-) -> _ConversationSplit | None:
+) -> ConversationSplit | None:
     """Run the gating checks and split the conversation for compaction.
 
     Returns:
@@ -246,278 +226,7 @@ def _prepare_compaction(
         message_count=len(conversation),
         forced=force,
     )
-    return _split_conversation(ctx, config)
-
-
-def _resolve_preserve_markers(
-    config: CompactionConfig, *, override: bool | None
-) -> bool:
-    """Resolve one compaction's epistemic-marker setting.
-
-    Both summary paths (text-only and LLM) answer the same request, so they
-    read it through one resolution rather than each restating the fallback.
-
-    Args:
-        config: Compaction configuration, carrying the configured default.
-        override: The requesting caller's per-call choice, or ``None``.
-
-    Returns:
-        The override when supplied, else ``config.preserve_epistemic_markers``.
-    """
-    if override is None:
-        return config.preserve_epistemic_markers
-    return override
-
-
-def _build_text_summary(
-    ctx: AgentContext,
-    archivable: tuple[ChatMessage, ...],
-    config: CompactionConfig,
-    *,
-    preserve_markers_override: bool | None = None,
-) -> str:
-    """Build the snippet-join text summary for the archived batch.
-
-    Args:
-        ctx: Current agent context.
-        archivable: The messages being archived.
-        config: Compaction configuration.
-        preserve_markers_override: Per-call override for
-            ``config.preserve_epistemic_markers``; ``None`` uses the
-            configured default.
-
-    Returns:
-        The summary text (also the semantic-path fallback).
-    """
-    task_complexity = _extract_task_complexity(ctx)
-    return _build_summary(
-        archivable,
-        preserve_markers=_resolve_preserve_markers(
-            config, override=preserve_markers_override
-        ),
-        task_complexity=task_complexity,
-    )
-
-
-def _finalise(
-    ctx: AgentContext,
-    *,
-    head: tuple[ChatMessage, ...],
-    archivable: tuple[ChatMessage, ...],
-    recent: tuple[ChatMessage, ...],
-    estimator: PromptTokenEstimator,
-    summary_text: str,
-) -> AgentContext:
-    """Compress with the resolved summary text and return the new context.
-
-    Returns:
-        The compacted ``AgentContext``.
-    """
-    compressed, metadata, summary_tokens = _compress(
-        ctx, head, archivable, recent, estimator, summary_text=summary_text
-    )
-
-    # Re-estimate fill with compressed conversation.  Counts
-    # conversation tokens only -- system prompt and tool overhead
-    # are excluded.  The loop's next ``update_context_fill``
-    # call restores the full estimate.
-    new_fill = estimator.estimate_conversation_tokens(compressed)
-
-    logger.info(
-        CONTEXT_BUDGET_COMPACTION_COMPLETED,
-        execution_id=ctx.execution_id,
-        original_messages=len(ctx.conversation),
-        compacted_messages=len(compressed),
-        archived_turns=metadata.archived_turns,
-        summary_tokens=summary_tokens,
-        compactions_total=metadata.compactions_performed,
-    )
-    return ctx.with_compression(metadata, compressed, new_fill)
-
-
-def _split_conversation(
-    ctx: AgentContext,
-    config: CompactionConfig,
-) -> _ConversationSplit | None:
-    """Split conversation into head, archivable, and recent segments.
-
-    Returns:
-        ``(head, archivable, recent)`` segments for compaction;
-        ``None`` when nothing can be archived (preserved-window
-        already covers every non-system message).
-    """
-    conversation = ctx.conversation
-    # The correction budget is derived from the trailing run of nudges, so
-    # archiving any of them tells the next turn the run has earned fewer
-    # corrections than it has. Widen the window rather than trimming the
-    # stretch: it is bounded by MAX_CONSECUTIVE_CORRECTIONS and a productive
-    # turn ends it, so the cost is a handful of messages at worst.
-    preserve_count = max(
-        config.preserve_recent_turns * 2,
-        correction_tail_messages(conversation),
-    )
-    # Preserve all leading SYSTEM messages (original system prompt
-    # and any prior compaction summaries).
-    start_idx = 0
-    while (
-        start_idx < len(conversation)
-        and conversation[start_idx].role == MessageRole.SYSTEM
-    ):
-        start_idx += 1
-    head = tuple(conversation[:start_idx])
-
-    if preserve_count >= len(conversation) - start_idx:
-        logger.debug(
-            CONTEXT_BUDGET_COMPACTION_SKIPPED,
-            execution_id=ctx.execution_id,
-            reason="nothing_to_archive",
-            preserve_count=preserve_count,
-            message_count=len(conversation),
-        )
-        return None
-
-    archivable = conversation[start_idx:-preserve_count]
-    recent = conversation[-preserve_count:]
-    return head, archivable, recent
-
-
-def _compress(
-    ctx: AgentContext,
-    head: tuple[ChatMessage, ...],
-    archivable: tuple[ChatMessage, ...],
-    recent: tuple[ChatMessage, ...],
-    estimator: PromptTokenEstimator,
-    *,
-    summary_text: str,
-) -> tuple[tuple[ChatMessage, ...], CompressionMetadata, int]:
-    """Build compressed conversation and metadata from a resolved summary.
-
-    Args:
-        ctx: Current agent context.
-        head: Preserved leading system messages.
-        archivable: The messages being archived (for turn counting).
-        recent: Preserved recent messages.
-        estimator: Token estimator.
-        summary_text: The resolved summary text (text or semantic).
-
-    Returns:
-        ``(compressed_conversation, metadata, summary_tokens)`` --
-        the rewritten conversation with the summary system message,
-        the cumulative :class:`CompressionMetadata`, and the
-        estimated token count of the summary.
-    """
-    summary_msg = ChatMessage(
-        role=MessageRole.SYSTEM,
-        content=summary_text,
-    )
-    summary_tokens = estimator.estimate_tokens(summary_text)
-    compressed = (*head, summary_msg, *recent)
-
-    prior = ctx.compression_metadata
-    compactions_count = prior.compactions_performed + 1 if prior is not None else 1
-    prior_archived = prior.archived_turns if prior is not None else 0
-
-    archived_turn_count = sum(1 for m in archivable if m.role == MessageRole.ASSISTANT)
-    metadata = CompressionMetadata(
-        compression_point=ctx.turn_count,
-        archived_turns=prior_archived + archived_turn_count,
-        summary_tokens=summary_tokens,
-        compactions_performed=compactions_count,
-    )
-    return compressed, metadata, summary_tokens
-
-
-def _extract_task_complexity(ctx: AgentContext) -> Complexity:
-    """Extract task complexity from context, defaulting to COMPLEX.
-
-    Returns:
-        The :class:`Complexity` declared on the bound task; falls
-        back to :attr:`Complexity.COMPLEX` when no task is wired.
-    """
-    task_exec = getattr(ctx, "task_execution", None)
-    if task_exec is not None:
-        task = getattr(task_exec, "task", None)
-        if task is not None:
-            complexity = getattr(task, "estimated_complexity", None)
-            if isinstance(complexity, Complexity):
-                return complexity
-    return Complexity.COMPLEX
-
-
-def _build_summary(
-    messages: tuple[ChatMessage, ...],
-    *,
-    preserve_markers: bool,
-    task_complexity: Complexity,
-) -> str:
-    """Build a text summary from archived messages.
-
-    When ``preserve_markers`` is True, assistant messages with
-    epistemic markers (hedging, reconsideration, etc.) are preserved
-    as marker-containing sentences instead of being sanitized down
-    to 100-char snippets. The run id for the fallback log is read from
-    the ambient ``current_execution_identity()``.
-
-    Args:
-        messages: The archived messages to summarize.
-        preserve_markers: Whether to preserve epistemic markers.
-        task_complexity: Task complexity for marker thresholds.
-
-    Returns:
-        Summary text describing the archived conversation.
-    """
-    snippets: list[str] = []
-    preserved_count = 0
-
-    for msg in messages:
-        if msg.role != MessageRole.ASSISTANT or not msg.content:
-            continue
-        cleaned = msg.content.replace("\n", " ").strip()
-        if not cleaned:
-            continue
-
-        # Check for epistemic markers worth preserving.
-        if preserve_markers and should_preserve_message(
-            cleaned,
-            task_complexity,
-        ):
-            marker_text = extract_marker_sentences(cleaned)
-            if marker_text:
-                sanitized_markers = sanitize_message(
-                    marker_text,
-                    max_length=max(len(marker_text), 1),
-                )
-                snippets.append(sanitized_markers)
-                preserved_count += 1
-                continue
-
-        # Standard sanitized snippet.
-        snippet = sanitize_message(cleaned, max_length=100)
-        snippets.append(snippet)
-
-    # Drop useless "details redacted" placeholders.
-    useful = [s for s in snippets if s != "details redacted"]
-    if not useful:
-        identity = current_execution_identity()
-        logger.debug(
-            CONTEXT_BUDGET_COMPACTION_FALLBACK,
-            execution_id=identity.execution_id if identity is not None else None,
-            reason="no_useful_assistant_content_for_summary",
-            archived_count=len(messages),
-        )
-        return f"[Archived {len(messages)} messages from earlier in the conversation.]"
-
-    joined = clip_with_ellipsis("; ".join(useful), _MAX_SUMMARY_CHARS)
-
-    if preserved_count > 0:
-        msg_word = "message" if preserved_count == 1 else "messages"
-        return (
-            f"[Archived {len(messages)} messages. "
-            f"Epistemic markers preserved from "
-            f"{preserved_count} {msg_word}. "
-            f"Summary: {joined}]"
-        )
-    return f"[Archived {len(messages)} messages. Summary of prior work: {joined}]"
+    return split_conversation(ctx, config)
 
 
 async def force_compaction(

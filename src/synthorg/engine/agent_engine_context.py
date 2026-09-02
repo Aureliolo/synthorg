@@ -286,6 +286,8 @@ class AgentEngineContextMixin:
             cost_ceiling=cost_ceiling,
             token_ceiling=token_ceiling,
         )
+        if execution.tool_invoker is not None:
+            ctx = ctx.with_tool_surface(execution.tool_invoker.registry.list_tools())
         # The declaration renders once, at zero spend: an honest reading of
         # the ceiling's magnitude, not a live percentage that would go stale
         # for the rest of the session. The turn boundary (loop_budget_signal)
@@ -321,7 +323,13 @@ class AgentEngineContextMixin:
         )
         for msg in (*injected, *memory.messages):
             ctx = ctx.with_message(msg)
-        ctx = ctx.with_message(
+        # PINNED, and it is the only message the loop pins. This is the
+        # single statement of what the agent was asked to do, and it is a
+        # USER message: compaction keeps leading SYSTEM messages verbatim
+        # and snippets ASSISTANT ones, so an unpinned brief ages out with
+        # nothing left of it, and a resumed session then works from a
+        # summary of its own replies.
+        ctx = ctx.with_pinned_message(
             ChatMessage(
                 role=MessageRole.USER,
                 content=format_task_instruction(task, currency=cur_code),

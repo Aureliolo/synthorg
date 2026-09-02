@@ -175,8 +175,34 @@ through `_make_default_loop()`, which passes every in-flight control the engine
 holds (approval gate, stagnation detector, compaction callback, steering inbox,
 step classifier, background job watcher) by name, so a control the engine was
 given that the loop never received is a type error rather than a silently
-ungoverned run. An `execution_loop=` may still be injected, which tests use to
-drive a double.
+ungoverned run. An injected `execution_loop` may still be declared, which tests
+use to drive a double.
+
+**Construction:** `AgentEngine(deps: EngineDependencies)`, and that is the whole
+signature. `engine/dependencies/` declares the wiring as eleven frozen `kw_only`
+bundles (`core`, `routing`, `budget`, `governance`, `loop_controls`, `memory`,
+`org`, `tooling`, `observability`, `recovery`, `behaviour`), mirroring the state
+slices the composition root already reads from. **No field of any bundle carries
+a default**, so a collaborator a caller did not name is a type error rather than
+a silent `None`. Absence is ordinary and still allowed; it is written down
+(`compaction_callback=None`), because a written absence is a decision a reviewer
+can question and a missing keyword is a decision nobody made.
+
+Two invariants are shape rather than runtime checks. `CheckpointWiring` carries
+the checkpoint repository, the heartbeat repository, and the checkpoint config
+together, so "one without the other" is unrepresentable; `EngineBudget` keeps its
+`cost_tracker is budget_enforcer.cost_tracker` identity check, which is a
+cross-field invariant a type cannot express.
+
+There is one production construction, `workers/engine_assembly.py::build_agent_engine`,
+which reads the live `AppState` and assembles the bundles. What its **caller**
+owns (the provider, the registry, the tool registry, the run probe, and the
+collaborators only a caller can know) arrives as its own equally total
+`EngineAssemblyInputs`. The recursion-depth harness calls that same function, so
+a collaborator the harness runs without is that recording's declared
+configuration rather than its omission. `check_engine_dependencies_total.py`
+holds the contract past the type-checker (see the Total Engine Wiring rule in
+`CLAUDE.md`).
 
 The engine also exposes an optional ``coordinate()`` method that delegates to a
 ``MultiAgentCoordinator`` when one is configured (see [Coordination](coordination.md)).
@@ -233,8 +259,15 @@ LOCKED organisation a weaker response than it chose and said nothing.
    (role constraints, custom conventions, organisational policies).
 5. **Create context**: `AgentContext.from_identity()` with the configured
    `max_turns`.
-6. **Seed conversation**: injects system prompt, optional memory messages, and
-   formatted task instruction as initial messages.
+6. **Seed conversation**: injects the system prompt, optional memory messages,
+   and the formatted task instruction as initial messages. The task brief is
+   the ONE message the loop pins (`AgentContext.pinned_message_indices`): it
+   is the single owner of the task's title, description and criteria (the
+   system prompt carries no copy), and every compaction path (text summary,
+   LLM summary, memory offload) re-seats a pinned message verbatim rather than
+   archiving it, remapping the pin to its new index. Without the pin a
+   USER-role brief ages out of the preserved window, and a resumed session
+   works from a summary of its own replies.
 7. **Transition task**: `ASSIGNED` -> `IN_PROGRESS` (pass-through if already
    `IN_PROGRESS`). This is the entry sync to the central engine, and it is
    fail-loud: a refused transition raises `ExecutionStateError` rather than
@@ -652,13 +685,25 @@ class StagnationDetector(Protocol):
 Async protocol; future implementations may consult external services or
 LLM-based analysis.
 
-### Detector selection (`StagnationDetectionConfig.strategy`)
+### Detector selection (`engine.stagnation_strategy`)
 
-Stagnation detection is **off by default**: `StagnationDetectionConfig.strategy`
-defaults to `"off"`, and the factory returns no detector, so a stock boot runs
-the engine without one. Set `stagnation.strategy` to `tool_repetition` or
-`quality_erosion` to activate the matching detector with its co-located
-sub-config.
+Stagnation detection is **on by default**, at `tool_repetition`. It shipped
+`off`, which made it a feature wired to nothing: the corpus this loop was
+measured on holds a reviewer that re-ran an identical probe twenty times and a
+leaf that spent 52 turns and 1.58M tokens delivering nothing, with no detector
+present to notice either.
+
+`engine.stagnation_strategy` selects the detector (`off`, `tool_repetition`,
+`quality_erosion`) and the rest of the `Stagnation` group tunes it;
+`resolve_stagnation_config` reads them into the frozen
+`StagnationDetectionConfig` the factory takes. Whether detection runs is that
+one setting's decision and only its own: there is no second `enabled` flag on
+the sub-config, because a detector that is built, held, and consulted while
+silently answering nothing is the quieter of two authorities winning.
+
+The planning loop reads the same keys and builds its own detector instance,
+since the two loops run concurrently and a detector carries per-loop state: one
+owner of the value, two readers of it.
 
 ### `ToolRepetitionDetector` (`strategy: tool_repetition`)
 
@@ -675,14 +720,17 @@ sorted per-turn for order-independent comparison.
 
 ### Configuration (`StagnationConfig`)
 
+The tuning of the detector `engine.stagnation_strategy` selected (the system
+default is `tool_repetition`). There is no `enabled` field: whether detection
+runs is the strategy setting's decision alone.
+
 | Field                  | Default | Description                                       |
 |------------------------|---------|---------------------------------------------------|
-| `enabled`              | `True`  | Per-detector switch within `StagnationConfig`; only consulted once `strategy: tool_repetition` selects this detector (the system default is `strategy: off`, no detector) |
 | `window_size`          | `5`     | Number of recent tool-bearing turns to analyse     |
 | `repetition_threshold` | `0.6`   | Duplicate ratio that triggers detection            |
 | `cycle_detection`      | `True`  | Whether to detect repeating patterns               |
 | `max_corrections`      | `1`     | Corrective prompts before terminating (0 = none)   |
-| `min_tool_turns`       | `2`     | Minimum tool-bearing turns before any check fires  |
+| `min_tool_turns`       | `2`     | Tool-bearing turns in the window before any check fires; never above `window_size` |
 
 ### Intervention Flow
 
@@ -855,25 +903,61 @@ shape every implementation and every caller agrees on.
 The default implementation (`make_compaction_callback` in
 `compaction/summarizer.py`) archives oldest conversation turns into a summary
 message when `context_fill_percent` exceeds a configurable threshold (default
-80%).
+80%). Pinned messages (the task brief) are removed from the archivable span
+and re-seated in front of the summary, never summarised. The summary itself is
+spliced in as a SYSTEM message fenced with `<compaction-summary>`, because it
+was made from tool output, task content and the model's own replies, and a
+summariser that repeats instruction-shaped text would otherwise hand it to
+every later turn at system rank; the system prompt's untrusted-content
+directive declares the fence for every task session.
 
-`CompactionConfig` controls:
+Compaction is configured through settings, in the `engine` namespace under the
+`Compaction` group, so an operator can see and tune it on the dashboard. Every
+key is hot-reloadable: the callback is composed once at engine construction, so
+a write rebuilds the runtime services and the next task runs under the new
+value. `resolve_compaction_config` reads them into the frozen
+`CompactionConfig` the summariser and callback take.
 
-| Field | Default | Description |
+| Setting (`engine.*`) | Default | Description |
 |-------|---------|-------------|
-| `fill_threshold_percent` | `80.0` | Fill percentage that triggers compaction |
-| `min_messages_to_compact` | `4` | Minimum messages before compaction is allowed |
-| `preserve_recent_turns` | `3` | Recent turn pairs to keep uncompressed |
-| `agent_controlled` | `False` | Defer AUTOMATIC compaction to `safety_threshold_percent` as a safety net, giving the agent headroom to compact via the `compact_context` tool first; the tool itself is honoured regardless of this flag |
-| `safety_threshold_percent` | `95.0` | Auto-compaction safety net when `agent_controlled` is on; must exceed `fill_threshold_percent` |
-| `preserve_epistemic_markers` | `True` | Preserve marker-bearing sentences instead of truncating them (see [Agent-Controlled Context Compaction](#agent-controlled-context-compaction)) |
-| `llm_summarizer_enabled` | `False` | Summarise the archived batch via a completion call instead of concatenation; requires `llm_summary_model` |
-| `memory_offload_enabled` | `False` | Persist the archived batch to the memory backend so it can be read back later |
+| `compaction_fill_threshold_percent` | `80.0` | Fill percentage that triggers compaction |
+| `compaction_min_messages` | `4` | Minimum messages before compaction is allowed |
+| `compaction_preserve_recent_turns` | `3` | Recent turn pairs to keep uncompressed |
+| `compaction_agent_controlled` | `false` | Defer AUTOMATIC compaction to the safety threshold as a safety net, giving the agent headroom to compact via the `compact_context` tool first; the tool itself is honoured regardless of this flag |
+| `compaction_safety_threshold_percent` | `95.0` | Auto-compaction safety net when `compaction_agent_controlled` is on; must exceed the fill threshold |
+| `compaction_preserve_epistemic_markers` | `true` | Preserve marker-bearing sentences instead of truncating them (see [Agent-Controlled Context Compaction](#agent-controlled-context-compaction)) |
+| `compaction_llm_summarizer_enabled` | `false` | Summarise the archived batch via a completion call instead of concatenation |
+| `compaction_summary_model` | unset | The `(provider, model)` pair the summariser runs on. A `MODEL_REF`, so the client and the model id travel together; unset leaves no summariser built and compaction keeps its text summary |
+| `compaction_summary_temperature` | `0.3` | Sampling temperature for the summary |
+| `compaction_summary_max_tokens` | `500` | Output ceiling for one summary |
+| `compaction_memory_offload_enabled` | `false` | Persist the archived batch to the memory backend so it can be read back later |
 
 Assistant message snippets included in the summary are sanitized via
 ``sanitize_message()`` to redact file paths and URLs before injection into LLM
 context. Compaction errors are logged but never propagated; compaction is
 advisory, not critical.
+
+### Tool-Output Ceiling
+
+Compaction recovers context late. A tool result is resent on every later
+turn of the run, so a large one is paid once per turn for the rest of the
+session, and by the time the fill level triggers compaction the result has
+already been carried through every turn between. The ceiling is applied
+earlier, at the one boundary where a result enters the conversation
+(`loop_tool_execution.py::_append_tool_results`), before the untrusted-content
+fence is put around it so the marker sits inside the fence with the tool's own
+bytes and the fence is never what gets cut.
+
+`engine.tool_output_max_chars` (default `24000`, `0` disables) is the ceiling
+on one result's characters. Past it the head and the tail are kept, the head
+taking the larger share because a result says what it is first and only needs
+enough room at the end to say how it ended, and an elision marker states how
+many characters were dropped and names the setting, so the agent can narrow
+its next call rather than assume it saw everything. The loop reads the value
+live on every tool turn (`loop_tool_output_budget.py`), so an operator
+lowering it while watching a run drown in output reaches the very next call;
+`EXECUTION_TOOL_OUTPUT_ABBREVIATED` records each elision with the original and
+elided sizes.
 
 ### Compressed Checkpoint Recovery
 
@@ -1035,12 +1119,14 @@ measured property of this compactor.
 
 Two independent upgrades layer onto the text path, both off by default:
 
-- **LLM summarisation** (`llm_summarizer_enabled`, requires `llm_summary_model`): the
-  archived batch is summarised by a completion call (`LLMSummarizer`) instead of
-  concatenated; the archived content is fenced with `wrap_untrusted` before it reaches the
-  prompt. Any provider failure, or empty content, falls back to the text summary rather than
-  blocking compaction.
-- **Memory offload** (`memory_offload_enabled`): the archived batch is persisted to the
+- **LLM summarisation** (`engine.compaction_llm_summarizer_enabled`, plus a
+  `engine.compaction_summary_model` pair): the archived batch is summarised by a completion
+  call (`LLMSummarizer`) instead of concatenated; the archived content is fenced with
+  `wrap_untrusted` before it reaches the prompt. The client and model id of the summariser
+  arrive together as a `BoundCompletion`, never the engine's own provider paired with a loose id.
+  With the pair unset the summariser is not built at all, and any provider failure, or empty
+  content, falls back to the text summary rather than blocking compaction.
+- **Memory offload** (`engine.compaction_memory_offload_enabled`): the archived batch is persisted to the
   memory backend as a PROCEDURAL entry tagged `compaction:offloaded` (`MemoryOffloader`),
   scoped to the run's project, so a resume or investigation path can read back detail the
   in-context summary elided. A backend failure is logged and never blocks compaction.

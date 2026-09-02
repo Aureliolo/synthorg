@@ -17,6 +17,7 @@ from synthorg.tools.invocation_tracker import (
     ToolInvocationTracker,
 )
 from synthorg.tools.sandbox.execution_capability import ToolExecutionCapability
+from synthorg.tools.sandbox.reclaim import SandboxReclaimScheduler
 
 
 class WebResearchTools(BaseModel):
@@ -55,6 +56,9 @@ class ToolsStateSlice(BaseFeatureStateSlice):
     invocation_tracker: ToolInvocationTracker | None = None
     tool_execution: ToolExecutionCapability | None = None
     sandbox_reconciled_at: AwareDatetime | None = None
+    # The sweep that releases a reusable container once its owner's run has
+    # finished; its presence IS the subsystem's liveness answer.
+    sandbox_reclaim_scheduler: SandboxReclaimScheduler | None = None
     # ``None`` until a runtime assembly completes, which is the honest answer
     # before one has: not "no web tools", but "nothing has built any yet".
     web_research: WebResearchTools | None = None

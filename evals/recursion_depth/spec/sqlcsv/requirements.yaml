@@ -18,6 +18,20 @@ brief: SPEC.md
 seed_dir: seed
 oracle_dir: oracle
 
+# What the deliverable IS, asked apart from what the oracle asks of it. The
+# oracle says which requirements a tree satisfies, and a tree can satisfy a
+# hidden oracle while the program the specification names does not run. Each
+# module is imported and each entry point executed in a throwaway container
+# holding the tree alone, and the verdict is reported beside the score rather
+# than folded into it. `--help` because the verdict keys on a traceback, not
+# an exit status: a program answering it with a usage error is alive.
+liveness:
+  modules:
+    - sqlcsv
+  entry_points:
+    - module: sqlcsv
+      args: ["--help"]
+
 requirements:
   - id: R01
     area: ingest

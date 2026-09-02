@@ -47,6 +47,16 @@ MIN_DEPTH: Final[int] = 1
 #: The deepest cap the sweep records.
 MAX_DEPTH: Final[int] = 6
 
+#: The fewest repetitions a RECORDED cap may carry, adopted from the benchmark
+#: protocol the published harness comparison was measured against, which runs
+#: five trials per task; an independent bootstrap over that leaderboard found
+#: 24 of 25 adjacent rank pairs indistinguishable even at five. Two draws
+#: bracket a cell; they cannot say whether a low point is one bad tree or a
+#: real drop, which is the question a repeated cap is paid for. Enforced where a
+#: recording is loaded and where a run narrows it, never on the model, so a
+#: test can still build a two-cell matrix in code.
+MINIMUM_REPETITIONS: Final[int] = 5
+
 #: What a same-family judge costs the result. A module constant rather than a
 #: literal inside the accessor because a re-score has to RECOGNISE it: the
 #: report is rebuilt from the journal, which does not hold the manifest, so
@@ -306,6 +316,67 @@ class ModelPair(BaseModel):
         )
 
 
+class EmbedderPair(BaseModel):
+    """The embedding model memory recalls through during a recording.
+
+    Its own type rather than a :class:`ModelPair`: an embedder has no
+    capability rung, no sampling dials and no reasoning depth, and a field
+    that means nothing here would have to be filled with something that
+    reads as a claim.
+
+    Attributes:
+        provider: The connection the model is reached through.
+        model_id: The embedding model on that connection. Naming the
+            builtin lexical embedder here is a declared choice like any other
+            and reads on the artefact as exactly that.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    provider: NotBlankStr
+    model_id: NotBlankStr
+
+    @property
+    def label(self) -> str:
+        """A one-line rendering for logs and artifacts.
+
+        Returns:
+            ``provider/model_id``.
+        """
+        return f"{self.provider}/{self.model_id}"
+
+
+class StagnationTreatment(BaseModel):
+    """Which stagnation detector every session runs under.
+
+    Attributes:
+        strategy: The detector strategy, in the product's own vocabulary
+            (``engine.stagnation_strategy``). Stated rather than inherited,
+            because a recording that cannot say whether a looping session was
+            watched cannot say what a loop cost.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    strategy: NotBlankStr
+
+
+class CompactionTreatment(BaseModel):
+    """How every session's context is compacted.
+
+    Attributes:
+        fill_threshold_percent: Context fill at which compaction runs.
+        summariser: The pair the semantic summariser dispatches on, or
+            ``None`` for the snippet-join text summary, which costs nothing
+            and is what the product ships with the summariser off.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    fill_threshold_percent: float = Field(gt=0.0, le=100.0)
+    summariser: ModelPair | None = None
+
+
 class RecursionDepthManifest(BaseModel):
     """The whole recording matrix.
 
@@ -349,6 +420,24 @@ class RecursionDepthManifest(BaseModel):
             sandwich; the ordering is a hypothesis to test here rather than a
             result to import, since the same source reports its harness gains
             did not transfer to another model untuned.
+        leaf_deep_claims: The requirement count at or above which a unit
+            builds at the executor's OWN depth rather than at
+            ``leaf_reasoning_effort``. The published ablation's own fixed
+            allocation underperforms a per-task one, so the shallow pool is
+            not applied uniformly: a unit answerable for a whole subsystem is
+            the case the shallow depth was never measured on, and it is
+            decided per unit from what the unit claims, by the same function
+            that sizes its budget. Inert while ``leaf_reasoning_effort`` is
+            unset, since there is then only one pool to choose from.
+        embedder: The embedding model memory recalls through. Required, so a
+            recording states what its agents remembered with: eight
+            recordings measured an engine with no memory at all, and nothing
+            in their artefacts said so. Written to ``memory.embedder_model``
+            when the sweep arms its settings.
+        stagnation: The detector strategy every session runs under, written
+            to ``engine.stagnation_strategy`` at arm time.
+        compaction: The compaction threshold and summariser every session
+            runs under, written to ``engine.compaction_*`` at arm time.
         merge_attempts: How many attempts each merge gets, in BOTH arms. Equal
             by construction: repair only in the gated arm would let it win by
             spending more rather than by catching anything.
@@ -471,8 +560,12 @@ class RecursionDepthManifest(BaseModel):
     executor: ModelPair
     reviewer: ModelPair
     independence: Independence
+    embedder: EmbedderPair
+    stagnation: StagnationTreatment
+    compaction: CompactionTreatment
     contract_stage: bool
     leaf_reasoning_effort: ReasoningEffort | None = None
+    leaf_deep_claims: int = Field(ge=1)
     merge_attempts: int = Field(ge=1, le=MAX_MERGE_ATTEMPTS)
     planner_max_turns: int = Field(ge=1, le=_PLANNER_TURN_CAP)
     unit_max_turns: int = Field(ge=1, le=_UNIT_TURN_CAP)
@@ -753,19 +846,58 @@ def load_manifest(path: Path) -> RecursionDepthManifest:
     """
     payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     manifest = RecursionDepthManifest.model_validate(payload)
+    require_repetition_floor(manifest)
     resolved = (path.resolve().parent / manifest.spec_dir).resolve()
     return RecursionDepthManifest.model_validate(
         manifest.model_dump() | {"spec_dir": str(resolved)}
     )
 
 
+def require_repetition_floor(manifest: RecursionDepthManifest) -> None:
+    """Refuse a recording that would sample a cap fewer than the floor allows.
+
+    Asked of every matrix a recording is loaded from and of every per-run
+    narrowing, and deliberately not of the model: a unit test building a
+    two-cell matrix in code is not a recording, and holding it to a floor
+    written for paid cells would make the whole suite plan five times the
+    cells it scripts.
+
+    Args:
+        manifest: The matrix about to be recorded.
+
+    Raises:
+        ValueError: A swept cap carries fewer than :data:`MINIMUM_REPETITIONS`.
+    """
+    under = {
+        depth: manifest.repetitions[depth]
+        for depth in manifest.depths
+        if manifest.repetitions[depth] < MINIMUM_REPETITIONS
+    }
+    if under:
+        listed = ", ".join(f"cap {depth}: {count}" for depth, count in under.items())
+        msg = (
+            f"a recorded cap needs at least {MINIMUM_REPETITIONS} repetitions "
+            f"({listed}); the floor is the benchmark protocol's five trials per "
+            f"task, below which a smaller sample cannot tell one bad tree from "
+            f"a real drop. Record fewer caps with "
+            f"--depths, bound an evening with --max-sessions and continue with "
+            f"--resume, rather than sampling a cap it cannot report on."
+        )
+        raise ValueError(msg)
+
+
 __all__ = [
     "MAX_DEPTH",
+    "MINIMUM_REPETITIONS",
     "MIN_DEPTH",
     "Arm",
+    "CompactionTreatment",
+    "EmbedderPair",
     "Independence",
     "ModelPair",
     "RecursionDepthManifest",
     "Role",
+    "StagnationTreatment",
     "load_manifest",
+    "require_repetition_floor",
 ]

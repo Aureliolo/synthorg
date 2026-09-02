@@ -33,6 +33,7 @@ from synthorg.core.types import CapabilityLevel
 from synthorg.engine._prompt_helpers import build_metadata as _build_metadata
 from synthorg.engine.errors import PromptBuildError
 from synthorg.engine.policy_validation import validate_policy_quality
+from synthorg.engine.prompt_inputs import PromptInputs
 from synthorg.engine.prompt_profiles import get_prompt_profile
 from synthorg.engine.prompt_render import render_with_trimming
 from synthorg.engine.prompt_result import (
@@ -43,6 +44,7 @@ from synthorg.engine.prompt_result import (
     untrusted_content_directive_token_cost,
 )
 from synthorg.engine.prompt_safety import (
+    TAG_COMPACTION_SUMMARY,
     TAG_CONFIG_VALUE,
     TAG_PEER_CONTRIBUTION,
     TAG_TASK_DATA,
@@ -100,13 +102,16 @@ def build_system_prompt(  # noqa: PLR0913
     """Build a system prompt from agent identity and optional context.
 
     When ``max_tokens`` is provided and the prompt exceeds it, optional
-    sections are progressively trimmed (strategy, company, task,
-    org_policies).
+    sections are progressively trimmed (strategy, company, org_policies).
 
     Args:
         agent: Agent identity containing role, skills, authority.
         role: Optional role with description and responsibilities.
-        task: Optional task context injected into the prompt.
+        task: The bound task, when there is one. NOT rendered here: the
+            brief has one owner, ``format_task_instruction``, which seeds
+            it as a pinned USER message. What a bound task decides in the
+            system prompt is which untrusted-content fences the standing
+            directive declares.
         available_tools: Tool definitions populated into template context
             for custom templates only; the default template omits tools
             per D22 (non-inferable principle).
@@ -206,7 +211,7 @@ def build_system_prompt(  # noqa: PLR0913
         *((TAG_TASK_DATA,) if task is not None or has_async_tasks else ()),
         TAG_CONFIG_VALUE,
         *((TAG_TOOL_RESULT,) if fences_tool_results else ()),
-        *((TAG_PEER_CONTRIBUTION,) if task is not None else ()),
+        *((TAG_PEER_CONTRIBUTION, TAG_COMPACTION_SUMMARY) if task is not None else ()),
     )
 
     try:
@@ -223,20 +228,21 @@ def build_system_prompt(  # noqa: PLR0913
 
         result = render_with_trimming(
             template_str=template_str,
-            agent=agent,
-            role=role,
-            task=task,
-            available_tools=available_tools,
-            l1_summaries=l1_summaries,
-            company=company,
-            org_policies=org_policies,
+            inputs=PromptInputs(
+                agent=agent,
+                role=role,
+                available_tools=available_tools,
+                l1_summaries=l1_summaries,
+                company=company,
+                org_policies=org_policies,
+                effective_autonomy=effective_autonomy,
+                context_budget=context_budget_indicator,
+                currency=currency,
+                profile=profile,
+                strategy_config=strategy_config,
+            ),
             max_tokens=trim_budget,
             estimator=estimator,
-            effective_autonomy=effective_autonomy,
-            context_budget_indicator=context_budget_indicator,
-            currency=currency,
-            profile=profile,
-            strategy_config=strategy_config,
         )
     except PromptBuildError:
         raise  # Already logged by inner functions.
@@ -282,9 +288,12 @@ def build_system_prompt(  # noqa: PLR0913
     # longer has fences to govern); the async-task section also fences
     # task-data. Its cost was reserved from the trim budget above.
     directive_tags: tuple[str, ...] = (
+        # The task brief is a pinned USER message rather than a section, so
+        # its fence is governed by whether a task is bound at all: nothing
+        # the trimmer does can remove the message that carries it.
         *(
             (TAG_TASK_DATA,)
-            if "task" in result.sections or "async_tasks" in result.sections
+            if task is not None or "async_tasks" in result.sections
             else ()
         ),
         # Derived from the content, not the section list: the company-policy
@@ -301,7 +310,11 @@ def build_system_prompt(  # noqa: PLR0913
         # the run back quotes the reviewing agent's own prose at it. The
         # prompt is built once and reused across rework rounds, so the tag
         # has to be declared before the turn that carries it exists.
-        *((TAG_PEER_CONTRIBUTION,) if "task" in result.sections else ()),
+        *((TAG_PEER_CONTRIBUTION,) if task is not None else ()),
+        # Compaction splices its summary in at SYSTEM rank, fenced, once a
+        # task session's history crosses the fill threshold; a chat action
+        # is taskless and never compacts.
+        *((TAG_COMPACTION_SUMMARY,) if task is not None else ()),
     )
     result = append_untrusted_content_directive(result, directive_tags, estimator)
 

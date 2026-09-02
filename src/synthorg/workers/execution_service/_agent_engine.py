@@ -3,7 +3,7 @@
 
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, override
+from typing import TYPE_CHECKING, Final, assert_never, override
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.autonomy_enums import AutonomyLevel
@@ -39,21 +39,18 @@ from synthorg.observability.events.workers import (
     WORKERS_EXECUTION_SERVICE_SANDBOX_RELEASED,
     WORKERS_EXECUTION_SERVICE_TASK_NOT_FOUND,
 )
-from synthorg.observability.events.workspace import ENVIRONMENT_PROVISION_SKIPPED
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.tools.sandbox.active_environment import (
     ActiveSandboxEnvironment,
     active_sandbox_environment,
 )
-from synthorg.tools.sandbox.lifecycle.config import (
-    STRATEGY_PER_AGENT,
-    STRATEGY_PER_CALL,
-    STRATEGY_PER_TASK,
-)
+from synthorg.tools.sandbox.lifecycle.config import LifecycleStrategy
 from synthorg.tools.sandbox.protocol import SandboxBackend
-from synthorg.workers.environment_runner import SandboxEnvironmentRunner
 from synthorg.workers.execution_resume import ResumeDispatchMixin
 from synthorg.workers.execution_service._autonomy import read_project_autonomy_mode
+from synthorg.workers.execution_service._environment_provisioning import (
+    provision_environment,
+)
 from synthorg.workers.execution_service._spine_finalisation import (
     finalise_failed_spine_guarded,
 )
@@ -114,7 +111,7 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
         autonomy_resolver: AutonomyResolver | None = None,
         project_repo: ProjectRepository | None = None,
         sandbox_backend: SandboxBackend | None = None,
-        lifecycle_strategy_kind: str = STRATEGY_PER_CALL,
+        lifecycle_strategy_kind: LifecycleStrategy = LifecycleStrategy.PER_CALL,
         project_workspace_service: ProjectWorkspaceService | None = None,
         environment_service: EnvironmentService | None = None,
         environment_runner_backend: SandboxBackend | None = None,
@@ -155,6 +152,26 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
         # persistence is wired; ``execute_once`` then skips provisioning.
         self._environment_service = environment_service
         self._environment_runner_backend = environment_runner_backend
+
+    @property
+    def sandbox_backend(self) -> SandboxBackend | None:
+        """The backend whose lifecycle owner this service releases per task.
+
+        Read by the reclamation sweep, which releases what a run forgot to.
+
+        Returns:
+            The backend, or ``None`` when no reusable one is wired.
+        """
+        return self._sandbox_backend
+
+    @property
+    def lifecycle_strategy_kind(self) -> LifecycleStrategy:
+        """Which lifecycle the sandbox backend reuses containers under.
+
+        Returns:
+            The strategy.
+        """
+        return self._lifecycle_strategy_kind
 
     @property
     def engine(self) -> AgentEngine:
@@ -266,9 +283,6 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
     ) -> ActiveSandboxEnvironment | None:
         """Provision the project's environment; return the active sandbox env.
 
-        Fail-loud: a provisioning failure is logged and re-raised so a
-        broken environment never runs silently.
-
         Returns:
             The active sandbox environment (image + env additions), or
             ``None`` when no environment service is wired, the task has no
@@ -277,47 +291,15 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
         if (
             self._environment_service is None
             or self._environment_runner_backend is None
+            or project_id is None
         ):
             return None
-        if project_id is None:
-            return None
-        if workspace_path is None:
-            # The environment subsystem is wired and the task has a
-            # project, but workspace provisioning did not yield a path
-            # (it is best-effort upstream). Surface that the declared
-            # environment is NOT being applied rather than skipping mute.
-            logger.warning(
-                ENVIRONMENT_PROVISION_SKIPPED,
-                task_id=task_id,
-                project_id=project_id,
-                reason="workspace_path_unavailable",
-            )
-            return None
-        runner = SandboxEnvironmentRunner(
-            backend=self._environment_runner_backend,
+        return await provision_environment(
+            environment_service=self._environment_service,
+            runner_backend=self._environment_runner_backend,
+            task_id=task_id,
             project_id=project_id,
-        )
-        try:
-            provisioned = await self._environment_service.get_or_provision(
-                project_id,
-                workspace_path=workspace_path,
-                runner=runner,
-                sandbox_kind=self._environment_runner_backend.get_backend_type(),
-            )
-        except Exception as exc:
-            reraise_critical(exc)
-            log_exception_redacted(
-                logger,
-                WORKERS_EXECUTION_SERVICE_FAILED,
-                exc,
-                task_id=task_id,
-                project_id=project_id,
-                reason="project_environment_provision_failed",
-            )
-            raise
-        return ActiveSandboxEnvironment(
-            image_override=provisioned.image_ref,
-            env_additions=dict(provisioned.env_vars),
+            workspace_path=workspace_path,
         )
 
     @override
@@ -621,12 +603,15 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
         backend = self._sandbox_backend
         if backend is None:
             return
-        if self._lifecycle_strategy_kind == STRATEGY_PER_AGENT:
-            owner_id = str(identity.id)
-        elif self._lifecycle_strategy_kind == STRATEGY_PER_TASK:
-            owner_id = task_id
-        else:
-            return
+        match self._lifecycle_strategy_kind:
+            case LifecycleStrategy.PER_AGENT:
+                owner_id = str(identity.id)
+            case LifecycleStrategy.PER_TASK:
+                owner_id = task_id
+            case LifecycleStrategy.PER_CALL:
+                return
+            case _:
+                assert_never(self._lifecycle_strategy_kind)
         try:
             await backend.release_owner(
                 owner_id, project_id=project_id, image_override=image_override

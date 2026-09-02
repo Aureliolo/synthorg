@@ -63,6 +63,17 @@ _PERCENTILE_KEYS: Final[frozenset[str]] = frozenset(
     {_EXPERT_PERCENTILE_KEY, _CAPABLE_PERCENTILE_KEY}
 )
 
+# The repetition detector's window and the tool turns it needs inside that
+# window before it fires. Each is a valid integer alone; only the pair says
+# whether the detector can ever fire, and the config that consumes them
+# refuses a floor above the window, which surfaces as a failed runtime
+# rebuild rather than a refused write.
+_STAGNATION_WINDOW_KEY: Final[str] = "stagnation_window_size"
+_STAGNATION_MIN_TURNS_KEY: Final[str] = "stagnation_min_tool_turns"
+_STAGNATION_KEYS: Final[frozenset[str]] = frozenset(
+    {_STAGNATION_WINDOW_KEY, _STAGNATION_MIN_TURNS_KEY}
+)
+
 
 async def enforce_cross_field_rules(
     items: Sequence[tuple[str, str, str]],
@@ -105,6 +116,68 @@ async def enforce_cross_field_rules(
         await _enforce_capability_percentile_band(written, get_current, get_default)
     if any(ns == ENGINE_NS and key in ENGINE_LADDER_KEYS for ns, key in written):
         await enforce_engine_ladders(written, get_current, get_default)
+    if any(ns == ENGINE_NS and key in _STAGNATION_KEYS for ns, key in written):
+        await _enforce_stagnation_floor_fits_window(written, get_current, get_default)
+
+
+async def _enforce_stagnation_floor_fits_window(
+    written: Mapping[tuple[str, str], str],
+    get_current: Callable[[str, str], Awaitable[str | None]],
+    get_default: Callable[[str, str], str | None],
+) -> None:
+    """Reject a tool-turn floor the repetition window can never hold.
+
+    ``StagnationConfig`` refuses ``min_tool_turns > window_size`` when it is
+    built, and it is built at coordinator assembly and on every runtime
+    rebuild a settings write triggers. A pair accepted here and refused there
+    is a dashboard showing two values the loop does not run under, and every
+    later engine write re-failing the same rebuild.
+
+    Raises:
+        SettingValidationError: When the floor exceeds the window.
+    """
+    window = await _effective_engine_int(
+        written, get_current, get_default, _STAGNATION_WINDOW_KEY
+    )
+    floor = await _effective_engine_int(
+        written, get_current, get_default, _STAGNATION_MIN_TURNS_KEY
+    )
+    if window is None or floor is None or floor <= window:
+        return
+    msg = (
+        f"{ENGINE_NS}.{_STAGNATION_MIN_TURNS_KEY} of {floor} exceeds"
+        f" {ENGINE_NS}.{_STAGNATION_WINDOW_KEY} of {window}: the detector needs"
+        " that many tool turns inside the window before it fires, so a floor"
+        " above the window can never be met and the detector never fires."
+        " Widen the window in the same write, or lower the floor."
+    )
+    reject(
+        _STAGNATION_MIN_TURNS_KEY,
+        msg,
+        reason="stagnation floor above the repetition window",
+        namespace=ENGINE_NS,
+    )
+
+
+async def _effective_engine_int(
+    written: Mapping[tuple[str, str], str],
+    get_current: Callable[[str, str], Awaitable[str | None]],
+    get_default: Callable[[str, str], str | None],
+    key: str,
+) -> int | None:
+    """Return the ``engine`` integer this key will hold after the write.
+
+    Returns:
+        The resolved integer, or ``None`` when it does not parse, which the
+        per-field type validator reports on its own.
+    """
+    raw = await effective_raw(written, get_current, get_default, (ENGINE_NS, key))
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
 
 
 async def _enforce_money_ceiling_can_bind(

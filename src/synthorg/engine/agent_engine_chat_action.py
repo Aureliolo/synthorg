@@ -31,6 +31,7 @@ from synthorg.engine.loop_protocol import (
     TerminationReason,
     TurnObserver,
 )
+from synthorg.engine.mcp_tool_retrieval import latest_human_turn
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.observability import get_logger
@@ -325,10 +326,17 @@ class AgentEngineChatActionMixin:
             task_id=None,
             effective_autonomy=effective_autonomy,
             memory_strategy=self._resolve_memory_strategy(),
+            retrieval_query=latest_human_turn(ctx.conversation),
         )
+        if tool_invoker is not None:
+            ctx = ctx.with_tool_surface(tool_invoker.registry.list_tools())
         loop = ReactLoop(
             approval_gate=self._approval_gate,
             turn_observer=turn_observer,
+            # The tool-output ceiling is read per turn through this; without
+            # it every chat action ran on the registered default for the
+            # life of the process while the task loop honoured the setting.
+            config_resolver=self._config_resolver,
         )
         return await loop.execute(
             context=ctx,

@@ -26,6 +26,7 @@ from synthorg.observability import (
 )
 from synthorg.observability.events.settings import (
     SETTINGS_CHANNEL_CREATED,
+    SETTINGS_DISPATCHER_BOOT_APPLY_FAILED,
     SETTINGS_DISPATCHER_CHANNEL_DEAD,
     SETTINGS_DISPATCHER_POLL_ERROR,
     SETTINGS_DISPATCHER_START_REJECTED,
@@ -38,6 +39,7 @@ from synthorg.observability.events.settings import (
 from synthorg.settings.dispatcher_config import DispatcherConfigReader
 from synthorg.settings.resolver_protocol import ConfigResolverProtocol
 from synthorg.settings.subscriber import (
+    BootAppliedSettingsSubscriber,
     SettingChange,
     SettingsSubscriber,
     describe_changes,
@@ -317,6 +319,14 @@ class SettingsChangeDispatcher:
                 # does not inherit a stale flag from a prior run that ended
                 # mid-outage (which would drop this run's first warning).
                 self._config.reset()
+                # Before the poll task exists, so no delivery can interleave
+                # with the replay: a subscriber rebuilt by a live write while
+                # its boot replay is mid-flight can have the replay's older
+                # read land after the write's newer one. Inside the rollback
+                # scope too, so a critical failure here still releases the
+                # subscription rather than leaving it registered on a
+                # dispatcher that never started.
+                await self._apply_persisted()
                 self._running = True
                 self._task = asyncio.create_task(
                     self._poll_loop(),
@@ -355,6 +365,31 @@ class SettingsChangeDispatcher:
                 SETTINGS_DISPATCHER_STARTED,
                 subscriber_count=len(self._subscribers),
             )
+
+    async def _apply_persisted(self) -> None:
+        """Replay each boot-applied subscriber's persisted values once.
+
+        A subscriber whose value is baked into a holder seeded from the
+        environment config would otherwise carry the environment's value
+        until the first write, however long ago an operator persisted a
+        different one. One failing subscriber is logged and the rest still
+        run: the process is the same one a write would reach later, and a
+        boot that failed here would leave every OTHER persisted value inert
+        too.
+        """
+        for subscriber in self._subscribers:
+            if not isinstance(subscriber, BootAppliedSettingsSubscriber):
+                continue
+            try:
+                await subscriber.apply_persisted()
+            except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+                reraise_critical(exc)
+                logger.warning(
+                    SETTINGS_DISPATCHER_BOOT_APPLY_FAILED,
+                    subscriber=subscriber.subscriber_name,
+                    error_type=type(exc).__name__,
+                    error=safe_error_description(exc),
+                )
 
     async def stop(self) -> None:
         """Cancel the polling task.  Idempotent.

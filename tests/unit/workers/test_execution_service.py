@@ -44,11 +44,7 @@ from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.security.action_types import ActionTypeRegistry
 from synthorg.security.autonomy.models import AutonomyConfig
 from synthorg.security.autonomy.resolver import AutonomyResolver
-from synthorg.tools.sandbox.lifecycle.config import (
-    STRATEGY_PER_AGENT,
-    STRATEGY_PER_CALL,
-    STRATEGY_PER_TASK,
-)
+from synthorg.tools.sandbox.lifecycle.config import LifecycleStrategy
 from synthorg.tools.sandbox.protocol import SandboxBackend
 from synthorg.workers.execution_service import (
     AgentEngineExecutionService,
@@ -873,7 +869,7 @@ class TestSandboxOwnerRelease:
         self,
         *,
         sandbox_backend: SandboxBackend | None,
-        strategy_kind: str,
+        strategy_kind: LifecycleStrategy,
     ) -> tuple[AgentEngineExecutionService, object, object]:
         identity = make_e2e_identity()
         task = make_e2e_task(identity=identity)
@@ -907,7 +903,7 @@ class TestSandboxOwnerRelease:
         backend = mock_of[SandboxBackend](release_owner=release)
         service, identity, task = await self._service(
             sandbox_backend=backend,
-            strategy_kind=STRATEGY_PER_AGENT,
+            strategy_kind=LifecycleStrategy.PER_AGENT,
         )
         await self._run(service, task)
         release.assert_awaited_once_with(
@@ -921,7 +917,7 @@ class TestSandboxOwnerRelease:
         backend = mock_of[SandboxBackend](release_owner=release)
         service, _identity, task = await self._service(
             sandbox_backend=backend,
-            strategy_kind=STRATEGY_PER_TASK,
+            strategy_kind=LifecycleStrategy.PER_TASK,
         )
         await self._run(service, task)
         release.assert_awaited_once_with(
@@ -935,7 +931,7 @@ class TestSandboxOwnerRelease:
         backend = mock_of[SandboxBackend](release_owner=release)
         service, _identity, task = await self._service(
             sandbox_backend=backend,
-            strategy_kind=STRATEGY_PER_CALL,
+            strategy_kind=LifecycleStrategy.PER_CALL,
         )
         await self._run(service, task)
         release.assert_not_awaited()
@@ -943,7 +939,7 @@ class TestSandboxOwnerRelease:
     async def test_no_backend_is_a_noop(self) -> None:
         service, _identity, task = await self._service(
             sandbox_backend=None,
-            strategy_kind=STRATEGY_PER_AGENT,
+            strategy_kind=LifecycleStrategy.PER_AGENT,
         )
         # Must not raise despite no backend wired.
         await self._run(service, task)
@@ -953,7 +949,7 @@ class TestSandboxOwnerRelease:
         backend = mock_of[SandboxBackend](release_owner=release)
         service, _identity, task = await self._service(
             sandbox_backend=backend,
-            strategy_kind=STRATEGY_PER_TASK,
+            strategy_kind=LifecycleStrategy.PER_TASK,
         )
         # A failing release must not fail an otherwise-good task.
         await self._run(service, task)
@@ -977,7 +973,7 @@ class TestSandboxOwnerRelease:
             ),
             agent_registry=registry,
             sandbox_backend=backend,
-            lifecycle_strategy_kind=STRATEGY_PER_TASK,
+            lifecycle_strategy_kind=LifecycleStrategy.PER_TASK,
         )
         with pytest.raises(RuntimeError, match="engine boom"):
             await service.execute_once(

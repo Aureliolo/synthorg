@@ -1,0 +1,83 @@
+# module-kind: declarative
+"""Everything an :class:`~synthorg.engine.agent_engine.AgentEngine` is wired with.
+
+ONE required argument, and every field of every bundle required with it.
+The point is not tidiness: it is that a partially wired engine must not be
+constructible. A keyword that defaults to ``None`` is indistinguishable from
+one nobody supplied, so a caller can build an engine missing a collaborator
+without anyone having decided to, and nothing at any layer can tell the two
+apart: omitting ``compaction_callback`` looks exactly like deciding against
+it.
+
+Absence is still allowed and still common. What is not allowed is absence by
+OMISSION: a caller writes ``compaction_callback=None`` and that is a decision
+a reader can see and a reviewer can question, where a missing keyword is a
+decision nobody made.
+
+Grouped rather than flat because the groups are the ones the composition
+root already reads from (``BudgetStateSlice``, ``SecurityStateSlice``,
+``MemoryStateSlice``, ...), and because one sixty-field literal at each call
+site is a list nobody checks.
+"""
+
+from dataclasses import dataclass
+
+from synthorg.engine.dependencies._behaviour import EngineBehaviour
+from synthorg.engine.dependencies._budget import EngineBudget
+from synthorg.engine.dependencies._core import EngineCore
+from synthorg.engine.dependencies._governance import EngineGovernance
+from synthorg.engine.dependencies._loop_controls import EngineLoopControls
+from synthorg.engine.dependencies._memory import EngineMemory
+from synthorg.engine.dependencies._observability import EngineObservability
+from synthorg.engine.dependencies._org import EngineOrg
+from synthorg.engine.dependencies._recovery import CheckpointWiring, EngineRecovery
+from synthorg.engine.dependencies._routing import EngineRouting
+from synthorg.engine.dependencies._tooling import EngineTooling
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class EngineDependencies:
+    """The whole wiring of one engine, declared.
+
+    Attributes:
+        core: The provider, the clock, the tools and the loop.
+        routing: How an agent's own pair reaches a driver.
+        budget: What measures and bounds spend.
+        governance: Approval, policy, audit and the review gates.
+        loop_controls: What runs between turns.
+        memory: What an agent recalls, and what it learns.
+        org: The roster, the board, and the MCP surface.
+        tooling: What extends the base tool registry per task.
+        observability: Where progress and failure are published.
+        recovery: What happens when a run does not finish.
+        behaviour: Operator switches on what an agent may do.
+    """
+
+    core: EngineCore
+    routing: EngineRouting
+    budget: EngineBudget
+    governance: EngineGovernance
+    loop_controls: EngineLoopControls
+    memory: EngineMemory
+    org: EngineOrg
+    tooling: EngineTooling
+    observability: EngineObservability
+    recovery: EngineRecovery
+    behaviour: EngineBehaviour
+
+
+__all__ = [
+    "CheckpointWiring",
+    "EngineBehaviour",
+    "EngineBudget",
+    "EngineCore",
+    "EngineDependencies",
+    "EngineGovernance",
+    "EngineLoopControls",
+    "EngineMemory",
+    "EngineObservability",
+    "EngineOrg",
+    "EngineRecovery",
+    "EngineRouting",
+    "EngineTooling",
+]

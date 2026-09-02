@@ -6,12 +6,13 @@ construction site) actually reaches the ``ApprovalGate`` constructor
 instead of falling back to the gate's hardcoded default.
 """
 
+from dataclasses import replace
 from unittest.mock import AsyncMock
 
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
-from synthorg.engine.agent_engine import AgentEngine
+from tests._shared import engine_with, unwired_governance
 
 from .conftest import MockCompletionProvider
 
@@ -24,10 +25,13 @@ class TestApprovalGateTimeoutWiring:
         """A non-default timeout reaches the gate's interrupt-timeout field."""
         provider = MockCompletionProvider([])
         approval_store = AsyncMock(spec=ApprovalStore)
-        engine = AgentEngine(
-            provider=provider,
-            approval_store=approval_store,
-            approval_interrupt_timeout_seconds=42.0,
+        engine = engine_with(
+            provider,
+            governance=replace(
+                unwired_governance(),
+                approval_store=approval_store,
+                approval_interrupt_timeout_seconds=42.0,
+            ),
         )
         assert engine._approval_gate is not None
         assert engine._approval_gate._interrupt_timeout_seconds == 42.0
@@ -42,9 +46,9 @@ class TestApprovalGateTimeoutWiring:
         """
         provider = MockCompletionProvider([])
         approval_store = AsyncMock(spec=ApprovalStore)
-        engine = AgentEngine(
-            provider=provider,
-            approval_store=approval_store,
+        engine = engine_with(
+            provider,
+            governance=replace(unwired_governance(), approval_store=approval_store),
         )
         assert engine._approval_gate is not None
         assert engine._approval_gate._interrupt_timeout_seconds == 300.0
@@ -52,9 +56,11 @@ class TestApprovalGateTimeoutWiring:
     def test_no_approval_store_yields_no_gate(self) -> None:
         """The factory short-circuits when no approval store is wired."""
         provider = MockCompletionProvider([])
-        engine = AgentEngine(
-            provider=provider,
-            approval_interrupt_timeout_seconds=42.0,
+        engine = engine_with(
+            provider,
+            governance=replace(
+                unwired_governance(), approval_interrupt_timeout_seconds=42.0
+            ),
         )
         assert engine._approval_gate is None
 
@@ -73,10 +79,13 @@ class TestApprovalGateTimeoutWiring:
         provider = MockCompletionProvider([])
         approval_store = AsyncMock(spec=ApprovalStore)
         injected = ApprovalGate(park_service=ParkService())
-        engine = AgentEngine(
-            provider=provider,
-            approval_store=approval_store,
-            approval_gate=injected,
+        engine = engine_with(
+            provider,
+            governance=replace(
+                unwired_governance(),
+                approval_store=approval_store,
+                approval_gate=injected,
+            ),
         )
         assert engine._approval_gate is injected
 
@@ -92,8 +101,7 @@ class TestApprovalGateTimeoutWiring:
 
         provider = MockCompletionProvider([])
         injected = ApprovalGate(park_service=ParkService())
-        engine = AgentEngine(
-            provider=provider,
-            approval_gate=injected,
+        engine = engine_with(
+            provider, governance=replace(unwired_governance(), approval_gate=injected)
         )
         assert engine._approval_gate is injected

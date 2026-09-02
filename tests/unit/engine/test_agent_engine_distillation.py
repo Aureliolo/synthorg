@@ -1,5 +1,6 @@
 """Tests for distillation capture integration in the agent engine."""
 
+from dataclasses import replace
 from datetime import date
 from unittest.mock import AsyncMock
 
@@ -9,14 +10,13 @@ from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.engine.post_execution.rework_settlement import ScoredRun
 from synthorg.execution.turn import TurnRecord
 from synthorg.memory.protocol import MemoryBackend
 from synthorg.providers.protocol import CompletionProvider
-from tests._shared import as_uuid
+from tests._shared import UNWIRED_MEMORY, as_uuid, engine_with
 
 _AGENT_UUID = as_uuid("distillation-agent")
 _TASK_UUID = as_uuid("task-dist-001")
@@ -109,10 +109,13 @@ class TestAgentEngineDistillationCapture:
         memory_backend = AsyncMock(spec=MemoryBackend)
         memory_backend.store = AsyncMock(return_value="dist-1")
 
-        engine = AgentEngine(
-            provider=provider,
-            memory_backend=memory_backend,
-            distillation_capture_enabled=True,
+        engine = engine_with(
+            provider,
+            memory=replace(
+                UNWIRED_MEMORY,
+                memory_backend=memory_backend,
+                distillation_capture_enabled=True,
+            ),
         )
 
         await engine._finalise_run(
@@ -135,10 +138,13 @@ class TestAgentEngineDistillationCapture:
         memory_backend = AsyncMock(spec=MemoryBackend)
         memory_backend.store = AsyncMock(return_value="dist-err")
 
-        engine = AgentEngine(
-            provider=provider,
-            memory_backend=memory_backend,
-            distillation_capture_enabled=True,
+        engine = engine_with(
+            provider,
+            memory=replace(
+                UNWIRED_MEMORY,
+                memory_backend=memory_backend,
+                distillation_capture_enabled=True,
+            ),
         )
 
         await engine._finalise_run(
@@ -158,10 +164,8 @@ class TestAgentEngineDistillationCapture:
         provider = AsyncMock(spec=CompletionProvider)
         memory_backend = AsyncMock(spec=MemoryBackend)
 
-        engine = AgentEngine(
-            provider=provider,
-            memory_backend=memory_backend,
-            # distillation_capture_enabled omitted -- default False
+        engine = engine_with(
+            provider, memory=replace(UNWIRED_MEMORY, memory_backend=memory_backend)
         )
 
         await engine._finalise_run(
@@ -177,10 +181,11 @@ class TestAgentEngineDistillationCapture:
         identity = _make_identity()
         provider = AsyncMock(spec=CompletionProvider)
 
-        engine = AgentEngine(
-            provider=provider,
-            memory_backend=None,
-            distillation_capture_enabled=True,
+        engine = engine_with(
+            provider,
+            memory=replace(
+                UNWIRED_MEMORY, memory_backend=None, distillation_capture_enabled=True
+            ),
         )
 
         # Should complete without raising.

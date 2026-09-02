@@ -75,6 +75,7 @@ from evals.recursion_depth.journal import (
     open_cell_journal,
     open_progress_journal,
 )
+from evals.recursion_depth.liveness import probe_liveness
 from evals.recursion_depth.manifest import Arm, RecursionDepthManifest, Role
 from evals.recursion_depth.merge import (
     MergeOutcome,
@@ -86,6 +87,7 @@ from evals.recursion_depth.merge import (
 from evals.recursion_depth.models import (
     CEILING_CAVEAT,
     CONTRACT,
+    HEADLINE_CAVEAT,
     LEAF,
     MERGE,
     METRIC_CAVEAT,
@@ -99,6 +101,7 @@ from evals.recursion_depth.models import (
     Provenance,
     RecursionDepthReport,
     UnitRecord,
+    WiringReport,
     sum_costs,
 )
 from evals.recursion_depth.oracle import run_oracle
@@ -123,6 +126,7 @@ from evals.recursion_depth.unit import (
 )
 from evals.runner.execution import EVAL_TASK_PROJECT
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
@@ -517,6 +521,7 @@ async def run_sweep(
     provenance: Provenance,
     out_dir: Path,
     resume: bool,
+    wiring: WiringReport | None = None,
 ) -> RecursionDepthReport:
     """Run the whole matrix and assemble the report.
 
@@ -529,6 +534,8 @@ async def run_sweep(
         provenance: What this recording is measured against.
         out_dir: Where the journal and the report are written.
         resume: Whether an existing journal for this matrix is continued.
+        wiring: What the smoke this recording was gated on found, carried
+            into the report so the artefact states its own wiring.
 
     Returns:
         The report, always written, carrying every run that was attempted.
@@ -554,7 +561,12 @@ async def run_sweep(
     # Seeded, not accumulated: these three hold for every sweep this harness
     # can run, and a report that states them only when something went wrong
     # states them in exactly the runs nobody reads closely.
-    caveats: list[str] = [METRIC_CAVEAT, SIZING_CAVEAT, ORACLE_CAVEAT]
+    caveats: list[str] = [
+        METRIC_CAVEAT,
+        HEADLINE_CAVEAT,
+        SIZING_CAVEAT,
+        ORACLE_CAVEAT,
+    ]
     independence = context.manifest.caveat()
     if independence is not None:
         caveats.append(independence)
@@ -610,6 +622,7 @@ async def run_sweep(
         cells=cells,
         caveats=caveats,
         planned_cells=len(planned),
+        wiring=wiring,
     )
 
 
@@ -999,6 +1012,15 @@ async def _run_cell(
         spec_dir=context.spec_dir,
         tree=assembled.project_dir,
     )
+    # A second question of the same tree, in a container of its own: the
+    # oracle says what the tree satisfies, this says whether the program the
+    # specification names runs at all, and the two are recorded side by side.
+    alive = await probe_liveness(
+        build_sandbox=context.deps.build_sandbox,
+        release_sandboxes=context.deps.release_tools,
+        spec_dir=context.spec_dir,
+        tree=assembled.project_dir,
+    )
     # Off the trees, once, while they are still here: --keep-workspaces is not
     # the default, so a run that did not ask for it would otherwise have no way
     # to answer afterwards what its units agreed on.
@@ -1026,6 +1048,8 @@ async def _run_cell(
         merged_passing=tuple(sorted(merged.passed)),
         shared_modules=agreement.shared,
         diverged_modules=agreement.diverged,
+        liveness=alive.verdict,
+        liveness_detail=alive.detail,
     )
     logger.info(
         EVALS_RECURSION_CELL_RECORDED,
@@ -1035,6 +1059,7 @@ async def _run_cell(
         achieved_depth=record.achieved_depth,
         leaf_count=len(record.leaves),
         merged_passing=len(record.merged_passing),
+        liveness=alive.verdict.value,
         shared_modules=record.shared_modules,
         diverged_modules=record.diverged_modules,
         cost=record.total_cost,
@@ -1415,7 +1440,16 @@ async def _run_one_leaf(
     Returns:
         The leaf's outcome.
     """
-    owner = _owner_for(context.roster, str(task.id), building=True)
+    claimed = requirement_ids_of(
+        definition.satisfies,
+        known=context.spec.requirement_ids,
+        unit=str(task.title),
+    )
+    # Sized before it is owned: the budget and the reasoning depth are one
+    # decision about how much this unit has to do, and the owner is whichever
+    # declared pool is bound at the depth that decision named.
+    limits = context.limits_for(Role.LEAF, fan_in=0, claims=len(claimed))
+    owner = _owner_for(context.roster, str(task.id), effort=limits.reasoning_effort)
     workspace = await asyncio.to_thread(
         unit_workspace,
         cell_key=cell.key,
@@ -1423,11 +1457,6 @@ async def _run_one_leaf(
         spec_dir=context.spec_dir,
         work_root=context.work_root,
         contract=contract,
-    )
-    claimed = requirement_ids_of(
-        definition.satisfies,
-        known=context.spec.requirement_ids,
-        unit=str(task.title),
     )
     return await run_leaf(
         context.deps,
@@ -1441,7 +1470,7 @@ async def _run_one_leaf(
         owner=owner,
         workspace=workspace,
         execution_id=f"{cell.key}-leaf-{task.id}",
-        limits=context.limits_for(Role.LEAF, fan_in=0, claims=len(claimed)),
+        limits=limits,
         # The ids only decide the own-test gate where a contract seeded the
         # tree, which is also the only arm where the tree holds tests this leaf
         # did not write. `UNBOUND` and `()` are different answers and both
@@ -1532,7 +1561,10 @@ def _merge_criteria(
 
 
 def _owner_for(
-    roster: SweepRoster, unit_id: str, *, building: bool = False
+    roster: SweepRoster,
+    unit_id: str,
+    *,
+    effort: ReasoningEffort | None = None,
 ) -> AgentIdentity:
     """Pick the builder that owns one unit.
 
@@ -1544,16 +1576,17 @@ def _owner_for(
     Args:
         roster: The sweep's agents.
         unit_id: What the choice is derived from.
-        building: Whether this session BUILDS a unit, as opposed to planning,
-            fixing the contract or assembling. Only that distinction can route
-            to a pool bound at its own reasoning depth, and it defaults to
-            false so every caller that has not been asked the question keeps
-            the pool it always had.
+        effort: The depth this session was allocated, which names the POOL
+            it draws from: ``None`` is the executor's own, and it is what
+            planning, the contract and every assembly keep. A leaf passes
+            what :func:`session_limits_for` decided for it, so the one owner
+            of how much a unit has to do is also the one owner of how deeply
+            it reasons about it.
 
     Returns:
         The owning builder.
     """
-    pool = roster.leaf_builders if building else roster.builders
+    pool = roster.pool_for(effort)
     # The digest is taken over the unit id ALONE, so a unit reaches the same
     # position in whichever pool it is drawn from. Folding the pool into the
     # seed would re-shuffle every ownership the moment a second pool exists,
@@ -1605,6 +1638,8 @@ def _leaf_record(
         missing_declared_paths=leaf.missing_declared_paths,
         terminations=leaf.terminations,
         workspace_files_changed=leaf.workspace_files_changed,
+        compaction_tokens=leaf.compaction_tokens,
+        compaction_cost=leaf.compaction_cost,
     )
 
 
@@ -1630,6 +1665,8 @@ def _merge_record(
         input_tokens=outcome.input_tokens,
         output_tokens=outcome.output_tokens,
         review_tokens=outcome.review_tokens,
+        compaction_tokens=outcome.compaction_tokens,
+        compaction_cost=outcome.compaction_cost,
         executor=outcome.executor,
         reviewer=outcome.reviewer,
         detail=outcome.detail,

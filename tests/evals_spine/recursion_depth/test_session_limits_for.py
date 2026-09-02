@@ -12,6 +12,7 @@ import pytest
 
 from evals.recursion_depth.manifest import RecursionDepthManifest, Role
 from evals.recursion_depth.session import session_limits_for
+from synthorg.core.completion_enums import ReasoningEffort
 
 pytestmark = pytest.mark.unit
 
@@ -44,6 +45,10 @@ def _manifest(**overrides: object) -> RecursionDepthManifest:
             "family": "example-family-a",
         },
         "independence": "same_family",
+        "embedder": {"provider": "example-provider", "model_id": "example-embed-001"},
+        "stagnation": {"strategy": "tool_repetition"},
+        "compaction": {"fill_threshold_percent": 80.0, "summariser": None},
+        "leaf_deep_claims": 4,
         "merge_attempts": 3,
         "unit_max_turns": 40,
         "planner_max_turns": 40,
@@ -171,3 +176,38 @@ class TestSizingBoundsAreValidatedAtLoad:
         """
         with pytest.raises(ValueError, match="unit_token_ceiling"):
             _manifest(unit_token_ceiling=4_000_000, unit_token_cap=1_500_000)
+
+
+class TestReasoningDepthIsAllocatedPerUnit:
+    """The published fixed allocation loses to a per-task one, so this is one.
+
+    The same function that sizes a unit's budget names the pool it builds
+    on: a unit claiming little takes the shallow pool the matrix declared, a
+    unit answerable for a subsystem keeps the executor's own depth.
+    """
+
+    def test_a_small_claim_takes_the_shallow_pool(self) -> None:
+        manifest = _manifest(leaf_reasoning_effort="low", leaf_deep_claims=4)
+        limits = session_limits_for(manifest, Role.LEAF, fan_in=0, claims=2)
+        assert limits.reasoning_effort is ReasoningEffort.LOW
+
+    def test_a_claim_at_the_threshold_keeps_the_executors_depth(self) -> None:
+        manifest = _manifest(leaf_reasoning_effort="low", leaf_deep_claims=4)
+        limits = session_limits_for(manifest, Role.LEAF, fan_in=0, claims=4)
+        assert limits.reasoning_effort is None
+
+    def test_no_shallow_pool_means_every_unit_keeps_the_executors_depth(
+        self,
+    ) -> None:
+        manifest = _manifest(leaf_deep_claims=4)
+        for claims in (0, 1, 4, 18):
+            limits = session_limits_for(manifest, Role.LEAF, fan_in=0, claims=claims)
+            assert limits.reasoning_effort is None
+
+    @pytest.mark.parametrize(
+        "role", [Role.PLAN, Role.CONTRACT, Role.MERGE, Role.REVIEW]
+    )
+    def test_every_other_role_keeps_the_executors_depth(self, role: Role) -> None:
+        # The sandwich is only a sandwich if the outer phases stay deep.
+        manifest = _manifest(leaf_reasoning_effort="low", leaf_deep_claims=1)
+        assert session_limits_for(manifest, role, fan_in=3).reasoning_effort is None

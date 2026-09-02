@@ -11,6 +11,7 @@ from synthorg.engine.checkpoint.resume import (
     deserialize_and_reconcile,
     make_loop_with_callback,
 )
+from synthorg.engine.checkpoint.wiring import CheckpointWiring
 from synthorg.engine.failure_classification import FailureCategory
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.providers.enums import MessageRole
@@ -100,6 +101,36 @@ class TestDeserializeAndReconcileSuccess:
         assert "turn 5" in last_msg.content
         assert "rate limit exceeded" in last_msg.content
         assert "Review progress and continue" in last_msg.content
+
+    def test_reconciliation_notes_an_earlier_compaction(
+        self,
+        sample_agent: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """A resumed context that was compacted says so, with what was archived."""
+        from synthorg.engine.compaction.models import CompressionMetadata
+        from synthorg.engine.context import AgentContext
+
+        ctx = AgentContext.from_identity(sample_agent, task=sample_task_with_criteria)
+        ctx = ctx.model_copy(
+            update={
+                "turn_count": 9,
+                "compression_metadata": CompressionMetadata(
+                    compression_point=6, archived_turns=4, summary_tokens=120
+                ),
+            }
+        )
+        result = deserialize_and_reconcile(
+            ctx.model_dump_json(),
+            error_message="provider timeout",
+            agent_id="agent-1",
+            task_id="task-1",
+            failure_category=FailureCategory.TIMEOUT,
+        )
+        last_msg = result.conversation[-1]
+        assert last_msg.content is not None
+        assert "previously compacted" in last_msg.content
+        assert "archived 4 turns" in last_msg.content
 
     def test_reconciliation_includes_failure_category(
         self,
@@ -289,43 +320,29 @@ class TestDeserializeAndReconcileError:
 # ---------------------------------------------------------------------------
 
 
+def _make_wiring() -> CheckpointWiring:
+    """Build a wiring over two mock repositories.
+
+    Returns:
+        The wiring.
+    """
+    cp_repo, hb_repo = _make_repos()
+    return CheckpointWiring(
+        checkpoint_repo=cp_repo,
+        heartbeat_repo=hb_repo,
+        config=CheckpointConfig(),
+    )
+
+
 @pytest.mark.unit
 class TestMakeLoopWithCallbackRepos:
-    """Loop returned unchanged when repos are None."""
+    """Loop returned unchanged when nothing is checkpointed."""
 
-    def test_both_repos_none_returns_original(self) -> None:
+    def test_absent_wiring_returns_original(self) -> None:
         loop = ReactLoop()
         result = make_loop_with_callback(
             loop,
-            checkpoint_repo=None,
-            heartbeat_repo=None,
-            checkpoint_config=CheckpointConfig(),
-            agent_id="agent",
-            task_id="task",
-        )
-        assert result is loop
-
-    def test_checkpoint_repo_none_returns_original(self) -> None:
-        loop = ReactLoop()
-        hb_repo = AsyncMock()
-        result = make_loop_with_callback(
-            loop,
-            checkpoint_repo=None,
-            heartbeat_repo=hb_repo,
-            checkpoint_config=CheckpointConfig(),
-            agent_id="agent",
-            task_id="task",
-        )
-        assert result is loop
-
-    def test_heartbeat_repo_none_returns_original(self) -> None:
-        loop = ReactLoop()
-        cp_repo = AsyncMock()
-        result = make_loop_with_callback(
-            loop,
-            checkpoint_repo=cp_repo,
-            heartbeat_repo=None,
-            checkpoint_config=CheckpointConfig(),
+            wiring=None,
             agent_id="agent",
             task_id="task",
         )
@@ -337,13 +354,10 @@ class TestMakeLoopWithCallbackInjection:
     """Loop types get checkpoint callback injected."""
 
     def test_react_loop_gets_callback(self) -> None:
-        cp_repo, hb_repo = _make_repos()
         original = ReactLoop()
         result = make_loop_with_callback(
             original,
-            checkpoint_repo=cp_repo,
-            heartbeat_repo=hb_repo,
-            checkpoint_config=CheckpointConfig(),
+            wiring=_make_wiring(),
             agent_id="agent-1",
             task_id="task-1",
         )
@@ -353,14 +367,11 @@ class TestMakeLoopWithCallbackInjection:
     def test_react_loop_preserves_stagnation_detector(self) -> None:
         from synthorg.engine.stagnation import ToolRepetitionDetector
 
-        cp_repo, hb_repo = _make_repos()
         detector = ToolRepetitionDetector()
         original = ReactLoop(stagnation_detector=detector)
         result = make_loop_with_callback(
             original,
-            checkpoint_repo=cp_repo,
-            heartbeat_repo=hb_repo,
-            checkpoint_config=CheckpointConfig(),
+            wiring=_make_wiring(),
             agent_id="agent-1",
             task_id="task-1",
         )
@@ -368,8 +379,6 @@ class TestMakeLoopWithCallbackInjection:
         assert result.stagnation_detector is detector
 
     def test_unsupported_loop_type_returns_original(self) -> None:
-        cp_repo, hb_repo = _make_repos()
-
         class CustomLoop:
             """Valid ExecutionLoop not handled by make_loop_with_callback dispatch."""
 
@@ -382,9 +391,7 @@ class TestMakeLoopWithCallbackInjection:
         original = CustomLoop()
         result = make_loop_with_callback(
             original,  # type: ignore[arg-type]
-            checkpoint_repo=cp_repo,
-            heartbeat_repo=hb_repo,
-            checkpoint_config=CheckpointConfig(),
+            wiring=_make_wiring(),
             agent_id="agent-1",
             task_id="task-1",
         )
@@ -396,30 +403,32 @@ class TestMakeLoopWithCallbackInjection:
 # ---------------------------------------------------------------------------
 
 
+def _wiring_over(cp_repo: AsyncMock, hb_repo: AsyncMock) -> CheckpointWiring:
+    """Wrap two repository doubles in a wiring.
+
+    Returns:
+        The wiring.
+    """
+    return CheckpointWiring(
+        checkpoint_repo=cp_repo,
+        heartbeat_repo=hb_repo,
+        config=CheckpointConfig(),
+    )
+
+
 @pytest.mark.unit
 class TestCleanupCheckpointArtifactsSuccess:
     """Happy path -- cleanup deletes checkpoints and heartbeat."""
 
     async def test_deletes_both(self) -> None:
         cp_repo, hb_repo = _make_repos()
-        await cleanup_checkpoint_artifacts(cp_repo, hb_repo, "exec-1")
+        await cleanup_checkpoint_artifacts(_wiring_over(cp_repo, hb_repo), "exec-1")
         cp_repo.delete_by_execution.assert_awaited_once_with("exec-1")
         hb_repo.delete.assert_awaited_once_with("exec-1")
 
-    async def test_both_repos_none_is_noop(self) -> None:
-        await cleanup_checkpoint_artifacts(None, None, "exec-1")
+    async def test_absent_wiring_is_noop(self) -> None:
+        await cleanup_checkpoint_artifacts(None, "exec-1")
         # Should not raise
-
-    async def test_checkpoint_repo_none_only_deletes_heartbeat(self) -> None:
-        hb_repo = AsyncMock()
-        await cleanup_checkpoint_artifacts(None, hb_repo, "exec-1")
-        hb_repo.delete.assert_awaited_once_with("exec-1")
-
-    async def test_heartbeat_repo_none_only_deletes_checkpoints(self) -> None:
-        cp_repo = AsyncMock()
-        cp_repo.delete_by_execution = AsyncMock(return_value=3)
-        await cleanup_checkpoint_artifacts(cp_repo, None, "exec-1")
-        cp_repo.delete_by_execution.assert_awaited_once_with("exec-1")
 
 
 @pytest.mark.unit
@@ -433,7 +442,7 @@ class TestCleanupCheckpointArtifactsErrors:
         )
         hb_repo = AsyncMock()
         # Should not raise
-        await cleanup_checkpoint_artifacts(cp_repo, hb_repo, "exec-1")
+        await cleanup_checkpoint_artifacts(_wiring_over(cp_repo, hb_repo), "exec-1")
         # Heartbeat delete should still be called
         hb_repo.delete.assert_awaited_once()
 
@@ -443,7 +452,7 @@ class TestCleanupCheckpointArtifactsErrors:
         hb_repo = AsyncMock()
         hb_repo.delete = AsyncMock(side_effect=RuntimeError("HB error"))
         # Should not raise
-        await cleanup_checkpoint_artifacts(cp_repo, hb_repo, "exec-1")
+        await cleanup_checkpoint_artifacts(_wiring_over(cp_repo, hb_repo), "exec-1")
         # Checkpoint delete should have succeeded
         cp_repo.delete_by_execution.assert_awaited_once()
 
@@ -455,4 +464,4 @@ class TestCleanupCheckpointArtifactsErrors:
         hb_repo = AsyncMock()
         hb_repo.delete = AsyncMock(side_effect=RuntimeError("HB error"))
         # Should not raise even when both fail
-        await cleanup_checkpoint_artifacts(cp_repo, hb_repo, "exec-1")
+        await cleanup_checkpoint_artifacts(_wiring_over(cp_repo, hb_repo), "exec-1")

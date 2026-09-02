@@ -2,7 +2,7 @@
 """Project a loop's execution result onto the metrics the A/B rubric ranks on.
 
 Every figure here is already recorded by the loops themselves: ``TurnRecord``
-carries tokens, tool calls, provider retries and cache hits. Nothing is
+carries tokens, tool calls, provider retries and cached-input tokens. Nothing is
 estimated or re-derived, so a metric in the scoreboard is a metric the loop
 actually reported.
 
@@ -36,7 +36,7 @@ class RunMetrics(BaseModel):
     tool_call_names: tuple[str, ...] = Field(default=())
     repeated_tool_calls: int = Field(ge=0)
     provider_retries: int | None = Field(default=None, ge=0)
-    cache_hits: int = Field(ge=0)
+    cached_input_tokens: int = Field(ge=0)
 
     # ``@property`` rather than ``@computed_field``: this model round-trips
     # through the scoreboard JSON, and a serialised derived value would land in
@@ -78,14 +78,15 @@ def run_metrics(result: ExecutionResult, *, duration_seconds: float) -> RunMetri
         repeated_tool_calls=len(fingerprints) - len(set(fingerprints)),
         # A run where no turn carried a retry count did not measure retries at
         # all; summing it to zero would report the strongest possible rework
-        # result on the strength of having no evidence. ``cache_hit`` is not
-        # treated the same way: it feeds no ranked dimension.
+        # result on the strength of having no evidence. The cached-input
+        # count is not treated the same way: a count has no "unknown", and it
+        # feeds no ranked dimension.
         provider_retries=(
             sum(turn.retry_count or 0 for turn in turns)
             if any(turn.retry_count is not None for turn in turns)
             else None
         ),
-        cache_hits=sum(1 for turn in turns if turn.cache_hit),
+        cached_input_tokens=sum(turn.cache_read_input_tokens for turn in turns),
     )
 
 

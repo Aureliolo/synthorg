@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Final, get_args
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.autonomy_enums import AutonomyLevel
 from synthorg.core.role import Role
-from synthorg.core.task import Task
 from synthorg.core.types import AutonomyDetailLevel
 from synthorg.engine.prompt_profiles import PromptProfile
 from synthorg.engine.prompt_template import (
@@ -60,37 +59,34 @@ SECTION_AUTHORITY: Final[str] = "authority"
 SECTION_ORG_POLICIES: Final[str] = "org_policies"
 SECTION_AUTONOMY: Final[str] = "autonomy"
 SECTION_ASK_POLICY: Final[str] = "ask_policy"
-SECTION_TASK: Final[str] = "task"
 SECTION_COMPANY: Final[str] = "company"
 SECTION_TOOLS: Final[str] = "tools"
 SECTION_CONTEXT_BUDGET: Final[str] = "context_budget"
 SECTION_STRATEGY: Final[str] = "strategy"
 
-# Sections trimmed when over token budget, least critical first.
-# Strategy is trimmed before company because it is additive context.
-# Tools section was removed from the default template per D22
-# (non-inferable principle), but custom templates may still render tools.
-# Ask-policy sits ahead of the task: an operator can stack additions under the
-# standing directive, and an untrimmable section that an operator can grow is a
-# section that can evict the work the agent was given. The standing directive
-# is prose the trimmer keeps until this section goes entirely, which is the
-# right trade against losing the task itself.
+# Sections trimmed when over token budget, least critical first, and ONLY
+# sections the trimmer can drop from its inputs: an entry here with no
+# matching branch spends a render pass and trims nothing. Strategy is trimmed
+# before company because it is additive context. The tools section was
+# removed from the default template per D22 (non-inferable principle), but
+# custom templates may still render tools. The task brief is not a section of
+# this prompt at all: it travels once, as the first user message, pinned
+# against compaction. The ask policy is appended after rendering rather than
+# rendered from the inputs, so it is not trimmable either.
 TRIMMABLE_SECTIONS: Final[tuple[str, ...]] = (
     SECTION_STRATEGY,
     SECTION_COMPANY,
-    SECTION_ASK_POLICY,
-    SECTION_TASK,
     SECTION_ORG_POLICIES,
 )
 
 
 def _resolve_profile_flags(
     profile: PromptProfile | None,
-) -> tuple[AutonomyDetailLevel, bool, bool]:
+) -> tuple[AutonomyDetailLevel, bool]:
     """Extract rendering flags from profile, falling back to full defaults.
 
     Returns:
-        ``(autonomy_detail, include_org_policies, simplify_criteria)``.
+        ``(autonomy_detail, include_org_policies)``.
     """
     # Deferred import to avoid circular dependency at module level.
     from synthorg.engine.prompt_profiles import (  # noqa: PLC0415
@@ -101,7 +97,6 @@ def _resolve_profile_flags(
     return (
         effective.autonomy_detail_level,
         effective.include_org_policies,
-        effective.simplify_acceptance_criteria,
     )
 
 
@@ -124,9 +119,7 @@ def build_core_context(
         The template context dict.
     """
     authority = agent.authority
-    autonomy_detail, include_org_policies, simplify_criteria = _resolve_profile_flags(
-        profile
-    )
+    autonomy_detail, include_org_policies = _resolve_profile_flags(profile)
     autonomy_map = _AUTONOMY_LOOKUP[autonomy_detail]
     autonomy_mode = (
         effective_autonomy.level
@@ -153,7 +146,6 @@ def build_core_context(
         "autonomy_detail_level": autonomy_detail,
         # Profile-driven template flags.
         "include_org_policies": include_org_policies,
-        "simplify_acceptance_criteria": simplify_criteria,
     }
 
     ctx["effective_autonomy"] = _format_autonomy(effective_autonomy)
@@ -202,7 +194,6 @@ def build_metadata(agent: AgentIdentity) -> dict[str, str]:
 
 def compute_sections(
     *,
-    task: Task | None,
     available_tools: tuple[ToolDefinition, ...] = (),
     company: Company | None,
     org_policies: tuple[str, ...] = (),
@@ -218,8 +209,12 @@ def compute_sections(
     section is tracked when ``available_tools`` is non-empty and a custom
     template is in use.
 
+    The task brief is NOT a section here. It is a pinned USER message with
+    one owner (``format_task_instruction``); rendering it into the system
+    prompt as well made it two, at 88-94% byte overlap, and made the copy
+    the trimmer dropped indistinguishable from the copy it kept.
+
     Args:
-        task: Optional task context.
         available_tools: Tool definitions (tracked for custom templates).
         company: Optional company context.
         org_policies: Company-wide policy texts.
@@ -234,7 +229,7 @@ def compute_sections(
     Returns:
         Tuple of section names that are included.
     """
-    _, include_policies, _ = _resolve_profile_flags(profile)
+    _, include_policies = _resolve_profile_flags(profile)
 
     sections: list[str] = [SECTION_IDENTITY]
     if SECTION_HOUSE_STYLE in injected_sections:
@@ -250,8 +245,6 @@ def compute_sections(
         sections.append(SECTION_ASK_POLICY)
     if SECTION_STRATEGY in injected_sections:
         sections.append(SECTION_STRATEGY)
-    if task is not None:
-        sections.append(SECTION_TASK)
     if available_tools and custom_template:
         sections.append(SECTION_TOOLS)
     if company is not None:

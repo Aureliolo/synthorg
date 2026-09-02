@@ -20,6 +20,7 @@ const callCategoryArb = fc.oneof(
   fc.constant('coordination' as const),
   fc.constant('system' as const),
   fc.constant('embedding' as const),
+  fc.constant('image_generation' as const),
   fc.constant(null),
 )
 
@@ -48,7 +49,8 @@ const costRecordArb: fc.Arbitrary<CostRecord> = fc.record({
   prompt_class_id: fc.oneof(fc.stringMatching(/^system:[a-z_:]{3,30}$/), fc.constant(null)),
   accuracy_effort_ratio: fc.oneof(fc.double({ min: 0, max: 1, noNaN: true }), fc.constant(null)),
   latency_ms: fc.oneof(fc.double({ min: 0, max: 10000, noNaN: true }), fc.constant(null)),
-  cache_hit: fc.oneof(fc.boolean(), fc.constant(null)),
+  cache_read_input_tokens: fc.nat({ max: 10000 }),
+  cache_write_input_tokens: fc.nat({ max: 10000 }),
   retry_count: fc.oneof(fc.nat({ max: 5 }), fc.constant(null)),
   retry_reason: fc.oneof(fc.stringMatching(/^[a-z_]{3,20}$/), fc.constant(null)),
   finish_reason: finishReasonArb,

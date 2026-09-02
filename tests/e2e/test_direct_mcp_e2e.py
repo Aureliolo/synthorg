@@ -23,6 +23,7 @@ The acceptance bar:
 """
 
 from collections.abc import AsyncGenerator
+from dataclasses import replace
 from typing import NamedTuple
 
 import pytest
@@ -47,7 +48,13 @@ from synthorg.providers.models import CompletionResponse, ToolCall
 from synthorg.security.config import McpSelfConsumerConfig, McpSelfConsumerMode
 from synthorg.tools.registry import ToolRegistry
 from synthorg.workers.execution_service import AgentEngineExecutionService
-from tests._shared import make_app_state
+from tests._shared import (
+    UNWIRED_ORG,
+    engine_with,
+    make_app_state,
+    unwired_core,
+    unwired_governance,
+)
 from tests._shared.scripted_provider import (
     make_e2e_identity,
     make_text_response,
@@ -169,12 +176,15 @@ async def _build_bundle(
         "test-provider",
         strategy=SequencedResponseStrategy(responses),
     )
-    engine = AgentEngine(
-        provider=provider,
-        tool_registry=ToolRegistry(list(wiring.extra_tools)),
-        approval_store=store,
-        parked_context_repo=repo,
-        mcp_self_consumer=self_consumer,
+    engine = engine_with(
+        provider,
+        core=replace(
+            unwired_core(provider), tool_registry=ToolRegistry(list(wiring.extra_tools))
+        ),
+        governance=replace(
+            unwired_governance(), approval_store=store, parked_context_repo=repo
+        ),
+        org=replace(UNWIRED_ORG, mcp_self_consumer=self_consumer),
     )
     service = AgentEngineExecutionService(
         engine=engine,

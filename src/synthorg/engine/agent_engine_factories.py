@@ -157,6 +157,7 @@ class AgentEngineFactoriesMixin:
             steering_inbox=self._steering_inbox,
             step_classifier=self._step_classifier,
             background_job_watcher=self._background_job_watcher,
+            config_resolver=self._config_resolver,
         )
 
     def _make_approval_gate(self) -> ApprovalGate | None:
@@ -260,6 +261,7 @@ class AgentEngineFactoriesMixin:
         project_id: str | None = None,
         *,
         memory_strategy: MemoryInjectionStrategy | None,
+        retrieval_query: str | None,
     ) -> ToolInvoker | None:
         """Create a ToolInvoker with permission checking and security.
 
@@ -273,6 +275,11 @@ class AgentEngineFactoriesMixin:
                 registry and the memories injected into the context come from
                 the same one. Required, not defaulted: every caller starts a
                 unit of work and so has its own moment to resolve at.
+            retrieval_query: The text of the unit of work (a task's title
+                and description, a chat instruction) the MCP bridge ranks
+                its scoped surface against. Required for the same reason:
+                every caller knows what the work is, and ``None`` is the
+                statement that it has no text, not a forgotten argument.
 
         Returns:
             A :class:`ToolInvoker` wired with the registry (extended
@@ -478,6 +485,7 @@ class AgentEngineFactoriesMixin:
             mcp_tools = self._mcp_self_consumer(
                 identity,
                 agent_tools.access_level,
+                retrieval_query=retrieval_query,
             )
             if mcp_tools:
                 registry = _ToolRegistry2(
@@ -488,13 +496,16 @@ class AgentEngineFactoriesMixin:
         interceptor = self._make_security_interceptor(effective_autonomy)
         # The one place an agent's tool surface is final. Every step above
         # rebuilt the registry, so this is the only count and list an operator
-        # can act on: what this agent could actually reach for this task.
+        # can act on: what this agent could actually reach for this task. The
+        # run's own context carries it from here (``AgentContext.tool_surface``),
+        # never the engine: one engine serves many concurrent runs.
+        surface = tuple(sorted(registry.list_tools()))
         logger.info(
             TOOL_REGISTRY_BUILT,
             agent_id=str(identity.id),
             task_id=task_id,
-            tool_count=len(registry.all_tools()),
-            tools=sorted(tool.name for tool in registry.all_tools()),
+            tool_count=len(surface),
+            tools=list(surface),
         )
         invoker = ToolInvoker(
             registry,

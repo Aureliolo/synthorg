@@ -38,15 +38,16 @@ from evals.recursion_depth.grading import (
     UnitGrader,
 )
 from evals.recursion_depth.manifest import ModelPair, RecursionDepthManifest, Role
+from synthorg.api.state import AppState
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.core.agent import AgentIdentity
+from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.artifacts.baseline_scope import workspace_run_probe
-from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
     EVALS_RECURSION_SPEND_ALL_DROPPED,
@@ -56,19 +57,19 @@ from synthorg.observability.events.evals import (
     EVALS_RECURSION_UNIT_FAILED_SPEND,
     EVALS_RECURSION_UNIT_STARTED,
 )
-from synthorg.persistence.checkpoint_protocol import (
-    CheckpointRepository,
-    HeartbeatRepository,
-)
-from synthorg.persistence.project_protocol import ProjectRepository
-from synthorg.providers.protocol import CompletionProvider
+from synthorg.providers.registry import ProviderRegistry
 from synthorg.settings.model_ref import ModelRef
 from synthorg.tools.base import BaseTool
+from synthorg.tools.connection_tool_runtimes import ConnectionToolRuntimes
 from synthorg.tools.registry import ToolRegistry
+from synthorg.workers.engine_assembly import (
+    EngineAssemblyInputs,
+    build_agent_engine,
+)
 
 logger = get_logger(__name__)
 
-ProviderFactory = Callable[[RunBinding], Awaitable[CompletionProvider]]
+ProviderRegistryFactory = Callable[[RunBinding], Awaitable[ProviderRegistry]]
 
 
 @runtime_checkable
@@ -130,11 +131,19 @@ class SessionLimits:
             every call, so ``cost_ceiling`` can never fire there and a unit
             would run to its turn cap with no spend bound at all. Tokens are
             counted on every provider.
+        reasoning_effort: The depth the session BUILDS at, or ``None`` for
+            the executor's own. Decided here, beside the budget, because both
+            are answers to how much a unit has to do: a leaf answerable for a
+            whole subsystem is sized larger AND reasons at the executor's
+            depth, while a leaf claiming little takes the shallow pool the
+            manifest declared. Never a rewritten pair: the value names which
+            declared POOL the unit is dispatched to.
     """
 
     max_turns: int
     cost_ceiling: float
     token_ceiling: int
+    reasoning_effort: ReasoningEffort | None = None
 
 
 def session_limits_for(
@@ -168,6 +177,15 @@ def session_limits_for(
         The turn and spend bounds.
     """
     if role is Role.LEAF:
+        # A unit carrying at least `leaf_deep_claims` requirements builds at
+        # the executor's own depth: the shallow pool was measured on
+        # implementation of a plan already understood, and a unit answerable
+        # for a subsystem is not that. `None` names the executor's own pool.
+        shallow = (
+            manifest.leaf_reasoning_effort
+            if claims < manifest.leaf_deep_claims
+            else None
+        )
         return SessionLimits(
             max_turns=manifest.unit_max_turns,
             cost_ceiling=manifest.unit_cost_ceiling,
@@ -175,6 +193,7 @@ def session_limits_for(
                 manifest.unit_token_ceiling + claims * manifest.unit_token_per_claim,
                 manifest.unit_token_cap,
             ),
+            reasoning_effort=shallow,
         )
     if role is Role.CONTRACT:
         return SessionLimits(
@@ -215,14 +234,27 @@ def session_limits_for(
     )
 
 
+#: Told about an engine the moment it is built, with the ledger its spend lands
+#: in. The one seam the wire-level smoke reads an engine's wiring through.
+type EngineObserver = Callable[[AgentEngine, ProgressTrackingLedger], None]
+
+#: Told about a session the moment its outcome exists. The seam the smoke
+#: reads what a RUN had through, as opposed to what an engine was built with:
+#: the tool surface is final per run, not per engine.
+type SessionObserver = Callable[[SessionOutcome], None]
+
+
 @dataclass(frozen=True)
 class SweepDeps:
     """Runtime collaborators every unit of a sweep is driven with.
 
     Attributes:
-        build_provider: Builds the completion driver one unit dispatches
-            through. At record time it is routed at the hosted gateway and
-            carries that unit's own bearer.
+        build_provider_registry: Builds the registry one unit's pair is
+            resolved through. At record time it is routed at the hosted
+            gateway and carries that unit's own bearer. The registry rather
+            than the bare driver, because the engine re-resolves
+            ``identity.model.provider`` per dispatch and a registry that
+            does not know the pair fails closed there.
         build_tool_registry: Builds the file and shell tools scoped to a
             unit's workspace.
         build_grader: Builds what runs a delivered tree to decide whether it
@@ -251,18 +283,15 @@ class SweepDeps:
             the length of one cell. Present means the swap has already
             happened at the cell boundary, where nothing is concurrent, and a
             session filters its own records out of it by task id.
-        project_repo: Where the engine looks the benchmark project up. Every
-            unit declares an artifact, which makes it a work task, and the
-            engine refuses a work task whose project it cannot validate.
-        checkpoint_repo: Where a session's conversation is persisted, every
-            turn. Without it a provider failure that outlasts the retry ladder
-            discards the whole session: the loop returns a terminal ERROR and
-            nothing can re-enter a conversation nobody wrote down. A sweep unit
-            is hours of work, so the state goes on disk and a retry RESUMES.
-        heartbeat_repo: The liveness half of the same mechanism. Required
-            together with ``checkpoint_repo``: the engine refuses one without
-            the other, because a checkpoint nothing declares stale is a
-            resume point that can be handed to two runners at once.
+        app_state: The live application this sweep serves its gateway from,
+            and the state every engine collaborator is read off. Held here
+            rather than re-derived per session because it is what makes the
+            sweep's engine and a deployment's engine the same construction:
+            the project repository a work task is validated against, the
+            checkpoint repositories a killed session resumes from, the
+            compaction callback, the review pipeline, the approval gate and
+            the budget enforcer all arrive through it. A second copy of any
+            of them here would be a second answer.
         stall_idle_seconds: Idle time after which a unit is reported stalled.
         on_stall: Second channel for that report, alongside the warning the
             watch always logs. A real sweep runs for hours in a terminal.
@@ -281,18 +310,23 @@ class SweepDeps:
             different claim: "unmeasured" is not "free".
     """
 
-    build_provider: ProviderFactory
+    app_state: AppState
+    build_provider_registry: ProviderRegistryFactory
     build_tool_registry: ToolRegistryFactory
     build_grader: GraderFactory
     build_sandbox: SandboxFactory
     release_tools: ToolReleaseHook | None = None
+    # Told about every engine the moment it is built, with the ledger its
+    # spend lands in. The wire-level smoke reads the engine's own wiring
+    # summary here, which is the only place both are in hand together.
+    on_engine_built: EngineObserver | None = None
+    # Told about every session the moment its outcome exists. What a run HAD
+    # (its tool surface) is read here, since an engine cannot say it.
+    on_session_finished: SessionObserver | None = None
     transcripts: TranscriptRecorder | None = None
     transcript_root: Path | None = None
     open_run_ledger: LedgerFactory | None = None
     cell_ledger: ProgressTrackingLedger | None = None
-    project_repo: ProjectRepository | None = None
-    checkpoint_repo: CheckpointRepository | None = None
-    heartbeat_repo: HeartbeatRepository | None = None
     stall_idle_seconds: float = DEFAULT_STALL_IDLE_SECONDS
     on_stall: StallReporter | None = None
     declared_pairs: tuple[ModelPair, ...] = ()
@@ -335,6 +369,17 @@ class SessionOutcome:
         output_tokens: The output half of ``tokens``.
         turns: How many turns it took.
         termination: Why the loop stopped, for a human reading a failure.
+        compaction_tokens: Tokens the session's compaction summaries spent,
+            read off the final context's compression metadata. Part of
+            ``tokens`` (the summariser bills into the same ledger), held
+            apart because compaction buys context back by spending, and
+            whether the trade paid is unreadable once it is blended in.
+        compaction_cost: What those summaries cost, on the same terms.
+        tool_surface: Every tool name the run's invoker could dispatch,
+            sorted, read off the final context where the run stamped it.
+            ``None`` when the run built no invoker. Per run rather than per
+            engine, because an engine serves many concurrent runs and the
+            wire-level smoke has to read what THIS session ran with.
     """
 
     cost: float | None
@@ -343,6 +388,9 @@ class SessionOutcome:
     termination: str
     input_tokens: int = 0
     output_tokens: int = 0
+    compaction_tokens: int = 0
+    compaction_cost: float | None = 0.0
+    tool_surface: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -462,8 +510,8 @@ def session_spend(
     """Add up one session's records, counting each CALL exactly once.
 
     The single owner of that arithmetic, because two readers of one ledger is
-    how a figure comes to mean different things in the cost panel and in the
-    spend ceiling. A live run journalled a planning unit at twice what it
+    how a figure comes to mean different things on the tokens-per-solved curve
+    and in the spend ceiling. A live run journalled a planning unit at twice what it
     spent.
 
     A hosted gateway is the recorder of RECORD: every call a sweep session
@@ -607,9 +655,10 @@ async def open_session(
             deps,
             binding=binding,
             workspace=workspace,
-            cost_tracker=fallback,
             extra_tools=extra_tools,
         )
+        if deps.on_engine_built is not None:
+            deps.on_engine_built(engine, ledger)
         yield OpenSession(
             engine=engine,
             ledger=ledger,
@@ -761,6 +810,7 @@ async def run_session(
         # and then raised has still been paid for, and a unit that reports the
         # failure without the spend under-reports the sweep.
         spend = await session.spend(turns=turns)
+    compaction = result.execution_result.context.compression_metadata
     outcome = SessionOutcome(
         cost=spend.cost,
         tokens=spend.tokens,
@@ -768,7 +818,20 @@ async def run_session(
         output_tokens=spend.output_tokens,
         turns=result.total_turns,
         termination=result.termination_reason.value,
+        compaction_tokens=(
+            compaction.summary_input_tokens + compaction.summary_output_tokens
+            if compaction is not None
+            else 0
+        ),
+        compaction_cost=(
+            (compaction.summary_cost if compaction is not None else 0.0)
+            if session.priced
+            else None
+        ),
+        tool_surface=result.execution_result.context.tool_surface,
     )
+    if deps.on_session_finished is not None:
+        deps.on_session_finished(outcome)
     logger.info(
         EVALS_RECURSION_UNIT_EXECUTED,
         execution_id=execution_id,
@@ -786,37 +849,59 @@ async def _build_engine(
     *,
     binding: RunBinding,
     workspace: CellWorkspace,
-    cost_tracker: ProgressTrackingLedger,
     extra_tools: tuple[BaseTool, ...],
 ) -> AgentEngine:
     """Build the engine one session runs on.
 
+    Built through the PRODUCT'S OWN assembly, against the application this
+    sweep already stands up, so what is measured is what a deployment
+    runs: a second construction path here is exactly how the measured
+    engine could silently diverge from the shipped one, with nothing at
+    any layer able to tell.
+
+    Only what this session genuinely owns is supplied: its gateway-bound
+    provider, its cell-scoped tool registry and the probe rooted at its own
+    workspace. Everything else is read off the live state, so a subsystem
+    absent here is absent because this deployment does not run it.
+
     Returns:
         The configured engine.
     """
-    # No API lifespan runs here, so the ambient prompt layers the product binds
-    # at boot have to be bound explicitly or the sweep measures a prompt the
-    # product never sends.
+    # No API lifespan runs here for the prompt layers specifically: the
+    # application is served, but the ambient layers the product binds at boot
+    # have to be bound explicitly or the sweep measures a prompt the product
+    # never sends.
     bind_default_prompt_layers()
     base = deps.build_tool_registry(workspace, owner=binding.execution_id)
     tools = _with_extra_tools(base, extra_tools)
-    return AgentEngine(
-        provider=await deps.build_provider(binding),
-        tool_registry=tools,
-        cost_tracker=cost_tracker,
-        project_repo=deps.project_repo,
-        # The same post-execution check the deployment runs, and the reason
-        # every unit here declares an artifact: a session that answered in
-        # prose having written nothing terminates NO_OP rather than reading as
-        # a clean success, which would put undelivered work in the survival
-        # denominator.
-        run_probe=workspace_run_probe(workspace.root),
-        recovery_strategy=FailAndReassignStrategy(),
-        # Both or neither, which the engine enforces. With them a session's
-        # conversation is on disk turn by turn, so a failure that outlasts the
-        # retry ladder costs the turns still in flight rather than all of them.
-        checkpoint_repo=deps.checkpoint_repo,
-        heartbeat_repo=deps.heartbeat_repo,
+    registry = await deps.build_provider_registry(binding)
+    return await build_agent_engine(
+        deps.app_state,
+        EngineAssemblyInputs(
+            provider=registry.get(binding.ref.provider),
+            provider_registry=registry,
+            tool_registry=tools,
+            # The same post-execution check the deployment runs, and the
+            # reason every unit here declares an artifact: a session that
+            # answered in prose having written nothing terminates NO_OP
+            # rather than reading as a clean success, which would put
+            # undelivered work in the survival denominator.
+            run_probe=workspace_run_probe(workspace.root),
+            # No coordinator runs here: this sweep dispatches its own waves,
+            # so there are no multi-agent metrics to baseline against.
+            coordination_metrics_collector=None,
+            # The sweep runs offline by construction, and its agents reach
+            # no connection catalog, so neither surface has anything to bind.
+            external_api_runtime=None,
+            connection_tool_runtimes=ConnectionToolRuntimes(),
+            # Every exchange is already captured by the transcript recorder
+            # in front of the gateway, which is a strictly wider record.
+            flight_recorder_sink=None,
+            # Step quality is scored by the oracle against the delivered
+            # tree, which is the measurement this sweep exists to take.
+            step_classifier=None,
+            classification_detector_timeout_seconds=None,
+        ),
     )
 
 
@@ -964,8 +1049,9 @@ def ledger_scope(
 __all__ = [
     "LedgerFactory",
     "OpenSession",
-    "ProviderFactory",
+    "ProviderRegistryFactory",
     "SessionLimits",
+    "SessionObserver",
     "SessionOutcome",
     "StallReporter",
     "SweepDeps",

@@ -20,6 +20,7 @@ re-escalate a re-issued autonomy-gated tool).
 
 import asyncio
 import math
+from dataclasses import replace
 from datetime import date
 from typing import cast
 from uuid import uuid4
@@ -50,6 +51,7 @@ from synthorg.providers.models import (
     ToolCall,
 )
 from synthorg.tools.registry import ToolRegistry
+from tests._shared import engine_with, unwired_core, unwired_governance
 
 from .chat_action_fakes import InMemoryParkedRepo, QueryTool
 from .conftest import MockCompletionProvider
@@ -106,11 +108,16 @@ def _build_engine(
     """Build an engine with a tool registry, approval store, parked repo."""
     repo = InMemoryParkedRepo()
     registry = ToolRegistry([tool] if tool is not None else [])
-    engine = AgentEngine(
-        provider=MockCompletionProvider(responses),
-        tool_registry=registry,
-        approval_store=ApprovalStore(),
-        parked_context_repo=repo,
+    engine = engine_with(
+        MockCompletionProvider(responses),
+        core=replace(
+            unwired_core(MockCompletionProvider(responses)), tool_registry=registry
+        ),
+        governance=replace(
+            unwired_governance(),
+            approval_store=ApprovalStore(),
+            parked_context_repo=repo,
+        ),
     )
     return engine, repo
 

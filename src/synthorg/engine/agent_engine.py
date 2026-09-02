@@ -5,23 +5,15 @@ Ties together prompt construction, execution context, execution loop,
 tool invocation, and budget tracking into a single ``run()`` entry point.
 """
 
-from collections.abc import Callable
 from contextlib import ExitStack
 from typing import TYPE_CHECKING, override
 
 from synthorg.budget.errors import BudgetExhaustedError
-from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.clock import Clock
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.execution_identity import run_identity_scope
 from synthorg.core.types import NotBlankStr
 from synthorg.engine._agent_engine_run import AgentEngineRunMixin
-from synthorg.engine._agent_engine_types import (
-    BrainToolFactoryProvider,
-    DocsToolFactoryProvider,
-    KnowledgeToolFactoryProvider,
-    ResearchToolFactoryProvider,
-    StructureMapToolFactoryProvider,
-)
 from synthorg.engine._stream_progress import (
     make_turn_observer,
     publish_run_started,
@@ -47,21 +39,31 @@ from synthorg.engine.agent_engine_resume import AgentEngineResumeMixin
 from synthorg.engine.agent_engine_stakes_errors import AgentEngineStakesErrorsMixin
 from synthorg.engine.agent_execute_request import AgentExecuteRequest
 from synthorg.engine.agent_state_recording import (
-    AgentStateRepositoryProvider,
     compose_turn_observers,
     make_runtime_state_observer,
     mark_agent_running,
     release_agent_row,
 )
 from synthorg.engine.artifacts.baseline_scope import (
-    RunBaselineProbe,
     capture_run_baseline,
     run_baseline_scope,
 )
 from synthorg.engine.autonomy_seam import AutonomyResolution
-from synthorg.engine.checkpoint.models import CheckpointConfig
 from synthorg.engine.context import AgentContext
 from synthorg.engine.cost_recording import resolve_tracker_currency
+from synthorg.engine.dependencies import (
+    EngineBudget,
+    EngineCore,
+    EngineDependencies,
+    EngineGovernance,
+    EngineLoopControls,
+    EngineMemory,
+    EngineObservability,
+    EngineOrg,
+    EngineRecovery,
+    EngineRouting,
+    EngineTooling,
+)
 from synthorg.engine.errors import (
     ExecutionStateError,
     ProjectNotFoundError,
@@ -72,23 +74,21 @@ from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
+from synthorg.engine.mcp_tool_retrieval import task_brief_text
 from synthorg.engine.post_execution.rework_settlement import (
     ScoredRun,
     resolve_rework_bound,
     rework_continuation,
     settle_unresolved_rework,
 )
-from synthorg.engine.recovery import FailAndReassignStrategy
 from synthorg.engine.routing_policy.errors import StakesModelUnavailableError
 from synthorg.engine.run_result import AgentRunResult
+from synthorg.engine.wiring_summary import EngineWiringSummary
 from synthorg.observability import (
     get_logger,
     log_exception_redacted,
 )
 from synthorg.observability.correlation import correlation_scope
-from synthorg.observability.events.approval_gate import (
-    APPROVAL_GATE_LOOP_WIRING_WARNING,
-)
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_CREATED,
     EXECUTION_ENGINE_ERROR,
@@ -97,89 +97,28 @@ from synthorg.observability.events.execution import (
 )
 from synthorg.observability.tracing.instrumentation import get_tracer
 from synthorg.providers.models import ChatMessage
-from synthorg.security.audit import AuditLog
-from synthorg.tools.connection_tool_runtimes import ConnectionToolRuntimes
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
-    from synthorg.approval.protocol import ApprovalStoreProtocol
-    from synthorg.budget.coordination_collector import CoordinationMetricsCollector
-    from synthorg.budget.coordination_config import ErrorTaxonomyConfig
-    from synthorg.budget.enforcer import BudgetEnforcer
     from synthorg.budget.tracker_protocol import CostTrackerProtocol
-    from synthorg.communication.event_stream.interrupt import InterruptStore
-    from synthorg.communication.event_stream.stream import EventStreamHub
-    from synthorg.config.schema import ProviderConfig
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.effective_autonomy import EffectiveAutonomy
     from synthorg.core.task import Task
-    from synthorg.engine.approval_gate import ApprovalGate
-    from synthorg.engine.background_job_watch import BackgroundJobWatcher
-    from synthorg.engine.classification.protocol import ClassificationSink
-    from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.coordination.attribution import (
         CoordinationResultWithAttribution,
     )
     from synthorg.engine.coordination.models import CoordinationContext
     from synthorg.engine.coordination.service import MultiAgentCoordinator
     from synthorg.engine.delegation.protocol import SubAgentRunner
-    from synthorg.engine.evolution.service import EvolutionService
-    from synthorg.engine.flight_recording import FlightRecorderSink
-    from synthorg.engine.intervention.inbox import SteeringInbox
     from synthorg.engine.loop_protocol import (
         ExecutionLoop,
-        ShutdownChecker,
     )
-    from synthorg.engine.mcp_self_consumer import MCPSelfConsumerProvider
-    from synthorg.engine.middleware.protocol import AgentMiddlewareChain
     from synthorg.engine.prompt import SystemPrompt
-    from synthorg.engine.quality.classifier import StepQualityClassifier
-    from synthorg.engine.recovery import RecoveryStrategy
-    from synthorg.engine.review.pipeline import ReviewPipeline
-    from synthorg.engine.review_gate import ReviewGateService
-    from synthorg.engine.routing_policy.capability_policy import CapabilityPolicy
-    from synthorg.engine.session import EventReader
-    from synthorg.engine.stagnation.protocol import StagnationDetector
-    from synthorg.engine.task_engine import TaskEngine
-    from synthorg.hr.registry_protocol import AgentRegistryProtocol
-    from synthorg.memory.injection import MemoryInjectionStrategyProvider
-    from synthorg.memory.procedural.capture.protocol import CaptureStrategy
-    from synthorg.memory.procedural.models import ProceduralMemoryConfig
     from synthorg.memory.procedural.proposer import ProceduralMemoryProposer
-    from synthorg.memory.protocol import MemoryBackend
-    from synthorg.ontology.injection.protocol import OntologyInjectionStrategy
-    from synthorg.persistence.checkpoint_protocol import (
-        CheckpointRepository,
-        HeartbeatRepository,
-    )
-    from synthorg.persistence.cost_forecast_protocol import CostForecastRepository
-    from synthorg.persistence.parked_context_protocol import ParkedContextRepository
-    from synthorg.persistence.project_protocol import ProjectRepository
     from synthorg.providers.models import CompletionConfig
     from synthorg.providers.protocol import CompletionProvider
-    from synthorg.providers.registry import ProviderRegistry
-    from synthorg.providers.routing.resolver import ModelResolver
-    from synthorg.security.config import SecurityConfig
-    from synthorg.security.policy_engine.protocol import PolicyEngine
-    from synthorg.settings.resolver import ConfigResolver
-    from synthorg.tools.external_api._runtime import ExternalApiRuntime
-    from synthorg.tools.invocation_tracker import ToolInvocationTracker
-    from synthorg.tools.registry import ToolRegistry
 
 logger = get_logger(__name__)
 _tracer = get_tracer(__name__)
-
-_DEFAULT_RECOVERY_STRATEGY = FailAndReassignStrategy()
-"""Module-level default instance for the recovery strategy."""
-
-
-def _no_agent_state() -> None:
-    """Answer "no live-state store" for an engine built without one.
-
-    Answering ``None`` is what the wired provider does while persistence is
-    unconnected, so the recording path has one shape either way.
-    """
 
 
 class AgentEngine(
@@ -195,242 +134,221 @@ class AgentEngine(
 ):
     """Top-level orchestrator for agent execution."""
 
-    def __init__(  # noqa: PLR0913
-        self,
-        *,
-        provider: CompletionProvider,
-        execution_loop: ExecutionLoop | None = None,
-        tool_registry: ToolRegistry | None = None,
-        cost_tracker: CostTrackerProtocol | None = None,
-        recovery_strategy: RecoveryStrategy | None = _DEFAULT_RECOVERY_STRATEGY,
-        shutdown_checker: ShutdownChecker | None = None,
-        error_taxonomy_config: ErrorTaxonomyConfig | None = None,
-        classification_sinks: tuple[ClassificationSink, ...] = (),
-        evolution_service: EvolutionService | None = None,
-        policy_engine: PolicyEngine | None = None,
-        budget_enforcer: BudgetEnforcer | None = None,
-        security_config: SecurityConfig | None = None,
-        security_config_provider: Callable[[], SecurityConfig | None] | None = None,
-        approval_store: ApprovalStoreProtocol | None = None,
-        review_gate: ReviewGateService | None = None,
-        review_pipeline: ReviewPipeline | None = None,
-        run_probe: RunBaselineProbe | None = None,
-        clarification_enabled: bool = True,
-        scoping_enabled: bool = True,
-        parked_context_repo: ParkedContextRepository | None = None,
-        cost_forecast_repo: CostForecastRepository | None = None,
-        approval_gate: ApprovalGate | None = None,
-        mcp_self_consumer: MCPSelfConsumerProvider | None = None,
-        task_engine: TaskEngine | None = None,
-        checkpoint_repo: CheckpointRepository | None = None,
-        heartbeat_repo: HeartbeatRepository | None = None,
-        checkpoint_config: CheckpointConfig | None = None,
-        coordinator: MultiAgentCoordinator | None = None,
-        stagnation_detector: StagnationDetector | None = None,
-        step_classifier: StepQualityClassifier | None = None,
-        steering_inbox: SteeringInbox | None = None,
-        background_job_watcher: BackgroundJobWatcher | None = None,
-        compaction_callback: CompactionCallback | None = None,
-        provider_registry: ProviderRegistry | None = None,
-        provider_configs: Mapping[str, ProviderConfig] | None = None,
-        model_resolver: ModelResolver | None = None,
-        tool_invocation_tracker: ToolInvocationTracker | None = None,
-        memory_injection_strategy_provider: MemoryInjectionStrategyProvider
-        | None = None,
-        ontology_injection_strategy: OntologyInjectionStrategy | None = None,
-        procedural_memory_config: ProceduralMemoryConfig | None = None,
-        capture_strategy: CaptureStrategy | None = None,
-        memory_backend: MemoryBackend | None = None,
-        distillation_capture_enabled: bool = False,
-        config_resolver: ConfigResolver | None = None,
-        coordination_metrics_collector: CoordinationMetricsCollector | None = None,
-        audit_log: AuditLog | None = None,
-        project_repo: ProjectRepository | None = None,
-        agent_middleware_chain: AgentMiddlewareChain | None = None,
-        event_reader: EventReader | None = None,
-        event_stream_hub: EventStreamHub | None = None,
-        interrupt_store: InterruptStore | None = None,
-        approval_interrupt_timeout_seconds: float | None = None,
-        external_api_runtime: ExternalApiRuntime | None = None,
-        connection_tool_runtimes: ConnectionToolRuntimes | None = None,
-        brain_tool_factory_provider: BrainToolFactoryProvider | None = None,
-        knowledge_tool_factory_provider: KnowledgeToolFactoryProvider | None = None,
-        docs_tool_factory_provider: DocsToolFactoryProvider | None = None,
-        research_tool_factory_provider: ResearchToolFactoryProvider | None = None,
-        structure_map_tool_factory_provider: (
-            StructureMapToolFactoryProvider | None
-        ) = None,
-        capability: CapabilityPolicy | None = None,
-        agent_registry: AgentRegistryProtocol | None = None,
-        flight_recorder_sink: FlightRecorderSink | None = None,
-        agent_state_repository_provider: AgentStateRepositoryProvider | None = None,
-        clock: Clock | None = None,
-    ) -> None:
-        self._agent_middleware_chain = agent_middleware_chain
-        self._event_reader = event_reader
-        self._flight_recorder_sink = flight_recorder_sink
-        self._agent_state_repository_provider = (
-            agent_state_repository_provider or _no_agent_state
-        )
-        self._clock: Clock = clock if clock is not None else SystemClock()
-        self._event_stream_hub = event_stream_hub
-        self._interrupt_store = interrupt_store
-        self._provider = provider
-        self._provider_registry = provider_registry
-        self._provider_configs = provider_configs
-        self._model_resolver = model_resolver
-        self._approval_store = approval_store
-        self._review_gate = review_gate
-        self._review_pipeline = review_pipeline
-        self._run_probe = run_probe
-        self._clarification_enabled = clarification_enabled
-        self._scoping_enabled = scoping_enabled
-        self._external_api_runtime = external_api_runtime
-        self._connection_tool_runtimes = (
-            connection_tool_runtimes or ConnectionToolRuntimes()
-        )
-        self._brain_tool_factory_provider = brain_tool_factory_provider
-        self._knowledge_tool_factory_provider = knowledge_tool_factory_provider
-        self._docs_tool_factory_provider = docs_tool_factory_provider
-        self._research_tool_factory_provider = research_tool_factory_provider
-        self._structure_map_tool_factory_provider = structure_map_tool_factory_provider
-        self._parked_context_repo = parked_context_repo
-        self._cost_forecast_repo = cost_forecast_repo
-        # The boot path constructs one ApprovalGate (backed by the
-        # persistence ParkedContextRepository) and injects it so the
-        # engine parks and the /approvals controller resumes on the
-        # same gate. When absent (standalone / legacy callers) the
-        # factory builds a gate from the engine's own collaborators.
-        self._injected_approval_gate = approval_gate
-        # Agent -> SynthOrg-MCP self-consumer: when wired, the
-        # tool-invoker factory adds trust-scoped SynthOrg MCP tools to
-        # the agent's registry. ``None`` (mode DISABLED) is a no-op.
-        self._mcp_self_consumer = mcp_self_consumer
-        self._approval_interrupt_timeout_seconds = approval_interrupt_timeout_seconds
-        self._capability = capability
-        self._stagnation_detector = stagnation_detector
-        self._step_classifier = step_classifier
-        self._steering_inbox = steering_inbox
-        self._background_job_watcher = background_job_watcher
-        self._compaction_callback = compaction_callback
+    def __init__(self, deps: EngineDependencies) -> None:
+        """Wire an engine from a complete dependency declaration.
+
+        Args:
+            deps: Every collaborator this engine runs with, declared in
+                full. There is no partial form: a subsystem this
+                deployment does not run is written ``None`` in its own
+                bundle, which is a decision a reader can see and a
+                reviewer can question, where an omitted keyword was a
+                decision nobody made.
+        """
+        self._deps = deps
+        self._bind_core(deps.core)
+        self._bind_routing(deps.routing)
+        self._bind_governance(deps.governance)
+        self._bind_loop_controls(deps.loop_controls)
+        self._bind_memory(deps.memory, deps.core.provider)
+        self._bind_org(deps.org)
+        self._bind_tooling(deps.tooling)
+        self._bind_observability(deps.observability)
+        self._bind_recovery(deps.recovery)
+        self._bind_budget(deps.budget)
+        self._clarification_enabled = deps.behaviour.clarification_enabled
+        self._scoping_enabled = deps.behaviour.scoping_enabled
+        # Ordered: the gate reads the governance bundle, and the loop reads
+        # the gate alongside every other in-flight control.
         self._approval_gate = self._make_approval_gate()
-        if execution_loop is not None and (
-            self._approval_gate is not None
-            or self._stagnation_detector is not None
-            or self._compaction_callback is not None
-            or self._background_job_watcher is not None
-        ):
-            logger.warning(
-                APPROVAL_GATE_LOOP_WIRING_WARNING,
-                note=(
-                    "execution_loop provided externally -- approval_gate, "
-                    "stagnation_detector, compaction_callback, and "
-                    "background_job_watcher will NOT be wired automatically. "
-                    "Configure the loop with approval_gate=, "
-                    "stagnation_detector=, compaction_callback=, and "
-                    "background_job_watcher= explicitly."
-                ),
-            )
-        self._loop: ExecutionLoop = execution_loop or self._make_default_loop()
-        self._tool_registry = tool_registry
-        self._budget_enforcer = budget_enforcer
-        if (checkpoint_repo is None) != (heartbeat_repo is None):
-            msg = (
-                "checkpoint_repo and heartbeat_repo must both be "
-                "provided or both omitted"
-            )
-            raise ValueError(msg)
-        self._checkpoint_repo = checkpoint_repo
-        self._heartbeat_repo = heartbeat_repo
-        self._checkpoint_config = checkpoint_config or CheckpointConfig()
-        self._cost_tracker: CostTrackerProtocol | None
-        if budget_enforcer is not None:
-            if (
-                cost_tracker is not None
-                and cost_tracker is not budget_enforcer.cost_tracker
-            ):
-                msg = (
-                    "cost_tracker must match budget_enforcer.cost_tracker "
-                    "when budget_enforcer is provided"
-                )
-                raise ValueError(msg)
-            self._cost_tracker = budget_enforcer.cost_tracker
-        else:
-            self._cost_tracker = cost_tracker
-        self._security_config = security_config
-        # When a provider is wired (boot path), the live security config is
-        # read through it per request so operator toggles to
-        # security.enabled / audit_enabled / post_tool_scanning_enabled /
-        # output_scan_policy_type apply without a restart. Tests / direct
-        # construction omit it and fall back to the static ``security_config``.
-        self._security_config_provider = security_config_provider
-        self._task_engine = task_engine
-        self._recovery_strategy = recovery_strategy
-        self._shutdown_checker = shutdown_checker
-        self._error_taxonomy_config = error_taxonomy_config
-        self._classification_sinks = classification_sinks
-        self._evolution_service = evolution_service
-        self._policy_engine = policy_engine
+        self._loop: ExecutionLoop = (
+            deps.core.execution_loop or self._make_default_loop()
+        )
+        # Bound after construction by the boot path (the resolver reads the
+        # per-agent level and the initiative mode, both of which the worker
+        # layer owns); see ``set_autonomy_resolution``.
+        self._autonomy_resolution: AutonomyResolution | None = None
+        logger.debug(EXECUTION_ENGINE_CREATED, **self.wiring.log_fields())
+
+    @property
+    def wiring(self) -> EngineWiringSummary:
+        """What this engine was constructed with, as one readable record.
+
+        The same facts the creation event logs, held as a value so a harness
+        measuring this engine can ask what it measured rather than infer it
+        from a log line it may not have captured.
+
+        Returns:
+            The summary, with the tool surface of the last built invoker.
+        """
+        # The loop controls reach only a loop the engine built: an injected
+        # loop was constructed elsewhere with whatever it was given, so a
+        # detector or a callback bound here is held and never consulted, and
+        # a summary reporting it present would be the lie this record exists
+        # to make impossible.
+        reaches_loop = self._deps.core.execution_loop is None
+        detector = self._stagnation_detector if reaches_loop else None
+        return EngineWiringSummary(
+            loop_type=self._loop.get_loop_type(),
+            has_tool_registry=self._tool_registry is not None,
+            has_cost_tracker=self._cost_tracker is not None,
+            has_budget_enforcer=self._budget_enforcer is not None,
+            has_coordinator=self._coordinator is not None,
+            has_compaction_callback=(
+                reaches_loop and self._compaction_callback is not None
+            ),
+            has_stagnation_detector=detector is not None,
+            stagnation_strategy=(
+                detector.get_detector_type() if detector is not None else None
+            ),
+            has_review_pipeline=self._review_pipeline is not None,
+            has_memory_backend=self._memory_backend is not None,
+            has_sub_agent_runner=self._sub_agent_runner is not None,
+            has_approval_gate=reaches_loop and self._approval_gate is not None,
+            has_policy_engine=self._policy_engine is not None,
+            has_external_api_runtime=self._external_api_runtime is not None,
+            cost_tracker=self._cost_tracker,
+        )
+
+    def _bind_core(self, core: EngineCore) -> None:
+        """Bind the provider, the clock, the tools and the loop seam."""
+        self._provider = core.provider
+        self._clock: Clock = core.clock
+        self._config_resolver = core.config_resolver
+        self._tool_registry = core.tool_registry
+        self._shutdown_checker = core.shutdown_checker
+
+    def _bind_routing(self, routing: EngineRouting) -> None:
+        """Bind how an agent's own bound pair resolves to a driver."""
+        self._provider_registry = routing.provider_registry
+        self._provider_configs = routing.provider_configs
+        self._model_resolver = routing.model_resolver
+
+    def _bind_governance(self, governance: EngineGovernance) -> None:
+        """Bind approval, policy, audit and the review gates."""
+        self._policy_engine = governance.policy_engine
+        self._security_config = governance.security_config
+        self._security_config_provider = governance.security_config_provider
         self._policy_evaluation_mode = (
-            security_config.policy_engine.evaluation_mode
-            if security_config is not None
+            governance.security_config.policy_engine.evaluation_mode
+            if governance.security_config is not None
             else "log_only"
         )
-        self._coordinator = coordinator
-        self._tool_invocation_tracker = tool_invocation_tracker
-        self._memory_injection_strategy_provider = memory_injection_strategy_provider
-        self._ontology_injection_strategy = ontology_injection_strategy
-        self._procedural_memory_config = procedural_memory_config
-        self._capture_strategy = capture_strategy
-        self._memory_backend = memory_backend
-        self._distillation_capture_enabled = distillation_capture_enabled
-        self._config_resolver = config_resolver
-        self._coordination_metrics_collector = coordination_metrics_collector
+        self._audit_log = governance.audit_log
+        self._approval_store = governance.approval_store
+        # The boot path constructs one ApprovalGate (backed by the
+        # persistence ParkedContextRepository) and declares it so the engine
+        # parks and the /approvals controller resumes on the same gate. When
+        # declared absent the factory builds a gate from the engine's own
+        # collaborators.
+        self._injected_approval_gate = governance.approval_gate
+        self._parked_context_repo = governance.parked_context_repo
+        self._approval_interrupt_timeout_seconds = (
+            governance.approval_interrupt_timeout_seconds
+        )
+        self._review_gate = governance.review_gate
+        self._review_pipeline = governance.review_pipeline
+
+    def _bind_loop_controls(self, controls: EngineLoopControls) -> None:
+        """Bind what the execution loop consults at a turn boundary."""
+        self._stagnation_detector = controls.stagnation_detector
+        self._compaction_callback = controls.compaction_callback
+        self._step_classifier = controls.step_classifier
+        self._steering_inbox = controls.steering_inbox
+        self._background_job_watcher = controls.background_job_watcher
+
+    def _bind_memory(self, memory: EngineMemory, provider: CompletionProvider) -> None:
+        """Bind recall, and the write side that makes a second run cheaper."""
+        self._memory_backend = memory.memory_backend
+        self._memory_injection_strategy_provider = (
+            memory.memory_injection_strategy_provider
+        )
+        self._ontology_injection_strategy = memory.ontology_injection_strategy
+        self._procedural_memory_config = memory.procedural_memory_config
+        self._capture_strategy = memory.capture_strategy
+        self._distillation_capture_enabled = memory.distillation_capture_enabled
         self._procedural_proposer: ProceduralMemoryProposer | None = None
         # Constructed regardless of ``enabled`` so the switch stays live: the
         # post-execution hook re-resolves it per capture, and constructing a
         # proposer costs nothing until a capture actually dispatches.
-        if procedural_memory_config is not None and memory_backend is not None:
+        if memory.procedural_memory_config is not None and (
+            memory.memory_backend is not None
+        ):
             from synthorg.memory.procedural.proposer import (  # noqa: PLC0415
                 ProceduralMemoryProposer,
             )
 
             self._procedural_proposer = ProceduralMemoryProposer(
                 provider=provider,
-                config=procedural_memory_config,
+                config=memory.procedural_memory_config,
             )
-        self._audit_log = audit_log if audit_log is not None else AuditLog()
-        self._project_repo = project_repo
-        self._agent_registry = agent_registry
-        # Bound after construction by the boot path (the resolver reads the
-        # per-agent level and the initiative mode, both of which the worker
-        # layer owns); see ``set_autonomy_resolution``.
-        self._autonomy_resolution: AutonomyResolution | None = None
+
+    def _bind_org(self, org: EngineOrg) -> None:
+        """Bind the roster, the board and the MCP surface."""
+        self._agent_registry = org.agent_registry
+        self._capability = org.capability
+        self._task_engine = org.task_engine
+        self._project_repo = org.project_repo
+        self._coordinator = org.coordinator
+        self._evolution_service = org.evolution_service
+        # Agent -> SynthOrg-MCP self-consumer: when wired, the tool-invoker
+        # factory adds trust-scoped SynthOrg MCP tools to the agent's
+        # registry. ``None`` (mode DISABLED) is a no-op.
+        self._mcp_self_consumer = org.mcp_self_consumer
         # Blocking-delegation runner dispatches child runs back through this
         # same engine (``AgentEngine.run`` holds no per-run instance state, so
         # the nested call is re-entrant). Wired only when both the task engine
         # and the agent registry are present; ``None`` disables delegation.
         self._sub_agent_runner: SubAgentRunner | None = None
-        if task_engine is not None and agent_registry is not None:
+        if org.task_engine is not None and org.agent_registry is not None:
             from synthorg.engine.delegation.runner import (  # noqa: PLC0415
                 InProcessSubAgentRunner,
             )
 
             self._sub_agent_runner = InProcessSubAgentRunner(
                 engine=self,
-                task_engine=task_engine,
-                agent_registry=agent_registry,
+                task_engine=org.task_engine,
+                agent_registry=org.agent_registry,
             )
-        logger.debug(
-            EXECUTION_ENGINE_CREATED,
-            loop_type=self._loop.get_loop_type(),
-            has_tool_registry=self._tool_registry is not None,
-            has_cost_tracker=self._cost_tracker is not None,
-            has_budget_enforcer=self._budget_enforcer is not None,
-            has_coordinator=self._coordinator is not None,
-            has_compaction_callback=self._compaction_callback is not None,
-            has_sub_agent_runner=self._sub_agent_runner is not None,
+
+    def _bind_tooling(self, tooling: EngineTooling) -> None:
+        """Bind the seams that extend the base tool registry per task."""
+        self._external_api_runtime = tooling.external_api_runtime
+        self._connection_tool_runtimes = tooling.connection_tool_runtimes
+        self._tool_invocation_tracker = tooling.tool_invocation_tracker
+        self._brain_tool_factory_provider = tooling.brain_tool_factory_provider
+        self._knowledge_tool_factory_provider = tooling.knowledge_tool_factory_provider
+        self._docs_tool_factory_provider = tooling.docs_tool_factory_provider
+        self._research_tool_factory_provider = tooling.research_tool_factory_provider
+        self._structure_map_tool_factory_provider = (
+            tooling.structure_map_tool_factory_provider
         )
+
+    def _bind_observability(self, observability: EngineObservability) -> None:
+        """Bind what watches a run from outside it."""
+        self._event_stream_hub = observability.event_stream_hub
+        self._event_reader = observability.event_reader
+        self._interrupt_store = observability.interrupt_store
+        self._flight_recorder_sink = observability.flight_recorder_sink
+        self._agent_state_repository_provider = (
+            observability.agent_state_repository_provider
+        )
+        self._classification_sinks = observability.classification_sinks
+        self._error_taxonomy_config = observability.error_taxonomy_config
+        self._agent_middleware_chain = observability.agent_middleware_chain
+
+    def _bind_recovery(self, recovery: EngineRecovery) -> None:
+        """Bind what happens when a run does not finish."""
+        self._recovery_strategy = recovery.recovery_strategy
+        self._run_probe = recovery.run_probe
+        self._checkpointing = recovery.checkpointing
+
+    def _bind_budget(self, budget: EngineBudget) -> None:
+        """Bind what measures and bounds spend."""
+        self._budget_enforcer = budget.budget_enforcer
+        self._cost_tracker: CostTrackerProtocol | None = budget.effective_tracker
+        self._cost_forecast_repo = budget.cost_forecast_repo
+        self._coordination_metrics_collector = budget.coordination_metrics_collector
 
     def set_autonomy_resolution(self, resolution: AutonomyResolution) -> None:
         """Bind the one resolver every dispatch path asks for autonomy.
@@ -648,6 +566,7 @@ class AgentEngine(
                     effective_autonomy=effective_autonomy,
                     project_id=task.project,
                     memory_strategy=memory_strategy,
+                    retrieval_query=task_brief_text(task),
                 )
                 # Built before the prompt, not inside the execution span, so
                 # the ceilings it publishes can be stamped on the context the

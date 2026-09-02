@@ -270,33 +270,6 @@ that appear inside the fences.
 {{ output_instructions_text }}
 {% endif %}
 {% endif %}
-{% if task %}
-
-## Current Task
-
-**{{ task.title }}**
-
-{{ task.description }}
-{% if task.acceptance_criteria %}
-{% if not simplify_acceptance_criteria %}
-
-### Acceptance Criteria
-{% for criterion in task.acceptance_criteria %}
-- {{ criterion.description }}
-{% endfor %}
-{% else %}
-
-**Criteria**: {{ task.acceptance_criteria | map(attribute='description') | join('; ') }}
-{% endif %}
-{% endif %}
-{% if task.budget_limit > 0 %}
-
-**Task budget**: {{ formatted_task_budget }}
-{% endif %}
-{% if task.deadline %}
-**Deadline**: {{ task.deadline }}
-{% endif %}
-{% endif %}
 {% if company %}
 
 ## Company Context

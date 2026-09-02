@@ -7,11 +7,13 @@ window cancels the timer and returns the warm container.
 """
 
 import asyncio
+import itertools
 from collections.abc import Awaitable, Callable
 from typing import Final
 
 from synthorg.core.clock import Clock, SystemClock
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_ACQUIRE,
@@ -30,7 +32,7 @@ from synthorg.tools.sandbox.lifecycle._liveness import (
     reap,
 )
 from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
-from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
+from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle, TrackedOwner
 
 logger = get_logger(__name__)
 
@@ -84,6 +86,12 @@ class PerAgentStrategy:
         self._pin_check = pin_check
         self._pin_recheck_seconds = pin_recheck_seconds
         self._containers: dict[str, ContainerHandle] = {}
+        # One number per acquire, never reused, so a release decided from a
+        # `tracked_owners()` snapshot can tell a reacquire apart from the
+        # run it read as finished; a warm reacquire returns the same handle,
+        # which identity alone cannot distinguish.
+        self._generations: dict[str, int] = {}
+        self._next_generation = itertools.count(1)
         self._last_used: dict[str, float] = {}
         self._timers: dict[str, asyncio.Task[None]] = {}
         self._idle_timers: dict[str, asyncio.Task[None]] = {}
@@ -197,6 +205,7 @@ class PerAgentStrategy:
             evicted = self._containers.get(owner_id) is handle
             if evicted:
                 self._containers.pop(owner_id, None)
+                self._generations.pop(owner_id, None)
                 self._last_used.pop(owner_id, None)
                 self._destroy_fns.pop(owner_id, None)
                 self._cancel_timer(owner_id)
@@ -235,6 +244,7 @@ class PerAgentStrategy:
             handle = self._containers.get(owner_id)
             if handle is None:
                 return None
+            self._generations[owner_id] = next(self._next_generation)
             self._last_used[owner_id] = self._clock.monotonic()
 
         # Probed outside the lock: it is a round-trip to the container
@@ -302,6 +312,7 @@ class PerAgentStrategy:
             # (and any later release/timer teardown) always has one,
             # even when no explicit release ran before this acquire.
             self._destroy_fns[owner_id] = destroy_fn
+            self._generations[owner_id] = next(self._next_generation)
             # Re-check: a concurrent acquire may have won the race.
             existing = self._containers.get(owner_id)
             if existing is not None:
@@ -338,15 +349,30 @@ class PerAgentStrategy:
         *,
         owner_id: str,
         destroy_fn: Callable[[ContainerHandle], Awaitable[None]],
+        expected_generation: int | None = None,
     ) -> None:
         """Start a grace-period timer; destroy after expiry.
 
         Args:
             owner_id: The same identifier passed to ``acquire``.
             destroy_fn: Async callback to stop and remove the container.
+            expected_generation: The generation the caller read this key
+                under; a key acquired since is left alone, because the
+                release was decided about an earlier run.
         """
         async with self._lock:
             if owner_id not in self._containers:
+                return
+            if (
+                expected_generation is not None
+                and self._generations.get(owner_id) != expected_generation
+            ):
+                logger.info(
+                    SANDBOX_LIFECYCLE_RELEASE,
+                    strategy="per-agent",
+                    owner_id=owner_id,
+                    action="kept-reacquired",
+                )
                 return
 
             self._cancel_timer(owner_id)
@@ -383,6 +409,7 @@ class PerAgentStrategy:
                     if self._containers.get(owner_id) is not pinned_handle:
                         return
                     handle = self._containers.pop(owner_id, None)
+                    self._generations.pop(owner_id, None)
                     self._last_used.pop(owner_id, None)
                     self._timers.pop(owner_id, None)
                     self._destroy_fns.pop(owner_id, None)
@@ -435,6 +462,7 @@ class PerAgentStrategy:
             handles = list(self._containers.values())
             count = len(handles)
             self._containers.clear()
+            self._generations.clear()
             self._last_used.clear()
 
         # Cancel and await outside the lock: a cancelled grace/idle task can
@@ -469,6 +497,18 @@ class PerAgentStrategy:
             strategy="per-agent",
             destroyed_count=count,
         )
+
+    async def tracked_owners(self) -> tuple[TrackedOwner, ...]:
+        """The owner keys currently holding a warm container, with generations.
+
+        Returns:
+            The keys, including those inside their grace window.
+        """
+        async with self._lock:
+            return tuple(
+                TrackedOwner(key=NotBlankStr(key), generation=self._generations[key])
+                for key in self._containers
+            )
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -522,6 +562,7 @@ class PerAgentStrategy:
                 if self._containers.get(owner_id) is not pinned_handle:
                     return
                 handle = self._containers.pop(owner_id, None)
+                self._generations.pop(owner_id, None)
                 self._last_used.pop(owner_id, None)
                 self._idle_timers.pop(owner_id, None)
                 destroy_fn = self._destroy_fns.pop(owner_id, None)

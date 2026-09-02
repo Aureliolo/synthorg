@@ -8,6 +8,7 @@ factory is resolved through a provider because the brain wires after the
 boot engine is built. No project / no brain factory means no brain tools.
 """
 
+from dataclasses import replace
 from typing import override
 
 import pytest
@@ -23,7 +24,7 @@ from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.registry import ToolRegistry
-from tests._shared import as_uuid, mock_of
+from tests._shared import as_uuid, engine_with, mock_of, unwired_core, unwired_tooling
 from tests._shared.scripted_provider import ScriptedProvider, make_e2e_identity
 
 pytestmark = pytest.mark.unit
@@ -53,10 +54,10 @@ def _engine(*, factory: ProjectBrainToolFactory | None) -> AgentEngine:
             ),
         ],
     )
-    return AgentEngine(
-        provider=ScriptedProvider([]),
-        tool_registry=registry,
-        brain_tool_factory_provider=lambda: factory,
+    return engine_with(
+        ScriptedProvider([]),
+        core=replace(unwired_core(ScriptedProvider([])), tool_registry=registry),
+        tooling=replace(unwired_tooling(), brain_tool_factory_provider=lambda: factory),
     )
 
 
@@ -90,6 +91,7 @@ class TestAgentEngineBrainToolWiring:
             _elevated_identity(),
             project_id=_PROJECT_ID,
             memory_strategy=None,
+            retrieval_query=None,
         )
 
         assert invoker is not None
@@ -101,7 +103,10 @@ class TestAgentEngineBrainToolWiring:
         engine = _engine(factory=_brain_factory())
 
         invoker = engine._make_tool_invoker(
-            _elevated_identity(), project_id=None, memory_strategy=None
+            _elevated_identity(),
+            project_id=None,
+            memory_strategy=None,
+            retrieval_query=None,
         )
 
         assert invoker is not None
@@ -116,6 +121,7 @@ class TestAgentEngineBrainToolWiring:
             _elevated_identity(),
             project_id=_PROJECT_ID,
             memory_strategy=None,
+            retrieval_query=None,
         )
 
         assert invoker is not None

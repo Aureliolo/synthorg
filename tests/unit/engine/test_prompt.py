@@ -28,6 +28,7 @@ from synthorg.engine.prompt_template import (
     PROMPT_TEMPLATE_VERSION,
     TOOL_CATALOGUE_HEADING,
 )
+from synthorg.engine.prompt_validation import format_task_instruction
 from synthorg.engine.token_estimation import DefaultTokenEstimator
 from synthorg.observability.events.prompt import (
     PROMPT_BUILD_START,
@@ -384,40 +385,48 @@ class TestBuildSystemPrompt:
             assert tool.name in result.content
             assert tool.description in result.content
 
-    def test_task_context_in_prompt(
+    def test_task_brief_has_one_owner(
         self,
         sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
-        """Task title, description, and acceptance criteria appear."""
+        """The system prompt never restates the brief the first user message carries."""
+        from synthorg.engine.prompt_validation import format_task_instruction
+
         result = build_system_prompt(
             agent=sample_agent,
             task=sample_task_with_criteria,
         )
+        brief = format_task_instruction(sample_task_with_criteria)
 
-        assert sample_task_with_criteria.title in result.content
-        assert sample_task_with_criteria.description in result.content
+        assert sample_task_with_criteria.description not in result.content
         for criterion in sample_task_with_criteria.acceptance_criteria:
-            assert criterion.description in result.content
+            assert criterion.description not in result.content
+            assert criterion.description in brief
+        assert sample_task_with_criteria.title in brief
+        assert f"{sample_task_with_criteria.budget_limit:.2f}" in brief
+        assert "task" not in result.sections
 
-    def test_task_budget_in_prompt(
+    def test_task_directives_still_key_on_the_task(
         self,
         sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
-        """Task budget appears in prompt when > 0."""
-        result = build_system_prompt(
+        """A task still switches on the task-data fencing instruction."""
+        with_task = build_system_prompt(
             agent=sample_agent,
             task=sample_task_with_criteria,
         )
+        without = build_system_prompt(agent=sample_agent)
 
-        assert f"{sample_task_with_criteria.budget_limit:.2f}" in result.content
+        assert "task-data" in with_task.content
+        assert "task-data" not in without.content
 
     def test_no_task_section_when_task_is_none(
         self,
         sample_agent: AgentIdentity,
     ) -> None:
-        """No 'Current Task' section when task is None."""
+        """No task section exists at all; the brief is a user message."""
         result = build_system_prompt(agent=sample_agent)
 
         assert "Current Task" not in result.content
@@ -456,15 +465,22 @@ class TestUntrustedContentDirectiveInjection:
         sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
-        """A task prompt fences task data and names the tag in a directive."""
+        """The brief is fenced where it travels; the system prompt directs.
+
+        The task brief has one owner, the first user message, so the system
+        prompt carries no copy of it: only the directive that names the fence
+        the brief arrives in.
+        """
         result = build_system_prompt(
             agent=sample_agent,
             task=sample_task_with_criteria,
         )
+        instruction = format_task_instruction(sample_task_with_criteria)
 
-        # The task fields are wrapped in <task-data> fences.
-        assert "<task-data>" in result.content
-        assert "</task-data>" in result.content
+        # The task fields are wrapped in <task-data> fences in the brief.
+        assert "<task-data>" in instruction
+        assert "</task-data>" in instruction
+        assert "task" not in result.sections
         # The directive section is present and names the fence tag.
         assert "untrusted_content_directive" in result.sections
         assert "## Untrusted Content" in result.content
@@ -641,7 +657,6 @@ class TestTokenEstimation:
             task=sample_task_with_criteria,
             company=sample_company,
         )
-        assert "task" in full.sections
         assert "company" in full.sections
 
         # Now build with a tight token budget to force trimming.
@@ -654,7 +669,6 @@ class TestTokenEstimation:
 
         # All optional sections should be removed.
         assert "company" not in trimmed.sections
-        assert "task" not in trimmed.sections
         # Core sections remain.
         assert "identity" in trimmed.sections
         assert "skills" in trimmed.sections
@@ -774,7 +788,8 @@ class TestPromptVersioning:
         assert "skills" in result.sections
         assert "authority" in result.sections
         assert "autonomy" in result.sections
-        assert "task" in result.sections
+        # The brief travels in the first user message, never as a section.
+        assert "task" not in result.sections
         assert "tools" not in result.sections
         assert "company" in result.sections
 
@@ -905,13 +920,13 @@ class TestPromptErrorHandling:
 class TestTrimmingPriority:
     """Tests for section trimming priority order."""
 
-    def test_company_trimmed_before_task(
+    def test_company_is_trimmed_first(
         self,
         sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
         sample_company: Company,
     ) -> None:
-        """With a moderately tight budget, only company is trimmed first."""
+        """With a moderately tight budget, only company is trimmed."""
         # Build full prompt to get its token count.
         full = build_system_prompt(
             agent=sample_agent,
@@ -936,9 +951,10 @@ class TestTrimmingPriority:
             max_tokens=budget,
         )
 
-        # Company should be trimmed but task remains.
+        # Company should be trimmed but the core remains.
         assert "company" not in trimmed.sections
-        assert "task" in trimmed.sections
+        assert "identity" in trimmed.sections
+        assert "autonomy" in trimmed.sections
 
     def test_trimming_order_without_tools(
         self,
@@ -946,8 +962,8 @@ class TestTrimmingPriority:
         sample_task_with_criteria: Task,
         sample_company: Company,
     ) -> None:
-        """Trimming order is company → task → org_policies (no tools section)."""
-        # Build with company + task + org_policies.
+        """Trimming order is company → org_policies (no tools section)."""
+        # Build with company + org_policies.
         org_policies = ("All responses must include correlation_id",)
         full = build_system_prompt(
             agent=sample_agent,
@@ -956,7 +972,6 @@ class TestTrimmingPriority:
             org_policies=org_policies,
         )
         assert "company" in full.sections
-        assert "task" in full.sections
         assert "org_policies" in full.sections
 
         # With very tight budget, all optional sections are removed.
@@ -968,7 +983,6 @@ class TestTrimmingPriority:
             max_tokens=10,
         )
         assert "company" not in trimmed.sections
-        assert "task" not in trimmed.sections
         assert "org_policies" not in trimmed.sections
         assert "identity" in trimmed.sections
 
@@ -996,7 +1010,7 @@ class TestDefaultAgentPrompt:
         assert result.estimated_tokens > 0
 
     def test_task_with_zero_budget_and_no_deadline(self) -> None:
-        """Task with zero budget and no deadline omits those sections."""
+        """A brief with zero budget and no deadline omits those lines."""
         from synthorg.core.task import Task
         from synthorg.core.task_enums import Complexity, Priority, TaskStatus, TaskType
 
@@ -1021,10 +1035,12 @@ class TestDefaultAgentPrompt:
             hiring_date=date(2026, 1, 1),
         )
         result = build_system_prompt(agent=agent, task=task)
+        instruction = format_task_instruction(task)
 
-        assert "Research task" in result.content
-        assert "Task budget" not in result.content
-        assert "Deadline" not in result.content
+        assert "Research task" in instruction
+        assert "Research task" not in result.content
+        assert "Budget limit" not in instruction
+        assert "Deadline" not in instruction
 
 
 # ── TestBudgetExceeded ─────────────────────────────────────────
@@ -1259,36 +1275,22 @@ class TestPromptProfileIntegration:
         assert "All code must be reviewed" in result.content
         assert "org_policies" in result.sections
 
-    def test_basic_simplifies_acceptance_criteria(
+    @pytest.mark.parametrize("tier", ["expert", "capable", "basic"])
+    def test_no_profile_renders_the_criteria(
         self,
         sample_agent: AgentIdentity,
         sample_task_with_criteria: Task,
+        tier: str,
     ) -> None:
-        """The basic profile renders criteria as a flat semicolon line."""
+        """Criteria travel in the brief; no profile restates them in the prompt."""
         result = build_system_prompt(
             agent=sample_agent,
             task=sample_task_with_criteria,
-            capability="basic",
+            capability=tier,  # type: ignore[arg-type]
         )
 
-        # Should NOT have the full "### Acceptance Criteria" heading.
-        assert "### Acceptance Criteria" not in result.content
-        # Should have semicolon-joined flat format.
-        assert "**Criteria**:" in result.content
-
-    def test_expert_full_acceptance_criteria(
-        self,
-        sample_agent: AgentIdentity,
-        sample_task_with_criteria: Task,
-    ) -> None:
-        """The expert profile renders full nested acceptance criteria."""
-        result = build_system_prompt(
-            agent=sample_agent,
-            task=sample_task_with_criteria,
-            capability="expert",
-        )
-
-        assert "### Acceptance Criteria" in result.content
+        assert "Acceptance Criteria" not in result.content
+        assert "**Criteria**:" not in result.content
 
     @pytest.mark.parametrize("tier", ["expert", "capable", "basic"])
     def test_no_profile_renders_a_persona(
@@ -1412,4 +1414,4 @@ class TestBuildCoreContextDefaults:
 
         assert ctx["autonomy_detail_level"] == "full"
         assert ctx["include_org_policies"] is True
-        assert ctx["simplify_acceptance_criteria"] is False
+        assert "simplify_acceptance_criteria" not in ctx

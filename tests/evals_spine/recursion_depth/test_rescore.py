@@ -33,6 +33,7 @@ from evals.recursion_depth.journal import (
 from evals.recursion_depth.manifest import Arm, Independence, ModelPair
 from evals.recursion_depth.models import (
     CEILING_CAVEAT,
+    HEADLINE_CAVEAT,
     LEAF,
     METRIC_CAVEAT,
     ORACLE_CAVEAT,
@@ -182,7 +183,12 @@ class TestWhichCaveatsSurvive:
         caveats = json.loads((tmp_path / REPORT_JSON_NAME).read_text(encoding="utf-8"))[
             "caveats"
         ]
-        assert caveats == [METRIC_CAVEAT, SIZING_CAVEAT, ORACLE_CAVEAT]
+        assert caveats == [
+            METRIC_CAVEAT,
+            HEADLINE_CAVEAT,
+            SIZING_CAVEAT,
+            ORACLE_CAVEAT,
+        ]
 
     def test_a_run_state_caveat_is_carried(self, tmp_path: Path) -> None:
         # The journal records cells, not why the sweep stopped, so this one

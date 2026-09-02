@@ -10,6 +10,7 @@ behaviour of the tool itself is covered end-to-end in
 ``tests/e2e/test_external_api_governance_e2e.py``.
 """
 
+from dataclasses import replace
 from typing import override
 
 import pytest
@@ -28,6 +29,7 @@ from synthorg.tools.external_api.provider import (
 )
 from synthorg.tools.network_validator import NetworkPolicy
 from synthorg.tools.registry import ToolRegistry
+from tests._shared import engine_with, unwired_core, unwired_governance, unwired_tooling
 from tests._shared.scripted_provider import ScriptedProvider, make_e2e_identity
 
 pytestmark = pytest.mark.unit
@@ -96,11 +98,13 @@ def _runtime() -> ExternalApiRuntime:
 
 def _engine(*, with_runtime: bool) -> AgentEngine:
     registry = ToolRegistry([_StubTool(name="stub", category=ToolCategory.OTHER)])
-    return AgentEngine(
-        provider=ScriptedProvider([]),
-        tool_registry=registry,
-        approval_store=ApprovalStore(),
-        external_api_runtime=_runtime() if with_runtime else None,
+    return engine_with(
+        ScriptedProvider([]),
+        core=replace(unwired_core(ScriptedProvider([])), tool_registry=registry),
+        governance=replace(unwired_governance(), approval_store=ApprovalStore()),
+        tooling=replace(
+            unwired_tooling(), external_api_runtime=_runtime() if with_runtime else None
+        ),
     )
 
 
@@ -110,7 +114,9 @@ class TestAgentEngineExternalApiWiring:
     def test_external_api_tool_registered_when_runtime_wired(self) -> None:
         engine = _engine(with_runtime=True)
 
-        invoker = engine._make_tool_invoker(make_e2e_identity(), memory_strategy=None)
+        invoker = engine._make_tool_invoker(
+            make_e2e_identity(), memory_strategy=None, retrieval_query=None
+        )
 
         assert invoker is not None
         names = [d.name for d in invoker.get_permitted_definitions()]
@@ -119,7 +125,9 @@ class TestAgentEngineExternalApiWiring:
     def test_no_external_api_tool_when_runtime_absent(self) -> None:
         engine = _engine(with_runtime=False)
 
-        invoker = engine._make_tool_invoker(make_e2e_identity(), memory_strategy=None)
+        invoker = engine._make_tool_invoker(
+            make_e2e_identity(), memory_strategy=None, retrieval_query=None
+        )
 
         assert invoker is not None
         names = [d.name for d in invoker.get_permitted_definitions()]

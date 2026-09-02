@@ -37,6 +37,14 @@ class TokenUsage(BaseModel):
         output_tokens: Number of output (completion) tokens.
         total_tokens: Sum of input and output tokens (computed).
         cost: Estimated cost in the configured currency for this call.
+        cache_read_input_tokens: Input tokens the provider served from a
+            cached prompt prefix. A COUNT rather than a hit flag, because
+            the bill is proportional to it: a call that read one cached
+            token and a call that read ninety thousand are both "hits", and
+            only the count says what caching saved. Zero when the provider
+            reported no cache data, which is also what a miss looks like.
+        cache_write_input_tokens: Input tokens the provider wrote into its
+            cache on this call, billed at the cache-write premium.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -44,6 +52,12 @@ class TokenUsage(BaseModel):
     input_tokens: int = Field(ge=0, description="Input token count")
     output_tokens: int = Field(ge=0, description="Output token count")
     cost: float = Field(ge=0.0, description="Estimated cost in the configured currency")
+    cache_read_input_tokens: int = Field(
+        default=0, ge=0, description="Input tokens served from the prompt cache"
+    )
+    cache_write_input_tokens: int = Field(
+        default=0, ge=0, description="Input tokens written into the prompt cache"
+    )
 
     @computed_field(description="Total token count")
     @property
@@ -75,6 +89,10 @@ def add_token_usage(a: TokenUsage, b: TokenUsage) -> TokenUsage:
         input_tokens=a.input_tokens + b.input_tokens,
         output_tokens=a.output_tokens + b.output_tokens,
         cost=a.cost + b.cost,
+        cache_read_input_tokens=a.cache_read_input_tokens + b.cache_read_input_tokens,
+        cache_write_input_tokens=(
+            a.cache_write_input_tokens + b.cache_write_input_tokens
+        ),
     )
 
 
@@ -506,8 +524,8 @@ class CompletionResponse(BaseModel):
         default_factory=dict,
         description=(
             "Provider metadata (_synthorg_* keys): retry/latency injected by "
-            "the base class, capability signals such as cache_hit by the "
-            "driver's own response mapping."
+            "the base class, driver-specific signals by the driver's own "
+            "response mapping."
         ),
     )
 

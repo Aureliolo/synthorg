@@ -21,7 +21,6 @@ from synthorg.core.role_catalog import (
     COMPLETION_REVIEWER_ROLE_NAME,
     RED_TEAM_ROLE_NAME,
 )
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.errors import ProjectNotFoundError
 from synthorg.engine.loop_protocol import TerminationReason
 from tests._shared import as_uuid
@@ -29,6 +28,10 @@ from tests._shared import as_uuid
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.task import Task
+
+from dataclasses import replace
+
+from tests._shared import UNWIRED_BUDGET, UNWIRED_ORG, engine_with
 
 from .conftest import (
     MockCompletionProvider,
@@ -72,10 +75,7 @@ class TestProjectValidation:
         provider = MockCompletionProvider(
             [make_completion_response(content="Done.")],
         )
-        engine = AgentEngine(
-            provider=provider,
-            project_repo=repo,
-        )
+        engine = engine_with(provider, org=replace(UNWIRED_ORG, project_repo=repo))
 
         with pytest.raises(ProjectNotFoundError):
             await engine.run(
@@ -93,10 +93,7 @@ class TestProjectValidation:
         provider = MockCompletionProvider(
             [make_completion_response(content="Done.")],
         )
-        engine = AgentEngine(
-            provider=provider,
-            project_repo=repo,
-        )
+        engine = engine_with(provider, org=replace(UNWIRED_ORG, project_repo=repo))
 
         result = await engine.run(
             identity=sample_agent,
@@ -121,7 +118,7 @@ class TestProjectValidation:
         provider = MockCompletionProvider(
             [make_completion_response(content="Done.")],
         )
-        engine = AgentEngine(provider=provider, project_repo=repo)
+        engine = engine_with(provider, org=replace(UNWIRED_ORG, project_repo=repo))
 
         result = await engine.run(identity=judge, task=sample_task_with_criteria)
 
@@ -139,7 +136,7 @@ class TestProjectValidation:
         provider = MockCompletionProvider(
             [make_completion_response(content="Done.")],
         )
-        engine = AgentEngine(provider=provider, project_repo=repo)
+        engine = engine_with(provider, org=replace(UNWIRED_ORG, project_repo=repo))
 
         with pytest.raises(ProjectNotFoundError):
             await engine.run(identity=reviewer, task=sample_task_with_criteria)
@@ -153,7 +150,7 @@ class TestProjectValidation:
         provider = MockCompletionProvider(
             [make_completion_response(content="Done.")],
         )
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(
             identity=sample_agent,
@@ -196,10 +193,10 @@ class TestProjectBudgetIntegration:
         provider = MockCompletionProvider(
             [make_completion_response(content="Done.")],
         )
-        engine = AgentEngine(
-            provider=provider,
-            budget_enforcer=enforcer,
-            project_repo=repo,
+        engine = engine_with(
+            provider,
+            budget=replace(UNWIRED_BUDGET, budget_enforcer=enforcer),
+            org=replace(UNWIRED_ORG, project_repo=repo),
         )
 
         result = await engine.run(

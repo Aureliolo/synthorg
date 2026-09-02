@@ -74,6 +74,7 @@ from synthorg.tools.sandbox.keepalive import KEEPALIVE_ARGS, KEEPALIVE_COMMAND
 from synthorg.tools.sandbox.lifecycle.protocol import (
     ContainerHandle,
     SandboxLifecycleStrategy,
+    TrackedOwner,
 )
 from synthorg.tools.sandbox.result import SandboxResult
 
@@ -395,6 +396,34 @@ class DockerSandboxExecMixin:
                 owner_id=key,
                 destroy_fn=self._destroy_handle,
             )
+
+    async def tracked_owners(self) -> tuple[TrackedOwner, ...]:
+        """The qualified keys the lifecycle strategy holds a container for.
+
+        Returns:
+            The keys with their generations, as the strategy holds them.
+        """
+        return await self._lifecycle_strategy.tracked_owners()
+
+    async def release_key(self, owner_key: str, *, generation: int) -> None:
+        """Release one qualified key through the lifecycle strategy.
+
+        Args:
+            owner_key: A key :meth:`tracked_owners` returned.
+            generation: The generation it was returned under; the strategy
+                refuses the release if the key was acquired again since.
+        """
+        logger.info(
+            SANDBOX_LIFECYCLE_RELEASE,
+            strategy=self._config.lifecycle.strategy,
+            owner_id=owner_key,
+            action="release_key",
+        )
+        await self._lifecycle_strategy.release(
+            owner_id=owner_key,
+            destroy_fn=self._destroy_handle,
+            expected_generation=generation,
+        )
 
     # ------------------------------------------------------------------
     # Keep-alive container creation

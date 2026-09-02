@@ -51,11 +51,13 @@ from synthorg.observability.events.deliverable_receipts import (
     TEST_RUN_RECORD_FAILED,
     TEST_RUN_RECORDED,
 )
+from synthorg.observability.redaction import scrub_secret_tokens
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionPurpose,
     CodeExecutionRecord,
     CodeExecutionRecordRepository,
 )
+from synthorg.security.rules.credential_detector import redact_credentials
 from synthorg.tools._declared_gate_runs import declared_gate_purposes
 from synthorg.tools.sandbox.result import SandboxResult
 
@@ -291,6 +293,50 @@ def _gate_purposes(
     )
 
 
+def redacted_tail(output: str, *, limit: int) -> str | None:
+    """The last *limit* characters of *output*, with credentials masked.
+
+    The tail is persisted and later rendered into the reviewer's prompt, and
+    it was printed by whatever the agent ran: a suite that echoes an
+    environment, or a build that logs the token it fetched with. The fence
+    that block is rendered inside stops an instruction escaping it and does
+    nothing about a secret, so the masking happens here, before the row
+    exists. Masked BEFORE the cut, so a credential straddling the tail
+    boundary is recognised whole rather than surviving as its second half.
+
+    Returns:
+        The masked tail, or ``None`` when there was no output.
+    """
+    if not output:
+        return None
+    return _masked(output)[-limit:]
+
+
+def redacted_command(command: str, *, limit: int) -> str:
+    """The first *limit* characters of *command*, with credentials masked.
+
+    The command is persisted and rendered beside the output tails as the
+    evidence a verdict cites, and an agent types its secrets into it as
+    readily as a suite prints them: ``API_TOKEN=... pytest`` is the ordinary
+    way to hand a key to a run. Masked BEFORE the cut for the same reason the
+    tail is, so a credential straddling the limit is recognised whole.
+
+    Returns:
+        The masked command head.
+    """
+    return _masked(command)[:limit]
+
+
+def _masked(text: str) -> str:
+    """*text* with every credential and secret token replaced.
+
+    Returns:
+        The masked text.
+    """
+    masked, _findings = redact_credentials(text)
+    return scrub_secret_tokens(masked)
+
+
 async def record_if_test_run(
     result: SandboxResult,
     *,
@@ -347,6 +393,7 @@ async def record_if_test_run(
     if not purposes:
         return
     executed_at = clock.now()
+    persisted_command = redacted_command(command, limit=command_repr_limit)
     try:
         for purpose in purposes:
             # One row per gate the line satisfied, each carrying the whole
@@ -359,16 +406,12 @@ async def record_if_test_run(
                     execution_id=identity.execution_id,
                     project_id=identity.project_id,
                     purpose=purpose,
-                    command=command[:command_repr_limit],
+                    command=persisted_command,
                     returncode=result.returncode,
                     passed=result.success,
                     timed_out=result.timed_out,
-                    stdout_tail=(
-                        result.stdout[-output_tail_limit:] if result.stdout else None
-                    ),
-                    stderr_tail=(
-                        result.stderr[-output_tail_limit:] if result.stderr else None
-                    ),
+                    stdout_tail=redacted_tail(result.stdout, limit=output_tail_limit),
+                    stderr_tail=redacted_tail(result.stderr, limit=output_tail_limit),
                     executed_at=executed_at,
                 )
             )

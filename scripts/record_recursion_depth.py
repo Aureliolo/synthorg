@@ -71,8 +71,10 @@ from evals.recursion_depth.manifest import (
     RecursionDepthManifest,
     Role,
     load_manifest,
+    require_repetition_floor,
 )
 from evals.recursion_depth.models import (
+    HEADLINE_CAVEAT,
     METRIC_CAVEAT,
     ORACLE_CAVEAT,
     RUN_STATE_CAVEATS,
@@ -80,6 +82,7 @@ from evals.recursion_depth.models import (
     CellRecord,
     Provenance,
     RecursionDepthReport,
+    WiringReport,
 )
 from evals.recursion_depth.planner import AgentSessionPlanner
 from evals.recursion_depth.preflight import check_images_resolve, run_preflight
@@ -90,14 +93,34 @@ from evals.recursion_depth.runner import (
     planned_cells,
     run_sweep,
 )
-from evals.recursion_depth.session import SweepDeps, session_limits_for
+from evals.recursion_depth.session import (
+    EngineObserver,
+    SessionObserver,
+    SweepDeps,
+    session_limits_for,
+)
 from evals.recursion_depth.spend_repair import (
     placed_units,
     repair_cell_spend,
     tokens_by_unit,
 )
 from evals.recursion_depth.staffing import build_roster
-from evals.recursion_depth.tree import SpecBrief, arm_recursion, load_spec_brief
+from evals.recursion_depth.tree import (
+    SpecBrief,
+    arm_recursion,
+    arm_treatments,
+    load_spec_brief,
+)
+from evals.recursion_depth.wire_check import (
+    WiringProbe,
+    describe_findings,
+    load_wiring_report,
+    matrix_digest,
+    require_passing_smoke,
+    smoke_dir,
+    smoke_manifest,
+    write_wiring_report,
+)
 from evals.runner.execution import EVAL_TASK_PROJECT, seed_eval_project
 from synthorg.config.loader import load_config
 from synthorg.config.schema import RootConfig
@@ -464,6 +487,12 @@ def describe_plan(manifest: RecursionDepthManifest, spec: SpecBrief) -> str:
         # of spending on them.
         f"  contract stage: {'on' if manifest.contract_stage else 'off'}",
         f"  leaf depth    : {_leaf_depth(manifest)}",
+        # The three treatments the corpus this matrix replaces never stated,
+        # and so measured an engine without: each is written into the live
+        # settings at arm time and is part of the identity a resume checks.
+        f"  embedder      : {manifest.embedder.label}",
+        f"  stagnation    : {manifest.stagnation.strategy}",
+        f"  compaction    : {_compaction(manifest)}",
         "",
         f"  runs          : {len(cells)}",
         *_projection_lines(manifest, projected),
@@ -485,7 +514,26 @@ def _leaf_depth(manifest: RecursionDepthManifest) -> str:
     """
     if manifest.leaf_reasoning_effort is None:
         return "the executor's own"
-    return f"{manifest.leaf_reasoning_effort.value} (a second builder pool)"
+    return (
+        f"{manifest.leaf_reasoning_effort.value} (a second builder pool) for "
+        f"units claiming fewer than {manifest.leaf_deep_claims} requirements; "
+        f"the executor's own above that"
+    )
+
+
+def _compaction(manifest: RecursionDepthManifest) -> str:
+    """How the plan should describe the compaction every session runs under.
+
+    Returns:
+        The threshold, and which summariser answers past it.
+    """
+    summariser = manifest.compaction.summariser
+    who = (
+        "text summary (no model)"
+        if summariser is None
+        else f"semantic summary on {_pair(summariser)}"
+    )
+    return f"at {manifest.compaction.fill_threshold_percent:g}% fill, {who}"
 
 
 async def _release(
@@ -574,11 +622,70 @@ async def _while_the_gateway_serves(
     raise HarnessGatewayUnavailableError(msg)
 
 
+@dataclass(frozen=True)
+class _RunMode:
+    """How one paid invocation runs: which matrix, where, and what gates it.
+
+    Attributes:
+        manifest: The matrix that runs: the operator's, or the one-cell smoke
+            narrowed from it.
+        out_dir: Where its journal and report land. The smoke lands under
+            the recording's own directory, apart from the recording's
+            journal, which refuses a second matrix.
+        probe: What reads the smoke's engine, or ``None`` on a recording.
+        wiring: What the smoke found, on a recording it gated; ``None`` on
+            the smoke itself, whose findings do not exist until it has run.
+    """
+
+    manifest: RecursionDepthManifest
+    out_dir: Path
+    probe: WiringProbe | None
+    wiring: WiringReport | None
+    matrix_sha256: str
+
+
+def _run_mode(args: argparse.Namespace, manifest: RecursionDepthManifest) -> _RunMode:
+    """Decide whether this invocation smokes or records, and what that needs.
+
+    A recording refuses to start without a passing smoke for the SAME
+    effective matrix: the operator's manifest with every command-line override
+    applied, since an override changes the treatment without touching the file
+    and a smoke keyed on the file would vouch for a treatment it never saw.
+    Every treatment a recording claims to measure can be absent from the engine
+    it runs on with nothing able to tell, and the smoke is what tells.
+
+    Returns:
+        The mode.
+
+    Raises:
+        RecursionDepthSmokeRequiredError: A recording was asked for with no
+            passing smoke for its matrix.
+    """
+    digest = matrix_digest(manifest)
+    if args.smoke:
+        narrowed = smoke_manifest(manifest)
+        return _RunMode(
+            manifest=narrowed,
+            out_dir=smoke_dir(args.out_dir),
+            probe=WiringProbe(narrowed),
+            wiring=None,
+            matrix_sha256=digest,
+        )
+    wiring = require_passing_smoke(args.out_dir, manifest_sha256=digest)
+    return _RunMode(
+        manifest=manifest,
+        out_dir=args.out_dir,
+        probe=None,
+        wiring=wiring,
+        matrix_sha256=digest,
+    )
+
+
 async def _sweep_under(
     context: SweepContext,
     *,
     args: argparse.Namespace,
-    manifest: RecursionDepthManifest,
+    mode: _RunMode,
     spec: SpecBrief,
     company_config: RootConfig,
     sandbox_image: str,
@@ -592,7 +699,7 @@ async def _sweep_under(
     Args:
         context: The bound sweep.
         args: The parsed command line.
-        manifest: The recording matrix.
+        mode: The matrix that runs, where it lands, and the smoke it rests on.
         spec: The specification the sweep builds.
         company_config: The config the pairs actually dispatch through.
         sandbox_image: The image the host resolved, which is what every unit
@@ -608,16 +715,49 @@ async def _sweep_under(
             capture_provenance,
             repo_root=Path.cwd(),
             manifest_path=args.manifest,
-            manifest=manifest,
+            manifest=mode.manifest,
             spec=spec,
             company_config=company_config,
-            out_dir=args.out_dir,
+            out_dir=mode.out_dir,
             sandbox_image=sandbox_image,
         )
     )
     return await run_sweep(
-        context, provenance=provenance, out_dir=args.out_dir, resume=args.resume
+        context,
+        provenance=provenance,
+        out_dir=mode.out_dir,
+        resume=args.resume,
+        wiring=mode.wiring,
     )
+
+
+async def _finish_smoke(
+    probe: WiringProbe,
+    *,
+    host: RecordingGatewayHost,
+    context: SweepContext,
+    report: RecursionDepthReport,
+    mode: _RunMode,
+) -> RecursionDepthReport:
+    """Read the treatments off the evidence the smoke cell left, and keep them.
+
+    Written beside the smoke's own journal, which is where the recording it
+    gates looks, and folded into the smoke's report so that artefact states
+    what it found too. Keyed on the EFFECTIVE matrix rather than the file the
+    provenance hashes, because that is what the recording it gates will run.
+
+    Returns:
+        The smoke's report, carrying its findings.
+    """
+    wiring = await probe.report(
+        host.app_state,
+        transcript_root=context.deps.transcript_root,
+        manifest_sha256=mode.matrix_sha256,
+    )
+    path = await asyncio.to_thread(write_wiring_report, wiring, mode.out_dir)
+    print(describe_findings(wiring.findings))
+    print(f"wiring findings written: {path}")
+    return report.model_copy(update={"wiring": wiring})
 
 
 async def _record(
@@ -630,11 +770,15 @@ async def _record(
     """Run the sweep for real and write the report.
 
     Returns:
-        Process exit code.
+        Process exit code: non-zero when a smoke found a treatment absent.
 
     Raises:
         RecursionDepthNoCellsMeasuredError: Not one run was measured.
+        RecursionDepthSmokeRequiredError: A recording was asked for with no
+            passing smoke for its manifest.
     """
+    mode = _run_mode(args, manifest)
+    manifest = mode.manifest
     # Before the host, because everything it checks is a property of the
     # configuration or the machine and none of it becomes truer once a scratch
     # database, a gateway and a container are standing.
@@ -646,7 +790,7 @@ async def _record(
     # Two runs sharing an output directory are refused by the journal itself,
     # and two with different ones land on different roots, so concurrent
     # recordings still never reset each other's trees.
-    run_work_root = args.work_root / f"run-{_recording_slug(args.out_dir)}"
+    run_work_root = args.work_root / f"run-{_recording_slug(mode.out_dir)}"
     binder: HarnessBinder | None = None
     completed = False
     try:
@@ -662,6 +806,7 @@ async def _record(
                 spec=spec,
                 work_root=run_work_root,
                 company_config=company_config,
+                probe=mode.probe,
             )
             # After the host resolved it and before the first session is paid
             # for. It cannot be asked earlier: unless `--sandbox-image` names
@@ -682,16 +827,24 @@ async def _record(
                 _sweep_under(
                     context,
                     args=args,
-                    manifest=manifest,
+                    mode=mode,
                     spec=spec,
                     company_config=company_config,
                     sandbox_image=host.sandbox_image,
                 ),
                 serving=host.serving,
             )
+            if mode.probe is not None:
+                report = await _finish_smoke(
+                    mode.probe,
+                    host=host,
+                    context=context,
+                    report=report,
+                    mode=mode,
+                )
             # Written inside the host's lifetime so a teardown that overruns
             # cannot discard a sweep that already cost real money to produce.
-            paths = await asyncio.to_thread(write_report, report, args.out_dir)
+            paths = await asyncio.to_thread(write_report, report, mode.out_dir)
             completed = True
     finally:
         await _release(
@@ -704,7 +857,7 @@ async def _record(
             "nothing; the reasons are in the artifact just written"
         )
         raise RecursionDepthNoCellsMeasuredError(msg)
-    return 0
+    return 0 if report.wiring is None or report.wiring.passed else 1
 
 
 def _host_config(
@@ -741,12 +894,24 @@ async def _build_context(
     spec: SpecBrief,
     work_root: Path,
     company_config: RootConfig,
+    probe: WiringProbe | None = None,
 ) -> SweepContext:
     """Arm the settings, staff the roster, and wire the sweep.
 
     Recursion is armed through the real settings service rather than handed to
     the decomposition service directly, so the sweep exercises the live read the
     product does.
+
+    Args:
+        host: The hosted gateway.
+        binder: What routes and authenticates each unit at that gateway.
+        args: The parsed command line.
+        manifest: The matrix that runs.
+        spec: The specification it builds.
+        work_root: This run's scratch root.
+        company_config: The config the pairs dispatch through.
+        probe: What reads each engine's wiring on a smoke; ``None`` on a
+            recording.
 
     Returns:
         The wired context.
@@ -760,6 +925,11 @@ async def _build_context(
     app_state = host.app_state
     await seed_eval_project(host.project_repo)
     await arm_recursion(settings_service_of(app_state), enabled=True)
+    # What every session remembers with, is watched by, and is compacted
+    # under, written through the same live settings recursion is: a
+    # treatment inherited from whatever the host held is one no artefact
+    # can report.
+    await arm_treatments(settings_service_of(app_state), manifest)
     capability = await build_capability_policy(app_state)
     if capability is None:
         msg = (
@@ -802,6 +972,8 @@ async def _build_context(
         # such field, so every per-unit record read `family: null` and the
         # cross_family claim the gated arm rests on was evidenced nowhere.
         declared_pairs=(manifest.executor, manifest.reviewer),
+        on_engine_built=probe.observe if probe is not None else None,
+        on_session_finished=probe.observe_session if probe is not None else None,
     )
     # What a PLANNING session gets, on the same declarative sizing every other
     # role uses (`SweepContext.limits_for` reaches the same function for the
@@ -837,6 +1009,8 @@ def _build_deps(
     declared_pairs: tuple[ModelPair, ...],
     priced_providers: frozenset[str] = frozenset(),
     stall_idle_seconds: float = DEFAULT_STALL_IDLE_SECONDS,
+    on_engine_built: EngineObserver | None = None,
+    on_session_finished: SessionObserver | None = None,
 ) -> SweepDeps:
     """Bind every per-unit collaborator to the hosted gateway.
 
@@ -853,12 +1027,21 @@ def _build_deps(
         priced_providers: Provider connections resolved as pricing their
             calls, from the same config the preflight already read.
         stall_idle_seconds: Idle time after which a unit is reported stalled.
+        on_engine_built: Told about each engine as it is built, with its
+            ledger; the smoke's probe, or ``None``.
+        on_session_finished: Told about each session's outcome, which is
+            where a run's tool surface is read; the smoke's probe, or
+            ``None``.
 
     Returns:
         The wired :class:`SweepDeps`.
     """
     return SweepDeps(
-        build_provider=binder.build_provider,
+        # The live application the gateway is served from, and the state every
+        # engine collaborator is read off. Handing it over is what makes the
+        # sweep's engine and a deployment's engine one construction.
+        app_state=host.app_state,
+        build_provider_registry=binder.build_provider_registry,
         build_tool_registry=binder.build_tool_registry,
         # Built per grading, never hoisted. A shared grader would share one
         # lifecycle strategy and therefore one warm container across units,
@@ -877,17 +1060,12 @@ def _build_deps(
         transcripts=host.transcripts,
         transcript_root=transcript_root,
         open_run_ledger=binder.open_run_ledger,
-        project_repo=host.project_repo,
-        # A sweep unit is hours of work, so its conversation goes on disk turn
-        # by turn and a session cut off by infrastructure is RESUMED rather
-        # than re-run. Both or neither: the engine refuses one without the
-        # other.
-        checkpoint_repo=host.checkpoint_repo,
-        heartbeat_repo=host.heartbeat_repo,
         stall_idle_seconds=stall_idle_seconds,
         on_stall=_print_stall,
         declared_pairs=declared_pairs,
         priced_providers=priced_providers,
+        on_engine_built=on_engine_built,
+        on_session_finished=on_session_finished,
     )
 
 
@@ -1016,12 +1194,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help=(
             "Override how many times a cap is recorded, as CAP:COUNT pairs "
-            "(for example '4:1'). Only the caps named change. This is the "
-            "lever for the deep end, where the bill is: a cap costs its "
-            "branching to the power of its depth, so trading one repetition "
-            "at the deepest cap buys back more time than anything else here. "
-            "The committed counts are the experimental DESIGN (samples "
-            "concentrated where the aggregation transition is expected), so "
+            "(for example '4:8'). Only the caps named change. A count below "
+            "the recording floor is refused: below five draws every pairwise "
+            "confidence interval in the published harness comparison crossed "
+            "zero, so a smaller sample measures nothing a curve can carry. "
+            "Stage the deep end with --depths, --max-sessions and --resume "
+            "instead. The committed counts are the experimental DESIGN, so "
             "they are overridden per run rather than edited, and the manifest "
             "digest a resume pins is taken over the file, which this does not "
             "touch."
@@ -1213,7 +1391,31 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     mode.add_argument(
         "--record",
         action="store_true",
-        help="Execute the sweep against real providers (real spend).",
+        help=(
+            "Execute the sweep against real providers (real spend). Refused "
+            "without a passing --smoke under --out-dir for the same manifest "
+            "file: a 200 response, a valid config and a green unit test are "
+            "all compatible with a treatment being absent from the engine, "
+            "and the smoke is the one check that is not."
+        ),
+    )
+    mode.add_argument(
+        "--smoke",
+        action="store_true",
+        help=(
+            "Run ONE cell at the shallowest cap against real providers, then "
+            "read every treatment the manifest declares off the wire rather "
+            "than off the config: the engine's own wiring summary (compaction, "
+            "stagnation, budget, review, approval, policy, the tool surface "
+            "the invoker was built with), the live settings it was armed "
+            "into, the cell ledger (cached-prefix tokens) and the recorded "
+            "request bodies (reasoning depth). Writes the findings under "
+            "<out-dir>/smoke/wiring.json, which --record then requires for "
+            "the same effective matrix (the manifest with the same overrides "
+            "applied), and exits non-zero on a treatment found absent. Costs "
+            "one cheap cell; the alternative is discovering a missing "
+            "treatment only after the whole matrix has been paid for."
+        ),
     )
     mode.add_argument(
         "--rescore",
@@ -1263,7 +1465,7 @@ def parse_repetitions(
     A cap the manifest does not sweep is REFUSED rather than ignored. The
     manifest validator only checks that every swept depth HAS a count, so an
     extra key validates cleanly and does nothing: ``--repetitions 41:1`` would
-    be a typo for ``4:1`` that plans the full three repetitions and reports
+    be a typo for ``4:1`` that plans the full five repetitions and reports
     nothing wrong, which is the shape of mistake that gets discovered a day into
     a paid run.
 
@@ -1506,7 +1708,9 @@ def narrow(
     if counts is not None:
         override["repetitions"] = manifest.repetitions | counts
     if depths is None:
-        return RecursionDepthManifest.model_validate(manifest.model_dump() | override)
+        return _floored(
+            RecursionDepthManifest.model_validate(manifest.model_dump() | override)
+        )
     wanted = tuple(int(part) for part in depths.split(",") if part.strip())
     unknown = [cap for cap in wanted if cap not in manifest.depths]
     if unknown:
@@ -1518,9 +1722,28 @@ def narrow(
     # twice, and `--depths ,` would narrow to nothing and record a sweep that
     # measured no cell at all. The manifest already refuses both, so the fix is
     # to go back through it rather than to restate its rules here.
-    return RecursionDepthManifest.model_validate(
-        manifest.model_dump() | {"depths": wanted} | override
+    return _floored(
+        RecursionDepthManifest.model_validate(
+            manifest.model_dump() | {"depths": wanted} | override
+        )
     )
+
+
+def _floored(manifest: RecursionDepthManifest) -> RecursionDepthManifest:
+    """Hold a narrowed matrix to the repetition floor a recording needs.
+
+    Asked of the NARROWED matrix rather than only of the file, because the
+    override is the one place a cap can drop below the floor after the
+    loader has already accepted it.
+
+    Returns:
+        The same matrix, once it is recordable.
+
+    Raises:
+        ValueError: A swept cap carries fewer repetitions than the floor.
+    """
+    require_repetition_floor(manifest)
+    return manifest
 
 
 def _previous_caveats(out_dir: Path) -> tuple[str, ...]:
@@ -1667,6 +1890,7 @@ def _rescore(out_dir: Path, *, repair_from: Path | None) -> int:
         provenance, cells = _repaired(out_dir, provenance, cells, log=repair_from)
     caveats = [
         METRIC_CAVEAT,
+        HEADLINE_CAVEAT,
         SIZING_CAVEAT,
         ORACLE_CAVEAT,
         *derived_caveats(cells, spend_source=provenance.spend_source),
@@ -1681,6 +1905,9 @@ def _rescore(out_dir: Path, *, repair_from: Path | None) -> int:
         cells=cells,
         caveats=caveats,
         planned_cells=len(cells),
+        # Off the disk beside the journal, where the smoke left it, so a
+        # re-score carries the same wiring the recording stated.
+        wiring=load_wiring_report(smoke_dir(out_dir)),
     )
     written = write_report(report, out_dir)
     print("report written: " + ", ".join(str(path) for path in written))
@@ -1721,7 +1948,7 @@ def main(argv: list[str] | None = None) -> int:
     # contradiction found only under --record is found one decision too late.
     check_declared_families(manifest, company_config)
 
-    if not args.record:
+    if not (args.record or args.smoke):
         # The plan path boots nothing, opens no port and starts no container.
         print(describe_plan(manifest, spec))
         return 0

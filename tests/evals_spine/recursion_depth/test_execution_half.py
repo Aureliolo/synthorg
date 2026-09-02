@@ -119,7 +119,7 @@ from synthorg.engine.prompt_safety import TAG_TASK_DATA
 from synthorg.providers.errors import ProviderQuotaExceededError
 from synthorg.tools.sandbox import SandboxBackend
 from synthorg.tools.sandbox.result import SandboxResult
-from tests._shared import as_uuid, mock_of, sid
+from tests._shared import as_uuid, make_app_state, mock_of, sid
 from tests.evals_spine.recursion_depth._doubles import ungraded_capability
 
 pytestmark = pytest.mark.unit
@@ -440,7 +440,7 @@ def _deps(*, own_tests: tuple[bool, str] = (True, "")) -> SweepDeps:
         The deps.
     """
 
-    async def _no_provider(_binding: object) -> object:
+    async def _no_registry(_binding: object) -> object:
         raise AssertionError
 
     def _no_sandbox(_root: Path, *, owner: str) -> object:
@@ -451,7 +451,8 @@ def _deps(*, own_tests: tuple[bool, str] = (True, "")) -> SweepDeps:
     # suite did not pass" untested through the loop that produces it. The
     # verdict itself is asserted directly in ``TestTheOwnTestGate``.
     return SweepDeps(
-        build_provider=_no_provider,  # type: ignore[arg-type]
+        app_state=make_app_state(),
+        build_provider_registry=_no_registry,  # type: ignore[arg-type]
         build_tool_registry=lambda _workspace, *, owner: None,
         build_grader=lambda _workspace, *, owner: mock_of[UnitGrader](
             own_tests_pass=AsyncMock(return_value=own_tests)
@@ -1810,6 +1811,10 @@ def _manifest(**overrides: object) -> RecursionDepthManifest:
         "executor": _EXECUTOR,
         "reviewer": _REVIEWER,
         "independence": Independence.SAME_FAMILY,
+        "embedder": {"provider": "example-provider", "model_id": "example-embed-001"},
+        "stagnation": {"strategy": "tool_repetition"},
+        "compaction": {"fill_threshold_percent": 80.0, "summariser": None},
+        "leaf_deep_claims": 4,
         "merge_attempts": 2,
         "unit_max_turns": 4,
         "planner_max_turns": 4,
@@ -1888,10 +1893,19 @@ async def _context(
     Returns:
         The context.
     """
+    spec_dir = tmp_path / "spec"
+    if not (spec_dir / "requirements.yaml").exists():
+        # The liveness probe reads the specification's own index off disk to
+        # learn what it may probe; one that declares nothing reads every cell
+        # NOT_PROBEABLE, which is the shape these matrix tests are about.
+        spec_dir.mkdir(parents=True, exist_ok=True)
+        (spec_dir / "requirements.yaml").write_text(
+            "requirements: []\n", encoding="utf-8"
+        )
     return SweepContext(
         manifest=manifest or _manifest(),
         spec=_spec(),
-        spec_dir=tmp_path / "spec",
+        spec_dir=spec_dir,
         work_root=tmp_path / "work",
         deps=_deps(),
         roster=await _roster(),

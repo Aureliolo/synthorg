@@ -97,6 +97,17 @@ property on `TokenUsage` (the model embedded in `CompletionResponse`). Spending 
 models (`AgentSpending`, `DepartmentSpending`, `PeriodSpending`) extend a shared
 `_SpendingTotals` base class that also carries the per-aggregation currency.
 
+Beside the two token counts the record carries `cache_read_input_tokens` and
+`cache_write_input_tokens`, the prompt-cache counts a provider reports on each
+response, as COUNTS rather than a boolean: a hit flag says a cache was touched
+and nothing about how much of the input it covered, which is the figure that
+maps to the bill. Both are columns on `cost_records` in both backends, so a
+record read back carries what was recorded rather than a `None` that reads as
+"never cached". Call analytics derives `cached_input_share` from them (cached
+read tokens over input tokens, absent when a slice has no input tokens), and
+that share is what the dashboard's analytics sections show in place of a hit
+rate.
+
 ### Is the money figure measuring anything?
 
 A provider that bills by flat subscription has no per-1k price to attribute, so every
@@ -353,7 +364,7 @@ the engine can act on them.
 
 Independent of the monthly soft-warning ladder, a per-run hard ceiling halts the org
 cleanly mid-run, whenever `AgentEngine` holds a wired `BudgetEnforcer`: the single
-production construction site (`workers/_engine_assembly.py::_construct_agent_engine`)
+production construction site (`workers/engine_assembly.py::build_agent_engine`)
 threads it in via `budget_enforcer_of(app_state)`, and every check below is reachable
 through that one seam. The in-loop `BudgetChecker` raises `RunHardCeilingExceededError` (a
 subclass of `BudgetExhaustedError`) the moment accumulated cost meets or exceeds the

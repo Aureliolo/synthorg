@@ -418,18 +418,45 @@ capabilities and FULL autonomy. Judging needs none of that.
 
 The copy holds:
 
-- **`ToolAccessLevel.STANDARD`**, which covers reading the deliverable and
-  running the build and test commands a verdict rests on.
+- **`ToolAccessLevel.STANDARD`**, which covers reading the deliverable. What
+  it also grants is withdrawn below: a judge that writes or runs inside the
+  tree under review is authoring what it judges, and a recorded corpus put 36
+  file-writing shell calls in sessions whose only job was to file a verdict.
 - **No MCP capabilities** (`mcp_capabilities=()`). The internal MCP surface is
   how an agent reaches the rest of the org, and judging one deliverable needs
   no part of it.
-- **`REVIEW_DENIED_CATEGORIES`** (`ToolCategory.EXTERNAL_DATA`):
-  every governed connection tool (forge, chat, deploy, publish) plus the
-  external-API and research tools. Withheld by CATEGORY rather than by name,
-  because a name list re-opens the hole the day a tool joins the category.
+- **`REVIEW_DENIED_CATEGORIES`** (`ToolCategory.EXTERNAL_DATA`,
+  `ToolCategory.TERMINAL`, `ToolCategory.CODE_EXECUTION`): every governed
+  connection tool (forge, chat, deploy, publish) plus the external-API and
+  research tools, and every way of running a command. Withheld by CATEGORY
+  rather than by name, because a name list re-opens the hole the day a tool
+  joins the category.
+- **`REVIEW_DENIED_TOOLS`** (`write_file`, `edit_file`, `delete_file`,
+  `git_commit`, `git_branch`): the mutating members of the two categories
+  the reviewer keeps, `FILE_SYSTEM` for opening the artefact and
+  `VERSION_CONTROL` for reading its history. `git_branch` is there because
+  `GitAccess.LOCAL_ONLY` withholds only what reaches a remote, and creating,
+  switching or deleting a branch rewrites the checkout under review without
+  leaving the machine. Held by name only because withholding the category
+  would take `read_file` and `git_diff` with it.
+- **`REVIEW_SUB_CONSTRAINTS`** (`TerminalAccess.NONE`, `GitAccess.LOCAL_ONLY`),
+  holding the same line at the sub-constraint enforcer that runs after
+  category gating.
 - **`AutonomyLevel.SUPERVISED`**, so anything the session attempts beyond
-  reading and testing meets the ordinary approval gate rather than an autonomy
-  grant written for the agent's other work.
+  reading meets the ordinary approval gate rather than an autonomy grant
+  written for the agent's other work.
+
+The build and test evidence a verdict rests on is therefore not something
+the reviewer produces. The completion gates run the project's declared
+commands before the review opens and record each run
+(`CodeExecutionRecord`); the stage reads the reviewed execution's runs
+(`OracleStageConfig.records`) and hands them to the session in a fenced
+`<verification-runs>` block, newest first, with each command's exit status
+and output tail. The verdict names what it cited (`build_evidence_cited`,
+`test_evidence_cited`, `test_command`), and the prompt makes an absent or
+failing test run grounds for reject, never for approve. The output tails are
+fenced with the deliverable because the code under review printed them.
+
 - **The verdict tool by name.** `submit_completion_oracle_verdict` is
   `ToolCategory.OTHER`, which only ELEVATED admits, so the one thing a judging
   session exists to do is allowed explicitly. Raising the level instead would

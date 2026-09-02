@@ -15,7 +15,6 @@ from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import (
     ExecutionStateError,
@@ -40,9 +39,21 @@ from tests._shared import JsonDict, as_uuid, mock_of
 if TYPE_CHECKING:
     from .conftest import MockCompletionProvider
 
+from dataclasses import replace
+
 from synthorg.engine.coordination.service import MultiAgentCoordinator
 from synthorg.engine.loop_protocol import ExecutionLoop
 from synthorg.engine.task_engine import TaskEngine
+from tests._shared import (
+    UNWIRED_BUDGET,
+    UNWIRED_LOOP_CONTROLS,
+    UNWIRED_MEMORY,
+    UNWIRED_OBSERVABILITY,
+    UNWIRED_ORG,
+    engine_with,
+    unwired_core,
+    unwired_recovery,
+)
 
 from .conftest import make_completion_response as _make_completion_response
 
@@ -59,7 +70,7 @@ class TestAgentEngineBasicRun:
     ) -> None:
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(
             identity=sample_agent,
@@ -78,7 +89,7 @@ class TestAgentEngineBasicRun:
     ) -> None:
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(
             identity=sample_agent,
@@ -101,7 +112,7 @@ class TestAgentEngineSystemPrompt:
     ) -> None:
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(
             identity=sample_agent,
@@ -128,7 +139,7 @@ class TestAgentEngineTaskTransition:
         assert sample_task_with_criteria.status == TaskStatus.ASSIGNED
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(
             identity=sample_agent,
@@ -154,7 +165,7 @@ class TestAgentEngineAlreadyInProgress:
         task_ip = sample_task_with_criteria.with_transition(TaskStatus.IN_PROGRESS)
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(
             identity=sample_agent,
@@ -182,7 +193,7 @@ class TestAgentEngineInvalidInput:
             update={"status": AgentStatus.ON_LEAVE},
         )
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         with pytest.raises(ExecutionStateError, match="on_leave"):
             await engine.run(identity=inactive, task=sample_task_with_criteria)
@@ -197,7 +208,7 @@ class TestAgentEngineInvalidInput:
             update={"status": AgentStatus.TERMINATED},
         )
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         with pytest.raises(ExecutionStateError, match="terminated"):
             await engine.run(identity=terminated, task=sample_task_with_criteria)
@@ -220,7 +231,7 @@ class TestAgentEngineInvalidInput:
             status=TaskStatus.COMPLETED,
         )
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         with pytest.raises(ExecutionStateError, match="completed"):
             await engine.run(
@@ -244,7 +255,7 @@ class TestAgentEngineInvalidInput:
             status=TaskStatus.CREATED,
         )
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         with pytest.raises(ExecutionStateError, match="created"):
             await engine.run(
@@ -269,7 +280,7 @@ class TestAgentEngineInvalidInput:
             status=TaskStatus.BLOCKED,
         )
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         with pytest.raises(ExecutionStateError, match="blocked"):
             await engine.run(
@@ -294,7 +305,7 @@ class TestAgentEngineInvalidInput:
             status=TaskStatus.ASSIGNED,
         )
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         with pytest.raises(ExecutionStateError, match="not to agent"):
             await engine.run(
@@ -335,7 +346,7 @@ class TestAgentEngineProjectRepoValidation:
         error rather than proceeding unvalidated toward a silent success.
         """
         provider = mock_provider_factory([_make_completion_response()])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(
             identity=sample_agent,
@@ -369,7 +380,7 @@ class TestAgentEngineProjectRepoValidation:
             status=TaskStatus.ASSIGNED,
         )
         provider = mock_provider_factory([_make_completion_response()])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(
             identity=sample_agent,
@@ -392,7 +403,7 @@ class TestAgentEngineMaxTurnsBoundary:
         """max_turns=1 allows exactly one LLM turn."""
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(
             identity=sample_agent,
@@ -438,9 +449,8 @@ class TestAgentEngineWithTools:
         )
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(
-            provider=provider,
-            tool_registry=registry,
+        engine = engine_with(
+            provider, core=replace(unwired_core(provider), tool_registry=registry)
         )
 
         result = await engine.run(
@@ -491,10 +501,12 @@ class TestAgentEngineMemoryToolWiring:
         provider = mock_provider_factory(
             [_make_completion_response()],
         )
-        engine = AgentEngine(
-            provider=provider,
-            tool_registry=registry,
-            memory_injection_strategy_provider=lambda: strategy,
+        engine = engine_with(
+            provider,
+            core=replace(unwired_core(provider), tool_registry=registry),
+            memory=replace(
+                UNWIRED_MEMORY, memory_injection_strategy_provider=lambda: strategy
+            ),
         )
 
         # Through the engine's own resolver, so this still asserts that the
@@ -502,6 +514,7 @@ class TestAgentEngineMemoryToolWiring:
         invoker = engine._make_tool_invoker(
             sample_agent,
             memory_strategy=engine._resolve_memory_strategy(),
+            retrieval_query=None,
         )
 
         assert invoker is not None
@@ -532,14 +545,14 @@ class TestAgentEngineMemoryToolWiring:
         provider = mock_provider_factory(
             [_make_completion_response()],
         )
-        engine = AgentEngine(
-            provider=provider,
-            tool_registry=registry,
+        engine = engine_with(
+            provider, core=replace(unwired_core(provider), tool_registry=registry)
         )
 
         invoker = engine._make_tool_invoker(
             sample_agent,
             memory_strategy=engine._resolve_memory_strategy(),
+            retrieval_query=None,
         )
 
         assert invoker is not None
@@ -574,9 +587,8 @@ class TestAgentEngineBudgetChecker:
         )
 
         provider = mock_provider_factory([])
-        engine = AgentEngine(
-            provider=provider,
-            execution_loop=mock_loop,
+        engine = engine_with(
+            provider, core=replace(unwired_core(provider), execution_loop=mock_loop)
         )
 
         result = await engine.run(
@@ -608,7 +620,7 @@ class TestAgentEngineBudgetChecker:
         )
         response = _make_completion_response(cost=100.0)
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(
             identity=sample_agent,
@@ -632,9 +644,8 @@ class TestAgentEngineCostRecording:
         tracker = CostTracker()
         response = _make_completion_response(cost=0.05)
         provider = mock_provider_factory([response])
-        engine = AgentEngine(
-            provider=provider,
-            cost_tracker=tracker,
+        engine = engine_with(
+            provider, budget=replace(UNWIRED_BUDGET, cost_tracker=tracker)
         )
 
         await engine.run(
@@ -656,7 +667,7 @@ class TestAgentEngineCostRecording:
         """No error when cost_tracker is None."""
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(
             identity=sample_agent,
@@ -688,7 +699,9 @@ class TestAgentEngineCostRecording:
             output_tokens=0,
         )
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider, cost_tracker=tracker)
+        engine = engine_with(
+            provider, budget=replace(UNWIRED_BUDGET, cost_tracker=tracker)
+        )
 
         await engine.run(identity=sample_agent, task=task)
 
@@ -718,7 +731,9 @@ class TestAgentEngineCostRecording:
             output_tokens=2,
         )
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider, cost_tracker=tracker)
+        engine = engine_with(
+            provider, budget=replace(UNWIRED_BUDGET, cost_tracker=tracker)
+        )
 
         await engine.run(identity=sample_agent, task=task)
 
@@ -737,7 +752,9 @@ class TestAgentEngineCostRecording:
         tracker.record = AsyncMock(side_effect=RuntimeError("DB write failed"))
         response = _make_completion_response(cost=0.05)
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider, cost_tracker=tracker)
+        engine = engine_with(
+            provider, budget=replace(UNWIRED_BUDGET, cost_tracker=tracker)
+        )
 
         result = await engine.run(
             identity=sample_agent,
@@ -792,9 +809,8 @@ class TestAgentEngineCompletionConfig:
 
         config = CompletionConfig(temperature=0.42, max_tokens=123)
         provider = mock_provider_factory([])
-        engine = AgentEngine(
-            provider=provider,
-            execution_loop=mock_loop,
+        engine = engine_with(
+            provider, core=replace(unwired_core(provider), execution_loop=mock_loop)
         )
 
         await engine.run(
@@ -822,7 +838,7 @@ class TestAgentEngineMaxTurns:
         """Custom max_turns value is propagated to the context."""
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(
             identity=sample_agent,
@@ -845,7 +861,7 @@ class TestAgentEngineDuration:
     ) -> None:
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(
             identity=sample_agent,
@@ -867,7 +883,7 @@ class TestAgentEngineDefaultLoop:
     ) -> None:
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(
             identity=sample_agent,
@@ -913,9 +929,8 @@ class TestAgentEngineDefaultLoop:
         )
 
         provider = mock_provider_factory([])
-        engine = AgentEngine(
-            provider=provider,
-            execution_loop=mock_loop,
+        engine = engine_with(
+            provider, core=replace(unwired_core(provider), execution_loop=mock_loop)
         )
 
         result = await engine.run(
@@ -936,9 +951,9 @@ class TestAgentEngineDefaultLoop:
 
         detector = ToolRepetitionDetector()
         provider = mock_provider_factory([])
-        engine = AgentEngine(
-            provider=provider,
-            stagnation_detector=detector,
+        engine = engine_with(
+            provider,
+            loop_controls=replace(UNWIRED_LOOP_CONTROLS, stagnation_detector=detector),
         )
         loop = engine._loop
         assert isinstance(loop, ReactLoop)
@@ -958,7 +973,7 @@ class TestAgentEngineImmutability:
         identity_before = copy.deepcopy(sample_agent)
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         await engine.run(
             identity=sample_agent,
@@ -976,7 +991,7 @@ class TestAgentEngineImmutability:
         task_before = copy.deepcopy(sample_task_with_criteria)
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         await engine.run(
             identity=sample_agent,
@@ -1001,9 +1016,9 @@ class TestAgentEngineClassification:
         """With error_taxonomy_config=None, classification is not called."""
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(
-            provider=provider,
-            error_taxonomy_config=None,
+        engine = engine_with(
+            provider,
+            observability=replace(UNWIRED_OBSERVABILITY, error_taxonomy_config=None),
         )
 
         with patch(
@@ -1027,9 +1042,9 @@ class TestAgentEngineClassification:
         response = _make_completion_response()
         provider = mock_provider_factory([response])
         config = ErrorTaxonomyConfig(enabled=True)
-        engine = AgentEngine(
-            provider=provider,
-            error_taxonomy_config=config,
+        engine = engine_with(
+            provider,
+            observability=replace(UNWIRED_OBSERVABILITY, error_taxonomy_config=config),
         )
 
         with patch(
@@ -1055,9 +1070,9 @@ class TestAgentEngineClassification:
         response = _make_completion_response()
         provider = mock_provider_factory([response])
         config = ErrorTaxonomyConfig(enabled=True)
-        engine = AgentEngine(
-            provider=provider,
-            error_taxonomy_config=config,
+        engine = engine_with(
+            provider,
+            observability=replace(UNWIRED_OBSERVABILITY, error_taxonomy_config=config),
         )
 
         with (
@@ -1119,7 +1134,7 @@ class TestAgentEnginePromptTokenRatioWarning:
             cost=cost,
         )
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         fixed_prompt = SystemPrompt(
             content="test",
@@ -1187,7 +1202,7 @@ class TestSyncToTaskEngine:
         """Without task_engine, run() succeeds and no syncing occurs."""
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider, task_engine=None)
+        engine = engine_with(provider, org=replace(UNWIRED_ORG, task_engine=None))
 
         result = await engine.run(
             identity=sample_agent,
@@ -1209,7 +1224,7 @@ class TestSyncToTaskEngine:
         mock_te = MagicMock(spec=TaskEngine)
         mock_te.submit = AsyncMock(return_value=_make_sync_success())
 
-        engine = AgentEngine(provider=provider, task_engine=mock_te)
+        engine = engine_with(provider, org=replace(UNWIRED_ORG, task_engine=mock_te))
 
         result = await engine.run(
             identity=sample_agent,
@@ -1263,10 +1278,10 @@ class TestSyncToTaskEngine:
         mock_te.submit = AsyncMock(return_value=_make_sync_success())
 
         provider = mock_provider_factory([])
-        engine = AgentEngine(
-            provider=provider,
-            execution_loop=mock_loop,
-            task_engine=mock_te,
+        engine = engine_with(
+            provider,
+            core=replace(unwired_core(provider), execution_loop=mock_loop),
+            org=replace(UNWIRED_ORG, task_engine=mock_te),
         )
 
         await engine.run(
@@ -1321,10 +1336,10 @@ class TestSyncToTaskEngine:
         mock_te.submit = AsyncMock(return_value=_make_sync_success())
 
         provider = mock_provider_factory([])
-        engine = AgentEngine(
-            provider=provider,
-            execution_loop=mock_loop,
-            task_engine=mock_te,
+        engine = engine_with(
+            provider,
+            core=replace(unwired_core(provider), execution_loop=mock_loop),
+            org=replace(UNWIRED_ORG, task_engine=mock_te),
         )
 
         await engine.run(
@@ -1383,11 +1398,11 @@ class TestSyncToTaskEngine:
         mock_te.submit = AsyncMock(return_value=_make_sync_success())
 
         provider = mock_provider_factory([])
-        engine = AgentEngine(
-            provider=provider,
-            execution_loop=mock_loop,
-            task_engine=mock_te,
-            recovery_strategy=None,
+        engine = engine_with(
+            provider,
+            core=replace(unwired_core(provider), execution_loop=mock_loop),
+            org=replace(UNWIRED_ORG, task_engine=mock_te),
+            recovery=replace(unwired_recovery(), recovery_strategy=None),
         )
 
         await engine.run(
@@ -1422,7 +1437,7 @@ class TestSyncToTaskEngine:
             )
         )
 
-        engine = AgentEngine(provider=provider, task_engine=mock_te)
+        engine = engine_with(provider, org=replace(UNWIRED_ORG, task_engine=mock_te))
 
         result = await engine.run(
             identity=sample_agent,
@@ -1451,7 +1466,7 @@ class TestSyncToTaskEngine:
             )
         )
 
-        engine = AgentEngine(provider=provider, task_engine=mock_te)
+        engine = engine_with(provider, org=replace(UNWIRED_ORG, task_engine=mock_te))
 
         result = await engine.run(
             identity=sample_agent,
@@ -1486,7 +1501,7 @@ class TestSyncToTaskEngine:
             side_effect=TaskEngineError("engine unavailable"),
         )
 
-        engine = AgentEngine(provider=provider, task_engine=mock_te)
+        engine = engine_with(provider, org=replace(UNWIRED_ORG, task_engine=mock_te))
 
         result = await engine.run(
             identity=sample_agent,
@@ -1511,7 +1526,7 @@ class TestSyncToTaskEngine:
             side_effect=RuntimeError("connection lost"),
         )
 
-        engine = AgentEngine(provider=provider, task_engine=mock_te)
+        engine = engine_with(provider, org=replace(UNWIRED_ORG, task_engine=mock_te))
 
         result = await engine.run(
             identity=sample_agent,
@@ -1536,7 +1551,7 @@ class TestSyncToTaskEngine:
             side_effect=MemoryError("out of memory"),
         )
 
-        engine = AgentEngine(provider=provider, task_engine=mock_te)
+        engine = engine_with(provider, org=replace(UNWIRED_ORG, task_engine=mock_te))
 
         with pytest.raises(MemoryError, match="out of memory"):
             await engine.run(
@@ -1559,7 +1574,7 @@ class TestSyncToTaskEngine:
             side_effect=RecursionError("maximum recursion depth exceeded"),
         )
 
-        engine = AgentEngine(provider=provider, task_engine=mock_te)
+        engine = engine_with(provider, org=replace(UNWIRED_ORG, task_engine=mock_te))
 
         with pytest.raises(RecursionError, match="maximum recursion depth exceeded"):
             await engine.run(
@@ -1587,7 +1602,7 @@ class TestAgentEngineCoordinator:
     ) -> None:
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
         assert engine.coordinator is None
 
     def test_coordinator_property_returns_coordinator(
@@ -1597,7 +1612,9 @@ class TestAgentEngineCoordinator:
         response = _make_completion_response()
         provider = mock_provider_factory([response])
         mock_coordinator = MagicMock(spec=MultiAgentCoordinator)
-        engine = AgentEngine(provider=provider, coordinator=mock_coordinator)
+        engine = engine_with(
+            provider, org=replace(UNWIRED_ORG, coordinator=mock_coordinator)
+        )
         assert engine.coordinator is mock_coordinator
 
     async def test_coordinate_raises_when_no_coordinator(
@@ -1606,7 +1623,7 @@ class TestAgentEngineCoordinator:
     ) -> None:
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
         mock_context = MagicMock()
         with pytest.raises(ExecutionStateError, match="No coordinator configured"):
             await engine.coordinate(mock_context)
@@ -1621,7 +1638,9 @@ class TestAgentEngineCoordinator:
         expected_result = MagicMock()
         mock_coordinator.coordinate.return_value = expected_result
 
-        engine = AgentEngine(provider=provider, coordinator=mock_coordinator)
+        engine = engine_with(
+            provider, org=replace(UNWIRED_ORG, coordinator=mock_coordinator)
+        )
         mock_context = MagicMock()
         result = await engine.coordinate(mock_context)
 
@@ -1642,7 +1661,7 @@ class TestAgentEngineCorrelationBinding:
         """run() wraps execution in correlation_scope."""
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         with patch(
             "synthorg.engine.agent_engine.correlation_scope",
@@ -1667,7 +1686,7 @@ class TestAgentEngineCorrelationBinding:
         """Context is clean after execution fails (scoped binding)."""
         # first complete() call fails and engine returns error result
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         try:
             await engine.run(
@@ -1691,7 +1710,7 @@ class TestAgentEngineCorrelationBinding:
         """
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         with patch(
             "synthorg.engine.agent_engine.correlation_scope",
@@ -1713,7 +1732,7 @@ class TestAgentEngineCorrelationBinding:
         """Correlation IDs visible during execution, parent context preserved."""
         response = _make_completion_response()
         provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         # Pre-bind a request_id to verify parent context is preserved
         bind_correlation_id(request_id="test-request-123")

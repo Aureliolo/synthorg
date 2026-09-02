@@ -8,6 +8,7 @@ the system prompt; a sensitive action parks; and the per-session budget
 checker trips at the cost ceiling.
 """
 
+from dataclasses import replace
 from typing import cast
 
 import pytest
@@ -16,7 +17,6 @@ from pydantic import JsonValue, ValidationError
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.chat_action import ChatActionResult
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import TerminationReason
@@ -42,7 +42,13 @@ from synthorg.providers.models import (
 )
 from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.tools.registry import ToolRegistry
-from tests._shared import FakeClock, InMemorySecretBackend
+from tests._shared import (
+    FakeClock,
+    InMemorySecretBackend,
+    engine_with,
+    unwired_core,
+    unwired_governance,
+)
 from tests._shared.scripted_provider import ScriptedProvider
 from tests.unit.engine.chat_action_fakes import InMemoryParkedRepo, QueryTool
 
@@ -92,11 +98,14 @@ def _service(
 ) -> tuple[OperatorConsoleService, ScriptedProvider, QueryTool]:
     provider = ScriptedProvider(responses)
     tool = QueryTool()
-    engine = AgentEngine(
-        provider=provider,
-        tool_registry=ToolRegistry([tool]),
-        approval_store=ApprovalStore(),
-        parked_context_repo=InMemoryParkedRepo(),
+    engine = engine_with(
+        provider,
+        core=replace(unwired_core(provider), tool_registry=ToolRegistry([tool])),
+        governance=replace(
+            unwired_governance(),
+            approval_store=ApprovalStore(),
+            parked_context_repo=InMemoryParkedRepo(),
+        ),
     )
     cfg = config or ChiefOfStaffConfig(
         operator_console_enabled=True, operator_console_model=_MODEL

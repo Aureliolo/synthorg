@@ -48,6 +48,10 @@ MCP_REGISTRY_REGISTERED: Final[str] = "mcp.registry.registered"
 MCP_REGISTRY_DUPLICATE: Final[str] = "mcp.registry.duplicate"
 MCP_REGISTRY_FROZEN: Final[str] = "mcp.registry.frozen"
 MCP_SCOPING_FILTERED: Final[str] = "mcp.scoping.filtered"
+MCP_SELF_CONSUMER_RETRIEVAL_NARROWED: Final[str] = (
+    "mcp.self_consumer.retrieval_narrowed"
+)
+MCP_SELF_CONSUMER_RATE_LIMITED: Final[str] = "mcp.self_consumer.rate_limited"
 MCP_SERVER_INVOKE_START: Final[str] = "mcp.server.invoke_start"
 MCP_SERVER_INVOKE_SUCCESS: Final[str] = "mcp.server.invoke_success"
 MCP_SERVER_INVOKE_FAILED: Final[str] = "mcp.server.invoke_failed"

@@ -9,7 +9,7 @@ rather than at recovery time.
 
 from typing import assert_never
 
-from synthorg.engine.checkpoint.models import CheckpointConfig
+from synthorg.engine.checkpoint.wiring import CheckpointWiring
 from synthorg.engine.errors import RecoveryConfigError
 from synthorg.engine.recovery import FailAndReassignStrategy, RecoveryStrategy
 from synthorg.engine.recovery_config import (
@@ -18,10 +18,6 @@ from synthorg.engine.recovery_config import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import EXECUTION_RECOVERY_FAILED
-from synthorg.persistence.checkpoint_protocol import (
-    CheckpointRepository,
-    HeartbeatRepository,
-)
 
 logger = get_logger(__name__)
 
@@ -29,52 +25,40 @@ logger = get_logger(__name__)
 def build_recovery_strategy(
     config: EngineRecoveryConfig,
     *,
-    checkpoint_repo: CheckpointRepository | None = None,
-    heartbeat_repo: HeartbeatRepository | None = None,
-    checkpoint_config: CheckpointConfig | None = None,
+    checkpointing: CheckpointWiring | None,
 ) -> RecoveryStrategy:
     """Construct the configured :class:`RecoveryStrategy`.
 
     Args:
         config: Engine recovery configuration discriminator.
-        checkpoint_repo: Required when ``config.strategy`` is
-            :attr:`RecoveryStrategyType.CHECKPOINT`. May be ``None``
-            for the fail-reassign path.
-        heartbeat_repo: Optional heartbeat repository forwarded to
-            :class:`CheckpointRecoveryStrategy` for sidecar cleanup on
-            fallback.
-        checkpoint_config: Required when ``config.strategy`` is
-            :attr:`RecoveryStrategyType.CHECKPOINT`. Controls
-            ``max_resume_attempts`` and related checkpoint behaviour;
-            sourced from ``config.checkpoint`` by the boot assembly.
+        checkpointing: The checkpoint repositories and their
+            configuration, or ``None`` when persistence is unconnected.
+            Required when ``config.strategy`` is
+            :attr:`RecoveryStrategyType.CHECKPOINT`; ignored by the
+            fail-reassign path.
 
     Returns:
         The recovery strategy matching the discriminator.
 
     Raises:
-        RecoveryConfigError: ``config.strategy`` is ``CHECKPOINT`` but
-            one of ``checkpoint_repo`` / ``checkpoint_config`` was not
-            supplied.
+        RecoveryConfigError: ``config.strategy`` is ``CHECKPOINT`` and
+            nothing was wired to checkpoint into.
     """
     match config.strategy:
         case RecoveryStrategyType.FAIL_REASSIGN:
             return FailAndReassignStrategy()
         case RecoveryStrategyType.CHECKPOINT:
-            if checkpoint_repo is None or checkpoint_config is None:
+            if checkpointing is None:
                 msg = (
-                    "RecoveryStrategyType.CHECKPOINT requires both "
-                    "checkpoint_repo and checkpoint_config to be wired "
-                    "through build_recovery_strategy (the boot assembly "
-                    "supplies checkpoint_repo from the active "
-                    "PersistenceBackend and checkpoint_config from "
-                    "config.recovery.checkpoint)."
+                    "RecoveryStrategyType.CHECKPOINT requires checkpointing "
+                    "to be wired through build_recovery_strategy (the boot "
+                    "assembly supplies it from the active PersistenceBackend "
+                    "and config.recovery.checkpoint)."
                 )
                 logger.error(
                     EXECUTION_RECOVERY_FAILED,
                     phase="config_validation",
                     recovery_strategy=RecoveryStrategyType.CHECKPOINT.value,
-                    checkpoint_repo_supplied=checkpoint_repo is not None,
-                    checkpoint_config_supplied=checkpoint_config is not None,
                     error_type="RecoveryConfigError",
                     error=msg,
                 )
@@ -83,10 +67,6 @@ def build_recovery_strategy(
                 CheckpointRecoveryStrategy,
             )
 
-            return CheckpointRecoveryStrategy(
-                checkpoint_repo=checkpoint_repo,
-                heartbeat_repo=heartbeat_repo,
-                config=checkpoint_config,
-            )
+            return CheckpointRecoveryStrategy(wiring=checkpointing)
         case _:  # pragma: no cover
             assert_never(config.strategy)

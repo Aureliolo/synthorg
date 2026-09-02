@@ -96,7 +96,7 @@ class TestAMatrixThatAsksForNothingIsUnchanged:
             ]
 
             assert _owner_for(roster, unit) == wanted
-            assert _owner_for(roster, unit, building=True) == wanted
+            assert _owner_for(roster, unit, effort=None) == wanted
 
     async def test_the_pools_are_indexed_alike_when_a_second_one_exists(self) -> None:
         # The complement, and the reason the digest is taken over the unit id
@@ -110,7 +110,7 @@ class TestAMatrixThatAsksForNothingIsUnchanged:
             index = zlib.crc32(unit.encode("utf-8")) % len(roster.builders)
 
             assert _owner_for(roster, unit) == roster.builders[index]
-            built_by = _owner_for(roster, unit, building=True)
+            built_by = _owner_for(roster, unit, effort=ReasoningEffort.LOW)
             assert built_by == roster.leaf_builders[index]
 
 
@@ -164,7 +164,8 @@ class TestAskingForItBindsASecondPool:
         roster = await _roster(leaf_effort=ReasoningEffort.LOW)
 
         reached = {
-            _owner_for(roster, f"unit-{index}", building=True).id for index in range(40)
+            _owner_for(roster, f"unit-{index}", effort=ReasoningEffort.LOW).id
+            for index in range(40)
         }
 
         assert len(reached) > 1

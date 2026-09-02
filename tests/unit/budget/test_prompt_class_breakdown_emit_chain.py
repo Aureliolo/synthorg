@@ -46,11 +46,11 @@ def _response() -> CompletionResponse:
             input_tokens=_INPUT_TOKENS,
             output_tokens=_OUTPUT_TOKENS,
             cost=_COST,
+            cache_read_input_tokens=_INPUT_TOKENS,
         ),
         model=_MODEL,
         provider_metadata={
             "_synthorg_latency_ms": _LATENCY_MS,
-            "_synthorg_cache_hit": True,
             "_synthorg_retry_count": 0,
         },
     )
@@ -93,7 +93,7 @@ async def test_purpose_emit_surfaces_in_breakdown() -> None:
     assert row.output_tokens == _OUTPUT_TOKENS
     assert row.avg_latency_ms == pytest.approx(_LATENCY_MS)
     assert row.p95_latency_ms == pytest.approx(_LATENCY_MS)
-    assert row.cache_hit_rate == pytest.approx(1.0)
+    assert row.cached_input_share == pytest.approx(1.0)
 
 
 async def test_multiple_purposes_grouped_with_promptless_bucket() -> None:

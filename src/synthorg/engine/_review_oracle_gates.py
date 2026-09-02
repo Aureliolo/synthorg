@@ -33,7 +33,10 @@ from synthorg.observability.events.completion_oracle import (
 from synthorg.observability.events.output_style import (
     OUTPUT_STYLE_BACKSTOP_OBSERVED,
 )
-from synthorg.persistence.code_execution_protocol import CodeExecutionRecordRepository
+from synthorg.persistence.code_execution_protocol import (
+    CodeExecutionRecord,
+    CodeExecutionRecordRepository,
+)
 
 if TYPE_CHECKING:
     from synthorg.core.redteam_review_input import RedTeamReviewInput
@@ -136,6 +139,8 @@ def observe_output_policy(
 def to_oracle_input(
     deliverable: RedTeamReviewInput | None,
     task: Task,
+    *,
+    verification_runs: tuple[CodeExecutionRecord, ...],
 ) -> CompletionOracleReviewInput | None:
     """Adapt a built deliverable review input for the peer-review gate.
 
@@ -145,6 +150,15 @@ def to_oracle_input(
 
     The reviewed task's stakes and complexity travel with it, because they
     decide which role holder is capable enough to judge this work.
+
+    Args:
+        deliverable: The built deliverable, or ``None`` when none was.
+        task: The task being judged.
+        verification_runs: The build/test runs the gates recorded for the
+            reviewed execution. Required rather than defaulted: a reviewer
+            holds no shell, so a caller that forgot to read them would hand
+            it a code deliverable with nothing to cite and every verdict
+            would be a reject for want of evidence nobody looked for.
 
     Returns:
         The peer-review input, or ``None`` when no deliverable was built.
@@ -160,6 +174,7 @@ def to_oracle_input(
         project_id=deliverable.project_id,
         stakes=task.stakes,
         estimated_complexity=task.estimated_complexity,
+        verification_runs=verification_runs,
     )
 
 

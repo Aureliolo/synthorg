@@ -13,6 +13,7 @@ the SSIM-based diff confirms convergence.
 
 import asyncio
 import json
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
@@ -27,7 +28,6 @@ from synthorg.core.agent import (
 from synthorg.core.completion_enums import FinishReason
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.providers.models import (
     CompletionResponse,
@@ -40,7 +40,7 @@ from synthorg.tools.file_system.write_file import WriteFileTool
 from synthorg.tools.registry import ToolRegistry
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
-from tests._shared import as_uuid
+from tests._shared import as_uuid, engine_with, unwired_core
 from tests._shared.scripted_provider import ScriptedProvider
 
 if TYPE_CHECKING:
@@ -304,7 +304,9 @@ async def test_browser_iterates_to_green_on_planted_defect(
                 WriteFileTool(workspace_root=tmp_path),
             ],
         )
-        engine = AgentEngine(provider=provider, tool_registry=registry)
+        engine = engine_with(
+            provider, core=replace(unwired_core(provider), tool_registry=registry)
+        )
 
         result = await engine.run(
             identity=identity,

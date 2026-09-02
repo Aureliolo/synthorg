@@ -44,14 +44,14 @@ from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskType
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.decomposition.models import SubtaskDefinition
-from tests._shared import mock_of, sid
+from tests._shared import make_app_state, mock_of, sid
 
 pytestmark = pytest.mark.unit
 
 _MANIFEST: dict[str, object] = {
     "spec_dir": "spec/sqlcsv",
     "depths": (1,),
-    "repetitions": {1: 1},
+    "repetitions": {1: 5},
     "arms": ("gated",),
     "executor": {
         "provider": "example-provider",
@@ -66,6 +66,10 @@ _MANIFEST: dict[str, object] = {
         "family": "example-family-b",
     },
     "independence": "cross_family",
+    "embedder": {"provider": "example-provider", "model_id": "example-embed-001"},
+    "stagnation": {"strategy": "tool_repetition"},
+    "compaction": {"fill_threshold_percent": 80.0, "summariser": None},
+    "leaf_deep_claims": 4,
     "contract_stage": True,
     "contract_max_turns": 60,
     "contract_token_ceiling": 2_500_000,
@@ -154,14 +158,15 @@ def _deps_with(build_grader: object) -> SweepDeps:
         The deps.
     """
 
-    async def _no_provider(_binding: object) -> object:
+    async def _no_registry(_binding: object) -> object:
         raise AssertionError
 
     def _no_sandbox(_root: Path, *, owner: str) -> object:
         raise AssertionError
 
     return SweepDeps(
-        build_provider=_no_provider,  # type: ignore[arg-type]
+        app_state=make_app_state(),
+        build_provider_registry=_no_registry,  # type: ignore[arg-type]
         build_tool_registry=lambda _workspace, *, owner: None,
         build_grader=build_grader,  # type: ignore[arg-type]
         build_sandbox=_no_sandbox,  # type: ignore[arg-type]

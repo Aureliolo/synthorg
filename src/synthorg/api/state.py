@@ -144,7 +144,7 @@ class AppState(AppStateSliceMixin):
         self.request_locks = RequestLockRegistry()
         self.ws_auth_limits = WsAuthLimits()
         # Live security config the per-request interceptor reads, seeded
-        # from the boot config; SecurityBridgeSubscriber swaps it on an
+        # from the boot config; SecurityBridgeSettingsSubscriber swaps it on an
         # operator toggle so security posture is hot-reloadable.
         self.security_runtime_config = MutableSecurityConfig(config.security)
         # Per-feature typed state slices, composed at boot by the

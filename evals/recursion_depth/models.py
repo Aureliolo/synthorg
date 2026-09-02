@@ -37,8 +37,11 @@ from evals.recursion_depth.manifest import (
     MAX_MERGE_ATTEMPTS,
     SHARED_FAMILY_CAVEAT,
     Arm,
+    CompactionTreatment,
+    EmbedderPair,
     Independence,
     ModelPair,
+    StagnationTreatment,
 )
 from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.task import Task
@@ -88,8 +91,8 @@ MERGE: Final[Literal["merge"]] = "merge"
 
 #: The planning sessions that wrote the tree. Not work and not an assembly, so
 #: it claims nothing and delivers nothing, but a deep sweep pays for one of
-#: these per node and a cost panel that omitted them would understate the deep
-#: end exactly where the question is.
+#: these per node and a spend figure that omitted them would understate the
+#: deep end exactly where the question is.
 PLAN: Final[Literal["plan"]] = "plan"
 
 #: What a plan unit's id ends in. Planning is the one unit whose id is minted
@@ -172,6 +175,54 @@ METRIC_CAVEAT: Final[str] = (
     "in which case the point is absent rather than zero. The two coming apart "
     "IS the finding."
 )
+
+#: Which figure is the headline, stated because three axes now travel together
+#: and the one that ranks the arms is not the one the sweep was first built
+#: around. Published harness comparisons have measured a forty-fold cost
+#: separation while every pairwise pass-rate interval but the largest included
+#: zero, so a curve read on satisfaction alone can rank two loops it cannot
+#: tell apart.
+HEADLINE_CAVEAT: Final[str] = (
+    "The headline figure is tokens per solved requirement, with a 95% "
+    "bootstrap interval over the runs in each bucket. A loop can be cheaper "
+    "by an order of magnitude at a pass rate no interval separates, so the "
+    "arms are ranked on what a solved requirement COST. The SPECIFICATION and "
+    "SURVIVAL curves say what was solved and where the work came from; "
+    "neither ranks the arms on what it cost."
+)
+
+#: Derived from the intervals, and the finding when it fires: two arms whose
+#: intervals overlap at a depth are two arms this recording cannot rank there,
+#: however far apart their point estimates sit.
+INDISTINGUISHABLE_ARMS_CAVEAT: Final[str] = (
+    "At depth {depths} the arms' 95% intervals on tokens per solved "
+    "requirement overlap, so this recording cannot rank them on efficiency "
+    "there: a gap between the point estimates at those depths sits inside the "
+    "spread the repetitions measured."
+)
+
+#: Derived from the cells, and the finding when it fires: the score and the
+#: liveness verdict are two answers to two questions, and a cell where they
+#: disagree is the published failure mode the probe exists to catch.
+DEAD_DELIVERABLE_CAVEAT: Final[str] = (
+    "{cells} measured cell(s) were scored against the oracle while the "
+    "deliverable the specification names was DEAD: a declared module failed "
+    "to import, or a declared entry point raised or hung. The score and the "
+    "verdict are reported side by side and never folded together, because a "
+    "tree satisfying a hidden oracle while its named artefact does not run is "
+    "the failure mode this probe exists to catch, and a score that absorbed "
+    "the verdict would hide it."
+)
+
+#: Fewer runs than this and no interval is reported: a bootstrap over two
+#: draws has four distinct resamples, and a percentile of those is a number
+#: shaped like an interval that describes nothing.
+MIN_CELLS_FOR_INTERVAL: Final[int] = 3
+
+#: Resamples per interval. Enough that the outer percentiles rest on fifty
+#: draws each rather than one. Seeded from the runs themselves, so a re-score
+#: of the same journal reproduces the interval to the digit.
+BOOTSTRAP_RESAMPLES: Final[int] = 2000
 
 #: What the held-out oracle buys, stated for the same reason.
 ORACLE_CAVEAT: Final[str] = (
@@ -259,6 +310,22 @@ UNPRICED_COST_CAVEAT: Final[str] = (
 )
 
 
+class Liveness(StrEnum):
+    """What the liveness probe made of the deliverable a specification names.
+
+    Members:
+        LIVE: Every declared module imported and every declared entry point
+            ran to an exit of its own choosing.
+        DEAD: A module failed to import, or an entry point raised or hung.
+        NOT_PROBEABLE: The specification declares nothing to probe: its
+            deliverable is prose, or it never said what runs.
+    """
+
+    LIVE = "live"
+    DEAD = "dead"
+    NOT_PROBEABLE = "not_probeable"
+
+
 class UnitRecord(BaseModel):
     """One unit of one run: what it was asked for and what it did.
 
@@ -328,6 +395,14 @@ class UnitRecord(BaseModel):
             recorded gate sessions made 85, 159 and 257 shell calls on
             byte-identical configuration, and folded into one figure that
             variance is invisible to anything reading the artifact.
+        compaction_tokens: The share of ``tokens`` the unit's compaction
+            summaries spent, across its sessions. Compaction buys context
+            back by spending, and whether the trade paid is readable only
+            with this held apart from the run's own figure.
+        compaction_cost: What those summaries cost, on the same terms as
+            ``cost``: zero when the text summariser ran, ``None`` when the
+            connection does not price its calls, because an unpriced
+            summary and a free one are not the same claim.
         executor: The pair this unit was actually built on.
         reviewer: The pair that JUDGED it, on a gated merge. Recorded per unit
             rather than once per sweep because the gate is the treatment: a
@@ -407,6 +482,8 @@ class UnitRecord(BaseModel):
     input_tokens: int | None = Field(default=None, ge=0)
     output_tokens: int | None = Field(default=None, ge=0)
     review_tokens: int = Field(default=0, ge=0)
+    compaction_tokens: int = Field(default=0, ge=0)
+    compaction_cost: float | None = Field(default=0.0, ge=0.0)
     executor: ModelPair | None = None
     reviewer: ModelPair | None = None
     detail: str = ""
@@ -496,6 +573,15 @@ class CellRecord(BaseModel):
             measurement nobody remembers to take is one the next reader will
             not have. Measured off the trees, since no unit can see a sibling
             and so no unit can report it.
+        liveness: Whether the deliverable the specification names RUNS,
+            asked of the merged tree apart from the oracle. A third state
+            beside the score rather than a term in it: a tree can satisfy a
+            hidden oracle while the program it was asked for is dead, and
+            the two disagreeing is the finding. ``None`` on a recording made
+            before the probe existed, which is a different claim from
+            ``NOT_PROBEABLE`` (the specification declares nothing to run).
+        liveness_detail: What died, or why nothing could be asked. Empty on
+            a live deliverable.
         unavailable_reason: Why this cell has no measurement.
     """
 
@@ -509,7 +595,38 @@ class CellRecord(BaseModel):
     merged_passing: tuple[RequirementId, ...] = ()
     shared_modules: int = Field(default=0, ge=0)
     diverged_modules: int = Field(default=0, ge=0)
+    liveness: Liveness | None = None
+    liveness_detail: str = ""
     unavailable_reason: str | None = None
+
+    @model_validator(mode="after")
+    def _liveness_is_a_verdict_on_a_measured_tree(self) -> Self:
+        """Reject a verdict on nothing, or a live verdict carrying a death.
+
+        Returns:
+            ``self`` when the verdict and its detail agree.
+
+        Raises:
+            ValueError: An unavailable cell carries a verdict, a live one
+                carries a detail, or a dead or unprobeable one carries none.
+        """
+        label = (
+            f"cell depth={self.depth_cap} arm={self.arm.value} rep={self.repetition}"
+        )
+        if self.liveness is not None and self.achieved_depth is None:
+            msg = f"{label} was never graded and still carries a liveness verdict"
+            raise ValueError(msg)
+        if self.liveness is Liveness.LIVE and self.liveness_detail:
+            msg = f"{label} reads live and still says {self.liveness_detail!r}"
+            raise ValueError(msg)
+        if (
+            self.liveness is not None
+            and self.liveness is not Liveness.LIVE
+            and not self.liveness_detail
+        ):
+            msg = f"{label} reads {self.liveness.value} and names no reason"
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _measured_xor_unavailable(self) -> Self:
@@ -849,6 +966,105 @@ class SurvivalPoint(BaseModel):
         return self.surviving_claims / self.delivered_claims
 
 
+class TokensPerSolvedPoint(BaseModel):
+    """One point on the headline curve: what a solved requirement cost.
+
+    A model of its own rather than a column on :class:`DepthPoint` because it
+    carries an INTERVAL, and an interval is what the other two curves lack:
+    a pooled fraction says nothing about whether a second sweep would land
+    near it. The ratio is pooled the way every other bucket figure is (all
+    tokens over all solved requirements), and the interval is a seeded
+    percentile bootstrap over the bucket's runs, so it widens exactly where
+    the repetitions disagreed.
+
+    Attributes:
+        depth: The depth this point bins, in levels, on the axis its two
+            sibling curves use.
+        arm: Which line the point belongs to.
+        tokens: What the runs in this bucket spent, summed.
+        solved: How many distinct specification requirements those runs'
+            merged trees satisfied, summed. The denominator, and it CAN empty:
+            a bucket that solved nothing has an infinite cost per solved
+            requirement, which is reported as an absent ratio rather than a
+            number.
+        cells: How many runs the bucket holds.
+        ci_low: The lower bound of the 95% bootstrap interval, or ``None``
+            when none is reported: too few runs (``MIN_CELLS_FOR_INTERVAL``),
+            or so many resamples solved nothing that even the lower bound is
+            unbounded.
+        ci_high: The upper bound, or ``None`` when the lower bound is absent
+            OR when the upper resamples solved nothing, in which case
+            ``unbounded_above`` says which.
+        unbounded_above: Whether the interval runs to infinity: some resample
+            of these runs solved nothing at all. A real finding rather than a
+            gap, because it says the bucket's cost per solved requirement has
+            no ceiling this recording can put on it.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    depth: int = Field(ge=1)
+    arm: Arm
+    tokens: int = Field(ge=0)
+    solved: int = Field(ge=0)
+    cells: int = Field(ge=1)
+    ci_low: float | None = Field(default=None, ge=0.0)
+    ci_high: float | None = Field(default=None, ge=0.0)
+    unbounded_above: bool = False
+
+    @model_validator(mode="after")
+    def _the_interval_is_one_of_four_shapes(self) -> Self:
+        """Reject an interval whose halves disagree about what it is.
+
+        Absent entirely, bounded both ends, bounded below and open above, or
+        open at both ends: each is a distinct claim, and a row carrying an
+        upper bound with no lower one, or an upper bound that also says it is
+        unbounded, is two of them at once.
+
+        Returns:
+            ``self`` when the shape is one of the four.
+
+        Raises:
+            ValueError: The halves contradict each other.
+        """
+        label = f"depth {self.depth} {self.arm.value}"
+        if self.ci_low is None and self.ci_high is not None:
+            msg = f"{label}: an upper bound with no lower bound"
+            raise ValueError(msg)
+        if self.ci_high is not None and self.unbounded_above:
+            msg = f"{label}: a bounded upper bound that also claims to be unbounded"
+            raise ValueError(msg)
+        open_top = self.ci_low is not None and self.ci_high is None
+        if open_top and not self.unbounded_above:
+            msg = f"{label}: an open upper bound that does not say it is unbounded"
+            raise ValueError(msg)
+        if (
+            self.ci_low is not None
+            and self.ci_high is not None
+            and self.ci_low > self.ci_high
+        ):
+            msg = f"{label}: interval {self.ci_low}..{self.ci_high} is reversed"
+            raise ValueError(msg)
+        return self
+
+    # Serialised for the reason its siblings' ratios are: the artifact
+    # carries the operands, and a reader recomputing the empty case would
+    # disagree with the next reader about what a bucket that solved nothing
+    # costs per solved requirement.
+    @computed_field
+    @property
+    def tokens_per_solved(self) -> float | None:
+        """What one solved requirement cost in this bucket.
+
+        Returns:
+            The pooled ratio, or ``None`` when nothing was solved: the cost
+            is unbounded there, and no finite number says that.
+        """
+        if self.solved == 0:
+            return None
+        return self.tokens / self.solved
+
+
 class DepthSpread(BaseModel):
     """How much one bucket's repetitions disagreed with each other.
 
@@ -1018,6 +1234,16 @@ class LoopTreatments(BaseModel):
             built at the executor's own. The published ablation puts the win in
             the schedule rather than the level, so which phases reasoned how
             deeply is a treatment and belongs in the identity beside the others.
+        leaf_deep_claims: The requirement count at or above which a unit was
+            allocated the executor's own depth instead. ``None`` on a
+            recording made before the allocation existed.
+        embedder: The embedding model memory recalled through. ``None`` on a
+            recording made before the field existed, which is also the honest
+            reading of those recordings: they ran with no memory at all.
+        stagnation: The detector every session ran under, or ``None`` on a
+            recording made before the field existed.
+        compaction: How every session's context was compacted, or ``None``
+            on a recording made before the field existed.
 
     The two typed fields carry the manifest's own types rather than a
     stringified copy, because this model is READ BACK: the journal header is
@@ -1034,6 +1260,97 @@ class LoopTreatments(BaseModel):
     contract_stage: bool
     merge_attempts: int = Field(ge=1, le=MAX_MERGE_ATTEMPTS)
     leaf_reasoning_effort: ReasoningEffort | None = None
+    # The four below default to ``None`` so a recording made before they
+    # existed still reads back; a fresh recording always states all four,
+    # because each changes what the loop DOES and belongs in the identity a
+    # resume is checked against.
+    leaf_deep_claims: int | None = Field(default=None, ge=1)
+    embedder: EmbedderPair | None = None
+    stagnation: StagnationTreatment | None = None
+    compaction: CompactionTreatment | None = None
+
+
+class WiringFinding(BaseModel):
+    """One treatment, as the smoke found it on the wire.
+
+    Attributes:
+        treatment: What was checked.
+        expected: What the manifest declared.
+        observed: What the engine, the ledger or the recorded request bodies
+            actually showed.
+        passed: Whether the two agree, or ``None`` when the evidence could
+            not be read at all, which is a different claim from either: a
+            provider that publishes no cache figures has not failed the
+            check, and a check that found no request to read has not passed
+            it.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    treatment: NotBlankStr
+    expected: str
+    observed: str
+    passed: bool | None
+
+
+class WiringReport(BaseModel):
+    """What a one-cell smoke established about the engine a matrix would run on.
+
+    Written beside the journal and read back by the recording it gates, so a
+    published report states its own wiring rather than asserting it.
+
+    Attributes:
+        manifest_sha256: The matrix FILE this smoke was run for. A recording
+            under a different digest is a different matrix and needs its own.
+        checked_at: When the smoke ran.
+        findings: One per treatment.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
+
+    manifest_sha256: NotBlankStr
+    checked_at: datetime
+    findings: tuple[WiringFinding, ...] = Field(min_length=1)
+
+    @field_validator("checked_at")
+    @classmethod
+    def _checked_at_must_be_aware(cls, value: datetime) -> datetime:
+        """Reject naive timestamps so smokes order unambiguously.
+
+        Returns:
+            The validated timestamp.
+
+        Raises:
+            ValueError: The timestamp carries no timezone.
+        """
+        if value.tzinfo is None or value.utcoffset() is None:
+            msg = "checked_at must be timezone-aware"
+            raise ValueError(msg)
+        return value
+
+    @computed_field
+    @property
+    def passed(self) -> bool:
+        """Whether no treatment was found absent or wrong.
+
+        An unverified treatment does not fail the smoke: it is named as
+        unverified in the report, which is the honest claim.
+
+        Returns:
+            ``True`` when no finding failed.
+        """
+        return all(finding.passed is not False for finding in self.findings)
+
+    @property
+    def unverified(self) -> tuple[str, ...]:
+        """The treatments the smoke could read no evidence for.
+
+        Returns:
+            Their names.
+        """
+        return tuple(
+            finding.treatment for finding in self.findings if finding.passed is None
+        )
 
 
 class Provenance(BaseModel):
@@ -1152,6 +1469,14 @@ class RecursionDepthReport(BaseModel):
             draw from a real drop, which is what recording a cap more than once
             is for.
         spread_by_depth_cap: The same, binned on the cap.
+        tokens_per_solved_by_achieved_depth: The HEADLINE curve: what one
+            solved requirement cost in tokens, per bucket, with a bootstrap
+            interval over the bucket's runs. On the axis ``by_achieved_depth``
+            uses. The two fraction curves say what was solved and where the
+            work came from; this one is what ranks the arms, because a loop
+            can be cheaper by an order of magnitude at a pass rate no interval
+            separates.
+        tokens_per_solved_by_depth_cap: The same, binned on the cap.
         achieved_depth_histogram: How many runs reached each depth, per cap.
             Without it a flat right half of the primary curve is unreadable.
         unjudged_by_depth: How many measured cells asked a gate for a verdict
@@ -1163,12 +1488,17 @@ class RecursionDepthReport(BaseModel):
             exclusion a fact of the artifact rather than prose that a later
             re-score of the same journal could report differently.
         caveats: What a reader must hold in mind, in the report's own words.
+        wiring: What the one-cell smoke this recording was gated on found on
+            the wire, so the artifact states its own wiring. ``None`` on a
+            recording made before the smoke existed, which is also the honest
+            reading of those recordings: nothing checked.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
 
     schema_version: int = Field(default=RECURSION_DEPTH_SCHEMA_VERSION)
     provenance: Provenance
+    wiring: WiringReport | None = None
     cells: tuple[CellRecord, ...] = Field(min_length=1)
     by_achieved_depth: tuple[DepthPoint, ...] = ()
     by_depth_cap: tuple[DepthPoint, ...] = ()
@@ -1176,6 +1506,8 @@ class RecursionDepthReport(BaseModel):
     survival_by_depth_cap: tuple[SurvivalPoint, ...] = ()
     spread_by_achieved_depth: tuple[DepthSpread, ...] = ()
     spread_by_depth_cap: tuple[DepthSpread, ...] = ()
+    tokens_per_solved_by_achieved_depth: tuple[TokensPerSolvedPoint, ...] = ()
+    tokens_per_solved_by_depth_cap: tuple[TokensPerSolvedPoint, ...] = ()
     achieved_depth_histogram: dict[str, int] = Field(default_factory=dict)
     unjudged_by_depth: dict[str, int] = Field(default_factory=dict)
     caveats: tuple[str, ...] = ()
@@ -1239,8 +1571,13 @@ class RecursionDepthReport(BaseModel):
 
 
 __all__ = [
+    "BOOTSTRAP_RESAMPLES",
+    "DEAD_DELIVERABLE_CAVEAT",
+    "HEADLINE_CAVEAT",
+    "INDISTINGUISHABLE_ARMS_CAVEAT",
     "LEAF",
     "MERGE",
+    "MIN_CELLS_FOR_INTERVAL",
     "PLAN",
     "PLAN_UNIT_SUFFIX",
     "RECURSION_DEPTH_SCHEMA_VERSION",
@@ -1249,12 +1586,16 @@ __all__ = [
     "CostBasis",
     "DepthPoint",
     "DepthSpread",
+    "Liveness",
     "LoopTreatments",
     "Provenance",
     "RecursionDepthReport",
     "SpendSource",
     "SurvivalPoint",
+    "TokensPerSolvedPoint",
     "UnitKind",
     "UnitRecord",
+    "WiringFinding",
+    "WiringReport",
     "sum_costs",
 ]

@@ -1008,6 +1008,34 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.ENGINE,
+        key="tool_output_max_chars",
+        type=SettingType.INTEGER,
+        default="24000",
+        description=(
+            "Ceiling on the characters of a tool's own output one result may"
+            " put into the conversation; the fence the loop wraps every"
+            " result in is the system's own bytes and is not counted."
+            " A result is resent on every later turn of the"
+            " run, so its size is paid once per turn for the rest of the"
+            " session; abbreviating at the boundary where it enters the"
+            " conversation stops that at source, where compaction would"
+            " only recover it later. The head and tail are kept and an"
+            " elision marker states how much was dropped, so the agent can"
+            " narrow its next call rather than assume it saw everything."
+            " Read live on every tool turn. 0 disables the ceiling; a value"
+            " between 1 and 255 is applied as 256, the smallest ceiling the"
+            " marker fits inside."
+        ),
+        group="Execution",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=1_000_000,
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.ENGINE,
         key="max_turns",
         type=SettingType.INTEGER,
         default="300",
@@ -1022,8 +1050,9 @@ _r.register(
             " budget.run_hard_ceiling, enforced in-loop whenever a budget"
             " enforcer is wired, which the shipped boot path does whenever"
             " persistence connects and cost-dial wiring succeeds; the"
-            " stagnation detector ships off, so do not count on it unless"
-            " you have chosen one."
+            " stagnation detector (engine.stagnation_strategy, tool"
+            " repetition by default) ends a run going in circles earlier"
+            " than this cap does."
         ),
         group="Execution",
         level=SettingLevel.ADVANCED,

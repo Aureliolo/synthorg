@@ -10,25 +10,32 @@ The palette is declared for both themes and the page paints its own background,
 because an SVG with no background renders as light-on-light for half its
 readers.
 
-The caption is part of the chart rather than prose beside it. Four things must
-travel with the curve wherever it is pasted: what each of the two curves
-measures, how many runs actually reached each depth, that unit sizing was the
-planner's own, and what independence the judge had. A number separated from its
-caveats gets over-read, which is the failure this whole experiment exists
-downstream of.
+The caption is part of the chart rather than prose beside it. Five things must
+travel with the curve wherever it is pasted: what each of the three panels
+measures, which of them is the headline, how many runs actually reached each
+depth, that unit sizing was the planner's own, and what independence the judge
+had. A number separated from its caveats gets over-read, which is the failure
+this whole experiment exists downstream of.
 """
 
 from collections.abc import Iterable
 from typing import Final
 
 from evals.recursion_depth.manifest import Arm
-from evals.recursion_depth.models import DepthPoint, SurvivalPoint
+from evals.recursion_depth.models import (
+    DepthPoint,
+    SurvivalPoint,
+    TokensPerSolvedPoint,
+)
 
 #: Chart geometry, in user units. The viewBox scales, so these are ratios
 #: rather than pixels.
 _WIDTH: Final[int] = 900
 _PLOT_HEIGHT: Final[int] = 380
-_COST_HEIGHT: Final[int] = 170
+_EFFICIENCY_HEIGHT: Final[int] = 200
+
+#: Half-width of an interval's end cap.
+_WHISKER_CAP: Final[int] = 5
 _MARGIN_LEFT: Final[int] = 70
 _MARGIN_RIGHT: Final[int] = 30
 _MARGIN_TOP: Final[int] = 48
@@ -42,7 +49,7 @@ _GRID_FRACTIONS: Final[tuple[float, ...]] = (0.0, 0.25, 0.5, 0.75, 1.0)
 #: below it cannot disagree about how tall the one above was.
 _SPEC_PANEL_TOP: Final[float] = float(_MARGIN_TOP)
 _SURVIVAL_PANEL_TOP: Final[float] = _SPEC_PANEL_TOP + _PLOT_HEIGHT + _GAP
-_COST_PANEL_TOP: Final[float] = _SURVIVAL_PANEL_TOP + _PLOT_HEIGHT + _GAP
+_EFFICIENCY_PANEL_TOP: Final[float] = _SURVIVAL_PANEL_TOP + _PLOT_HEIGHT + _GAP
 
 #: Radius of a plotted point.
 _POINT_RADIUS: Final[int] = 4
@@ -111,22 +118,25 @@ def _series(
     return series
 
 
-def _cost_series(points: Iterable[DepthPoint]) -> dict[Arm, list[tuple[int, float]]]:
-    """Split points into one cost series per arm.
+def _efficiency_series(
+    points: Iterable[TokensPerSolvedPoint],
+) -> dict[Arm, list[TokensPerSolvedPoint]]:
+    """Split points into one plottable series per arm.
+
+    A bucket that solved nothing has no finite cost per solved requirement
+    and is left out rather than drawn at the ceiling: nothing finite was
+    measured there, and a point at the top would read as a measured maximum.
 
     Returns:
-        Ascending ``(depth, cost)`` pairs per arm.
+        Ascending points per arm, each carrying its own interval.
     """
-    series: dict[Arm, list[tuple[int, float]]] = {arm: [] for arm in Arm}
+    series: dict[Arm, list[TokensPerSolvedPoint]] = {arm: [] for arm in Arm}
     for point in points:
-        # A bucket with no run in it has no spend to plot, and only an empty
-        # bucket reaches this: a run whose leaves all failed still scores
-        # against the specification and still books what it cost.
-        if point.cells == 0 or point.cost is None:
+        if point.tokens_per_solved is None:
             continue
-        series[point.arm].append((point.depth, point.cost))
+        series[point.arm].append(point)
     for values in series.values():
-        values.sort()
+        values.sort(key=lambda point: point.depth)
     return series
 
 
@@ -260,50 +270,122 @@ def _fraction_lines(
     return parts
 
 
-def _cost_panel(
-    series: dict[Arm, list[tuple[int, float]]], xs: dict[int, float]
-) -> list[str]:
-    """Draw the cost-against-depth panel beneath the two fraction curves.
+def _efficiency_ceiling(series: dict[Arm, list[TokensPerSolvedPoint]]) -> float:
+    """The largest figure the panel has to fit: a point or a bounded top.
 
-    Present because the gated arm reviews every merge and both arms spend the
-    same attempt budget: a reader has to be able to see what the gating bought
-    rather than take it on the survival line alone.
+    An open top is not a figure and sets no ceiling; its whisker runs to the
+    panel's edge instead, which is what "no ceiling" looks like.
+
+    Returns:
+        The ceiling, ``0.0`` when nothing is plotted.
+    """
+    figures = [
+        figure
+        for points in series.values()
+        for point in points
+        for figure in (point.tokens_per_solved, point.ci_high)
+        if figure is not None
+    ]
+    return max(figures, default=0.0)
+
+
+def _whiskers(
+    points: list[TokensPerSolvedPoint],
+    xs: dict[int, float],
+    *,
+    top: float,
+    ceiling: float,
+    colour: str,
+) -> list[str]:
+    """Draw each point's interval as a vertical whisker with end caps.
+
+    A point with no interval draws none, and a point whose interval is open
+    above runs to the panel's top edge with no cap there: the cap is the
+    claim that the interval ends, and for that point it does not.
 
     Returns:
         The SVG fragments.
     """
-    top = _COST_PANEL_TOP
-    ceiling = max(
-        (value for values in series.values() for _, value in values), default=0.0
-    )
+    scale = _EFFICIENCY_HEIGHT / ceiling if ceiling > 0 else 0.0
+    baseline = top + _EFFICIENCY_HEIGHT
+    parts: list[str] = []
+    for point in points:
+        if point.ci_low is None:
+            continue
+        x = xs[point.depth]
+        y_low = baseline - point.ci_low * scale
+        y_high = top if point.ci_high is None else baseline - point.ci_high * scale
+        parts.append(
+            f'<line class="whisker" x1="{x:.1f}" y1="{y_low:.1f}" '
+            f'x2="{x:.1f}" y2="{y_high:.1f}" stroke="{colour}"/>'
+        )
+        parts.append(
+            f'<line class="whisker" x1="{x - _WHISKER_CAP:.1f}" y1="{y_low:.1f}" '
+            f'x2="{x + _WHISKER_CAP:.1f}" y2="{y_low:.1f}" stroke="{colour}"/>'
+        )
+        if point.ci_high is not None:
+            parts.append(
+                f'<line class="whisker" x1="{x - _WHISKER_CAP:.1f}" '
+                f'y1="{y_high:.1f}" x2="{x + _WHISKER_CAP:.1f}" '
+                f'y2="{y_high:.1f}" stroke="{colour}"/>'
+            )
+    return parts
+
+
+def _efficiency_panel(
+    series: dict[Arm, list[TokensPerSolvedPoint]], xs: dict[int, float]
+) -> list[str]:
+    """Draw the headline panel: tokens per solved requirement, with whiskers.
+
+    Beneath the two fraction curves because it is read against them, and
+    the headline because it is the axis that ranks the arms: the gated arm
+    reviews every merge and both arms spend the same attempt budget, so what
+    the gating bought is a cost per solved requirement, and whether the two
+    arms' whiskers overlap is whether this recording can rank them.
+
+    Returns:
+        The SVG fragments.
+    """
+    top = _EFFICIENCY_PANEL_TOP
+    ceiling = _efficiency_ceiling(series)
     parts: list[str] = [
         (
             f'<text class="title" x="{_MARGIN_LEFT}" y="{top - 16:.1f}">'
-            "Spend per run, same axis</text>"
+            "Tokens per solved requirement, 95% bootstrap interval (headline)"
+            "</text>"
         ),
         (
-            f'<line class="axis" x1="{_MARGIN_LEFT}" y1="{top + _COST_HEIGHT:.1f}" '
-            f'x2="{_WIDTH - _MARGIN_RIGHT}" y2="{top + _COST_HEIGHT:.1f}"/>'
+            f'<line class="axis" x1="{_MARGIN_LEFT}" '
+            f'y1="{top + _EFFICIENCY_HEIGHT:.1f}" '
+            f'x2="{_WIDTH - _MARGIN_RIGHT}" y2="{top + _EFFICIENCY_HEIGHT:.1f}"/>'
         ),
         (
             f'<text class="tick" x="{_MARGIN_LEFT - 10}" y="{top + 10:.1f}" '
-            f'text-anchor="end">{ceiling:.2f}</text>'
+            f'text-anchor="end">{ceiling:,.0f}</text>'
         ),
         (
             f'<text class="tick" x="{_MARGIN_LEFT - 10}" '
-            f'y="{top + _COST_HEIGHT + 4:.1f}" text-anchor="end">0</text>'
+            f'y="{top + _EFFICIENCY_HEIGHT + 4:.1f}" text-anchor="end">0</text>'
         ),
     ]
-    for arm, values in series.items():
-        if not values:
+    for arm, points in series.items():
+        if not points:
             continue
         colour, dash = _ARM_STYLE[arm]
         dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
-        points = _polyline(
-            values, xs, top=top, height=_COST_HEIGHT, ceiling=ceiling or 1.0
+        values = [
+            (point.depth, point.tokens_per_solved)
+            for point in points
+            if point.tokens_per_solved is not None
+        ]
+        line = _polyline(
+            values, xs, top=top, height=_EFFICIENCY_HEIGHT, ceiling=ceiling or 1.0
+        )
+        parts.extend(
+            _whiskers(points, xs, top=top, ceiling=ceiling or 1.0, colour=colour)
         )
         parts.append(
-            f'<polyline class="series" points="{points}" stroke="{colour}"{dash_attr}/>'
+            f'<polyline class="series" points="{line}" stroke="{colour}"{dash_attr}/>'
         )
     return parts
 
@@ -389,13 +471,16 @@ def render_chart(
     caption_lines: tuple[str, ...],
     by_cap: tuple[DepthPoint, ...] = (),
     survival: tuple[SurvivalPoint, ...] = (),
+    tokens_per_solved: tuple[TokensPerSolvedPoint, ...] = (),
 ) -> str:
-    """Render both curves, the cost panel and the caption as one SVG.
+    """Render the two fraction curves, the headline panel and the caption.
 
     The two fraction panels share an x axis and sit one above the other,
     because the pair coming apart is the finding: a specification line holding
     up while the survival line under it falls says the merging agent rebuilt
-    the work, and that reading is unavailable from either panel alone.
+    the work, and that reading is unavailable from either panel alone. The
+    headline panel sits beneath them on the same axis, because what a solved
+    requirement cost is read against what was solved.
 
     Args:
         points: The specification curve, binned on the depth each leaf reached,
@@ -406,6 +491,9 @@ def render_chart(
         survival: The leaf-work survival curve, on the same axis. Empty draws
             an empty panel rather than none, so a chart that measured no
             attributable work says so where the line would be.
+        tokens_per_solved: The headline curve, each point carrying its own
+            interval, drawn as whiskers. Empty draws an empty panel for the
+            reason ``survival`` does.
 
     Returns:
         A self-contained SVG document.
@@ -413,11 +501,12 @@ def render_chart(
     plotted: set[int] = {point.depth for point in points}
     plotted.update(point.depth for point in by_cap)
     plotted.update(point.depth for point in survival)
+    plotted.update(point.depth for point in tokens_per_solved)
     depths = tuple(sorted(plotted))
     xs = _x_positions(depths) if depths else {}
-    costs = _cost_series(points)
+    efficiency = _efficiency_series(tokens_per_solved)
     absent = sum(1 for point in survival if point.fraction is None)
-    legend_top = _COST_PANEL_TOP + _COST_HEIGHT + 34
+    legend_top = _EFFICIENCY_PANEL_TOP + _EFFICIENCY_HEIGHT + 34
     wrapped = [line for text in caption_lines for line in _wrap(text, 110)]
     caption_top = legend_top + 30
     height = int(caption_top + len(wrapped) * _CAPTION_LINE_HEIGHT + 20)
@@ -442,7 +531,7 @@ def render_chart(
             'text-anchor="middle">'
             "depth reached (levels of decomposition)</text>"
         ),
-        *_cost_panel(costs, xs),
+        *_efficiency_panel(efficiency, xs),
         *_legend(legend_top, _recorded_arms(points, by_cap, survival)),
     ]
     body.extend(
@@ -462,8 +551,9 @@ def _document(*, height: int, body: list[str]) -> str:
     drawn = "\n  ".join(body)
     return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {_WIDTH} {height}" \
 width="{_WIDTH}" height="{height}" role="img" \
-aria-label="Fraction of the specification satisfied after the root merge, and fraction \
-of the delivered leaves' own claims the merge kept, by depth, gated and ungated">
+aria-label="Fraction of the specification satisfied after the root merge, fraction \
+of the delivered leaves' own claims the merge kept, and tokens per solved requirement \
+with its bootstrap interval, by depth, gated and ungated">
   <style>
     :root {{
       --bg: #ffffff;
@@ -493,6 +583,7 @@ of the delivered leaves' own claims the merge kept, by depth, gated and ungated"
     .axis {{ stroke: var(--grid); stroke-width: 1.5; }}
     .series {{ fill: none; stroke-width: 2.5; stroke-linejoin: round; }}
     .secondary {{ stroke-width: 1.25; opacity: 0.4; }}
+    .whisker {{ stroke-width: 1.5; opacity: 0.75; }}
   </style>
   <rect class="bg" x="0" y="0" width="{_WIDTH}" height="{height}"/>
   {drawn}

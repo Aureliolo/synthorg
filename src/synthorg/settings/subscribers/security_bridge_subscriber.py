@@ -37,6 +37,7 @@ logger = get_logger(__name__)
 
 _NAMESPACE = SettingNamespace.SECURITY.value
 _MCP_MODE_KEY = "mcp_self_consumer_mode"
+_MCP_TOP_K_KEY = "mcp_self_consumer_retrieval_top_k"
 _WATCHED: frozenset[tuple[str, str]] = frozenset(
     (_NAMESPACE, k)
     for k in (
@@ -45,6 +46,7 @@ _WATCHED: frozenset[tuple[str, str]] = frozenset(
         "post_tool_scanning_enabled",
         "output_scan_policy_type",
         _MCP_MODE_KEY,
+        _MCP_TOP_K_KEY,
     )
 )
 
@@ -75,6 +77,16 @@ class SecurityBridgeSettingsSubscriber:
         """Human-readable subscriber name for logs."""
         return "security-bridge-config"
 
+    async def apply_persisted(self) -> None:
+        """Swap in the persisted toggles once, at boot.
+
+        The live holder is seeded from the environment config, so a value an
+        operator persisted before the last restart (the bridge mode, the
+        retrieval top-k) stays inert on a cold boot until somebody writes
+        one of the six keys. The dispatcher calls this once it is running.
+        """
+        await self.on_settings_changed(tuple(sorted(_WATCHED)))
+
     async def on_settings_changed(self, changes: Sequence[tuple[str, str]]) -> None:
         """Re-resolve the four toggles, rebuild the config, and swap it in.
 
@@ -99,13 +111,16 @@ class SecurityBridgeSettingsSubscriber:
                 ),
                 # The nested block is replaced rather than mutated: every other
                 # field on it is compose-time, so carrying the base block
-                # forward and swapping only the mode keeps the operator's rate
+                # forward and swapping only the operator keys keeps the rate
                 # limits and allowlists intact.
                 "mcp_self_consumer": base.mcp_self_consumer.model_copy(
                     update={
                         "mode": McpSelfConsumerMode(
                             await resolver.get_str(_NAMESPACE, _MCP_MODE_KEY)
-                        )
+                        ),
+                        "retrieval_top_k": await resolver.get_int(
+                            _NAMESPACE, _MCP_TOP_K_KEY
+                        ),
                     }
                 ),
             }

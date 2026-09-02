@@ -6,8 +6,9 @@ import pytest
 
 from synthorg.core.agent import AgentIdentity, ModelConfig
 from synthorg.core.task_enums import Complexity
+from synthorg.engine.compaction._conversation import build_summary
 from synthorg.engine.compaction.models import CompactionConfig
-from synthorg.engine.compaction.summarizer import _build_summary, force_compaction
+from synthorg.engine.compaction.summarizer import force_compaction
 from synthorg.engine.context import AgentContext
 from synthorg.engine.token_estimation import DefaultTokenEstimator
 from synthorg.providers.enums import MessageRole
@@ -33,7 +34,7 @@ class TestBuildSummaryMarkers:
                 "This is a straightforward solution with no reasoning.",
             ),
         )
-        summary = _build_summary(
+        summary = build_summary(
             messages,
             preserve_markers=True,
             task_complexity=Complexity.COMPLEX,
@@ -44,7 +45,7 @@ class TestBuildSummaryMarkers:
     def test_with_markers_complex_preserved(self) -> None:
         """Message with marker + COMPLEX complexity -> preserved."""
         messages = (_msg(MessageRole.ASSISTANT, "Wait, I need to reconsider this."),)
-        summary = _build_summary(
+        summary = build_summary(
             messages,
             preserve_markers=True,
             task_complexity=Complexity.COMPLEX,
@@ -57,7 +58,7 @@ class TestBuildSummaryMarkers:
     def test_with_markers_epic_preserved(self) -> None:
         """Message with marker + EPIC complexity -> preserved."""
         messages = (_msg(MessageRole.ASSISTANT, "Hmm, let me verify this."),)
-        summary = _build_summary(
+        summary = build_summary(
             messages,
             preserve_markers=True,
             task_complexity=Complexity.EPIC,
@@ -68,7 +69,7 @@ class TestBuildSummaryMarkers:
     def test_with_one_marker_simple_not_preserved(self) -> None:
         """Message with 1 marker + SIMPLE complexity -> NOT preserved."""
         messages = (_msg(MessageRole.ASSISTANT, "Wait, I see the issue."),)
-        summary = _build_summary(
+        summary = build_summary(
             messages,
             preserve_markers=True,
             task_complexity=Complexity.SIMPLE,
@@ -86,7 +87,7 @@ class TestBuildSummaryMarkers:
                 "Wait, actually I was wrong. Let me verify this.",
             ),
         )
-        summary = _build_summary(
+        summary = build_summary(
             messages,
             preserve_markers=True,
             task_complexity=Complexity.SIMPLE,
@@ -98,7 +99,7 @@ class TestBuildSummaryMarkers:
         """Message with 2 markers + MEDIUM complexity -> NOT preserved."""
         # "hmm" (hedging) + "perhaps" (uncertainty) = 2 groups < 3 threshold
         messages = (_msg(MessageRole.ASSISTANT, "Hmm, perhaps we should try again."),)
-        summary = _build_summary(
+        summary = build_summary(
             messages,
             preserve_markers=True,
             task_complexity=Complexity.MEDIUM,
@@ -115,7 +116,7 @@ class TestBuildSummaryMarkers:
                 "Wait, actually let me verify. This is important.",
             ),
         )
-        summary = _build_summary(
+        summary = build_summary(
             messages,
             preserve_markers=False,
             task_complexity=Complexity.COMPLEX,
@@ -131,7 +132,7 @@ class TestBuildSummaryMarkers:
             _msg(MessageRole.USER, "What's the answer?"),
             _msg(MessageRole.SYSTEM, "You are helpful."),
         )
-        summary = _build_summary(
+        summary = build_summary(
             messages,
             preserve_markers=True,
             task_complexity=Complexity.COMPLEX,
@@ -152,7 +153,7 @@ class TestBuildSummaryMarkers:
                 "Actually, let me verify the calculations.",
             ),
         )
-        summary = _build_summary(
+        summary = build_summary(
             messages,
             preserve_markers=True,
             task_complexity=Complexity.COMPLEX,
@@ -170,7 +171,7 @@ class TestBuildSummaryMarkers:
                 "This is just a straightforward statement.",
             ),
         )
-        summary = _build_summary(
+        summary = build_summary(
             messages,
             preserve_markers=True,
             task_complexity=Complexity.COMPLEX,
@@ -189,7 +190,7 @@ class TestBuildSummaryMarkers:
                 "This is normal. Wait, let me reconsider. More normal text.",
             ),
         )
-        summary = _build_summary(
+        summary = build_summary(
             messages,
             preserve_markers=True,
             task_complexity=Complexity.COMPLEX,
@@ -204,7 +205,7 @@ class TestBuildSummaryMarkers:
             _msg(MessageRole.SYSTEM, "System instruction here"),
             _msg(MessageRole.ASSISTANT, "Response content"),
         )
-        summary = _build_summary(
+        summary = build_summary(
             messages,
             preserve_markers=True,
             task_complexity=Complexity.COMPLEX,
@@ -219,7 +220,7 @@ class TestBuildSummaryMarkers:
             _msg(MessageRole.USER, "User query here"),
             _msg(MessageRole.ASSISTANT, "Wait, let me think about this."),
         )
-        summary = _build_summary(
+        summary = build_summary(
             messages,
             preserve_markers=True,
             task_complexity=Complexity.COMPLEX,
@@ -234,7 +235,7 @@ class TestBuildSummaryMarkers:
             _msg(MessageRole.ASSISTANT, ""),
             _msg(MessageRole.ASSISTANT, "Wait, something important."),
         )
-        summary = _build_summary(
+        summary = build_summary(
             messages,
             preserve_markers=True,
             task_complexity=Complexity.COMPLEX,
@@ -248,7 +249,7 @@ class TestBuildSummaryMarkers:
         # Create very long content
         long_content = "Wait, " + "x" * 600
         messages = (_msg(MessageRole.ASSISTANT, long_content),)
-        summary = _build_summary(
+        summary = build_summary(
             messages,
             preserve_markers=True,
             task_complexity=Complexity.COMPLEX,

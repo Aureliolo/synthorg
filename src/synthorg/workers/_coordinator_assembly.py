@@ -1,4 +1,4 @@
-# module-kind: code
+# module-kind: orchestrator
 """Coordinator and work-pipeline assembly for the runtime-services builder.
 
 Owns the coordination-side construction steps behind
@@ -42,6 +42,8 @@ from synthorg.engine.pipeline.factory import (
 from synthorg.engine.pipeline.policy import build_work_routing_policy
 from synthorg.engine.roster import ServiceabilityFilteredRoster
 from synthorg.engine.routing.scorer import AgentTaskScorer, RoutingScorerConfig
+from synthorg.engine.stagnation.models import StagnationDetectionConfig
+from synthorg.engine.stagnation.settings import resolve_stagnation_config
 from synthorg.engine.state import task_engine_of
 from synthorg.engine.workspace.config import WorkspaceIsolationConfig
 from synthorg.engine.workspace.disk_quota import DiskQuotaWatcher
@@ -71,11 +73,11 @@ from synthorg.settings.model_ref import parse_model_ref
 from synthorg.settings.state import config_resolver_of
 from synthorg.tools.web.providers.http_search_provider import HttpWebSearchProvider
 from synthorg.workers._capability_policy_wiring import build_capability_policy
-from synthorg.workers._engine_assembly import agent_state_repository_provider
 from synthorg.workers._planning_memory import (
     PlanningMemoryGrant,
     build_planning_memory,
 )
+from synthorg.workers.engine_assembly import agent_state_repository_provider
 from synthorg.workers.execution_service import WorkerExecutionService
 
 if TYPE_CHECKING:
@@ -202,6 +204,10 @@ class _CoordinatorDependencies(NamedTuple):
         workspace: The worktree strategy and its isolation config.
         middleware_enabled: Whether the coordination chain is built.
         planning_memory: The planning session's memory grant.
+        planning_stagnation: The detector selection the planning loop runs
+            under. The same operator settings the work loop's detector is
+            built from, read separately rather than shared, because the two
+            loops run concurrently and a detector carries per-loop state.
     """
 
     decomposition_ref: str
@@ -212,6 +218,7 @@ class _CoordinatorDependencies(NamedTuple):
     workspace: tuple[PlannerWorktreeStrategy, WorkspaceIsolationConfig]
     middleware_enabled: bool
     planning_memory: PlanningMemoryGrant
+    planning_stagnation: StagnationDetectionConfig
 
 
 async def _resolve_coordinator_dependencies(
@@ -269,6 +276,7 @@ async def _resolve_coordinator_dependencies(
             # the planning session recalls past retros, org playbooks, and the
             # owner's prior-initiative memory.
             planning_task = tg.create_task(build_planning_memory(app_state))
+            stagnation_task = tg.create_task(resolve_stagnation_config(resolver))
     except Exception as exc:
         reraise_critical(exc)
         log_exception_redacted(
@@ -292,6 +300,7 @@ async def _resolve_coordinator_dependencies(
         workspace=workspace_task.result(),
         middleware_enabled=middleware_task.result(),
         planning_memory=planning_task.result(),
+        planning_stagnation=stagnation_task.result(),
     )
 
 
@@ -410,6 +419,8 @@ async def _build_runtime_coordinator(
     # shared cost tracker under the owner + objective task, so charter
     # planning is attributed rather than silently unmetered.
     cost_tracker = app_state.slice(BudgetStateSlice).cost_tracker
+    resolver = config_resolver_of(app_state)
+    planning_stagnation = deps.planning_stagnation
     # ``AgentEngineExecutionService`` provisions the per-project workspace
     # lazily on first task; bare construction (no service) keeps the
     # persistence-less dev paths working as before.
@@ -456,13 +467,10 @@ async def _build_runtime_coordinator(
                 max_turns=agent_session_max_turns,
                 ceilings=agent_session_ceilings,
                 memory_digest_budget=planning.digest_budget,
-                # The same deployment config the work loop's detector is built
-                # from. Read twice rather than shared, because the two loops
-                # run concurrently and a detector carries per-loop state.
-                stagnation=app_state.config.stagnation,
+                stagnation=planning_stagnation,
             ),
             planning_memory=planning.planning_memory,
-            config_resolver=config_resolver_of(app_state),
+            config_resolver=resolver,
             # A planning session runs as a staffed agent for turns at a time,
             # so it claims the same live row every other agent run does or the
             # org reads idle for the whole of it.

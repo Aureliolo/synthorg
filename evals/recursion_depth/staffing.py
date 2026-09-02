@@ -93,6 +93,10 @@ class SweepRoster:
     builders: tuple[AgentIdentity, ...]
     reviewers: tuple[AgentIdentity, ...]
     unit_builders: tuple[AgentIdentity, ...] = ()
+    #: The depth ``unit_builders`` is bound at, so an allocation can ask for
+    #: a pool BY the depth it decided rather than by position. ``None`` when
+    #: no second pool was built.
+    unit_effort: ReasoningEffort | None = None
 
     @property
     def lead(self) -> AgentIdentity:
@@ -123,6 +127,37 @@ class SweepRoster:
             The unit pool when one was built, otherwise the ordinary builders.
         """
         return self.unit_builders or self.builders
+
+    def pool_for(self, effort: ReasoningEffort | None) -> tuple[AgentIdentity, ...]:
+        """The declared pool bound at *effort*.
+
+        Asked BY depth rather than by role so the allocation that decided a
+        unit's depth cannot reach a pool bound at some other one: ``None``
+        is the executor's own pool, and the only other answer is the unit
+        pool at the depth the matrix declared for it.
+
+        Args:
+            effort: The depth an allocation decided, or ``None`` for the
+                executor's own.
+
+        Returns:
+            The agents bound at that depth.
+
+        Raises:
+            ValueError: No declared pool is bound at *effort*. Unreachable
+                from :func:`session_limits_for`, which only ever names the
+                manifest's own ``leaf_reasoning_effort``; reachable from a
+                caller inventing a depth, which is the thing this refuses.
+        """
+        if effort is None:
+            return self.builders
+        if self.unit_builders and effort is self.unit_effort:
+            return self.unit_builders
+        msg = (
+            f"no builder pool is bound at reasoning effort {effort.value!r}; "
+            f"the roster declares {self.unit_effort} for its unit pool"
+        )
+        raise ValueError(msg)
 
     @property
     def roles(self) -> tuple[NotBlankStr, ...]:
@@ -241,6 +276,7 @@ async def build_roster(
         builders=builders,
         reviewers=reviewers,
         unit_builders=leaf_builders,
+        unit_effort=leaf_effort,
     )
 
 

@@ -71,7 +71,7 @@ class TestLLMSummarizer:
         out = await _summarizer(provider).summarize(
             _archivable(), fallback_text=_FALLBACK
         )
-        assert out == "A concise semantic summary."
+        assert out.text == "A concise semantic summary."
         assert provider.calls
 
     async def test_default_sampling_params_match_compaction_defaults(self) -> None:
@@ -132,18 +132,18 @@ class TestLLMSummarizer:
         out = await _summarizer(provider).summarize(
             _archivable(), fallback_text=_FALLBACK
         )
-        assert out == _FALLBACK
+        assert out.text == _FALLBACK
 
     async def test_provider_error_falls_back(self) -> None:
         provider = _FakeProvider(error=RuntimeError("provider down"))
         out = await _summarizer(provider).summarize(
             _archivable(), fallback_text=_FALLBACK
         )
-        assert out == _FALLBACK
+        assert out.text == _FALLBACK
 
     async def test_empty_transcript_skips_provider(self) -> None:
         provider = _FakeProvider(content="unused")
         empty = (ChatMessage(role=MessageRole.ASSISTANT, content="   "),)
         out = await _summarizer(provider).summarize(empty, fallback_text=_FALLBACK)
-        assert out == _FALLBACK
+        assert out.text == _FALLBACK
         assert not provider.calls

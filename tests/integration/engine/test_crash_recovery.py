@@ -5,7 +5,6 @@ Engine.run() with failing provider -> task FAILED -> can_reassign checks.
 
 from collections.abc import AsyncIterator, Mapping
 from datetime import date
-from uuid import uuid4
 
 import pytest
 
@@ -15,7 +14,6 @@ from synthorg.core.agent import (
 )
 from synthorg.core.task import Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskType
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.task_execution import TaskExecution
 from synthorg.providers.capabilities import ModelCapabilities
@@ -26,7 +24,7 @@ from synthorg.providers.models import (
     StreamChunk,
     ToolDefinition,
 )
-from tests._shared import as_uuid
+from tests._shared import as_uuid, engine_with
 
 pytestmark = pytest.mark.integration
 
@@ -76,7 +74,7 @@ class _FailingProvider:
 
 def _make_identity() -> AgentIdentity:
     return AgentIdentity(
-        id=uuid4(),
+        id=as_uuid("agent-recovery"),
         name="Recovery Agent",
         role="Developer",
         department="Engineering",
@@ -116,7 +114,7 @@ class TestCrashRecoveryFlow:
         task = _make_task(identity, max_retries=1)
         provider = _FailingProvider()
 
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
         result = await engine.run(identity=identity, task=task)
 
         assert result.termination_reason == TerminationReason.ERROR
@@ -136,7 +134,7 @@ class TestCrashRecoveryFlow:
         provider = _FailingProvider()
 
         # First run
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
         first_result = await engine.run(identity=identity, task=task)
 
         first_te = first_result.execution_result.context.task_execution

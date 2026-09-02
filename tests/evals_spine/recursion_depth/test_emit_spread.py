@@ -1,8 +1,8 @@
 # module-kind: tests
-"""The artefacts carry the variance three repetitions were paid for.
+"""The artefacts carry the variance the repetitions were paid for.
 
 A pooled curve is a mean of draws nobody can count from the chart, so a matrix
-recorded three times per depth reports the same number as one recorded once. The
+recorded five times per depth reports the same number as one recorded once. The
 spread table and the per-cell table are what make the population visible, and
 they have to survive the round trip a re-score takes, because a re-score is how
 a scoring change reaches a recording that already cost money.

@@ -935,6 +935,24 @@ async def _deactivate_review_staffing(app_state: AppState) -> None:
     await unwire_review_staffing(app_state)
 
 
+async def _activate_sandbox_reclaim(app_state: AppState) -> None:
+    """Release the containers whose runs have finished, then keep asking."""
+    from synthorg.api.lifecycle_helpers.sandbox_reclaim_wiring import (  # noqa: PLC0415
+        wire_sandbox_reclaim,
+    )
+
+    await wire_sandbox_reclaim(app_state)
+
+
+async def _deactivate_sandbox_reclaim(app_state: AppState) -> None:
+    """Stop the reclamation sweep so the next pass rebuilds it."""
+    from synthorg.api.lifecycle_helpers.sandbox_reclaim_wiring import (  # noqa: PLC0415
+        unwire_sandbox_reclaim,
+    )
+
+    await unwire_sandbox_reclaim(app_state)
+
+
 async def _activate_run_recovery(app_state: AppState) -> None:
     """Resume the runs a stopped process left behind, then keep asking."""
     from synthorg.api.lifecycle_helpers.run_recovery_wiring import (  # noqa: PLC0415
@@ -1026,6 +1044,19 @@ SUBSYSTEMS: tuple[SubsystemSpec, ...] = (
         provides=CapabilityId.SANDBOX_RECONCILED,
         requires=(CapabilityId.PERSISTENCE,),
         activate=_activate_sandbox_reconciliation,
+    ),
+    # A second, differently grounded pass over the containers a LIVE process
+    # holds: boot reconciliation asks "is there a row", once, and that answer
+    # is only safe at boot; this asks "has the owner's run finished" of the
+    # task table, on a cadence, and releases through the lifecycle's own path
+    # so its grace, idle and background-job pins still apply. Declared after
+    # reconciliation so the first sweep never races the orphan pass.
+    SubsystemSpec(
+        name="sandbox_reclaim",
+        provides=CapabilityId.SANDBOX_RECLAIM,
+        requires=(CapabilityId.PERSISTENCE, CapabilityId.SANDBOX_RECONCILED),
+        activate=_activate_sandbox_reclaim,
+        deactivate=_deactivate_sandbox_reclaim,
     ),
     SubsystemSpec(
         name="memory_backend",

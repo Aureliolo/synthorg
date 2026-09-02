@@ -120,6 +120,7 @@ _CAPABILITY_POLICY_SPECS: Final[tuple[tuple[PromptPurposeId, PromptWorkKind], ..
     (PromptPurposeId.CHARTER_INTERVIEW, _EXPERT),
     (PromptPurposeId.TOOLSMITH_AUTHOR, _EXPERT),
     (PromptPurposeId.META_CODE_MODIFICATION, _EXPERT),
+    (PromptPurposeId.COMPACTION_SUMMARY, _CAPABLE),
     (PromptPurposeId.STEERING_PROPOSE, _CAPABLE),
     (PromptPurposeId.EVOLUTION_PROPOSE, _CAPABLE),
     (PromptPurposeId.PLAN_REVIEW_ITEM_REPLY, _CAPABLE),

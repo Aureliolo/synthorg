@@ -33,6 +33,7 @@ from synthorg.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
 )
+from synthorg.engine.mcp_tool_retrieval import task_brief_text
 from synthorg.engine.recovery import RecoveryResult, RecoveryStrategy
 from synthorg.engine.task_sync import apply_post_execution_transitions
 from synthorg.observability import get_logger
@@ -56,13 +57,10 @@ if TYPE_CHECKING:
         ResolveMemoryStrategy,
         ValidateProject,
     )
+    from synthorg.engine.checkpoint.wiring import CheckpointWiring
     from synthorg.engine.flight_recording import FlightRecorderSink
     from synthorg.engine.loop_protocol import ExecutionLoop, ShutdownChecker
     from synthorg.engine.task_engine import TaskEngine
-    from synthorg.persistence.checkpoint_protocol import (
-        CheckpointRepository,
-        HeartbeatRepository,
-    )
     from synthorg.persistence.project_protocol import ProjectRepository
     from synthorg.settings.resolver import ConfigResolver
 
@@ -113,8 +111,7 @@ class AgentEngineCheckpointResumeMixin:
     _task_engine: TaskEngine | None
     _run_probe: RunBaselineProbe | None
     _approval_store: ApprovalStoreProtocol | None
-    _checkpoint_repo: CheckpointRepository | None
-    _heartbeat_repo: HeartbeatRepository | None
+    _checkpointing: CheckpointWiring | None
     _flight_recorder_sink: FlightRecorderSink | None
     _clock: Clock
 
@@ -232,16 +229,26 @@ class AgentEngineCheckpointResumeMixin:
         )
 
         loop = self._make_loop_with_callback(self._loop, agent_id, task_id)
+        tool_invoker = self._make_tool_invoker(
+            checkpoint_ctx.identity,
+            task_id=task_id,
+            effective_autonomy=effective_autonomy,
+            project_id=project_id,
+            memory_strategy=self._resolve_memory_strategy(),
+            retrieval_query=(
+                task_brief_text(checkpoint_ctx.task_execution.task)
+                if checkpoint_ctx.task_execution is not None
+                else None
+            ),
+        )
+        if tool_invoker is not None:
+            checkpoint_ctx = checkpoint_ctx.with_tool_surface(
+                tool_invoker.registry.list_tools()
+            )
         result: ExecutionResult = await loop.execute(
             context=checkpoint_ctx,
             provider=provider or self._provider,
-            tool_invoker=self._make_tool_invoker(
-                checkpoint_ctx.identity,
-                task_id=task_id,
-                effective_autonomy=effective_autonomy,
-                project_id=project_id,
-                memory_strategy=self._resolve_memory_strategy(),
-            ),
+            tool_invoker=tool_invoker,
             budget_checker=budget_checker,
             shutdown_checker=self._shutdown_checker,
             completion_config=completion_config,
@@ -317,9 +324,5 @@ class AgentEngineCheckpointResumeMixin:
             if result.termination_reason != TerminationReason.ERROR:
                 if self._recovery_strategy is not None:
                     await self._recovery_strategy.finalize(execution_id)
-                await cleanup_checkpoint_artifacts(
-                    self._checkpoint_repo,
-                    self._heartbeat_repo,
-                    execution_id,
-                )
+                await cleanup_checkpoint_artifacts(self._checkpointing, execution_id)
         return result

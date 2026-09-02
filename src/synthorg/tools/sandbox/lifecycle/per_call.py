@@ -13,7 +13,7 @@ from synthorg.observability.events.sandbox import (
     SANDBOX_LIFECYCLE_CLEANUP,
     SANDBOX_LIFECYCLE_RELEASE,
 )
-from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
+from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle, TrackedOwner
 
 logger = get_logger(__name__)
 
@@ -58,6 +58,7 @@ class PerCallStrategy:
         *,
         owner_id: str,
         destroy_fn: Callable[[ContainerHandle], Awaitable[None]],  # noqa: ARG002
+        expected_generation: int | None = None,  # noqa: ARG002
     ) -> None:
         """No-op -- the caller destroys the container."""
         logger.info(
@@ -78,3 +79,11 @@ class PerCallStrategy:
             strategy="per-call",
             action="noop",
         )
+
+    async def tracked_owners(self) -> tuple[TrackedOwner, ...]:
+        """Nothing outlives a call, so nothing is held.
+
+        Returns:
+            The empty tuple.
+        """
+        return ()

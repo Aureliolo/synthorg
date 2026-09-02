@@ -260,6 +260,23 @@ class _FakeBus:
         """No-op: this fake has no quadratic-fan-out enforcer."""
 
 
+class _BootAppliedFakeSubscriber(_FakeSubscriber):
+    """A subscriber whose persisted values the dispatcher replays at start."""
+
+    def __init__(
+        self, name: str, keys: frozenset[tuple[str, str]], *, fail: bool = False
+    ) -> None:
+        super().__init__(name, keys)
+        self.applied = 0
+        self._fail = fail
+
+    async def apply_persisted(self) -> None:
+        self.applied += 1
+        if self._fail:
+            msg = "settings backend unreachable"
+            raise OSError(msg)
+
+
 @pytest.fixture
 def bus() -> _FakeBus:
     return _FakeBus()
@@ -368,6 +385,63 @@ class TestDispatcherLifecycle:
         bus: _FakeBus,
     ) -> None:
         assert ("#settings", "__settings_dispatcher__") in bus._subscriptions
+
+    async def test_start_replays_persisted_values_to_boot_applied_subscribers(
+        self, bus: _FakeBus
+    ) -> None:
+        """A holder seeded from the environment is brought up to the database once.
+
+        Without the replay, a value persisted before the last restart stays
+        inert until somebody writes one of the watched keys.
+        """
+        applied = _BootAppliedFakeSubscriber("boot-sub", frozenset({("ns", "a")}))
+        plain = _FakeSubscriber("plain-sub", frozenset({("ns", "b")}))
+        d = SettingsChangeDispatcher(message_bus=bus, subscribers=(applied, plain))
+        try:
+            await d.start()
+            assert applied.applied == 1
+            assert plain.calls == []
+        finally:
+            await d.stop()
+
+    async def test_the_replay_finishes_before_the_poll_loop_exists(
+        self, bus: _FakeBus
+    ) -> None:
+        """No delivery can interleave with a boot replay.
+
+        A subscriber rebuilt by a live write while its replay is mid-flight
+        could have the replay's older read land after the write's newer one.
+        """
+        polling_at_replay: list[bool] = []
+
+        class _Ordered(_BootAppliedFakeSubscriber):
+            @override
+            async def apply_persisted(self) -> None:
+                polling_at_replay.append(d._task is not None)
+                await super().apply_persisted()
+
+        sub = _Ordered("boot-sub", frozenset({("ns", "a")}))
+        d = SettingsChangeDispatcher(message_bus=bus, subscribers=(sub,))
+        try:
+            await d.start()
+        finally:
+            await d.stop()
+
+        assert polling_at_replay == [False]
+
+    async def test_a_failing_boot_replay_does_not_stop_the_dispatcher(
+        self, bus: _FakeBus
+    ) -> None:
+        failing = _BootAppliedFakeSubscriber(
+            "boot-sub", frozenset({("ns", "a")}), fail=True
+        )
+        d = SettingsChangeDispatcher(message_bus=bus, subscribers=(failing,))
+        try:
+            await d.start()
+            assert failing.applied == 1
+            assert d._running is True
+        finally:
+            await d.stop()
 
     async def test_double_start_raises(
         self,

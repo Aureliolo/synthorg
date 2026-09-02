@@ -11,11 +11,9 @@ from typing import Final
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.persistence_errors import PersistenceError
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.checkpoint.models import (
-    Checkpoint,
-    CheckpointConfig,
-)
+from synthorg.engine.checkpoint.models import Checkpoint
 from synthorg.engine.checkpoint.resume import cleanup_checkpoint_artifacts
+from synthorg.engine.checkpoint.wiring import CheckpointWiring
 from synthorg.engine.context import AgentContext
 from synthorg.engine.failure_classification import (
     infer_failure_category_without_evidence,
@@ -35,10 +33,6 @@ from synthorg.observability.events.checkpoint import (
     CHECKPOINT_RECOVERY_RESUME,
     CHECKPOINT_RECOVERY_START,
 )
-from synthorg.persistence.checkpoint_protocol import (
-    CheckpointRepository,
-    HeartbeatRepository,
-)
 
 logger = get_logger(__name__)
 
@@ -56,9 +50,10 @@ class CheckpointRecoveryStrategy:
     fallback strategy (default: fail-and-reassign).
 
     Args:
-        checkpoint_repo: Repository for loading checkpoints.
-        heartbeat_repo: Repository for heartbeat cleanup on fallback.
-        config: Checkpoint configuration (controls max_resume_attempts).
+        wiring: The checkpoint repositories and their configuration. One
+            value rather than three, because loading a checkpoint whose
+            heartbeat nothing writes hands the same resume point to two
+            runners.
         fallback: Fallback recovery strategy; defaults to
             ``FailAndReassignStrategy``.
     """
@@ -68,14 +63,12 @@ class CheckpointRecoveryStrategy:
     def __init__(
         self,
         *,
-        checkpoint_repo: CheckpointRepository,
-        heartbeat_repo: HeartbeatRepository | None = None,
-        config: CheckpointConfig,
+        wiring: CheckpointWiring,
         fallback: RecoveryStrategy | None = None,
     ) -> None:
-        self._checkpoint_repo = checkpoint_repo
-        self._heartbeat_repo = heartbeat_repo
-        self._config = config
+        self._wiring = wiring
+        self._checkpoint_repo = wiring.checkpoint_repo
+        self._config = wiring.config
         self._fallback: RecoveryStrategy = fallback or FailAndReassignStrategy()
         # NOTE: _resume_counts is in-memory only.  Across process
         # restarts the counter resets, allowing up to max_resume_attempts
@@ -348,11 +341,7 @@ class CheckpointRecoveryStrategy:
             The :class:`RecoveryResult` produced by the fallback
             strategy.
         """
-        await cleanup_checkpoint_artifacts(
-            self._checkpoint_repo,
-            self._heartbeat_repo,
-            context.execution_id,
-        )
+        await cleanup_checkpoint_artifacts(self._wiring, context.execution_id)
         return await self._fallback.recover(
             task_execution=task_execution,
             error_message=error_message,

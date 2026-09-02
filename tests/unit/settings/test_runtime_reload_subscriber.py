@@ -53,6 +53,19 @@ _EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
     ("engine", "classification_detector_timeout_seconds"),
     ("engine", "classifier_fallback_confidence"),
     ("engine", "classifier_rule_matched_confidence"),
+    # Compaction is composed once at engine construction: the callback, its
+    # thresholds, its summariser and its offloader.
+    ("engine", "compaction_agent_controlled"),
+    ("engine", "compaction_fill_threshold_percent"),
+    ("engine", "compaction_llm_summarizer_enabled"),
+    ("engine", "compaction_memory_offload_enabled"),
+    ("engine", "compaction_min_messages"),
+    ("engine", "compaction_preserve_epistemic_markers"),
+    ("engine", "compaction_preserve_recent_turns"),
+    ("engine", "compaction_safety_threshold_percent"),
+    ("engine", "compaction_summary_max_tokens"),
+    ("engine", "compaction_summary_model"),
+    ("engine", "compaction_summary_temperature"),
     ("engine", "completion_oracle_enabled"),
     ("engine", "completion_oracle_min_stakes"),
     ("engine", "completion_oracle_shadow_mode"),
@@ -65,6 +78,15 @@ _EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
     ("engine", "matcher_min_usable_parameters"),
     ("engine", "matcher_prefer_local"),
     ("engine", "scoping_enabled"),
+    # One stagnation detector per loop, built at construction and held.
+    ("engine", "stagnation_cycle_detection"),
+    ("engine", "stagnation_erosion_threshold"),
+    ("engine", "stagnation_erosion_window_size"),
+    ("engine", "stagnation_max_corrections"),
+    ("engine", "stagnation_min_tool_turns"),
+    ("engine", "stagnation_repetition_threshold"),
+    ("engine", "stagnation_strategy"),
+    ("engine", "stagnation_window_size"),
     ("external_api", "enabled"),
     ("external_api", "provider_type"),
     ("memory", "backend"),
@@ -92,6 +114,7 @@ _EXPECTED_WATCHED: tuple[tuple[str, str], ...] = (
     # built and held for its lifetime, so without a rebuild an operator
     # opening the bridge changes nothing an agent can reach.
     ("security", "mcp_self_consumer_mode"),
+    ("security", "mcp_self_consumer_retrieval_top_k"),
     ("security", "vision_verify_model"),
     ("tools", "browser_image_pin"),
     ("tools", "desktop_driver"),

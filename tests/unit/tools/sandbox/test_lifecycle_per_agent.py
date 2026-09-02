@@ -61,6 +61,68 @@ def _make_strategy(
     )
 
 
+class TestGenerationGuardedRelease:
+    """A release decided from a stale snapshot starts no grace timer."""
+
+    async def test_a_reacquire_since_the_snapshot_keeps_the_container(self) -> None:
+        clock = FakeClock()
+        strategy = _make_strategy(grace=1.0, clock=clock)
+        destroyed: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            return _make_handle("agent-gen")
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        await strategy.acquire(
+            owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
+        )
+        (snapshot,) = await strategy.tracked_owners()
+        await strategy.acquire(
+            owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
+        )
+
+        await strategy.release(
+            owner_id="a1",
+            destroy_fn=destroy_fn,
+            expected_generation=snapshot.generation,
+        )
+        clock.advance(5.0)
+        await asyncio.sleep(0)
+
+        assert destroyed == []
+        assert strategy._timers == {}
+
+    async def test_a_release_against_the_current_generation_starts_grace(
+        self,
+    ) -> None:
+        clock = FakeClock()
+        strategy = _make_strategy(grace=1.0, clock=clock)
+        destroyed: list[str] = []
+
+        async def create_fn() -> ContainerHandle:
+            return _make_handle("agent-gen-2")
+
+        async def destroy_fn(h: ContainerHandle) -> None:
+            destroyed.append(h.container_id)
+
+        await strategy.acquire(
+            owner_id="a1", create_fn=create_fn, destroy_fn=destroy_fn, alive_fn=_alive
+        )
+        (current,) = await strategy.tracked_owners()
+
+        await strategy.release(
+            owner_id="a1",
+            destroy_fn=destroy_fn,
+            expected_generation=current.generation,
+        )
+
+        assert "a1" in strategy._timers
+        await strategy.cleanup_all(destroy_fn=destroy_fn)
+        assert destroyed == ["agent-gen-2"]
+
+
 class TestPerAgentAcquire:
     """acquire() reuses within same owner, creates for new owners."""
 

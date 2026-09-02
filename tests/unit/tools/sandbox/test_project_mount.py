@@ -134,6 +134,17 @@ class TestOwnerKeyProjectPrefix:
         key_b, _ = sandbox._resolve_lifecycle("agent-1", project_id="proj-b")
         assert key_a != key_b
 
+    def test_an_owner_carrying_a_colon_degrades_to_ephemeral(
+        self, tmp_path: Path
+    ) -> None:
+        # The colon separates the qualified key's segments and the reclamation
+        # sweep reads the owner back as the LAST one, so an owner carrying it
+        # would be read back as somebody else's and released as theirs.
+        sandbox = _sandbox(tmp_path)
+        key, owns = sandbox._resolve_lifecycle("org:agent-1", project_id="proj-a")
+        assert key.startswith("per-call:")
+        assert owns is False
+
     def test_invalid_project_prefix_degrades_to_ephemeral(self, tmp_path: Path) -> None:
         # A valid owner combined with a project_id that produces an
         # out-of-format prefixed key must not poison the lifecycle key;

@@ -38,6 +38,24 @@ TAG_TASK_FACT: Final[str] = "task-fact"
 TAG_UNTRUSTED_ARTIFACT: Final[str] = "untrusted-artifact"
 """Wrap grader artifact payloads produced by other agents."""
 
+TAG_VERIFICATION_RUNS: Final[str] = "verification-runs"
+"""Wrap the completion gates' recorded build/test runs shown to a reviewer.
+
+The command and status lines are the gate's own record; the output tails
+were printed by the code under review, which is the same author as the
+artefact the reviewer judges, so the block is fenced as a whole.
+"""
+
+TAG_COMPACTION_SUMMARY: Final[str] = "compaction-summary"
+"""Wrap the summary compaction splices back in place of archived turns.
+
+The summary is spliced in as a SYSTEM message, which is a stronger trust
+tier than anything it was made from: tool output, task content and the
+model's own earlier replies, any of which an injection may have steered.
+A summariser that reproduces instruction-shaped text would otherwise hand
+it to every later turn as the system's own words.
+"""
+
 TAG_TOOL_RESULT: Final[str] = "tool-result"
 """Wrap tool-execution output flowing into the next LLM turn."""
 

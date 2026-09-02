@@ -56,8 +56,9 @@ class AgentEngineRecoveryMixin(AgentEngineCheckpointResumeMixin):
             ``(execution_result, recovery_result)`` where
             ``execution_result`` is the (possibly resumed) execution
             and ``recovery_result`` is the strategy's decision (``None``
-            when no strategy is wired or recovery raised a non-typed
-            error that was logged and swallowed).
+            when recovery was declared absent, when the run carried no
+            task execution to recover, or when recovery raised a
+            non-typed error that was logged and swallowed).
 
         Raises:
             ProjectNotFoundError: Re-raised from the strategy when the

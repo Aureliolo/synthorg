@@ -154,6 +154,14 @@ CREATE TABLE cost_records (
     -- different things and only one of them is headroom.
     billing_model TEXT NOT NULL DEFAULT 'unknown'
     CHECK (billing_model IN ('per_token', 'flat_rate', 'unknown')),
+    -- Counts rather than a hit flag, because the bill is proportional to
+    -- them: a call that reused one cached token and one that reused ninety
+    -- thousand are both "hits", and only the count says what caching saved.
+    -- Zero when the provider reported no cache data, which is also a miss.
+    cache_read_input_tokens BIGINT NOT NULL DEFAULT 0
+    CHECK (cache_read_input_tokens >= 0),
+    cache_write_input_tokens BIGINT NOT NULL DEFAULT 0
+    CHECK (cache_write_input_tokens >= 0),
     PRIMARY KEY (rowid, timestamp)
 );
 

@@ -10,6 +10,7 @@ the system prompt declares it -- for a fresh run, an approval-resumed run, and
 a checkpoint-resumed run alike.
 """
 
+from dataclasses import replace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -22,11 +23,10 @@ from synthorg.core.project import Project
 from synthorg.core.project_enums import ProjectStatus
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus, TaskType
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_protocol import ExecutionResult, TerminationReason
 from synthorg.providers.enums import MessageRole
-from tests._shared import as_uuid
+from tests._shared import UNWIRED_BUDGET, UNWIRED_ORG, as_uuid, engine_with
 from tests.unit.budget.conftest import make_cost_record
 
 from .conftest import make_completion_response
@@ -66,7 +66,7 @@ class TestFreshRunStampsCeilings:
     ) -> None:
         task = _task(sample_agent, hard_token_ceiling=500_000)
         provider = mock_provider_factory([make_completion_response()])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(identity=sample_agent, task=task)
 
@@ -83,7 +83,7 @@ class TestFreshRunStampsCeilings:
         # bound is genuinely 0, and stamping it verbatim would raise.
         task = _task(sample_agent, hard_token_ceiling=1_000_000, budget_limit=0.0)
         provider = mock_provider_factory([make_completion_response()])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(identity=sample_agent, task=task)
 
@@ -98,7 +98,7 @@ class TestFreshRunStampsCeilings:
     ) -> None:
         task = _task(sample_agent, budget_limit=0.0)
         provider = mock_provider_factory([make_completion_response()])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(identity=sample_agent, task=task)
 
@@ -114,7 +114,7 @@ class TestFreshRunStampsCeilings:
         # MockCompletionProvider.get_model_capabilities reports 8192.
         task = _task(sample_agent, budget_limit=0.0)
         provider = mock_provider_factory([make_completion_response()])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(identity=sample_agent, task=task)
 
@@ -130,7 +130,7 @@ class TestFreshRunStampsCeilings:
         provider.get_model_capabilities = AsyncMock(
             side_effect=ConnectionError("capability lookup unreachable")
         )
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(identity=sample_agent, task=task)
 
@@ -155,7 +155,9 @@ class TestFreshRunStampsCeilings:
         )
         task = _task(sample_agent, budget_limit=0.0)
         provider = mock_provider_factory([make_completion_response()])
-        engine = AgentEngine(provider=provider, budget_enforcer=enforcer)
+        engine = engine_with(
+            provider, budget=replace(UNWIRED_BUDGET, budget_enforcer=enforcer)
+        )
 
         result = await engine.run(identity=sample_agent, task=task)
 
@@ -172,7 +174,7 @@ class TestFreshRunDeclaresTheIndicator:
     ) -> None:
         task = _task(sample_agent, hard_token_ceiling=1_500_000, budget_limit=0.0)
         provider = mock_provider_factory([make_completion_response()])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(identity=sample_agent, task=task)
 
@@ -190,7 +192,7 @@ class TestFreshRunDeclaresTheIndicator:
         provider.get_model_capabilities = AsyncMock(
             side_effect=ConnectionError("capability lookup unreachable")
         )
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
 
         result = await engine.run(identity=sample_agent, task=task)
 
@@ -215,7 +217,7 @@ class TestApprovalResumeAlsoGetsAChecker:
     ) -> None:
         task = _task(sample_agent, hard_token_ceiling=10)
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
         parked_ctx = AgentContext.from_identity(
             sample_agent,
             task=task,
@@ -270,8 +272,10 @@ class TestApprovalResumeAlsoGetsAChecker:
         repo = AsyncMock()
         repo.get = AsyncMock(return_value=project)
         provider = mock_provider_factory([])
-        engine = AgentEngine(
-            provider=provider, budget_enforcer=enforcer, project_repo=repo
+        engine = engine_with(
+            provider,
+            budget=replace(UNWIRED_BUDGET, budget_enforcer=enforcer),
+            org=replace(UNWIRED_ORG, project_repo=repo),
         )
         parked_ctx = AgentContext.from_identity(sample_agent, task=task)
 
@@ -301,7 +305,7 @@ class TestApprovalResumeSyncsAChangedCeiling:
     ) -> None:
         task = _task(sample_agent, hard_token_ceiling=750_000)
         provider = mock_provider_factory([make_completion_response()])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
         parked_ctx = AgentContext.from_identity(
             sample_agent, task=task, token_ceiling=500_000
         )
@@ -326,7 +330,7 @@ class TestApprovalResumeSyncsAChangedCeiling:
         """
         task = _task(sample_agent)  # no ceilings: _build_budget_checker -> None
         provider = mock_provider_factory([make_completion_response()])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
         parked_ctx = AgentContext.from_identity(
             sample_agent, task=task, token_ceiling=500_000
         )
@@ -355,7 +359,7 @@ class TestCheckpointResumeAlsoGetsTheTurnBoundarySignals:
     ) -> None:
         task = _task(sample_agent, hard_token_ceiling=500_000)
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
         checkpoint_ctx = AgentContext.from_identity(
             sample_agent, task=task, token_ceiling=500_000
         )
@@ -400,7 +404,7 @@ class TestCheckpointResumeSyncsAChangedCeiling:
         # checkpointed context still carries.
         task = _task(sample_agent, hard_token_ceiling=750_000)
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
         checkpoint_ctx = AgentContext.from_identity(
             sample_agent, task=task, token_ceiling=500_000
         )
@@ -438,7 +442,7 @@ class TestCheckpointResumeSyncsAChangedCeiling:
         """
         task = _task(sample_agent)  # no ceilings: _build_budget_checker -> None
         provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
+        engine = engine_with(provider)
         checkpoint_ctx = AgentContext.from_identity(
             sample_agent, task=task, token_ceiling=500_000
         )

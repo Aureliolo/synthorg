@@ -73,7 +73,11 @@ class TurnRecord(BaseModel):
         call_category: Optional LLM call category for coordination
             metrics (productive, coordination, system).
         latency_ms: Round-trip latency in milliseconds (``None`` if not measured).
-        cache_hit: Whether the provider served this turn from cache.
+        cache_read_input_tokens: Input tokens the provider served from its
+            prompt cache this turn. A count rather than a hit flag, because
+            what caching saved is proportional to it.
+        cache_write_input_tokens: Input tokens written into the prompt cache
+            this turn, billed at the cache-write premium.
         retry_count: Number of retry attempts before success.
         retry_reason: Exception type name of the last retried error.
         node_types: Node types that executed in this turn (e.g.
@@ -119,9 +123,15 @@ class TurnRecord(BaseModel):
         ge=0.0,
         description="Round-trip latency in milliseconds from provider base class",
     )
-    cache_hit: bool | None = Field(
-        default=None,
-        description="Whether the provider served this turn from cache",
+    cache_read_input_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Input tokens the provider served from its prompt cache",
+    )
+    cache_write_input_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Input tokens the provider wrote into its prompt cache",
     )
     retry_count: int | None = Field(
         default=None,

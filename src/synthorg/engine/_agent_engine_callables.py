@@ -88,6 +88,7 @@ class MakeToolInvoker(Protocol):
         project_id: str | None = ...,
         *,
         memory_strategy: MemoryInjectionStrategy | None,
+        retrieval_query: str | None,
     ) -> ToolInvoker | None: ...
 
 

@@ -33,7 +33,10 @@ from synthorg.tools.sandbox.errors import (
     SandboxShuttingDownError,
     SandboxStartError,
 )
-from synthorg.tools.sandbox.lifecycle.config import SandboxLifecycleConfig
+from synthorg.tools.sandbox.lifecycle.config import (
+    LifecycleStrategy,
+    SandboxLifecycleConfig,
+)
 from synthorg.tools.sandbox.lifecycle.per_agent import PerAgentStrategy
 from synthorg.tools.sandbox.lifecycle.per_task import PerTaskStrategy
 from synthorg.tools.sandbox.lifecycle.protocol import ContainerHandle
@@ -1613,7 +1616,7 @@ def _per_agent_sandbox(
     is the only path and the test stays deterministic.
     """
     lifecycle = SandboxLifecycleConfig(
-        strategy="per-agent",
+        strategy=LifecycleStrategy.PER_AGENT,
         grace_period_seconds=grace,
         max_idle_seconds=0.0,
     )
@@ -1631,7 +1634,7 @@ def _per_task_sandbox(tmp_path: Path) -> DockerSandbox:
     Per-task destroys on release with no grace timer, so no clock seam
     is needed for deterministic behaviour.
     """
-    lifecycle = SandboxLifecycleConfig(strategy="per-task")
+    lifecycle = SandboxLifecycleConfig(strategy=LifecycleStrategy.PER_TASK)
     return DockerSandbox(
         config=DockerSandboxConfig(lifecycle=lifecycle),
         workspace=tmp_path,
@@ -1700,7 +1703,7 @@ class TestLifecycleDispatch:
         tmp_path: Path,
     ) -> None:
         mock_docker = _make_mock_docker()
-        lifecycle = SandboxLifecycleConfig(strategy="per-task")
+        lifecycle = SandboxLifecycleConfig(strategy=LifecycleStrategy.PER_TASK)
         sandbox = DockerSandbox(
             config=DockerSandboxConfig(lifecycle=lifecycle),
             workspace=tmp_path,

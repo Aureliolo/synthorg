@@ -770,22 +770,28 @@ class TestMakeTurnRecord:
         assert record.retry_reason == "RateLimitError"
         assert record.retry_count == 1
 
-    def test_provider_metadata_cache_hit_extracted(self) -> None:
-        """cache_hit extracted from _synthorg_cache_hit key."""
-        response = _stop_response()
-        response = response.model_copy(
-            update={"provider_metadata": {"_synthorg_cache_hit": True}},
+    def test_cache_tokens_read_off_usage_not_metadata(self) -> None:
+        """The cached counts are usage, so they travel with the token counts."""
+        response = _stop_response().model_copy(
+            update={
+                "usage": TokenUsage(
+                    input_tokens=10,
+                    output_tokens=5,
+                    cost=0.001,
+                    cache_read_input_tokens=8,
+                    cache_write_input_tokens=2,
+                )
+            },
         )
-        record = make_turn_record(
-            1, response, provider_metadata=response.provider_metadata
-        )
-        assert record.cache_hit is True
+        record = make_turn_record(1, response)
+        assert record.cache_read_input_tokens == 8
+        assert record.cache_write_input_tokens == 2
 
     def test_no_provider_metadata_all_none(self) -> None:
         """Without provider_metadata all new fields default to None."""
         record = make_turn_record(1, _stop_response())
         assert record.latency_ms is None
-        assert record.cache_hit is None
+        assert record.cache_read_input_tokens == 0
         assert record.retry_count is None
         assert record.retry_reason is None
 

@@ -237,30 +237,34 @@ class TestTurnRecordAnalyticsFields:
                 latency_ms=-1.0,
             )
 
-    def test_cache_hit_default_none(self) -> None:
-        assert self._base().cache_hit is None
+    def test_cache_tokens_default_zero(self) -> None:
+        record = self._base()
+        assert record.cache_read_input_tokens == 0
+        assert record.cache_write_input_tokens == 0
 
-    def test_cache_hit_true(self) -> None:
+    def test_cache_tokens_carried(self) -> None:
         record = TurnRecord(
             turn_number=1,
             input_tokens=10,
             output_tokens=5,
             cost=0.001,
             finish_reason=FinishReason.STOP,
-            cache_hit=True,
+            cache_read_input_tokens=8,
+            cache_write_input_tokens=2,
         )
-        assert record.cache_hit is True
+        assert record.cache_read_input_tokens == 8
+        assert record.cache_write_input_tokens == 2
 
-    def test_cache_hit_false(self) -> None:
-        record = TurnRecord(
-            turn_number=1,
-            input_tokens=10,
-            output_tokens=5,
-            cost=0.001,
-            finish_reason=FinishReason.STOP,
-            cache_hit=False,
-        )
-        assert record.cache_hit is False
+    def test_negative_cache_tokens_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            TurnRecord(
+                turn_number=1,
+                input_tokens=10,
+                output_tokens=5,
+                cost=0.001,
+                finish_reason=FinishReason.STOP,
+                cache_read_input_tokens=-1,
+            )
 
     def test_retry_count_default_none(self) -> None:
         assert self._base().retry_count is None

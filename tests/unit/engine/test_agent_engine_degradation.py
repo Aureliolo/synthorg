@@ -24,15 +24,16 @@ from synthorg.budget.errors import QuotaExhaustedError
 from synthorg.budget.quota import DegradationAction
 from synthorg.budget.tracker import CostTracker
 from synthorg.core.types import NotBlankStr
-from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.loop_protocol import TerminationReason
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.task import Task
 
+from dataclasses import replace
+
 from synthorg.providers.registry import ProviderRegistry
-from tests._shared import mock_of
+from tests._shared import UNWIRED_BUDGET, UNWIRED_ROUTING, engine_with, mock_of
 
 from .conftest import (
     MockCompletionProvider,
@@ -78,7 +79,9 @@ class TestEngineDegradation:
         provider = MockCompletionProvider(
             [make_completion_response(content="Done.")],
         )
-        engine = AgentEngine(provider=provider, budget_enforcer=enforcer)
+        engine = engine_with(
+            provider, budget=replace(UNWIRED_BUDGET, budget_enforcer=enforcer)
+        )
 
         with patch.object(
             enforcer,
@@ -110,7 +113,9 @@ class TestEngineDegradation:
         provider = MockCompletionProvider(
             [make_completion_response(content="Done.")],
         )
-        engine = AgentEngine(provider=provider, budget_enforcer=enforcer)
+        engine = engine_with(
+            provider, budget=replace(UNWIRED_BUDGET, budget_enforcer=enforcer)
+        )
 
         with patch.object(
             enforcer,
@@ -158,10 +163,12 @@ class TestEngineDegradation:
             looked_up.append(name)
             return agent_provider if name == _AGENT_PROVIDER else other_provider
 
-        engine = AgentEngine(
-            provider=agent_provider,
-            budget_enforcer=enforcer,
-            provider_registry=mock_of[ProviderRegistry](get=_get),
+        engine = engine_with(
+            agent_provider,
+            routing=replace(
+                UNWIRED_ROUTING, provider_registry=mock_of[ProviderRegistry](get=_get)
+            ),
+            budget=replace(UNWIRED_BUDGET, budget_enforcer=enforcer),
         )
 
         with patch.object(
@@ -196,7 +203,9 @@ class TestEngineDegradation:
         provider = MockCompletionProvider(
             [make_completion_response(content="Done.")],
         )
-        engine = AgentEngine(provider=provider, budget_enforcer=enforcer)
+        engine = engine_with(
+            provider, budget=replace(UNWIRED_BUDGET, budget_enforcer=enforcer)
+        )
 
         queue_result = PreFlightResult(
             degradation=DegradationResult(
@@ -233,7 +242,9 @@ class TestEngineDegradation:
         provider = MockCompletionProvider(
             [make_completion_response(content="Done.")],
         )
-        engine = AgentEngine(provider=provider, budget_enforcer=enforcer)
+        engine = engine_with(
+            provider, budget=replace(UNWIRED_BUDGET, budget_enforcer=enforcer)
+        )
 
         with patch.object(
             enforcer,

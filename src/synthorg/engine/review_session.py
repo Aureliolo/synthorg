@@ -25,14 +25,27 @@ from typing import Final
 
 from synthorg.core.agent import AgentIdentity, ToolPermissions
 from synthorg.core.autonomy_enums import AutonomyLevel
-from synthorg.core.tool_constraints import ToolAccessLevel
+from synthorg.core.tool_constraints import (
+    GitAccess,
+    TerminalAccess,
+    ToolAccessLevel,
+    ToolSubConstraints,
+)
+from synthorg.core.types import NotBlankStr
 from synthorg.engine.completion_oracle.tool_names import (
     SUBMIT_COMPLETION_ORACLE_VERDICT_TOOL_NAME,
 )
 from synthorg.security.autonomy.enums import ToolCategory
 
 #: Tool surface a judging session runs with. STANDARD covers reading the
-#: deliverable and running the build and test commands a verdict rests on.
+#: deliverable; what it also grants (writing files, running commands,
+#: committing) is withdrawn below, because a judge that writes is authoring
+#: what it judges. A recorded corpus put 36 file-writing shell calls in
+#: sessions whose only job was to file a verdict. The build and test
+#: evidence a verdict rests on is not something the reviewer produces: the
+#: completion gates run the project's declared commands before the review
+#: opens and hand the recorded runs to the session, so the reviewer reads
+#: evidence rather than manufacturing it inside the tree under review.
 #: ``mcp_capabilities`` is empty on purpose: the internal MCP surface is how
 #: an agent reaches the rest of the org, and nothing about judging one
 #: deliverable needs it.
@@ -58,15 +71,52 @@ from synthorg.security.autonomy.enums import ToolCategory
 #: operator trusts to judge rather than to originate. Withheld by CATEGORY
 #: rather than by name because a name list re-opens the hole the day a tool
 #: joins the category.
+#:
+#: ``TERMINAL`` and ``CODE_EXECUTION`` are withheld for the other half of the
+#: same argument: a shell is how a reviewing session came to write files at
+#: all, and anything it runs inside the reviewed tree runs code the author
+#: of that tree chose. The build and test runs a verdict cites were recorded
+#: by the gates before the review opened.
 REVIEW_DENIED_CATEGORIES: Final[tuple[ToolCategory, ...]] = (
     ToolCategory.EXTERNAL_DATA,
+    ToolCategory.TERMINAL,
+    ToolCategory.CODE_EXECUTION,
+)
+
+#: Tools withheld BY NAME because they sit in categories the reviewer keeps.
+#: ``FILE_SYSTEM`` stays granted for reading the deliverable and
+#: ``VERSION_CONTROL`` for reading its history, so the mutating members of
+#: each are named: a category-level denial would take ``read_file`` and
+#: ``git_diff`` with them, and a reviewer that cannot open the artefact
+#: cannot judge it. A name list is the weaker shape (a tool joining the
+#: category later is not covered), which is why the categories that CAN be
+#: withheld whole are, above, and only these two are held by name.
+#: ``git_branch`` is named because ``GitAccess.LOCAL_ONLY`` below withholds
+#: only what reaches a remote: creating, switching or deleting a branch
+#: rewrites the checkout under review without leaving the machine.
+REVIEW_DENIED_TOOLS: Final[tuple[NotBlankStr, ...]] = (
+    NotBlankStr("write_file"),
+    NotBlankStr("edit_file"),
+    NotBlankStr("delete_file"),
+    NotBlankStr("git_commit"),
+    NotBlankStr("git_branch"),
+)
+
+#: Sub-constraints holding the same line at the enforcer that runs after
+#: category gating: no terminal access however a command is spelled, and git
+#: confined to local reads so nothing a reviewer does can reach a remote.
+REVIEW_SUB_CONSTRAINTS: Final[ToolSubConstraints] = ToolSubConstraints(
+    terminal=TerminalAccess.NONE,
+    git=GitAccess.LOCAL_ONLY,
 )
 
 REVIEW_TOOL_PERMISSIONS: Final[ToolPermissions] = ToolPermissions(
     access_level=ToolAccessLevel.STANDARD,
     allowed=(SUBMIT_COMPLETION_ORACLE_VERDICT_TOOL_NAME,),
+    denied=REVIEW_DENIED_TOOLS,
     denied_categories=REVIEW_DENIED_CATEGORIES,
     mcp_capabilities=(),
+    sub_constraints=REVIEW_SUB_CONSTRAINTS,
 )
 
 #: Autonomy a judging session runs at. SUPERVISED so anything the session
@@ -98,6 +148,8 @@ def as_review_session(reviewer: AgentIdentity) -> AgentIdentity:
 __all__ = [
     "REVIEW_AUTONOMY_LEVEL",
     "REVIEW_DENIED_CATEGORIES",
+    "REVIEW_DENIED_TOOLS",
+    "REVIEW_SUB_CONSTRAINTS",
     "REVIEW_TOOL_PERMISSIONS",
     "as_review_session",
 ]

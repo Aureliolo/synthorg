@@ -313,7 +313,7 @@ class TestAgentContextBudgetFields:
             archived_turns=3,
             summary_tokens=10,
         )
-        updated = ctx.with_compression(metadata, (msg,), 100)
+        updated = ctx.with_compression(metadata, (msg,), 100, pinned=frozenset())
         assert updated.compression_metadata is metadata
         assert updated.conversation == (msg,)
         assert updated.context_fill_tokens == 100

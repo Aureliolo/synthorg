@@ -25,7 +25,7 @@ from synthorg.workers._completion_oracle_runtime import (
     build_completion_oracle_runtime_or_none,
 )
 from synthorg.workers._red_team_runtime import build_red_team_runtime_or_none
-from tests._shared import make_app_state
+from tests._shared import engine_with, make_app_state
 from tests._shared.staffing import roster_capability_policy
 from tests.unit.engine.conftest import MockCompletionProvider
 
@@ -56,7 +56,7 @@ def _engine() -> AgentEngine:
     Returns:
         An ``AgentEngine`` over a provider that is never called here.
     """
-    return AgentEngine(provider=MockCompletionProvider([]))
+    return engine_with(MockCompletionProvider([]))
 
 
 class TestCompletionOracleRuntime:

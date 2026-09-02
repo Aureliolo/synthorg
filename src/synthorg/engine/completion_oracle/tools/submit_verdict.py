@@ -55,8 +55,9 @@ _TOOL_DESCRIPTION: Final[str] = (
     "Submit your independent completion-review verdict for the deliverable "
     "currently under review. Call this exactly once. Provide a non-empty "
     "summary and a verdict: approve, approve_with_notes, reject, or escalate. "
-    "For a code deliverable you MUST build it and run its tests before "
-    "approving; set ran_build / ran_tests and test_command accordingly. High "
+    "For a code deliverable you MUST have read a recorded passing test run in "
+    "the brief's verification runs before approving; set build_evidence_cited "
+    "/ test_evidence_cited and test_command to the run you cite. High "
     "and critical findings must carry at least one evidence quote. A reject "
     "MUST carry at least one finding: the rework brief is built from the "
     "findings, so a rejection without them sends the work back naming nothing."
@@ -250,8 +251,8 @@ class SubmitCompletionOracleVerdictTool(BaseTool):
                 verdict=args.verdict,
                 findings=args.findings,
                 summary=args.summary,
-                ran_build=args.ran_build,
-                ran_tests=args.ran_tests,
+                build_evidence_cited=args.build_evidence_cited,
+                test_evidence_cited=args.test_evidence_cited,
                 test_command=args.test_command,
             )
         except ValidationError as exc:

@@ -97,7 +97,9 @@ class TestBuildMcpSelfConsumer:
             app_state=_SENTINEL_STATE,
         )
         assert provider is not None
-        tools = provider(make_test_actor(), ToolAccessLevel.STANDARD)
+        tools = provider(
+            make_test_actor(), ToolAccessLevel.STANDARD, retrieval_query=None
+        )
         assert tools == ()
 
     def test_sub_elevated_allowlist_admits_only_listed(self) -> None:
@@ -109,7 +111,9 @@ class TestBuildMcpSelfConsumer:
             app_state=_SENTINEL_STATE,
         )
         assert provider is not None
-        tools = provider(make_test_actor(), ToolAccessLevel.STANDARD)
+        tools = provider(
+            make_test_actor(), ToolAccessLevel.STANDARD, retrieval_query=None
+        )
         assert [t.name for t in tools] == [_READ_TOOL]
         assert all(isinstance(t, BaseTool) for t in tools)
         assert _ADMIN_TOOL not in {t.name for t in tools}
@@ -123,7 +127,9 @@ class TestBuildMcpSelfConsumer:
             app_state=_SENTINEL_STATE,
         )
         assert provider is not None
-        tools = provider(make_test_actor(), ToolAccessLevel.ELEVATED)
+        tools = provider(
+            make_test_actor(), ToolAccessLevel.ELEVATED, retrieval_query=None
+        )
         names = {t.name for t in tools}
         assert len(names) > 1
         assert _READ_TOOL in names
@@ -137,7 +143,9 @@ class TestBuildMcpSelfConsumer:
             app_state=_SENTINEL_STATE,
         )
         assert provider is not None
-        tools = provider(_elevated_actor(), ToolAccessLevel.ELEVATED)
+        tools = provider(
+            _elevated_actor(), ToolAccessLevel.ELEVATED, retrieval_query=None
+        )
         names = {t.name for t in tools}
         assert _READ_TOOL in names
         assert len(names) > 1
@@ -150,7 +158,11 @@ class TestBuildMcpSelfConsumer:
             app_state=_SENTINEL_STATE,
         )
         assert provider is not None
-        tools = provider(_elevated_actor("agents:admin"), ToolAccessLevel.ELEVATED)
+        tools = provider(
+            _elevated_actor("agents:admin"),
+            ToolAccessLevel.ELEVATED,
+            retrieval_query=None,
+        )
         names = {t.name for t in tools}
         assert _ADMIN_TOOL in names
         assert _READ_TOOL in names
@@ -166,8 +178,55 @@ class TestBuildMcpSelfConsumer:
             app_state=_SENTINEL_STATE,
         )
         assert provider is not None
-        tools = provider(_elevated_actor(), ToolAccessLevel.ELEVATED)
+        tools = provider(
+            _elevated_actor(), ToolAccessLevel.ELEVATED, retrieval_query=None
+        )
         assert _ADMIN_TOOL in {t.name for t in tools}
+
+    def test_a_brief_narrows_the_scoped_surface_to_top_k(self) -> None:
+        # The retrieval branch is the one the product actually wires: every
+        # dispatch hands the task brief in as the query, and the narrowed set
+        # is a SUBSET of the scoped one in the scoper's own order.
+        provider = build_mcp_self_consumer(
+            McpSelfConsumerConfig(
+                mode=McpSelfConsumerMode.TRUST_SCOPED,
+                elevated_capabilities=("*",),
+                retrieval_top_k=3,
+            ),
+            app_state=_SENTINEL_STATE,
+        )
+        assert provider is not None
+        actor = _elevated_actor()
+        whole = provider(actor, ToolAccessLevel.ELEVATED, retrieval_query=None)
+        offered = provider(
+            actor,
+            ToolAccessLevel.ELEVATED,
+            retrieval_query="list the open tasks on the board",
+        )
+
+        assert len(whole) > 3
+        assert len(offered) == 3
+        scoped_order = [t.name for t in whole]
+        offered_names = [t.name for t in offered]
+        assert set(offered_names) <= set(scoped_order)
+        assert offered_names == sorted(offered_names, key=scoped_order.index)
+        assert _READ_TOOL in offered_names
+
+    def test_top_k_zero_offers_the_scoped_surface_whole(self) -> None:
+        provider = build_mcp_self_consumer(
+            McpSelfConsumerConfig(
+                mode=McpSelfConsumerMode.TRUST_SCOPED,
+                elevated_capabilities=("*",),
+                retrieval_top_k=0,
+            ),
+            app_state=_SENTINEL_STATE,
+        )
+        assert provider is not None
+        actor = _elevated_actor()
+        whole = provider(actor, ToolAccessLevel.ELEVATED, retrieval_query=None)
+        offered = provider(actor, ToolAccessLevel.ELEVATED, retrieval_query="tasks")
+
+        assert [t.name for t in offered] == [t.name for t in whole]
 
     def test_denied_tools_excluded_even_when_elevated(self) -> None:
         provider = build_mcp_self_consumer(
@@ -179,7 +238,9 @@ class TestBuildMcpSelfConsumer:
             app_state=_SENTINEL_STATE,
         )
         assert provider is not None
-        tools = provider(make_test_actor(), ToolAccessLevel.ELEVATED)
+        tools = provider(
+            make_test_actor(), ToolAccessLevel.ELEVATED, retrieval_query=None
+        )
         assert _ADMIN_TOOL not in {t.name for t in tools}
 
 
@@ -285,7 +346,9 @@ class TestAdminGuardrailFailsClosed:
             app_state=_SENTINEL_STATE,
         )
         assert provider is not None
-        tools = provider(make_test_actor(), ToolAccessLevel.STANDARD)
+        tools = provider(
+            make_test_actor(), ToolAccessLevel.STANDARD, retrieval_query=None
+        )
         assert [t.name for t in tools] == [_ADMIN_TOOL]
 
         result = await tools[0].execute(

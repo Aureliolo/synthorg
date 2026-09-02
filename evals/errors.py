@@ -308,6 +308,22 @@ class RecursionDepthClaimUnresolvableError(EvalError):
     default_message: ClassVar[str] = "A planner claim named no known requirement"
 
 
+class RecursionDepthSmokeRequiredError(EvalError):
+    """Raised when a recording is asked for without a passing wire-level smoke.
+
+    A recording is paid for cell by cell, and every treatment it claims to
+    measure was found, once, to have been absent from the engine it ran on
+    with nothing able to tell. The one-cell smoke reads each treatment off the
+    wire before the matrix is bought, and a recording that cannot show a
+    passing smoke for its own manifest digest has not shown it measures what
+    it says.
+    """
+
+    default_message: ClassVar[str] = (
+        "A passing one-cell smoke is required before a recording"
+    )
+
+
 class RecursionDepthNoCellsMeasuredError(EvalError):
     """Raised when a completed recursion-depth sweep measured no cell.
 
@@ -511,6 +527,7 @@ __all__ = [
     "RecursionDepthNoCellsMeasuredError",
     "RecursionDepthPlannerSubstitutedError",
     "RecursionDepthSessionCeilingError",
+    "RecursionDepthSmokeRequiredError",
     "RecursionDepthSpendAlreadyAdoptedError",
     "RecursionDepthSpendRepairEmptyError",
     "ResearchBriefUnsupportedError",
