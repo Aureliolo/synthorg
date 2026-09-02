@@ -2555,6 +2555,81 @@ class TestLeafReview:
             assert observed == [review]
         return outcome, filed, ran
 
+    async def test_a_run_the_host_settled_is_not_resumed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # ERROR is also how a run whose rework rounds ran out reports itself,
+        # and the product has moved the row to FAILED by then: a resume would
+        # be refused at the entry hop and filed as a turnless second attempt.
+        ran: list[Task] = []
+        workspace = _workspace(tmp_path, "leaf")
+
+        async def _file(_task: Task) -> None:
+            pass
+
+        async def _read(_task_id: str) -> LeafReview:
+            return LeafReview(task_status="failed", verdict=None)
+
+        async def _scripted(
+            _deps_arg: SweepDeps, *, task: Task, **_rest: object
+        ) -> SessionOutcome:
+            ran.append(task)
+            return SessionOutcome(cost=0.5, tokens=1200, turns=10, termination="error")
+
+        monkeypatch.setattr(execute_module, "run_session", _scripted)
+        deps = replace(_deps(), file_task=_file, read_review=_read)
+
+        outcome = await run_leaf(
+            deps,
+            task=self._task(),
+            owner=_identity("Builder"),
+            workspace=workspace,
+            execution_id="d1-gated-r0-leaf",
+            limits=SessionLimits(max_turns=8, cost_ceiling=5.0, token_ceiling=100_000),
+        )
+
+        assert len(ran) == 1
+        assert outcome.attempts == 1
+        assert outcome.task_status == "failed"
+
+    async def test_an_infrastructure_death_is_still_resumed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The row is still IN_PROGRESS: nothing decided the run, so the
+        # conversation is worth continuing.
+        ran: list[Task] = []
+        workspace = _workspace(tmp_path, "leaf")
+
+        async def _file(_task: Task) -> None:
+            pass
+
+        async def _read(_task_id: str) -> LeafReview:
+            return LeafReview(task_status="in_progress", verdict=None)
+
+        async def _scripted(
+            _deps_arg: SweepDeps, *, task: Task, **_rest: object
+        ) -> SessionOutcome:
+            ran.append(task)
+            termination = "error" if len(ran) == 1 else "completed"
+            return SessionOutcome(
+                cost=0.5, tokens=1200, turns=3, termination=termination
+            )
+
+        monkeypatch.setattr(execute_module, "run_session", _scripted)
+        deps = replace(_deps(), file_task=_file, read_review=_read)
+
+        outcome = await run_leaf(
+            deps,
+            task=self._task(),
+            owner=_identity("Builder"),
+            workspace=workspace,
+            execution_id="d1-gated-r0-leaf",
+            limits=SessionLimits(max_turns=8, cost_ceiling=5.0, token_ceiling=100_000),
+        )
+
+        assert len(ran) == 2
+        assert outcome.attempts == 2
+
     async def test_the_task_is_filed_assigned_to_its_owner_before_the_session(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

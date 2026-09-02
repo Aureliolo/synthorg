@@ -338,7 +338,7 @@ async def run_leaf(
     # and the loop's turn list is its own, so reporting the resume's alone
     # would file a 30-turn failure followed by a 4-turn resume as a 4-turn unit.
     spent = _Spend.of(outcome)
-    if _died_in_flight(outcome):
+    if _died_in_flight(outcome) and not await _settled_by_host(deps, task):
         # RESUMED, not re-run. The engine replays the conversation this
         # execution_id checkpointed and continues from the last turn, so an
         # infrastructure failure costs the turns still in flight rather than
@@ -432,6 +432,37 @@ async def _reviewed(deps: SweepDeps, task: Task) -> LeafReview:
     if deps.on_leaf_reviewed is not None:
         deps.on_leaf_reviewed(review)
     return review
+
+
+#: Statuses the product's post-execution path leaves a row in once it has
+#: DECIDED the run: a resume against any of these is refused at the entry hop.
+_HOST_SETTLED: Final[frozenset[str]] = frozenset(
+    {
+        TaskStatus.FAILED.value,
+        TaskStatus.BLOCKED.value,
+        TaskStatus.IN_REVIEW.value,
+        TaskStatus.COMPLETED.value,
+    }
+)
+
+
+async def _settled_by_host(deps: SweepDeps, task: Task) -> bool:
+    """Whether the host has already decided the run this leaf's session ended.
+
+    An ``ERROR`` termination is no longer only an infrastructure death: on
+    the wired engine it is also how a run whose review sent it back and whose
+    rework rounds ran out reports itself, and the product has by then moved
+    the row to FAILED. Resuming that conversation would re-enter the engine
+    against a status its entry hop refuses, and the refusal would be filed as
+    a second attempt that ran no turn.
+
+    Returns:
+        True when the host holds the row in a status the product decided.
+    """
+    if deps.read_review is None:
+        return False
+    review = await deps.read_review(str(task.id))
+    return review.task_status in _HOST_SETTLED
 
 
 @dataclass(frozen=True, slots=True)
