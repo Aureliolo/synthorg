@@ -1,0 +1,79 @@
+{
+  "manifest_sha256": "sha256:798d02307b2cdf3a530f99d0cdd8ef2eb9cde8960bba2c81227e50c34d7a0456",
+  "checked_at": "2026-09-02T23:03:22.054206Z",
+  "findings": [
+    {
+      "treatment": "tool surface",
+      "expected": "a non-empty surface recorded on the run that built the invoker",
+      "observed": "18 tools: delegate_and_await, delete_file, edit_file, ingest_knowledge, list_tools, load_tool, load_tool_resource, read_file, request_clarification, request_human_approval, request_project_decision, search_brain, search_knowledge, search_living_docs, shell_command, write_brain_entry, write_file, write_living_doc",
+      "passed": true
+    },
+    {
+      "treatment": "stagnation",
+      "expected": "tool_repetition",
+      "observed": "tool_repetition",
+      "passed": true
+    },
+    {
+      "treatment": "compaction",
+      "expected": "callback wired, fill threshold 80.0%",
+      "observed": "callback wired, live threshold 80.0",
+      "passed": true
+    },
+    {
+      "treatment": "memory",
+      "expected": "a backend on {\"provider\": \"example-embedding-provider\", \"model_id\": \"example-embedding-001\"}",
+      "observed": "SqlVectorBackend on example-embedding-provider/example-embedding-001",
+      "passed": false
+    },
+    {
+      "treatment": "budget",
+      "expected": "an enforcer whose tracker IS the cell ledger",
+      "observed": "enforcer present, recording into the cell ledger",
+      "passed": true
+    },
+    {
+      "treatment": "review pipeline",
+      "expected": "present",
+      "observed": "present",
+      "passed": true
+    },
+    {
+      "treatment": "approval gate",
+      "expected": "present",
+      "observed": "present",
+      "passed": true
+    },
+    {
+      "treatment": "policy engine",
+      "expected": "present",
+      "observed": "absent",
+      "passed": false
+    },
+    {
+      "treatment": "peer review",
+      "expected": "a completion-oracle gate attached to the host's review gate",
+      "observed": "attached",
+      "passed": true
+    },
+    {
+      "treatment": "leaf review",
+      "expected": "a task row the post-execution path moved, and a verdict on it",
+      "observed": "task failed, verdict none: no leaf finished inside its turn cap, so the review pipeline was never asked",
+      "passed": null
+    },
+    {
+      "treatment": "reasoning effort",
+      "expected": "high",
+      "observed": "no request for example-capable-001 could be read (0 unparseable lines)",
+      "passed": null
+    },
+    {
+      "treatment": "prompt caching",
+      "expected": "a cached prefix read on at least one call after the first",
+      "observed": "no call after the first of 1324 reported cached tokens; the provider may not publish them",
+      "passed": null
+    }
+  ],
+  "passed": false
+}
