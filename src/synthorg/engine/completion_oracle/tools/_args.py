@@ -11,6 +11,7 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from synthorg.core.normalization import normalize_ascii_lowercase
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.completion_oracle.review_models import (
     CompletionOracleFinding,
@@ -75,4 +76,5 @@ class SubmitCompletionOracleVerdictArgs(BaseModel):
         """
         if not isinstance(value, str):
             return value
-        return None if value.strip().lower() in _ABSENT_COMMAND_SPELLINGS else value
+        absent = normalize_ascii_lowercase(value) in _ABSENT_COMMAND_SPELLINGS
+        return None if absent else value
