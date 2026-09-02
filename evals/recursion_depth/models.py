@@ -1007,6 +1007,16 @@ class TokensPerSolvedPoint(BaseModel):
             of these runs solved nothing at all. A real finding rather than a
             gap, because it says the bucket's cost per solved requirement has
             no ceiling this recording can put on it.
+        detectable_factor: The smallest ratio between two arms' costs per
+            solved requirement that runs like these could tell apart at 95%,
+            read off the bootstrap: two independent resamples of this bucket
+            differ by at least this factor one time in twenty with NO effect
+            present, so a real gap smaller than it is inside the noise. The
+            power of the design, stated before the second arm is paid for:
+            a factor of 3 at cap 1 says the sweep cannot resolve a depth
+            effect under threefold. ``None`` below the run floor, and
+            ``None`` when the spread has no ceiling (a resample solved
+            nothing), because a factor against infinity is not a number.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
@@ -1019,6 +1029,7 @@ class TokensPerSolvedPoint(BaseModel):
     ci_low: float | None = Field(default=None, ge=0.0)
     ci_high: float | None = Field(default=None, ge=0.0)
     unbounded_above: bool = False
+    detectable_factor: float | None = Field(default=None, ge=1.0)
 
     @model_validator(mode="after")
     def _the_interval_is_one_of_four_shapes(self) -> Self:

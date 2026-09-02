@@ -308,3 +308,117 @@ class TestWhenTheArmsCannotBeRanked:
         )
 
         assert indistinguishable_depths(points) == (1, 3)
+
+
+class TestWhatTheDesignCanDetect:
+    """The power of the design, read off the runs before a second arm is paid for.
+
+    Two independent resamples of one bucket are two arms with no effect
+    between them; the factor they differ by at the 95th percentile is what a
+    real gap has to clear. Five repetitions of a bimodal cell can put that
+    factor above any plausible depth effect, and a sweep run in that state
+    measures its own noise.
+    """
+
+    def test_too_few_runs_report_no_factor(self) -> None:
+        cells = _repeated(MIN_CELLS_FOR_INTERVAL - 1, tokens=1000, passing=("R01",))
+
+        assert tokens_per_solved_by_achieved_depth(cells)[0].detectable_factor is None
+
+    def test_identical_runs_can_detect_anything(self) -> None:
+        # No spread, so no effect is inside the noise: the factor is exactly
+        # one, and any real gap at all would clear it.
+        cells = _repeated(MIN_CELLS_FOR_INTERVAL, tokens=1000, passing=("R01",))
+
+        assert tokens_per_solved_by_achieved_depth(cells)[0].detectable_factor == (
+            pytest.approx(1.0)
+        )
+
+    def test_disagreeing_runs_need_a_wider_gap(self) -> None:
+        cells = (
+            _cell(tokens=1000, passing=("R01",)),
+            _cell(tokens=2000, passing=("R01",), repetition=1),
+            _cell(tokens=4000, passing=("R01",), repetition=2),
+            _cell(tokens=8000, passing=("R01",), repetition=3),
+            _cell(tokens=1000, passing=("R01",), repetition=4),
+        )
+
+        factor = tokens_per_solved_by_achieved_depth(cells)[0].detectable_factor
+
+        assert factor is not None
+        assert factor > 1.5
+
+    def test_a_bimodal_bucket_is_less_powerful_than_a_tight_one(self) -> None:
+        # The shape the record actually has: most runs near 40 of 42 and one
+        # collapse. The design's power is what that collapse costs.
+        tight = (
+            _cell(tokens=1000, passing=("R01", "R02")),
+            _cell(tokens=1100, passing=("R01", "R02"), repetition=1),
+            _cell(tokens=900, passing=("R01", "R02"), repetition=2),
+            _cell(tokens=1000, passing=("R01", "R02"), repetition=3),
+            _cell(tokens=1050, passing=("R01", "R02"), repetition=4),
+        )
+        bimodal = (
+            *tight[:4],
+            _cell(tokens=1000, passing=("R01",), repetition=4),
+        )
+
+        tight_factor = tokens_per_solved_by_achieved_depth(tight)[0].detectable_factor
+        loose_factor = tokens_per_solved_by_achieved_depth(bimodal)[0].detectable_factor
+
+        assert tight_factor is not None
+        assert loose_factor is not None
+        assert loose_factor > tight_factor
+
+    def test_the_factor_is_a_function_of_the_runs_alone(self) -> None:
+        cells = (
+            _cell(tokens=1000, passing=("R01",)),
+            _cell(tokens=3000, passing=("R01", "R02"), repetition=1),
+            _cell(tokens=9000, passing=("R01",), repetition=2),
+            _cell(tokens=5000, passing=("R01", "R02"), repetition=3),
+            _cell(tokens=2000, passing=("R01",), repetition=4),
+        )
+
+        first = tokens_per_solved_by_achieved_depth(cells)[0]
+        second = tokens_per_solved_by_achieved_depth(tuple(reversed(cells)))[0]
+
+        assert first.detectable_factor is not None
+        assert first.detectable_factor == second.detectable_factor
+
+    def test_adding_the_factor_left_the_interval_alone(self) -> None:
+        """The interval's draws are published; a second reading may not move them."""
+        cells = (
+            _cell(tokens=1000, passing=("R01",)),
+            _cell(tokens=2000, passing=("R01",), repetition=1),
+            _cell(tokens=4000, passing=("R01",), repetition=2),
+            _cell(tokens=8000, passing=("R01",), repetition=3),
+            _cell(tokens=1000, passing=("R01",), repetition=4),
+        )
+
+        point = tokens_per_solved_by_achieved_depth(cells)[0]
+
+        # Pinned to the digit: this is the interval the same runs reported
+        # before the factor existed, re-derived from the same seed.
+        assert point.ci_low == pytest.approx(1200.0)
+        assert point.ci_high == pytest.approx(5800.0)
+
+    def test_runs_that_sometimes_solve_nothing_have_no_factor(self) -> None:
+        cells = (
+            _cell(tokens=1000, passing=("R01",)),
+            _cell(tokens=1000, passing=("R01",), repetition=1),
+            _cell(tokens=1000, passing=(), repetition=2),
+            _cell(tokens=1000, passing=(), repetition=3),
+        )
+
+        assert tokens_per_solved_by_achieved_depth(cells)[0].detectable_factor is None
+
+    def test_a_factor_below_one_is_refused(self) -> None:
+        with pytest.raises(ValueError, match="greater than or equal to 1"):
+            TokensPerSolvedPoint(
+                depth=1,
+                arm=Arm.GATED,
+                tokens=10,
+                solved=1,
+                cells=3,
+                detectable_factor=0.5,
+            )

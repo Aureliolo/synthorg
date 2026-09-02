@@ -423,7 +423,11 @@ def _curve_sections(report: RecursionDepthReport) -> list[str]:
         f"say so. A bucket under {MIN_CELLS_FOR_INTERVAL} runs reports no",
         "interval; one that solved nothing has no finite cost per solved",
         "requirement and reads `n/a`; an interval open above means some",
-        "resample of the bucket's runs solved nothing at all.",
+        "resample of the bucket's runs solved nothing at all. The detectable",
+        "factor is the design's power, read off the same runs: two arms with",
+        "no effect between them differ by at least that factor one time in",
+        "twenty, so a real gap smaller than it is inside the noise and the",
+        "next arm is not worth paying for until the floor rises.",
         "",
         *_efficiency_table(report.tokens_per_solved_by_achieved_depth),
         "",
@@ -585,16 +589,21 @@ def _efficiency_table(points: tuple[TokensPerSolvedPoint, ...]) -> list[str]:
         The table lines.
     """
     rows = [
-        "| Depth | Arm | Tokens per solved | 95% interval | Tokens | Solved | Runs |",
-        "|---:|---|---:|---|---:|---:|---:|",
+        (
+            "| Depth | Arm | Tokens per solved | 95% interval | Detectable factor "
+            "| Tokens | Solved | Runs |"
+        ),
+        "|---:|---|---:|---|---:|---:|---:|---:|",
     ]
     for point in points:
         ratio = point.tokens_per_solved
         rendered = "n/a" if ratio is None else f"{ratio:,.0f}"
+        factor = point.detectable_factor
+        detectable = "n/a" if factor is None else f"x{factor:.2f}"
         rows.append(
             f"| {point.depth} | {point.arm.value} | {rendered} "
-            f"| {_interval_cell(point)} | {point.tokens} | {point.solved} "
-            f"| {point.cells} |"
+            f"| {_interval_cell(point)} | {detectable} | {point.tokens} "
+            f"| {point.solved} | {point.cells} |"
         )
     return rows
 
