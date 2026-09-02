@@ -93,9 +93,9 @@ class TestCallAnalyticsProperties:
     ) -> None:
         """cached_input_share is None or in [0.0, 1.0].
 
-        The strategy draws cached counts past the input count, which a
-        provider can report when it bills a cached read outside the prompt
-        total; the share is capped rather than the model refusing the row.
+        The strategy never draws a cached count above the record's own input,
+        because a record is refused at construction otherwise; the share is
+        a ratio of two sums, so this pins that summing keeps it in range.
         """
         service = _make_service(tuple(records))
         agg = await service.get_aggregation()

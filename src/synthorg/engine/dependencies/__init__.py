@@ -3,7 +3,7 @@
 
 ONE required argument, and every field of every bundle required with it.
 The point is not tidiness: it is that a partially wired engine must not be
-constructable. A keyword that defaults to ``None`` is indistinguishable from
+constructible. A keyword that defaults to ``None`` is indistinguishable from
 one nobody supplied, so a caller can build an engine missing a collaborator
 without anyone having decided to, and nothing at any layer can tell the two
 apart: omitting ``compaction_callback`` looks exactly like deciding against

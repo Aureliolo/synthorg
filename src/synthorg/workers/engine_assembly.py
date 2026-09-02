@@ -283,9 +283,6 @@ async def _build_compaction_callback(app_state: AppState) -> CompactionCallback:
     from synthorg.engine.compaction.summarizer import (  # noqa: PLC0415
         make_compaction_callback,
     )
-    from synthorg.providers.model_binding import (  # noqa: PLC0415
-        resolve_bound_completion,
-    )
 
     config = await resolve_compaction_config(config_resolver_of(app_state))
     summarizer = None
@@ -570,8 +567,6 @@ def _checkpoint_wiring_or_none(app_state: AppState) -> CheckpointWiring | None:
         The wiring, or ``None`` when persistence is unconnected, in which
         case a run does not survive its process.
     """
-    from synthorg.persistence.state import PersistenceStateSlice  # noqa: PLC0415
-
     backend = app_state.slice(PersistenceStateSlice).backend
     if backend is None or not backend.is_connected:
         return None

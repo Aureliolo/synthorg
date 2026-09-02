@@ -276,10 +276,11 @@ class TestGracefulShutdownFlow:
 
         registry = ToolRegistry([_EchoTool()])
 
+        provider = _MultiTurnProvider()
         engine = engine_with(
-            _MultiTurnProvider(),
+            provider,
             core=replace(
-                unwired_core(_MultiTurnProvider()),
+                unwired_core(provider),
                 tool_registry=registry,
                 shutdown_checker=shutdown_checker,
             ),

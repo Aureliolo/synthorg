@@ -32,7 +32,7 @@ ontology:
 
 Every top-level key is optional except `company_name`. Missing sections fall back to the Pydantic-defined defaults. Each agent declares a `department` by name, but the schema does not cross-check it against a declared `departments[].name` entry at load time.
 
-`RootConfig` is `extra="forbid"`, so an unrecognised top-level key fails config load rather than being silently ignored. This page documents the sections an operator sets directly (above, plus `audit_chain` at root); the schema carries roughly forty further top-level blocks with sensible defaults, covering engine internals (routing, capability policy, coordination, stagnation/strategy detection, task engine, recovery, evolution, compaction), infrastructure (persistence, memory, api, sandboxing, mcp, queue, backup), and tool sub-configs (web, database, terminal, design, communication, analytics). Read `src/synthorg/config/schema.py::RootConfig` for the complete, current field list.
+`RootConfig` is `extra="forbid"`, so an unrecognised top-level key fails config load rather than being silently ignored. This page documents the sections an operator sets directly (above, plus `audit_chain` at root); the schema carries roughly forty further top-level blocks with sensible defaults, covering engine internals (routing, capability policy, coordination, strategy detection, task engine, recovery, evolution), infrastructure (persistence, memory, api, sandboxing, mcp, queue, backup), and tool sub-configs (web, database, terminal, design, communication, analytics). Read `src/synthorg/config/schema.py::RootConfig` for the complete, current field list.
 
 ## `company_name` / `company_type`
 

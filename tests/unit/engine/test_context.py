@@ -276,6 +276,25 @@ class TestAgentContextSnapshot:
 
 
 @pytest.mark.unit
+class TestToolSurface:
+    """What a run could reach travels on the run, not on the engine."""
+
+    def test_unstamped_before_an_invoker_exists(
+        self, sample_agent: AgentIdentity
+    ) -> None:
+        ctx = AgentContext.from_identity(sample_agent)
+        assert ctx.tool_surface is None
+
+    def test_stamped_sorted_and_frozen(self, sample_agent: AgentIdentity) -> None:
+        ctx = AgentContext.from_identity(sample_agent)
+
+        stamped = ctx.with_tool_surface(("write_file", "read_file"))
+
+        assert stamped.tool_surface == ("read_file", "write_file")
+        assert ctx.tool_surface is None
+
+
+@pytest.mark.unit
 class TestAgentContextImmutability:
     """AgentContext is frozen and model_copy preserves originals."""
 

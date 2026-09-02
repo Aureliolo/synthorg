@@ -240,12 +240,14 @@ than silently:
   why the default changed (to `tool_repetition`) rather than the harness: the
   reviewer that re-ran an identical probe twenty times went undetected in the
   product too.
-- **The gap was 43 collaborators, not 51 minus 8.** Eleven of the fields the
-  analysis counted as missing (`model_resolver`, `provider_configs`,
-  `coordinator`, `execution_loop`, `shutdown_checker`,
-  `tool_invocation_tracker`, `ontology_injection_strategy`,
-  `capture_strategy`, `event_reader`, `approval_interrupt_timeout_seconds`,
-  `checkpoint_config`) were not passed by the boot path either, and two more
-  (`evolution_service`, `mcp_self_consumer`) are off by default. After the
-  harness switched to the product's assembly the gap is zero by construction,
-  because a partial engine is no longer constructable.
+- **The gap was 43 collaborators, not 56.** The analysis counted every one
+  of the constructor's 64 keywords the harness did not pass. Eleven of those
+  (`model_resolver`, `provider_configs`, `coordinator`, `execution_loop`,
+  `shutdown_checker`, `tool_invocation_tracker`,
+  `ontology_injection_strategy`, `capture_strategy`, `event_reader`,
+  `approval_interrupt_timeout_seconds`, `checkpoint_config`) were not passed
+  by the boot path either, and two more (`evolution_service`,
+  `mcp_self_consumer`) are off by default, which leaves the 51 the product
+  passes and the 43 of them the harness did not. After the harness switched
+  to the product's assembly the gap is zero by construction, because a
+  partial engine is no longer constructible.

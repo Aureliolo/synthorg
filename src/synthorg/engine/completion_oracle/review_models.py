@@ -193,8 +193,9 @@ class CompletionOracleReport(BaseModel):
 
         Raises:
             ValueError: If the reviewer is the executor, the report carries
-                more than ``MAX_ORACLE_FINDINGS_PER_REPORT`` findings, or a
-                REJECT names nothing to fix.
+                more than ``MAX_ORACLE_FINDINGS_PER_REPORT`` findings, a
+                REJECT names nothing to fix, or the test evidence flag and
+                the cited command disagree in either direction.
         """
         _forbid_self_review(self.reviewer_agent_id, self.executor_agent_id)
         if len(self.findings) > MAX_ORACLE_FINDINGS_PER_REPORT:
@@ -221,6 +222,15 @@ class CompletionOracleReport(BaseModel):
                 "CompletionOracleReport carries a test_command "
                 f"{self.test_command!r} but test_evidence_cited is False; a "
                 "report cannot name a test command whose run it did not cite."
+            )
+            raise ValueError(msg)
+        if self.test_evidence_cited and self.test_command is None:
+            # The flag is a claim about a recorded run, and the command is
+            # what identifies that run; a claim naming no run is unverifiable.
+            msg = (
+                "CompletionOracleReport has test_evidence_cited=True but names "
+                "no test_command; a report that rests on a recorded test run "
+                "must identify the run it cited."
             )
             raise ValueError(msg)
         return self

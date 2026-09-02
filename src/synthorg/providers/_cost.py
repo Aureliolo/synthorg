@@ -148,10 +148,41 @@ def _count(value: object, *, field: str) -> int:
     """
     if value is None:
         return 0
-    if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or not math.isfinite(value)
+        or value < 0
+    ):
         logger.warning(PROVIDER_COST_INVALID, field=field, value=repr(value))
         return 0
     return int(value)
+
+
+def _bounded_cache_read(cache_read: int, *, input_tokens: int) -> int:
+    """Refuse a cached read larger than the prompt it was read for.
+
+    A count above the prompt total is not a count this record can carry:
+    the budget record refuses it and the engine drops the whole record with
+    it, silently under-reporting spend. Zero, and said, on the same terms as
+    a malformed count, because the true figure is unknowable from here: a
+    provider that bills cached reads outside its prompt total has published
+    a shape this reader does not know, and inventing a share from it would
+    be a number nobody measured.
+
+    Returns:
+        *cache_read* when it fits the prompt, else zero.
+    """
+    if cache_read <= input_tokens:
+        return cache_read
+    logger.warning(
+        PROVIDER_COST_INVALID,
+        field="cache_read_input_tokens",
+        value=cache_read,
+        input_tokens=input_tokens,
+        reason="cached read exceeds the prompt total",
+    )
+    return 0
 
 
 def token_usage_from_response_usage(
@@ -177,7 +208,7 @@ def token_usage_from_response_usage(
         output_tok,
         cost_per_1k_input=cost_per_1k_input,
         cost_per_1k_output=cost_per_1k_output,
-        cache_read_input_tokens=cache_read,
+        cache_read_input_tokens=_bounded_cache_read(cache_read, input_tokens=input_tok),
         cache_write_input_tokens=cache_write,
     )
 

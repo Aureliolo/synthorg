@@ -1012,8 +1012,10 @@ _r.register(
         type=SettingType.INTEGER,
         default="24000",
         description=(
-            "Ceiling on the characters one tool result may put into the"
-            " conversation. A result is resent on every later turn of the"
+            "Ceiling on the characters of a tool's own output one result may"
+            " put into the conversation; the fence the loop wraps every"
+            " result in is the system's own bytes and is not counted."
+            " A result is resent on every later turn of the"
             " run, so its size is paid once per turn for the rest of the"
             " session; abbreviating at the boundary where it enters the"
             " conversation stops that at source, where compaction would"

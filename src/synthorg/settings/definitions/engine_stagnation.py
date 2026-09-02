@@ -125,7 +125,8 @@ _r.register(
         description=(
             "Tool-bearing turns required in the window before any check"
             " fires, so an agent is never called stuck on its first move."
-            " Must not exceed the window size, or nothing ever fires."
+            " A value above the window size is refused at write time, since"
+            " a floor the window cannot hold means nothing ever fires."
         ),
         group="Stagnation",
         level=SettingLevel.ADVANCED,

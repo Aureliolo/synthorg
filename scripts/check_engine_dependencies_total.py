@@ -8,7 +8,7 @@ anyone having decided to, and nothing at any layer can tell: omitting
 measuring such an engine measures one the product does not ship, and every
 layer above it stays green.
 
-So a partially wired engine is not CONSTRUCTABLE. ``EngineDependencies`` and
+So a partially wired engine is not CONSTRUCTIBLE. ``EngineDependencies`` and
 its bundles carry no defaults, so mypy refuses a partial literal by name.
 Absence stays allowed and stays common; absence by OMISSION does not, because
 ``compaction_callback=None`` is a decision a reader can see and a missing
@@ -726,7 +726,7 @@ def main(argv: list[str] | None = None) -> int:
         print(hit.message())
     print(
         f"\n{len(hits)} site(s) lose the engine-wiring contract. A partially "
-        f"wired engine must not be constructable: every field of every bundle "
+        f"wired engine must not be constructible: every field of every bundle "
         f"is named at every call site, and absence is written down.",
         file=sys.stderr,
     )

@@ -286,6 +286,8 @@ class AgentEngineContextMixin:
             cost_ceiling=cost_ceiling,
             token_ceiling=token_ceiling,
         )
+        if execution.tool_invoker is not None:
+            ctx = ctx.with_tool_surface(execution.tool_invoker.registry.list_tools())
         # The declaration renders once, at zero spend: an honest reading of
         # the ceiling's magnitude, not a live percentage that would go stale
         # for the rest of the session. The turn boundary (loop_budget_signal)

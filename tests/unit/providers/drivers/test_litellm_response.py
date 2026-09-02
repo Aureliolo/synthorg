@@ -7,6 +7,7 @@ the two answer the same question for the loop's correction, and a field with
 two meanings is one the next consumer reads wrong.
 """
 
+import math
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -14,7 +15,7 @@ import pytest
 
 from synthorg.config.provider_schema import ProviderModelConfig
 from synthorg.core.completion_enums import FinishReason
-from synthorg.providers._cost import _cache_tokens
+from synthorg.providers._cost import _cache_tokens, token_usage_from_response_usage
 from synthorg.providers.drivers.litellm_response import map_response
 from synthorg.providers.models import CompletionResponse
 from tests.unit.providers.drivers.conftest import (
@@ -146,6 +147,41 @@ class TestCacheTokens:
             cache_read_input_tokens=-3, cache_creation_input_tokens=True
         )
         assert _cache_tokens(corrupt) == (0, 0)
+
+    @pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf])
+    def test_a_non_finite_count_becomes_a_missing_one(self, value: float) -> None:
+        """``int(nan)`` raises, which would drop the record instead of the count."""
+        assert _cache_tokens(
+            SimpleNamespace(
+                cache_read_input_tokens=value, cache_creation_input_tokens=value
+            )
+        ) == (0, 0)
+
+    def test_a_cached_read_above_the_prompt_is_dropped_and_the_record_kept(
+        self,
+    ) -> None:
+        """The budget record refuses the pair, so the reader zeroes the count."""
+        usage = token_usage_from_response_usage(
+            SimpleNamespace(
+                prompt_tokens=10, completion_tokens=2, cache_read_input_tokens=50
+            ),
+            cost_per_1k_input=0.0,
+            cost_per_1k_output=0.0,
+        )
+
+        assert usage.input_tokens == 10
+        assert usage.cache_read_input_tokens == 0
+
+    def test_a_cached_read_within_the_prompt_is_kept(self) -> None:
+        usage = token_usage_from_response_usage(
+            SimpleNamespace(
+                prompt_tokens=10, completion_tokens=2, cache_read_input_tokens=10
+            ),
+            cost_per_1k_input=0.0,
+            cost_per_1k_output=0.0,
+        )
+
+        assert usage.cache_read_input_tokens == 10
 
     def test_map_response_carries_the_counts_on_usage(self) -> None:
         response = make_mock_response(content="done", tool_calls=None)

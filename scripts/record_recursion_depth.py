@@ -95,6 +95,7 @@ from evals.recursion_depth.runner import (
 )
 from evals.recursion_depth.session import (
     EngineObserver,
+    SessionObserver,
     SweepDeps,
     session_limits_for,
 )
@@ -972,6 +973,7 @@ async def _build_context(
         # cross_family claim the gated arm rests on was evidenced nowhere.
         declared_pairs=(manifest.executor, manifest.reviewer),
         on_engine_built=probe.observe if probe is not None else None,
+        on_session_finished=probe.observe_session if probe is not None else None,
     )
     # What a PLANNING session gets, on the same declarative sizing every other
     # role uses (`SweepContext.limits_for` reaches the same function for the
@@ -1008,6 +1010,7 @@ def _build_deps(
     priced_providers: frozenset[str] = frozenset(),
     stall_idle_seconds: float = DEFAULT_STALL_IDLE_SECONDS,
     on_engine_built: EngineObserver | None = None,
+    on_session_finished: SessionObserver | None = None,
 ) -> SweepDeps:
     """Bind every per-unit collaborator to the hosted gateway.
 
@@ -1026,6 +1029,9 @@ def _build_deps(
         stall_idle_seconds: Idle time after which a unit is reported stalled.
         on_engine_built: Told about each engine as it is built, with its
             ledger; the smoke's probe, or ``None``.
+        on_session_finished: Told about each session's outcome, which is
+            where a run's tool surface is read; the smoke's probe, or
+            ``None``.
 
     Returns:
         The wired :class:`SweepDeps`.
@@ -1059,6 +1065,7 @@ def _build_deps(
         declared_pairs=declared_pairs,
         priced_providers=priced_providers,
         on_engine_built=on_engine_built,
+        on_session_finished=on_session_finished,
     )
 
 

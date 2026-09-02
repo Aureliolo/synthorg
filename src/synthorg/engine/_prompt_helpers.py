@@ -59,26 +59,23 @@ SECTION_AUTHORITY: Final[str] = "authority"
 SECTION_ORG_POLICIES: Final[str] = "org_policies"
 SECTION_AUTONOMY: Final[str] = "autonomy"
 SECTION_ASK_POLICY: Final[str] = "ask_policy"
-SECTION_TASK: Final[str] = "task"
 SECTION_COMPANY: Final[str] = "company"
 SECTION_TOOLS: Final[str] = "tools"
 SECTION_CONTEXT_BUDGET: Final[str] = "context_budget"
 SECTION_STRATEGY: Final[str] = "strategy"
 
-# Sections trimmed when over token budget, least critical first.
-# Strategy is trimmed before company because it is additive context.
-# Tools section was removed from the default template per D22
-# (non-inferable principle), but custom templates may still render tools.
-# Ask-policy sits ahead of the task: an operator can stack additions under the
-# standing directive, and an untrimmable section that an operator can grow is a
-# section that can evict the work the agent was given. The standing directive
-# is prose the trimmer keeps until this section goes entirely, which is the
-# right trade against losing the task itself.
+# Sections trimmed when over token budget, least critical first, and ONLY
+# sections the trimmer can drop from its inputs: an entry here with no
+# matching branch spends a render pass and trims nothing. Strategy is trimmed
+# before company because it is additive context. The tools section was
+# removed from the default template per D22 (non-inferable principle), but
+# custom templates may still render tools. The task brief is not a section of
+# this prompt at all: it travels once, as the first user message, pinned
+# against compaction. The ask policy is appended after rendering rather than
+# rendered from the inputs, so it is not trimmable either.
 TRIMMABLE_SECTIONS: Final[tuple[str, ...]] = (
     SECTION_STRATEGY,
     SECTION_COMPANY,
-    SECTION_ASK_POLICY,
-    SECTION_TASK,
     SECTION_ORG_POLICIES,
 )
 

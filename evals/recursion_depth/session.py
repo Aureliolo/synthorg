@@ -238,6 +238,11 @@ def session_limits_for(
 #: in. The one seam the wire-level smoke reads an engine's wiring through.
 type EngineObserver = Callable[[AgentEngine, ProgressTrackingLedger], None]
 
+#: Told about a session the moment its outcome exists. The seam the smoke
+#: reads what a RUN had through, as opposed to what an engine was built with:
+#: the tool surface is final per run, not per engine.
+type SessionObserver = Callable[[SessionOutcome], None]
+
 
 @dataclass(frozen=True)
 class SweepDeps:
@@ -315,6 +320,9 @@ class SweepDeps:
     # spend lands in. The wire-level smoke reads the engine's own wiring
     # summary here, which is the only place both are in hand together.
     on_engine_built: EngineObserver | None = None
+    # Told about every session the moment its outcome exists. What a run HAD
+    # (its tool surface) is read here, since an engine cannot say it.
+    on_session_finished: SessionObserver | None = None
     transcripts: TranscriptRecorder | None = None
     transcript_root: Path | None = None
     open_run_ledger: LedgerFactory | None = None
@@ -367,6 +375,11 @@ class SessionOutcome:
             apart because compaction buys context back by spending, and
             whether the trade paid is unreadable once it is blended in.
         compaction_cost: What those summaries cost, on the same terms.
+        tool_surface: Every tool name the run's invoker could dispatch,
+            sorted, read off the final context where the run stamped it.
+            ``None`` when the run built no invoker. Per run rather than per
+            engine, because an engine serves many concurrent runs and the
+            wire-level smoke has to read what THIS session ran with.
     """
 
     cost: float | None
@@ -377,6 +390,7 @@ class SessionOutcome:
     output_tokens: int = 0
     compaction_tokens: int = 0
     compaction_cost: float = 0.0
+    tool_surface: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -810,7 +824,10 @@ async def run_session(
             else 0
         ),
         compaction_cost=compaction.summary_cost if compaction is not None else 0.0,
+        tool_surface=result.execution_result.context.tool_surface,
     )
+    if deps.on_session_finished is not None:
+        deps.on_session_finished(outcome)
     logger.info(
         EVALS_RECURSION_UNIT_EXECUTED,
         execution_id=execution_id,
@@ -1030,6 +1047,7 @@ __all__ = [
     "OpenSession",
     "ProviderRegistryFactory",
     "SessionLimits",
+    "SessionObserver",
     "SessionOutcome",
     "StallReporter",
     "SweepDeps",

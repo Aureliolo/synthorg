@@ -394,6 +394,10 @@ class AgentEngineResumeMixin:
         budget_checker, ctx = await self._rebuild_resume_budget(
             task=task, agent_id=agent_id, task_id=task_id, ctx=ctx
         )
+        if tool_invoker is not None:
+            # The resumed run's own invoker, which may differ from the one the
+            # parked run was built with; the record says what THIS run had.
+            ctx = ctx.with_tool_surface(tool_invoker.registry.list_tools())
         result = await self._dispatch_resumed_execution(
             AgentExecuteRequest(
                 identity=identity,

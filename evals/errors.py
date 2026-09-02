@@ -527,6 +527,7 @@ __all__ = [
     "RecursionDepthNoCellsMeasuredError",
     "RecursionDepthPlannerSubstitutedError",
     "RecursionDepthSessionCeilingError",
+    "RecursionDepthSmokeRequiredError",
     "RecursionDepthSpendAlreadyAdoptedError",
     "RecursionDepthSpendRepairEmptyError",
     "ResearchBriefUnsupportedError",

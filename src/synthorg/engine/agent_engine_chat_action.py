@@ -328,6 +328,8 @@ class AgentEngineChatActionMixin:
             memory_strategy=self._resolve_memory_strategy(),
             retrieval_query=latest_human_turn(ctx.conversation),
         )
+        if tool_invoker is not None:
+            ctx = ctx.with_tool_surface(tool_invoker.registry.list_tools())
         loop = ReactLoop(
             approval_gate=self._approval_gate,
             turn_observer=turn_observer,

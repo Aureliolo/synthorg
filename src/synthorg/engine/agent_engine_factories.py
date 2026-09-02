@@ -75,7 +75,6 @@ class AgentEngineFactoriesMixin:
     """Mixin providing approval-gate, loop, and tool-invoker factories."""
 
     _approval_store: ApprovalStoreProtocol | None
-    _tool_surface: tuple[str, ...] | None
     _clarification_enabled: bool
     _scoping_enabled: bool
     _clock: Clock
@@ -497,16 +496,16 @@ class AgentEngineFactoriesMixin:
         interceptor = self._make_security_interceptor(effective_autonomy)
         # The one place an agent's tool surface is final. Every step above
         # rebuilt the registry, so this is the only count and list an operator
-        # can act on: what this agent could actually reach for this task. Held
-        # on the engine as well as logged, so a harness measuring this engine
-        # can read the surface it ran with rather than infer it.
-        self._tool_surface = tuple(sorted(tool.name for tool in registry.all_tools()))
+        # can act on: what this agent could actually reach for this task. The
+        # run's own context carries it from here (``AgentContext.tool_surface``),
+        # never the engine: one engine serves many concurrent runs.
+        surface = tuple(sorted(registry.list_tools()))
         logger.info(
             TOOL_REGISTRY_BUILT,
             agent_id=str(identity.id),
             task_id=task_id,
-            tool_count=len(self._tool_surface),
-            tools=list(self._tool_surface),
+            tool_count=len(surface),
+            tools=list(surface),
         )
         invoker = ToolInvoker(
             registry,

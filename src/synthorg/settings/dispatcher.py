@@ -319,6 +319,14 @@ class SettingsChangeDispatcher:
                 # does not inherit a stale flag from a prior run that ended
                 # mid-outage (which would drop this run's first warning).
                 self._config.reset()
+                # Before the poll task exists, so no delivery can interleave
+                # with the replay: a subscriber rebuilt by a live write while
+                # its boot replay is mid-flight can have the replay's older
+                # read land after the write's newer one. Inside the rollback
+                # scope too, so a critical failure here still releases the
+                # subscription rather than leaving it registered on a
+                # dispatcher that never started.
+                await self._apply_persisted()
                 self._running = True
                 self._task = asyncio.create_task(
                     self._poll_loop(),
@@ -357,7 +365,6 @@ class SettingsChangeDispatcher:
                 SETTINGS_DISPATCHER_STARTED,
                 subscriber_count=len(self._subscribers),
             )
-        await self._apply_persisted()
 
     async def _apply_persisted(self) -> None:
         """Replay each boot-applied subscriber's persisted values once.

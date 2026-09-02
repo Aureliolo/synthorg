@@ -229,21 +229,26 @@ class AgentEngineCheckpointResumeMixin:
         )
 
         loop = self._make_loop_with_callback(self._loop, agent_id, task_id)
+        tool_invoker = self._make_tool_invoker(
+            checkpoint_ctx.identity,
+            task_id=task_id,
+            effective_autonomy=effective_autonomy,
+            project_id=project_id,
+            memory_strategy=self._resolve_memory_strategy(),
+            retrieval_query=(
+                task_brief_text(checkpoint_ctx.task_execution.task)
+                if checkpoint_ctx.task_execution is not None
+                else None
+            ),
+        )
+        if tool_invoker is not None:
+            checkpoint_ctx = checkpoint_ctx.with_tool_surface(
+                tool_invoker.registry.list_tools()
+            )
         result: ExecutionResult = await loop.execute(
             context=checkpoint_ctx,
             provider=provider or self._provider,
-            tool_invoker=self._make_tool_invoker(
-                checkpoint_ctx.identity,
-                task_id=task_id,
-                effective_autonomy=effective_autonomy,
-                project_id=project_id,
-                memory_strategy=self._resolve_memory_strategy(),
-                retrieval_query=(
-                    task_brief_text(checkpoint_ctx.task_execution.task)
-                    if checkpoint_ctx.task_execution is not None
-                    else None
-                ),
-            ),
+            tool_invoker=tool_invoker,
             budget_checker=budget_checker,
             shutdown_checker=self._shutdown_checker,
             completion_config=completion_config,

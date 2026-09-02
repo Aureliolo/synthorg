@@ -7,8 +7,10 @@ able to ASK what it measured, because a log line is evidence only for whoever
 captured it. The event and this record are one owner; the event is rendered
 from it.
 
-The tool surface is the one fact that is not known at construction. It is
-final where the tool invoker is built, once per run, and is recorded there.
+The tool surface is deliberately not here. It is final where the tool
+invoker is built, once per run, and one engine serves many concurrent runs,
+so a value held on the engine would name whichever run built its invoker
+last; each run carries its own on its context (``AgentContext.tool_surface``).
 The in-flight controls (compaction, stagnation, the approval gate) are
 reported as wired only when they reach the loop that drives turns: an
 injected loop was built elsewhere, so a control bound on the engine beside
@@ -41,8 +43,6 @@ class EngineWiringSummary:
         cost_tracker: The tracker spend lands in, so a caller can check it
             IS the ledger it expects rather than a lookalike. ``None`` when
             nothing records spend.
-        tool_surface: The names the last built invoker offered, sorted, or
-            ``None`` before any run has built one.
     """
 
     loop_type: str
@@ -59,7 +59,6 @@ class EngineWiringSummary:
     has_approval_gate: bool
     has_policy_engine: bool
     cost_tracker: object | None
-    tool_surface: tuple[str, ...] | None
 
     def log_fields(self) -> dict[str, str | bool | None]:
         """The summary as structured log fields, object references excluded.

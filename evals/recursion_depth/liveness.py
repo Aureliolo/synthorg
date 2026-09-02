@@ -18,10 +18,13 @@ Isolation is the oracle's, unchanged. The probe runs the delivered program, so
 it runs in the same throwaway container class the oracle uses, on the same
 allowlist and with the same environment, and from its OWN scratch root holding
 the tree alone: the oracle suite is never staged beside a program this probe
-executes, so nothing this probe runs can read an expectation. Interpreter
-isolation (``-I``) means the tree's own directory has to be put on the path
-explicitly, which is done inside the probe code rather than through an
-environment variable ``-I`` would ignore.
+executes, so nothing this probe runs can read an expectation. The working
+directory is the staged tree itself, where the program's own root is: a
+program that reads a file relative to that root runs there and nowhere else,
+and a probe run from beside it would record that program as dead. Interpreter
+isolation (``-I``) means that directory has to be put on the path explicitly,
+which is done inside the probe code rather than through an environment
+variable ``-I`` would ignore.
 """
 
 import asyncio
@@ -79,6 +82,12 @@ _SIGNAL_EXIT_FLOOR: Final[int] = 128
 
 #: The key the spec's index declares the probe under.
 _LIVENESS_KEY: Final[str] = "liveness"
+
+#: What the probe code puts on ``sys.path``: the working directory, which is
+#: the staged tree. ``-I`` implies safe-path, so nothing puts it there
+#: otherwise, and a program run as ``python -m`` from its own root would have
+#: had it.
+_PROBE_PATH_ENTRY: Final[str] = "."
 
 
 class EntryPoint(BaseModel):
@@ -230,12 +239,12 @@ def declared_liveness(
 
 
 def import_argv(module: str) -> tuple[str, ...]:
-    """The arguments that import *module* from the staged tree, isolated.
+    """The arguments that import *module* from the working directory, isolated.
 
     Returns:
         The arguments after the interpreter.
     """
-    code = f"import sys; sys.path.insert(0, {ORACLE_TREE_DIR!r}); import {module}"
+    code = f"import sys; sys.path.insert(0, {_PROBE_PATH_ENTRY!r}); import {module}"
     return ("-I", "-c", code)
 
 
@@ -243,16 +252,16 @@ def entry_argv(entry: EntryPoint) -> tuple[str, ...]:
     """The arguments that run *entry* as ``python -m`` would, isolated.
 
     ``runpy`` rather than ``-m``, because ``-I`` implies safe-path and the
-    tree would otherwise not be importable; the path is put where the
-    interpreter would have put it, and ``alter_sys`` makes ``sys.argv`` and
-    ``__main__`` read as they do under ``-m``.
+    working directory would otherwise not be importable; the path is put
+    where the interpreter would have put it, and ``alter_sys`` makes
+    ``sys.argv`` and ``__main__`` read as they do under ``-m``.
 
     Returns:
         The arguments after the interpreter.
     """
     argv = [entry.module, *entry.args]
     code = (
-        f"import runpy, sys; sys.path.insert(0, {ORACLE_TREE_DIR!r}); "
+        f"import runpy, sys; sys.path.insert(0, {_PROBE_PATH_ENTRY!r}); "
         f"sys.argv = {argv!r}; "
         f"runpy.run_module({entry.module!r}, run_name='__main__', alter_sys=True)"
     )
@@ -380,11 +389,14 @@ async def _probe(
         LIVE when everything answered, else the first death.
     """
     sandbox = build_sandbox(root, owner=owner)
+    # The program's own root, not the scratch root beside it: a delivery that
+    # opens a file relative to where it lives runs from there.
+    cwd = root / ORACLE_TREE_DIR
     for module in declaration.modules:
         result = await sandbox.execute(
             command=interpreter,
             args=import_argv(module),
-            cwd=root,
+            cwd=cwd,
             env_overrides=GRADED_ENV,
             timeout=_LIVENESS_TIMEOUT_SECONDS,
             category=ToolCategory.CODE_EXECUTION.value,
@@ -396,7 +408,7 @@ async def _probe(
         result = await sandbox.execute(
             command=interpreter,
             args=entry_argv(entry),
-            cwd=root,
+            cwd=cwd,
             env_overrides=GRADED_ENV,
             timeout=_LIVENESS_TIMEOUT_SECONDS,
             category=ToolCategory.CODE_EXECUTION.value,

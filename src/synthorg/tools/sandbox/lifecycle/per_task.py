@@ -348,12 +348,8 @@ class PerTaskStrategy:
             await destroy_fn(handle)
         except Exception as exc:  # noqa: BLE001 -- criticals re-raised
             reraise_critical(exc)
-            # The handle was already popped above; reinstate it (without
-            # clobbering a concurrent re-acquire) so a live container
-            # stays tracked and cleanup_all() can retry destruction
-            # instead of orphaning it.
             async with self._lock:
-                self._containers.setdefault(owner_id, handle)
+                self._reinstate(owner_id, handle)
             logger.warning(
                 SANDBOX_LIFECYCLE_DESTROY_FAILED,
                 strategy="per-task",
@@ -371,6 +367,20 @@ class PerTaskStrategy:
         """Drop *owner_id*'s entry and its generation (must hold ``_lock``)."""
         self._containers.pop(owner_id, None)
         self._generations.pop(owner_id, None)
+
+    def _reinstate(self, owner_id: str, handle: ContainerHandle) -> None:
+        """Put a handle whose destroy failed back, tracked (must hold ``_lock``).
+
+        Without clobbering a concurrent re-acquire, so a live container stays
+        tracked and ``cleanup_all()`` can retry the destruction instead of
+        orphaning it. The generation comes back with it: ``tracked_owners``
+        reads one for every tracked key, and a container tracked without one
+        would raise out of the reclamation sweep on every later tick. A fresh
+        number is the right one, because any snapshot taken before the failed
+        release was decided about a run that is over.
+        """
+        if self._containers.setdefault(owner_id, handle) is handle:
+            self._generations.setdefault(owner_id, next(self._next_generation))
 
     def _reacquired(self, owner_id: str, expected_generation: int | None) -> bool:
         """Whether *owner_id* was acquired since *expected_generation* was read.
@@ -464,7 +474,7 @@ class PerTaskStrategy:
             except Exception as exc:  # noqa: BLE001 -- criticals re-raised
                 reraise_critical(exc)
                 async with self._lock:
-                    self._containers.setdefault(owner_id, handle)
+                    self._reinstate(owner_id, handle)
                 logger.warning(
                     SANDBOX_LIFECYCLE_DESTROY_FAILED,
                     strategy="per-task",

@@ -442,9 +442,13 @@ def _append_tool_results(
 
     Abbreviation runs first, on the raw result, so the elision marker sits
     inside the fence with the rest of the tool's bytes and the fence itself
-    is never what gets cut. Injection detection still reads the WHOLE raw
-    result: what was elided never reaches the model, but the attempt is
-    what the telemetry records.
+    is never what gets cut. The ceiling therefore governs the tool's OWN
+    bytes, which is how the setting declares itself: the fence is the
+    system's, a fixed few dozen characters, and a ceiling that counted it
+    would cut a tool's output short to make room for text the tool never
+    wrote. Injection detection still reads the WHOLE raw result: what was
+    elided never reaches the model, but the attempt is what the telemetry
+    records.
 
     Returns:
         The context with one ``TOOL`` message appended per result.

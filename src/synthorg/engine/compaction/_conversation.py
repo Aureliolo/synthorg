@@ -185,7 +185,8 @@ def split_conversation(
 
     Returns:
         The split, or ``None`` when nothing can be archived (the preserved
-        window already covers every non-system message).
+        window already covers every non-system message, or every message
+        outside it is pinned).
     """
     conversation = ctx.conversation
     pinned = ctx.pinned_message_indices
@@ -223,6 +224,18 @@ def split_conversation(
     span = range(archivable_start, recent_start)
     archivable = tuple(conversation[i] for i in span if i not in pinned)
     rescued = tuple(conversation[i] for i in span if i in pinned)
+    if not archivable:
+        # Every candidate is pinned. A compaction here would archive nothing
+        # and still splice in a summary, so the conversation GROWS by one
+        # message per pass and the fill it was meant to relieve never drops.
+        logger.debug(
+            CONTEXT_BUDGET_COMPACTION_SKIPPED,
+            execution_id=ctx.execution_id,
+            reason="everything_pinned",
+            preserve_count=preserve_count,
+            message_count=len(conversation),
+        )
+        return None
     return ConversationSplit(
         head=head,
         archivable=archivable,

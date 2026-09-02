@@ -23,7 +23,11 @@ from synthorg.persistence.code_execution_protocol import (
     CodeExecutionRecord,
     CodeExecutionRecordRepository,
 )
-from synthorg.tools._test_run_capture import is_test_run, record_if_test_run
+from synthorg.tools._test_run_capture import (
+    is_test_run,
+    record_if_test_run,
+    redacted_tail,
+)
 from synthorg.tools.sandbox.result import SandboxResult
 from tests._shared import FakeClock, mock_of
 from tests.unit.deliverable_receipts._fakes import RecordingCodeExecutionStore
@@ -483,6 +487,40 @@ class TestForgedTestEvidence:
 
 
 class TestRecordIfTestRun:
+    async def test_a_credential_in_the_output_is_masked_before_the_row_exists(
+        self,
+    ) -> None:
+        """The tail is rendered into the reviewer's prompt, fenced but readable."""
+        store = RecordingCodeExecutionStore()
+        leaked = SandboxResult(
+            stdout="Authorization: Bearer sk-live-abcdef1234567890\n3 passed",
+            stderr="AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE",
+            returncode=0,
+            timed_out=False,
+        )
+
+        await _capture(store, "pytest -q tests/", result=leaked)
+
+        record = store.records[0]
+        assert record.stdout_tail is not None
+        assert "sk-live-abcdef" not in record.stdout_tail
+        assert "3 passed" in record.stdout_tail
+        assert record.stderr_tail is not None
+        assert "AKIAIOSFODNN7EXAMPLE" not in record.stderr_tail
+
+    def test_a_credential_straddling_the_tail_cut_is_still_masked(self) -> None:
+        """Masking runs before the cut, so half a secret cannot survive it."""
+        output = "x" * 40 + "Authorization: Bearer secretvalue1234567890"
+
+        tail = redacted_tail(output, limit=20)
+
+        assert tail is not None
+        assert "secretvalue" not in tail
+        assert len(tail) <= 20
+
+    def test_no_output_records_no_tail(self) -> None:
+        assert redacted_tail("", limit=20) is None
+
     async def test_a_test_run_is_recorded(self) -> None:
         store = RecordingCodeExecutionStore()
 

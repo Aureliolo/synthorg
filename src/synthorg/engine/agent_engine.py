@@ -207,7 +207,6 @@ class AgentEngine(
             has_approval_gate=reaches_loop and self._approval_gate is not None,
             has_policy_engine=self._policy_engine is not None,
             cost_tracker=self._cost_tracker,
-            tool_surface=self._tool_surface,
         )
 
     def _bind_core(self, core: EngineCore) -> None:
@@ -313,9 +312,6 @@ class AgentEngine(
 
     def _bind_tooling(self, tooling: EngineTooling) -> None:
         """Bind the seams that extend the base tool registry per task."""
-        # Final only where the invoker is built, once per run; nothing has
-        # run yet.
-        self._tool_surface: tuple[str, ...] | None = None
         self._external_api_runtime = tooling.external_api_runtime
         self._connection_tool_runtimes = tooling.connection_tool_runtimes
         self._tool_invocation_tracker = tooling.tool_invocation_tracker

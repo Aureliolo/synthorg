@@ -404,6 +404,31 @@ class TestDispatcherLifecycle:
         finally:
             await d.stop()
 
+    async def test_the_replay_finishes_before_the_poll_loop_exists(
+        self, bus: _FakeBus
+    ) -> None:
+        """No delivery can interleave with a boot replay.
+
+        A subscriber rebuilt by a live write while its replay is mid-flight
+        could have the replay's older read land after the write's newer one.
+        """
+        polling_at_replay: list[bool] = []
+
+        class _Ordered(_BootAppliedFakeSubscriber):
+            @override
+            async def apply_persisted(self) -> None:
+                polling_at_replay.append(d._task is not None)
+                await super().apply_persisted()
+
+        sub = _Ordered("boot-sub", frozenset({("ns", "a")}))
+        d = SettingsChangeDispatcher(message_bus=bus, subscribers=(sub,))
+        try:
+            await d.start()
+        finally:
+            await d.stop()
+
+        assert polling_at_replay == [False]
+
     async def test_a_failing_boot_replay_does_not_stop_the_dispatcher(
         self, bus: _FakeBus
     ) -> None:

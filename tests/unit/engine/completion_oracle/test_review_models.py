@@ -67,6 +67,10 @@ class TestReportInvariants:
         report = _report(test_evidence_cited=True, test_command="pytest -x")
         assert report.test_command == "pytest -x"
 
+    def test_cited_evidence_without_a_command_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="names no test_command"):
+            _report(test_evidence_cited=True, test_command=None)
+
     def test_rejection_with_no_findings_rejected(self) -> None:
         """A verdict that sends work back must name what is wrong with it.
 

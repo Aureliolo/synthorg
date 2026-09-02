@@ -51,11 +51,13 @@ from synthorg.observability.events.deliverable_receipts import (
     TEST_RUN_RECORD_FAILED,
     TEST_RUN_RECORDED,
 )
+from synthorg.observability.redaction import scrub_secret_tokens
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionPurpose,
     CodeExecutionRecord,
     CodeExecutionRecordRepository,
 )
+from synthorg.security.rules.credential_detector import redact_credentials
 from synthorg.tools._declared_gate_runs import declared_gate_purposes
 from synthorg.tools.sandbox.result import SandboxResult
 
@@ -291,6 +293,26 @@ def _gate_purposes(
     )
 
 
+def redacted_tail(output: str, *, limit: int) -> str | None:
+    """The last *limit* characters of *output*, with credentials masked.
+
+    The tail is persisted and later rendered into the reviewer's prompt, and
+    it was printed by whatever the agent ran: a suite that echoes an
+    environment, or a build that logs the token it fetched with. The fence
+    that block is rendered inside stops an instruction escaping it and does
+    nothing about a secret, so the masking happens here, before the row
+    exists. Masked BEFORE the cut, so a credential straddling the tail
+    boundary is recognised whole rather than surviving as its second half.
+
+    Returns:
+        The masked tail, or ``None`` when there was no output.
+    """
+    if not output:
+        return None
+    masked, _findings = redact_credentials(output)
+    return scrub_secret_tokens(masked)[-limit:]
+
+
 async def record_if_test_run(
     result: SandboxResult,
     *,
@@ -363,12 +385,8 @@ async def record_if_test_run(
                     returncode=result.returncode,
                     passed=result.success,
                     timed_out=result.timed_out,
-                    stdout_tail=(
-                        result.stdout[-output_tail_limit:] if result.stdout else None
-                    ),
-                    stderr_tail=(
-                        result.stderr[-output_tail_limit:] if result.stderr else None
-                    ),
+                    stdout_tail=redacted_tail(result.stdout, limit=output_tail_limit),
+                    stderr_tail=redacted_tail(result.stderr, limit=output_tail_limit),
                     executed_at=executed_at,
                 )
             )

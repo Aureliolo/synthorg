@@ -574,6 +574,61 @@ class TestGenerationGuardedRelease:
     finished" from "reacquired and back in use". The generation can.
     """
 
+    async def test_a_failed_destroy_keeps_the_container_tracked_with_a_generation(
+        self,
+    ) -> None:
+        """A reinstated handle must still be readable by the reclamation sweep.
+
+        ``tracked_owners`` reads a generation for every tracked key, so a
+        handle put back without one raises out of every later sweep tick.
+        """
+        strategy = PerTaskStrategy()
+
+        async def create_fn() -> ContainerHandle:
+            return _make_handle("stuck")
+
+        async def failing_destroy(_h: ContainerHandle) -> None:
+            msg = "docker daemon gone"
+            raise RuntimeError(msg)
+
+        await strategy.acquire(
+            owner_id="t1",
+            create_fn=create_fn,
+            destroy_fn=_noop_destroy,
+            alive_fn=_alive,
+        )
+        (before,) = await strategy.tracked_owners()
+
+        await strategy.release(owner_id="t1", destroy_fn=failing_destroy)
+
+        (after,) = await strategy.tracked_owners()
+        assert after.key == "t1"
+        assert after.generation != before.generation
+
+    async def test_a_failed_deferred_destroy_keeps_a_generation_too(self) -> None:
+        clock = FakeClock()
+        pin = _CountingPin(live_for=1)
+        strategy = PerTaskStrategy(clock=clock, pin_check=pin, pin_recheck_seconds=0.01)
+
+        async def create_fn() -> ContainerHandle:
+            return _make_handle("pinned-stuck")
+
+        async def failing_destroy(_h: ContainerHandle) -> None:
+            msg = "docker daemon gone"
+            raise RuntimeError(msg)
+
+        await strategy.acquire(
+            owner_id="t1",
+            create_fn=create_fn,
+            destroy_fn=_noop_destroy,
+            alive_fn=_alive,
+        )
+        await strategy.release(owner_id="t1", destroy_fn=failing_destroy)
+        await _settle(ticks=20)
+
+        (tracked,) = await strategy.tracked_owners()
+        assert tracked.key == "t1"
+
     async def test_a_release_against_the_current_generation_destroys(self) -> None:
         strategy = PerTaskStrategy()
         destroyed: list[str] = []

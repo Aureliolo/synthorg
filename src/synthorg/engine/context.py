@@ -160,6 +160,17 @@ class AgentContext(BaseModel):
         ),
     )
 
+    tool_surface: tuple[str, ...] | None = Field(
+        default=None,
+        description=(
+            "Every tool name this run's invoker could dispatch, sorted,"
+            " stamped where the invoker was built; None before one was."
+            " Held per run rather than on the engine, because one engine"
+            " serves many concurrent runs and a value it held would name"
+            " whichever run built its invoker last."
+        ),
+    )
+
     # ── Progressive tool disclosure state ─────────────────────────
     loaded_tools: frozenset[str] = Field(
         default=frozenset(), description="Tool names with L2 body active in context"
@@ -291,6 +302,17 @@ class AgentContext(BaseModel):
             New ``AgentContext`` with the message appended.
         """
         return self.model_copy(update={"conversation": (*self.conversation, msg)})
+
+    def with_tool_surface(self, names: tuple[str, ...]) -> AgentContext:
+        """Record the tool names this run's invoker can dispatch.
+
+        Args:
+            names: The surface, as the invoker's registry lists it.
+
+        Returns:
+            New ``AgentContext`` carrying the surface, sorted.
+        """
+        return self.model_copy(update={"tool_surface": tuple(sorted(names))})
 
     def with_pinned_message(self, msg: ChatMessage) -> AgentContext:
         """Append a message compaction may never archive.

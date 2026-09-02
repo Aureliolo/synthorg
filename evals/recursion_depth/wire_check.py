@@ -8,9 +8,9 @@ nothing asks the difference unless something is built to.
 
 So one cell is run first, and what it ran under is read from the evidence
 rather than the configuration: the engine's own wiring summary (what was
-bound, and the tool surface the invoker was built with), the live settings
-the manifest was armed into, the ledger the cell's spend landed in, and the
-request bodies the transcript tap recorded. Each treatment becomes a finding
+bound), the tool surface a session's run recorded on its own context, the
+live settings the manifest was armed into, the ledger the cell's spend landed
+in, and the request bodies the transcript tap recorded. Each treatment becomes a finding
 with what was expected and what was seen, and a recording refuses to start
 without a passing set for its own manifest digest. The findings travel in the
 report, so a published artefact states its wiring rather than asserting it.
@@ -33,6 +33,7 @@ from evals.errors import RecursionDepthSmokeRequiredError
 from evals.harness.stall_watch import ProgressTrackingLedger
 from evals.recursion_depth.manifest import Arm, ModelPair, RecursionDepthManifest
 from evals.recursion_depth.models import WiringFinding, WiringReport
+from evals.recursion_depth.session import SessionOutcome
 from synthorg.api.state import AppState
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker_protocol import collect_all_records
@@ -71,6 +72,10 @@ _COMPACTION_THRESHOLD_KEY: Final[tuple[str, str]] = (
 #: The request-body field the reasoning depth travels in.
 _REASONING_FIELD: Final[str] = "reasoning_effort"
 
+#: The checkout this harness runs from. A specification is identified
+#: relative to it, so two checkouts of one tree spell one matrix.
+_REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[2]
+
 
 def smoke_dir(out_dir: Path) -> Path:
     """Where the smoke for a recording under *out_dir* lives.
@@ -90,13 +95,38 @@ def matrix_digest(manifest: RecursionDepthManifest) -> str:
     treatment without touching the file, so a smoke keyed on the file would
     vouch for a recording running a treatment it never read off the wire.
     Hashed over the loaded model's canonical dump, so two invocations that
-    narrow to the same matrix agree whatever flags spelled it.
+    narrow to the same matrix agree whatever flags spelled it. The
+    specification is named by :func:`spec_identity` rather than by the
+    absolute path the loader stores, so the digest keys on WHICH spec and
+    never on where the checkout happens to sit.
 
     Returns:
         A ``sha256:``-prefixed digest of the narrowed matrix.
     """
-    canonical = manifest.model_dump_json(exclude_none=False)
+    keyed = manifest.model_copy(update={"spec_dir": spec_identity(manifest.spec_dir)})
+    canonical = keyed.model_dump_json(exclude_none=False)
     return f"sha256:{hashlib.sha256(canonical.encode('utf-8')).hexdigest()}"
+
+
+def spec_identity(spec_dir: str, *, repo_root: Path = _REPO_ROOT) -> str:
+    """Name a specification directory independently of the checkout path.
+
+    ``load_manifest`` stores ``spec_dir`` absolute so every consumer reads the
+    same files, and that is right for reading; it is wrong for a digest, where
+    it would make a smoke recorded from one checkout fail the recording
+    started from another, for one and the same matrix. A spec inside the
+    repository is named by its path from the root, in POSIX form so the two
+    separator conventions agree; one outside it keeps its absolute path,
+    which is then the only name it has.
+
+    Returns:
+        The identity the digest is keyed on.
+    """
+    path = Path(spec_dir).resolve()
+    try:
+        return path.relative_to(repo_root.resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 def smoke_manifest(manifest: RecursionDepthManifest) -> RecursionDepthManifest:
@@ -120,21 +150,28 @@ def smoke_manifest(manifest: RecursionDepthManifest) -> RecursionDepthManifest:
 class WiringProbe:
     """Collects what the smoke's engine was built with, then reads the evidence.
 
-    Observes the FIRST engine the cell builds and keeps it: the tool surface is
-    final only once that engine has run, so the summary is read at report time
-    rather than at observation.
+    Observes the FIRST engine the cell builds and keeps it, and the FIRST
+    session that finishes on it: what an engine was built with is one
+    question and what a run could reach is another, since the tool surface
+    is final per run and an engine serves many of them.
     """
 
     def __init__(self, manifest: RecursionDepthManifest) -> None:
         self._manifest = manifest
         self._engine: AgentEngine | None = None
         self._ledger: ProgressTrackingLedger | None = None
+        self._session: SessionOutcome | None = None
 
     def observe(self, engine: AgentEngine, ledger: ProgressTrackingLedger) -> None:
         """Remember the first engine built and the ledger it spends into."""
         if self._engine is None:
             self._engine = engine
             self._ledger = ledger
+
+    def observe_session(self, outcome: SessionOutcome) -> None:
+        """Remember the first session that finished, for what its run had."""
+        if self._session is None:
+            self._session = outcome
 
     async def report(
         self,
@@ -163,7 +200,9 @@ class WiringProbe:
             raise RecursionDepthSmokeRequiredError(msg)
         wiring = self._engine.wiring
         findings = (
-            tool_surface_finding(wiring),
+            tool_surface_finding(
+                self._session.tool_surface if self._session is not None else None
+            ),
             stagnation_finding(wiring, self._manifest),
             await compaction_finding(wiring, app_state, self._manifest),
             memory_finding(app_state, self._manifest),
@@ -188,20 +227,23 @@ class WiringProbe:
         return report
 
 
-def tool_surface_finding(wiring: EngineWiringSummary) -> WiringFinding:
-    """What the invoker offered, read where the surface became final.
+def tool_surface_finding(names: tuple[str, ...] | None) -> WiringFinding:
+    """What the run's invoker offered, read off the context that recorded it.
+
+    Args:
+        names: The surface the first finished session ran with, or ``None``
+            when no session finished or the run built no invoker.
 
     Returns:
         The finding.
     """
-    names = wiring.tool_surface
     if names is None:
-        observed = "no invoker was built, so no surface was recorded"
+        observed = "no finished run recorded a surface"
     else:
         observed = f"{len(names)} tools: {', '.join(names)}"
     return WiringFinding(
         treatment=NotBlankStr("tool surface"),
-        expected="a non-empty surface recorded where the invoker was built",
+        expected="a non-empty surface recorded on the run that built the invoker",
         observed=observed,
         passed=bool(names),
     )
