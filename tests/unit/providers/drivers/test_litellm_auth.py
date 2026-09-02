@@ -9,6 +9,7 @@ from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.providers import errors
+from synthorg.providers.drivers.litellm_auth import NO_CREDENTIAL_API_KEY
 from synthorg.providers.drivers.litellm_driver import (
     _CREDENTIAL_CACHE_TTL,
     LiteLLMDriver,
@@ -132,6 +133,52 @@ class TestLiteLLMDriverAuth:
         kwargs = _build_kwargs(config)
         assert "api_key" not in kwargs
         assert "extra_headers" not in kwargs
+
+    def test_none_auth_on_the_openai_route_sends_the_placeholder_key(self) -> None:
+        # The SDK behind this route refuses to construct without a key, so a
+        # credential-less local server is unreachable unless something fills
+        # the slot; the server never reads it.
+        config = _make_config(
+            auth_type=AuthType.NONE,
+            litellm_provider="openai",
+            base_url="http://localhost:1234/v1",
+        )
+        kwargs = _build_kwargs(config)
+        assert kwargs["api_key"] == NO_CREDENTIAL_API_KEY
+
+    def test_none_auth_on_a_native_route_sends_no_key(self) -> None:
+        config = _make_config(
+            auth_type=AuthType.NONE,
+            litellm_provider="ollama",
+            base_url="http://localhost:11434",
+        )
+        kwargs = _build_kwargs(config)
+        assert "api_key" not in kwargs
+
+    def test_custom_header_on_the_openai_route_still_fills_the_key_slot(
+        self,
+    ) -> None:
+        config = _make_config(
+            auth_type=AuthType.CUSTOM_HEADER,
+            litellm_provider="openai",
+            base_url="http://localhost:1234/v1",
+            custom_header_name="X-Api-Token",
+            custom_header_value="my-token",
+        )
+        kwargs = _build_kwargs(config)
+        assert kwargs["extra_headers"] == {"X-Api-Token": "my-token"}
+        assert kwargs["api_key"] == NO_CREDENTIAL_API_KEY
+
+    def test_a_resolved_credential_is_never_replaced_by_the_placeholder(
+        self,
+    ) -> None:
+        config = _make_config(
+            auth_type=AuthType.API_KEY,
+            litellm_provider="openai",
+            connection_name="provider-key",
+        )
+        kwargs = _build_kwargs(config, resolved={"api_key": "real-key"})
+        assert kwargs["api_key"] == "real-key"
 
     def test_build_kwargs_oauth_passes_api_key(self) -> None:
         config = _make_config(

@@ -10,7 +10,7 @@ the fail-closed credential policy lives in one auditable place.
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import NoReturn
+from typing import Final, NoReturn
 
 from synthorg.config.provider_schema import ProviderConfig
 from synthorg.observability import get_logger
@@ -20,6 +20,17 @@ from synthorg.providers.drivers.litellm_kwargs import _AcompletionKwargs
 from synthorg.providers.enums import AuthType
 
 logger = get_logger(__name__)
+
+# litellm serves these routes through the OpenAI SDK, whose client refuses to
+# be constructed without a key even against a server that never reads one
+# (measured: an embedding and a completion against a local OpenAI-compatible
+# server both fail "Missing credentials" with no key, and succeed with any
+# non-empty string). A connection with no credential therefore still has to
+# put SOMETHING in the slot, or every self-hosted OpenAI-compatible preset
+# (LM Studio, vLLM) is unreachable. Routes litellm implements over its own
+# HTTP client accept an absent key and are deliberately not listed.
+OPENAI_SDK_ROUTES: Final[frozenset[str]] = frozenset({"openai"})
+NO_CREDENTIAL_API_KEY: Final[str] = "no-credential"
 
 
 @dataclass(frozen=True)
@@ -242,10 +253,38 @@ def apply_auth_kwargs(kwargs: _AcompletionKwargs, ctx: AuthContext) -> None:
             would leak the prompt to an endpoint that never accepted it.
     """
     material = resolve_auth_material(ctx)
-    if material.api_key is not None:
-        kwargs["api_key"] = material.api_key
+    api_key = wire_api_key(material, route=ctx.config.litellm_provider)
+    if api_key is not None:
+        kwargs["api_key"] = api_key
     if material.extra_headers is not None:
         kwargs["extra_headers"] = dict(material.extra_headers)
 
 
-__all__ = ["AuthContext", "AuthMaterial", "apply_auth_kwargs", "resolve_auth_material"]
+def wire_api_key(material: AuthMaterial, *, route: str | None) -> str | None:
+    """The ``api_key`` litellm is handed for *material* on *route*.
+
+    The resolved credential when there is one; otherwise the fixed
+    non-secret placeholder on a route whose SDK client refuses an absent
+    key, and nothing at all elsewhere. Shared by completion and embedding
+    dispatch so a no-credential connection reaches the wire the same way
+    from both.
+
+    Returns:
+        The key to send, or ``None`` to send none.
+    """
+    if material.api_key is not None:
+        return material.api_key
+    if route in OPENAI_SDK_ROUTES:
+        return NO_CREDENTIAL_API_KEY
+    return None
+
+
+__all__ = [
+    "NO_CREDENTIAL_API_KEY",
+    "OPENAI_SDK_ROUTES",
+    "AuthContext",
+    "AuthMaterial",
+    "apply_auth_kwargs",
+    "resolve_auth_material",
+    "wire_api_key",
+]

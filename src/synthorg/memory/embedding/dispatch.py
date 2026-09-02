@@ -32,6 +32,7 @@ from synthorg.observability.events.memory import (
     MEMORY_EMBEDDING_RETRIED,
 )
 from synthorg.providers.cost_recording import resolve_currency
+from synthorg.providers.drivers.litellm_auth import AuthMaterial, wire_api_key
 from synthorg.providers.embedding_endpoint import EmbeddingEndpoint
 from synthorg.providers.transport_policy import (
     require_confidential_transport,
@@ -196,8 +197,12 @@ def embedding_kwargs(
         require_credentialed_endpoint(endpoint.api_base, field="Embedding endpoint")
     if endpoint.api_base is not None:
         kwargs["api_base"] = endpoint.api_base
-    if endpoint.api_key is not None:
-        kwargs["api_key"] = endpoint.api_key
+    api_key = wire_api_key(
+        AuthMaterial(api_key=endpoint.api_key, extra_headers=endpoint.extra_headers),
+        route=endpoint.route,
+    )
+    if api_key is not None:
+        kwargs["api_key"] = api_key
     if endpoint.extra_headers:
         kwargs["extra_headers"] = dict(endpoint.extra_headers)
     return kwargs
