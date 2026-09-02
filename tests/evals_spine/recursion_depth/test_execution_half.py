@@ -33,7 +33,12 @@ from evals.recursion_depth import gate as gate_module
 from evals.recursion_depth import merge as merge_module
 from evals.recursion_depth import runner as runner_module
 from evals.recursion_depth.claims import RequirementId
-from evals.recursion_depth.contract import contract_task
+from evals.recursion_depth.contract import (
+    CONTRACT_PATH,
+    CONTRACT_UNIT_KEY,
+    ContractOutcome,
+    contract_task,
+)
 from evals.recursion_depth.execute import (
     UNBOUND,
     UNIT_REPORT_PATH,
@@ -79,6 +84,7 @@ from evals.recursion_depth.merge import (
     run_merge,
 )
 from evals.recursion_depth.models import (
+    CONTRACT,
     LEAF,
     METRIC_CAVEAT,
     ORACLE_CAVEAT,
@@ -106,7 +112,12 @@ from evals.recursion_depth.session import (
 )
 from evals.recursion_depth.staffing import SweepRoster, build_roster
 from evals.recursion_depth.tree import SpecBrief
-from evals.recursion_depth.unit import UnitDelivery, leaf_unit_key
+from evals.recursion_depth.unit import (
+    UnitDelivery,
+    built_unit_workspace,
+    delivery_of,
+    leaf_unit_key,
+)
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.task import AcceptanceCriterion, Task
@@ -1358,13 +1369,15 @@ class TestAContractSeededLeafIsGradedOnWhatItOwns:
 
         assert seen == []
         assert outcome.produced is True
-        assert "claims no requirement" in outcome.detail
+        assert "claims no requirement" in outcome.note
         # And DELIVERED, which is the half the explanation was costing it.
         # The sentence says the gate decided nothing and the tree is the
         # evidence; carried as a reason, it was read as the gate deciding
         # against the leaf, and only delivered leaves' claims reach the
-        # survival denominator.
+        # survival denominator. It stays out of `detail` all the way to the
+        # record, which refuses a delivered unit carrying a reason.
         assert outcome.delivered is True
+        assert outcome.detail == ""
 
     async def test_a_selection_matching_no_test_is_the_contracts_failure(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1378,12 +1391,13 @@ class TestAContractSeededLeafIsGradedOnWhatItOwns:
         outcome, _seen = await self._run(tmp_path, monkeypatch, owned=("R99",))
 
         assert outcome.produced is True
-        assert "R99" in outcome.detail
-        assert "decided nothing" in outcome.detail
+        assert "R99" in outcome.note
+        assert "decided nothing" in outcome.note
         # Delivered for the reason the sentence gives: the contract owed the
         # test, so its absence says nothing about this leaf, and its tree is
         # what is left to judge it on.
         assert outcome.delivered is True
+        assert outcome.detail == ""
 
     def test_the_selection_reaches_pytest_as_a_name_filter(self) -> None:
         # The join is the requirement id appearing in the test's NAME, which is
@@ -2469,6 +2483,246 @@ class TestTheMatrix:
         # assertion: the planner books its sessions on every call including a
         # failing one, so a spend of zero is a planner that never ran.
         assert context.budget.spent == 0
+
+
+class TestADeliveredLeafKeepsItsNote:
+    """The gate-decided-nothing sentence reaches the record without failing it.
+
+    A live cell built eight leaves under a contract, every one carrying that
+    sentence, and lost all eight rows at the moment they were paid for: the
+    note travelled in ``detail``, and the record refuses a delivered unit
+    that also says why it did not deliver.
+    """
+
+    _NOTE = (
+        "no test in the seeded tree is named for any requirement this unit "
+        "claims (R01), so its own-test gate decided nothing and only its tree "
+        "is evidence"
+    )
+
+    def test_the_record_carries_the_note_beside_an_empty_detail(
+        self, tmp_path: Path
+    ) -> None:
+        tree = _tree()
+        leaf = LeafOutcome(
+            workspace=_workspace(tmp_path, "leaf"),
+            delivered=True,
+            produced=True,
+            attempts=1,
+            turns=3,
+            cost=0.0,
+            note=self._NOTE,
+        )
+
+        record = runner_module._leaf_record(
+            tree.created_tasks[0], tree.plan.subtasks[0], tree, leaf, _spec()
+        )
+
+        assert record.delivered is True
+        assert record.detail == ""
+        assert record.note == self._NOTE
+
+    def test_the_note_survives_the_journal_round_trip(self) -> None:
+        record = UnitRecord(
+            unit_id=NotBlankStr("leaf-1"),
+            title=NotBlankStr("Build it"),
+            kind=LEAF,
+            depth=1,
+            delivered=True,
+            produced=True,
+            note=self._NOTE,
+        )
+
+        read = UnitRecord.model_validate(record.model_dump(mode="json"))
+
+        assert read.delivered is True
+        assert read.note == self._NOTE
+
+    def test_a_replayed_note_is_still_not_a_reason(self) -> None:
+        # The resume rebuilds deliveries from the record; a note that came
+        # back as a reason would mark the replayed leaf undelivered.
+        delivery = delivery_of(
+            produced=True, detail="", note=self._NOTE, files_changed=3
+        )
+
+        assert delivery.delivered is True
+        assert delivery.note == self._NOTE
+
+
+def _seeded_spec(tmp_path: Path) -> None:
+    """Give the sweep's specification the seed the contract stage recreates from."""
+    seed = tmp_path / "spec" / "seed"
+    seed.mkdir(parents=True, exist_ok=True)
+    (seed / "README.md").write_text("the objective\n", encoding="utf-8")
+
+
+def _contract_that_writes() -> tuple[object, list[str]]:
+    """Stand in for the contract session: one file, one sound outcome.
+
+    Returns:
+        The replacement for ``run_contract``, and the execution ids it was
+        asked to run, which is what says whether a resume paid for it again.
+    """
+    calls: list[str] = []
+
+    async def _run(
+        deps: SweepDeps,
+        *,
+        task: Task,
+        owner: AgentIdentity,
+        workspace: CellWorkspace,
+        execution_id: str,
+        limits: SessionLimits,
+    ) -> ContractOutcome:
+        del deps, task, owner, limits
+        calls.append(execution_id)
+        (workspace.project_dir / CONTRACT_PATH).write_text(
+            "the seam\n", encoding="utf-8"
+        )
+        return ContractOutcome(
+            workspace=workspace,
+            sound=True,
+            turns=1,
+            cost=0.0,
+            termination="completed",
+            files_written=1,
+        )
+
+    return _run, calls
+
+
+async def _refused_contract(
+    deps: SweepDeps,
+    *,
+    task: Task,
+    owner: AgentIdentity,
+    workspace: CellWorkspace,
+    execution_id: str,
+    limits: SessionLimits,
+) -> ContractOutcome:
+    """Stand in for a contract session the host refused before its first turn.
+
+    Its workspace was seeded before the refusal and is left as it was found,
+    which is the shape a live attempt left behind.
+
+    Raises:
+        OSError: Always.
+    """
+    del deps, task, owner, workspace, execution_id, limits
+    msg = "refused at the entry hop"
+    raise OSError(msg)
+
+
+class TestTheContractStageOnResume:
+    """The journal decides whether a contract tree is taken up, never the disk.
+
+    A live attempt's contract session was refused after its directory had been
+    seeded; the next attempt found the directory, took it as built, and seeded
+    eight leaves from an empty tree, each then graded on tests that had never
+    been written. The session that "built" it was in no journal.
+    """
+
+    async def test_a_tree_left_by_a_refused_session_is_not_a_contract(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, assembled_trees: None
+    ) -> None:
+        del assembled_trees
+        _seeded_spec(tmp_path)
+        monkeypatch.setattr(runner_module, "run_contract", _refused_contract)
+        planner = _CountingPlanner(answer=_Plan(result=_tree(), cost=1.5, sessions=1))
+        manifest = _manifest(arms=(Arm.GATED,), contract_stage=True)
+        with pytest.raises(RecursionDepthNoCellsMeasuredError):
+            await _swept(
+                await _context(tmp_path, planner=planner, manifest=manifest), tmp_path
+            )
+        # The seeded directory is standing exactly where the contract's key
+        # points, with no row behind it.
+        assert (
+            built_unit_workspace(
+                cell_key=cell_key(1, Arm.GATED, 0),
+                unit_key=CONTRACT_UNIT_KEY,
+                work_root=tmp_path / "work",
+            )
+            is not None
+        )
+
+        run, calls = _contract_that_writes()
+        monkeypatch.setattr(runner_module, "run_contract", run)
+        report = await run_sweep(
+            await _context(tmp_path, planner=planner, manifest=manifest),
+            provenance=_provenance(),
+            out_dir=tmp_path / "out-again",
+            resume=False,
+        )
+
+        # Written again rather than taken up on sight, and recorded this time.
+        assert calls == [f"{cell_key(1, Arm.GATED, 0)}-contract"]
+        measured = report.measured_cells[0]
+        assert [unit.kind for unit in measured.units] == [PLAN, CONTRACT]
+
+    async def test_a_journalled_contract_is_taken_up_by_the_resume(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Paid for once across both attempts, on the same terms as a leaf:
+        # re-running it would hand the units a different agreement from the
+        # one the leaf already on disk was built against.
+        _seeded_spec(tmp_path)
+        run, calls = _contract_that_writes()
+        monkeypatch.setattr(runner_module, "run_contract", run)
+        build, _seen = _builds_one_leaf_then_dies(
+            tmp_path, OSError("the merge workspace vanished")
+        )
+        monkeypatch.setattr(runner_module, "_build_tree_units", build)
+        monkeypatch.setattr(runner_module, "run_oracle", _scripted_oracle)
+        planner = _CountingPlanner(answer=_Plan(result=_tree(), cost=1.5, sessions=1))
+        manifest = _manifest(arms=(Arm.GATED,), contract_stage=True)
+        with pytest.raises(RecursionDepthNoCellsMeasuredError):
+            await _swept(
+                await _context(tmp_path, planner=planner, manifest=manifest), tmp_path
+            )
+
+        report = await _swept(
+            await _context(tmp_path, planner=planner, manifest=manifest),
+            tmp_path,
+            resume=True,
+        )
+
+        assert planner.calls == 1
+        assert calls == [f"{cell_key(1, Arm.GATED, 0)}-contract"]
+        measured = report.measured_cells[0]
+        assert [unit.kind for unit in measured.units] == [PLAN, CONTRACT, LEAF]
+
+    async def test_a_journalled_contract_whose_tree_is_gone_restarts_the_cell(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Both halves or neither, as for every other unit: the leaf on disk
+        # was built against a tree that no longer exists, so continuing would
+        # seed the next unit from nothing and assemble against the first.
+        _seeded_spec(tmp_path)
+        run, calls = _contract_that_writes()
+        monkeypatch.setattr(runner_module, "run_contract", run)
+        build, seen = _builds_one_leaf_then_dies(
+            tmp_path, OSError("the merge workspace vanished")
+        )
+        monkeypatch.setattr(runner_module, "_build_tree_units", build)
+        monkeypatch.setattr(runner_module, "run_oracle", _scripted_oracle)
+        planner = _CountingPlanner(answer=_Plan(result=_tree(), cost=1.5, sessions=1))
+        manifest = _manifest(arms=(Arm.GATED,), contract_stage=True)
+        with pytest.raises(RecursionDepthNoCellsMeasuredError):
+            await _swept(
+                await _context(tmp_path, planner=planner, manifest=manifest), tmp_path
+            )
+        shutil.rmtree(tmp_path / "work" / cell_key(1, Arm.GATED, 0) / CONTRACT_UNIT_KEY)
+
+        with pytest.raises(RecursionDepthNoCellsMeasuredError):
+            await _swept(
+                await _context(tmp_path, planner=planner, manifest=manifest),
+                tmp_path,
+                resume=True,
+            )
+
+        assert planner.calls == 2
+        assert len(calls) == 2
+        assert seen[1] == {}
 
 
 class TestLeafReview:

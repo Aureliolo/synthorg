@@ -412,6 +412,13 @@ class UnitRecord(BaseModel):
         detail: Why this unit is not a delivery, empty when it is. The whole
             diagnostic surface for a sweep that cost thousands of sessions and
             produced a flat line.
+        note: What a reader should know about a delivery that is NOT a reason
+            to doubt it, empty when there is nothing to say. Its own field
+            because ``detail`` on a delivered unit is a contradiction the
+            validator below refuses: the sentence "its own-test gate decided
+            nothing" travelled in ``detail``, so a leaf built under a contract
+            could not be recorded at all, and a live cell lost every one of
+            its eight leaf sessions to that at the moment they were paid for.
         verdict: The gate's verdict on this merge, absent in the ungated arm
             and on every leaf.
         parked: Whether the LAST review escalated with no human to decide, so
@@ -487,6 +494,7 @@ class UnitRecord(BaseModel):
     executor: ModelPair | None = None
     reviewer: ModelPair | None = None
     detail: str = ""
+    note: str = ""
     verdict: NotBlankStr | None = None
     parked: bool = False
     parked_attempts: int = Field(default=0, ge=0)

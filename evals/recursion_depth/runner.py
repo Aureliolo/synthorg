@@ -773,12 +773,21 @@ class _ContinuedCell:
         tree: The decomposition the earlier attempt was building against.
         produced: Each already-built unit id mapped to the tree it left on disk.
         delivered: Each already-built unit id mapped to whether it delivered.
+        contract: The tree the earlier attempt's JOURNALLED contract session
+            left, or ``None`` when that attempt recorded no contract, which
+            is what a freshly planned cell has too. A tree standing at the
+            contract's key with no row behind it is not a contract: a refused
+            session leaves the seeded directory exactly as it found it, and a
+            later attempt that took it up on sight built every leaf against
+            an empty tree, graded each on tests that were never written, and
+            journalled the session that "built" it nowhere.
     """
 
     root: Task
     tree: DecompositionResult
     produced: dict[str, CellWorkspace]
     delivered: dict[str, UnitDelivery]
+    contract: CellWorkspace | None
 
 
 def _continue_cell(
@@ -808,18 +817,22 @@ def _continue_cell(
         return None
     produced: dict[str, CellWorkspace] = {}
     delivered: dict[str, UnitDelivery] = {}
+    contract: CellWorkspace | None = None
     for unit in resumed.units:
-        if unit.kind in (PLAN, CONTRACT):
-            # Neither is a unit whose workspace a merge reads back. The plan
-            # has none at all, and the contract's is keyed CONTRACT_UNIT_KEY
-            # rather than by unit id, so `_cell_contract` re-finds it on the
-            # next pass and hands it over without paying again. Falling
-            # through to the merge key looked for `merge-<cell>-contract`,
-            # found nothing, and restarted the whole cell: the plan and the
-            # contract stage, both already bought.
+        if unit.kind == PLAN:
+            # The one unit with no workspace at all.
             continue
         key = str(unit.unit_id)
-        unit_key = leaf_unit_key(key) if unit.kind == LEAF else merge_unit_key(key)
+        if unit.kind == CONTRACT:
+            # Keyed CONTRACT_UNIT_KEY rather than by unit id, and handed to
+            # `_cell_contract` rather than to the merge map, because no
+            # merge reads it back: it is what every unit is recreated FROM.
+            # Falling through to the merge key looked for
+            # `merge-<cell>-contract`, found nothing, and restarted the whole
+            # cell, the plan and the contract stage both already bought.
+            unit_key = CONTRACT_UNIT_KEY
+        else:
+            unit_key = leaf_unit_key(key) if unit.kind == LEAF else merge_unit_key(key)
         workspace = built_unit_workspace(
             cell_key=cell.key, unit_key=unit_key, work_root=context.work_root
         )
@@ -831,11 +844,14 @@ def _continue_cell(
                 missing_unit=key,
             )
             return None
+        if unit.kind == CONTRACT:
+            contract = workspace
+            continue
         produced[key] = workspace
         delivered[key] = delivery_of(
             produced=unit.produced,
-            delivered=unit.delivered,
             detail=unit.detail,
+            note=unit.note,
             files_changed=unit.workspace_files_changed,
         )
     for unit in resumed.units:
@@ -851,6 +867,7 @@ def _continue_cell(
         tree=resumed.plan.result,
         produced=produced,
         delivered=delivered,
+        contract=contract,
     )
 
 
@@ -926,7 +943,9 @@ async def _plan_cell(
         plan=PlannedTreeRecord(root=root, result=tree),
     )
     _book_planning_budget(context, spend, failure=None)
-    return _ContinuedCell(root=root, tree=tree, produced={}, delivered={})
+    return _ContinuedCell(
+        root=root, tree=tree, produced={}, delivered={}, contract=None
+    )
 
 
 def _book_planning_budget(
@@ -1076,10 +1095,14 @@ async def _cell_contract(
 ) -> CellWorkspace | None:
     """Fix what this cell's units build against, or say it runs without one.
 
-    A tree an earlier attempt left is taken as it stands, on the same terms as
-    any other unit: the contract is a paid session, it is deterministic in
-    nothing but its cost, and re-running it would hand the units a DIFFERENT
-    agreement from the one the leaves already on disk were built against.
+    A tree an earlier attempt JOURNALLED is taken as it stands, on the same
+    terms as any other unit: the contract is a paid session, it is
+    deterministic in nothing but its cost, and re-running it would hand the
+    units a DIFFERENT agreement from the one the leaves already on disk were
+    built against. The journal decides, never the disk: a tree standing at
+    the contract's key with no row behind it is what a refused session leaves
+    (the seeded directory, untouched), and a freshly planned cell that took
+    one up on sight built eight leaves against an empty contract.
 
     Answers ``None`` when the arm declares no contract stage, which is the
     control this whole change is measured against: the units then seed from the
@@ -1088,7 +1111,8 @@ async def _cell_contract(
     Args:
         context: Everything the sweep is driven with.
         cell: Which run this is.
-        started: The objective and tree the units hang off.
+        started: The objective and tree the units hang off, and the contract
+            an earlier attempt recorded, if any.
         units: Sink the record is appended to. Mutated.
 
     Returns:
@@ -1096,14 +1120,8 @@ async def _cell_contract(
     """
     if not context.manifest.contract_stage:
         return None
-    existing = await asyncio.to_thread(
-        built_unit_workspace,
-        cell_key=cell.key,
-        unit_key=CONTRACT_UNIT_KEY,
-        work_root=context.work_root,
-    )
-    if existing is not None:
-        return existing
+    if started.contract is not None:
+        return started.contract
     owner = context.roster.lead
     workspace = await asyncio.to_thread(
         unit_workspace,
@@ -1237,8 +1255,8 @@ async def _build_tree_units(
         produced[str(parent.id)] = outcome.workspace
         delivered[str(parent.id)] = delivery_of(
             produced=outcome.produced,
-            delivered=outcome.delivered,
             detail=outcome.detail,
+            note="",
             files_changed=outcome.workspace_files_changed,
         )
         units.append(_merge_record(parent, node, outcome))
@@ -1369,8 +1387,8 @@ async def _build_missing_leaves(
         produced[key] = leaf.workspace
         delivered[key] = delivery_of(
             produced=leaf.produced,
-            delivered=leaf.delivered,
             detail=leaf.detail,
+            note=leaf.note,
             files_changed=leaf.workspace_files_changed,
         )
         # Deliberately synchronous inside a gathered coroutine. The append
@@ -1635,6 +1653,7 @@ def _leaf_record(
         output_tokens=leaf.output_tokens,
         executor=leaf.executor,
         detail=leaf.detail,
+        note=leaf.note,
         missing_declared_paths=leaf.missing_declared_paths,
         terminations=leaf.terminations,
         workspace_files_changed=leaf.workspace_files_changed,

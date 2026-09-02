@@ -151,6 +151,11 @@ class LeafOutcome:
             over-declaring planner is worth seeing and must not be able to
             zero a unit that did the work.
         detail: Why it is not delivered, for a human reading the run.
+        note: What that reader should know that is NOT a reason to doubt the
+            delivery; see ``UnitDelivery.note``. Carried apart from
+            ``detail`` all the way to the record, because the record refuses
+            a delivered unit with a reason and cannot tell the two apart once
+            they share a field.
         terminations: How each of its sessions ended, in order.
         workspace_files_changed: The symmetric difference between the tree
             before and after, so "spent turns, changed nothing" is readable
@@ -178,6 +183,7 @@ class LeafOutcome:
     executor: ModelPair | None = None
     missing_declared_paths: tuple[str, ...] = ()
     detail: str = ""
+    note: str = ""
     terminations: tuple[str, ...] = ()
     workspace_files_changed: int | None = None
     compaction_tokens: int = 0
@@ -379,7 +385,8 @@ async def run_leaf(
         output_tokens=spent.output_tokens,
         executor=ModelPair.of(owner, deps.declared_pairs),
         missing_declared_paths=final.missing,
-        detail=delivery.reason or delivery.note,
+        detail=delivery.reason,
+        note=delivery.note,
         terminations=spent.terminations,
         workspace_files_changed=delivery.workspace_files_changed,
         compaction_tokens=spent.compaction_tokens,
