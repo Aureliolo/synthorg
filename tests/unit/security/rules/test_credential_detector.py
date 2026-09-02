@@ -81,6 +81,18 @@ class TestCredentialDetectorDetectsSecrets:
                 "Generic PASSWORD assignment",
                 "PASSWORD=longpassword123",
             ),
+            (
+                "Quoted token literal in code",
+                'token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"',
+            ),
+            (
+                "Lowercase YAML password with digits",
+                "password: hunter2hunter2",
+            ),
+            (
+                "Quoted passphrase constant",
+                'SECRET = "correct-horse-battery-staple"',
+            ),
         ],
         ids=lambda x: x if isinstance(x, str) and len(x) < 30 else None,
     )
@@ -199,6 +211,42 @@ class TestCredentialDetectorPassThrough:
         detector = CredentialDetector()
         ctx = _ctx(arguments)
         assert detector.evaluate(ctx) is None
+
+
+@pytest.mark.unit
+class TestCodeThatNamesATokenIsNotACredential:
+    """Ordinary source code assigns to variables called ``token`` all day.
+
+    A live run had four of eight agents refused on ``write_file`` for a
+    parser whose tokeniser did ``token = self._peek()``; two of them spent
+    their whole budget bisecting the refusal and delivered nothing. A secret
+    VALUE is a literal or a run of secret-shaped characters, never a call, an
+    index or an attribute chain, and the rule reads the value's shape rather
+    than the variable's name.
+    """
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            "token = self._peek()",
+            "token: Token = self.tokens[self.pos]",
+            "password = getpass.getpass()",
+            "credential = build_credential(name)",
+            'TOKEN = re.compile(r"[A-Za-z_]+")',
+            "secret = None",
+            'SECRET_HEADER = "X-Secret-Header"',
+            "token = next_token",
+            (
+                "token = self._peek()\n"
+                "if token.kind == 'SELECT':\n"
+                "    return self._select()\n"
+            ),
+        ],
+    )
+    def test_code_shaped_assignments_pass(self, code: str) -> None:
+        detector = CredentialDetector()
+
+        assert detector.evaluate(_ctx({"content": code})) is None
 
 
 # ── Name property ────────────────────────────────────────────────────

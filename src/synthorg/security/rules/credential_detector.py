@@ -56,11 +56,40 @@ CREDENTIAL_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
         "GitHub personal access token",
         re.compile(r"(?<![A-Za-z0-9])ghp_[A-Za-z0-9]{36,}"),
     ),
+    # The three shapes a generic secret assignment takes, read by the VALUE
+    # rather than by the variable's name: an earlier form matched any
+    # ``token = <eight characters>`` case-insensitively, which is every
+    # tokeniser ever written (``token = self._peek()``), and a live run had
+    # four of eight agents refused on writing a parser, two of them for
+    # their whole budget. A call, an index or an attribute chain is code; a
+    # secret is a quoted literal, or a bare run of secret-shaped characters
+    # that carries a digit or is long enough that no identifier would.
     (
         "Generic secret assignment",
+        # A quoted literal, whatever the key's case.
         re.compile(
-            r"(?:SECRET|TOKEN|PASSWORD|CREDENTIAL)\s*[=:]\s*"
-            r"""['\"]?[^\s'\"]{8,}['\"]?""",
+            r"\w*(?:secret|token|password|credential)\w*\s*[=:]\s*"
+            r"""['\"](?:(?=[^\s'\"]*\d)[^\s'\"]{8,}|[^\s'\"]{16,})['\"]""",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Generic secret assignment",
+        # An environment-style assignment: an upper-case key and a bare value
+        # with no call, index or quote in it.
+        re.compile(
+            r"[A-Z_]*(?:SECRET|TOKEN|PASSWORD|CREDENTIAL)[A-Z_]*\s*[=:]\s*"
+            r"""(?:(?=[^\s'\"()\[\]]*\d)[^\s'\"()\[\]]{8,}|[^\s'\"()\[\]]{16,})""",
+        ),
+    ),
+    (
+        "Generic secret assignment",
+        # A lower- or mixed-case key with a bare value, the YAML and
+        # dotenv shape: only a run of secret-shaped characters carrying a
+        # digit, ending at a boundary no code continues from.
+        re.compile(
+            r"\w*(?:secret|token|password|credential)\w*\s*[=:]\s*"
+            r"(?=[A-Za-z0-9_\-/+=]*\d)[A-Za-z0-9_\-/+=]{8,}(?![\w.(\[])",
             re.IGNORECASE,
         ),
     ),
