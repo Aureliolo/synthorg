@@ -3,7 +3,7 @@
 
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, override
+from typing import TYPE_CHECKING, Final, assert_never, override
 
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.autonomy_enums import AutonomyLevel
@@ -610,6 +610,8 @@ class AgentEngineExecutionService(ResumeDispatchMixin):
                 owner_id = task_id
             case LifecycleStrategy.PER_CALL:
                 return
+            case _:
+                assert_never(self._lifecycle_strategy_kind)
         try:
             await backend.release_owner(
                 owner_id, project_id=project_id, image_override=image_override

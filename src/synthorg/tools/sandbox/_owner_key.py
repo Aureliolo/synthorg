@@ -13,7 +13,7 @@ nothing here talks to Docker.
 import hashlib
 import re
 import uuid
-from typing import Final
+from typing import Final, assert_never
 
 import structlog.contextvars
 
@@ -90,6 +90,8 @@ def context_owner(strategy_kind: LifecycleStrategy) -> str | None:
             ctx_key = ctx.get("task_id")
         case LifecycleStrategy.PER_CALL:
             ctx_key = None
+        case _:
+            assert_never(strategy_kind)
     return str(ctx_key) if ctx_key else None
 
 

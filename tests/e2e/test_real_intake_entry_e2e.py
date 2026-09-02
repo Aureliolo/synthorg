@@ -51,6 +51,7 @@ from synthorg.providers.models import (
     ToolDefinition,
 )
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.security.audit import AuditLog
 from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
@@ -159,6 +160,7 @@ async def _build_app_state(
         task_engine=task_engine,
         agent_registry=agent_registry,
         approval_store=ApprovalStore(),
+        audit_log=AuditLog(),
         clock=FakeClock(),
         agent_workspace_root=tmp_path,
         persistence=persistence,
@@ -174,6 +176,7 @@ async def _build_app_state(
     return make_app_state(
         config=root_config,
         approval_store=ApprovalStore(),
+        audit_log=AuditLog(),
         intake_entry_adapter=adapter,
         client_simulation_state=sim_state,
     )

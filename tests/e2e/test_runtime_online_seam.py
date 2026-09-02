@@ -48,6 +48,7 @@ from synthorg.providers.drivers.scripted import (
 )
 from synthorg.providers.models import ToolCall
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.security.audit import AuditLog
 from synthorg.settings.registry import get_registry
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService
@@ -136,6 +137,7 @@ async def test_runtime_executes_task_through_seam_with_safety_spine(
         task_engine=task_engine,
         agent_registry=agent_registry,
         approval_store=approval_store,
+        audit_log=AuditLog(),
         clock=SystemClock(),
         agent_workspace_root=tmp_path,
     )
