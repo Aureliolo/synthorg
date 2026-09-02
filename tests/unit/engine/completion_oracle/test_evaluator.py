@@ -192,7 +192,7 @@ class TestBuildTestOracle:
         assert result.blocks_completion
         # The reason is the agent's only instruction, so it names what records
         # a run rather than only that nothing did.
-        assert "whole command line" in result.reason
+        assert "exit status is the runner's own" in result.reason
         assert "echo $?" in result.reason
 
     async def test_required_latest_passed_is_verified(self) -> None:

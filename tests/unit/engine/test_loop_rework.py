@@ -158,5 +158,5 @@ class TestContinueRework:
         "actually run the tests" is not the instruction it was missing."""
         nudge = REWORK_NUDGE.format(reason=_REASON)
 
-        assert "whole command line" in nudge
+        assert "exit status is the runner's own" in nudge
         assert "echo $?" in nudge

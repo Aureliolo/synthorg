@@ -64,9 +64,9 @@ _TEST_RECORD_QUERY_LIMIT: Final[int] = 1000
 NO_TEST_RUN_REASON: Final[str] = (
     "No test run was recorded for this task, so there is no evidence the work "
     "builds or its tests pass (failing closed). A run is recorded only when the "
-    "test runner is the whole command line, so that its exit status is the "
-    "line's: `pytest -q` is recorded, `pytest -q; echo $?` is not. Run the "
-    "suite that way."
+    "line's exit status is the runner's own: `pytest -q` alone, or a `&&` "
+    "chain or pipeline ending in it, is recorded; `pytest -q; echo $?` is not, "
+    "because the `;` hands the line's status to `echo`. Run the suite that way."
 )
 """Upper bound on test records inspected per task.
 
