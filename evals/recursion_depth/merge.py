@@ -657,7 +657,11 @@ def _attempt_task(plan: MergePlan, findings: tuple[str, ...]) -> Task:
                 ),
             ),
             "assigned_to": str(plan.owner.id),
-            "status": TaskStatus.ASSIGNED,
+            # A transient the host never holds, so the engine's entry hop is
+            # skipped and the product's review is never opened on it: the
+            # merge has exactly one judge, the reviewer this loop runs, and a
+            # second verdict would also transition a row this loop re-runs.
+            "status": TaskStatus.IN_PROGRESS,
         }
     )
 

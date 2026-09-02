@@ -354,7 +354,9 @@ def _self_review_task(request: MergeReviewRequest) -> Task:
                 ),
             ),
             "assigned_to": str(request.owner.id),
-            "status": TaskStatus.ASSIGNED,
+            # A transient like the merge attempt it re-reads: unfiled, so the
+            # engine runs it without an entry hop and no review opens on it.
+            "status": TaskStatus.IN_PROGRESS,
         }
     )
 

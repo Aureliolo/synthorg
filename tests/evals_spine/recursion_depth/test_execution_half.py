@@ -29,9 +29,11 @@ from evals.errors import (
 from evals.harness.journal import open_journal
 from evals.harness.workspace import CellWorkspace
 from evals.recursion_depth import execute as execute_module
+from evals.recursion_depth import gate as gate_module
 from evals.recursion_depth import merge as merge_module
 from evals.recursion_depth import runner as runner_module
 from evals.recursion_depth.claims import RequirementId
+from evals.recursion_depth.contract import contract_task
 from evals.recursion_depth.execute import (
     UNBOUND,
     UNIT_REPORT_PATH,
@@ -381,6 +383,38 @@ class TestTheMergeBrief:
             review_limits=_limits(),
             attempts=2,
         )
+
+    def test_the_attempt_task_is_a_transient_the_host_never_holds(
+        self, tmp_path: Path
+    ) -> None:
+        # ASSIGNED would send the engine through the central task engine's
+        # entry hop, which refuses a row the host does not hold; IN_PROGRESS
+        # passes straight through and opens no review, so the merge keeps
+        # exactly one judge.
+        task = merge_module._attempt_task(self._plan(tmp_path, delivered=_CLEAN), ())
+
+        assert task.status is TaskStatus.IN_PROGRESS
+
+    def test_the_blind_pass_runs_the_same_transient_shape(self, tmp_path: Path) -> None:
+        plan = self._plan(tmp_path, delivered=_CLEAN)
+        request = MergeReviewRequest(
+            task=plan.task,
+            owner=plan.owner,
+            workspace=plan.workspace,
+            deliverable="a tree",
+            criteria=plan.criteria,
+            execution_id="x-review1",
+            limits=_limits(),
+        )
+
+        assert gate_module._self_review_task(request).status is TaskStatus.IN_PROGRESS
+
+    def test_the_contract_task_is_a_transient_too(self) -> None:
+        task = contract_task(
+            _task("Root"), spec=_spec(), owner=_identity("Builder 1"), units=("a",)
+        )
+
+        assert task.status is TaskStatus.IN_PROGRESS
 
     def test_it_permits_and_asks_for_recorded_amendments(self, tmp_path: Path) -> None:
         brief = merge_brief(self._plan(tmp_path, delivered=_CLEAN), ())

@@ -621,3 +621,31 @@ class TestLeafReviewFinding:
         probe.observe_leaf(LeafReview(task_status=None, verdict=None))
 
         assert leaf_review_finding(probe._leaf).passed is True
+
+    def test_a_leaf_that_stopped_short_is_unverified_not_absent(self) -> None:
+        # The product routes a turn-capped run to FAILED and never offers it
+        # to the pipeline, so the row moved (the host held it) and no verdict
+        # could exist: neither a wiring gap nor proof the pipeline runs.
+        finding = leaf_review_finding(LeafReview(task_status="failed", verdict=None))
+
+        assert finding.passed is None
+        assert "turn cap" in finding.observed
+
+    def test_a_parked_leaf_with_no_verdict_is_unverified(self) -> None:
+        finding = leaf_review_finding(LeafReview(task_status="blocked", verdict=None))
+
+        assert finding.passed is None
+
+    def test_a_completed_leaf_with_no_verdict_still_fails(self) -> None:
+        # Completed means the pipeline WAS asked, so no verdict is its absence.
+        finding = leaf_review_finding(LeafReview(task_status="in_review", verdict=None))
+
+        assert finding.passed is False
+
+    def test_the_probe_prefers_a_leaf_that_reached_a_verdict(self) -> None:
+        probe = WiringProbe(load_manifest(_MANIFEST))
+        probe.observe_leaf(LeafReview(task_status="failed", verdict=None))
+        probe.observe_leaf(LeafReview(task_status="completed", verdict="approve"))
+        probe.observe_leaf(LeafReview(task_status="blocked", verdict="escalate"))
+
+        assert probe._leaf == LeafReview(task_status="completed", verdict="approve")

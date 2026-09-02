@@ -38,6 +38,7 @@ from synthorg.api.state import AppState
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.core.completion_enums import REASONING_UNSET, ReasoningEffort
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.wiring_summary import EngineWiringSummary
@@ -175,8 +176,16 @@ class WiringProbe:
             self._session = outcome
 
     def observe_leaf(self, review: LeafReview) -> None:
-        """Remember the first leaf's review, for whether one reached it."""
-        if self._leaf is None:
+        """Remember the leaf that tells the most about whether review ran.
+
+        A leaf that stopped on its turn cap is FAILED by the product and is
+        never offered to the review pipeline, so the first leaf to finish is
+        not always one the pipeline could have judged; a later leaf that
+        carries a verdict answers the question the first one could not.
+        """
+        if self._leaf is None or (
+            self._leaf.verdict is None and review.verdict is not None
+        ):
             self._leaf = review
 
     async def report(
@@ -261,12 +270,31 @@ def leaf_review_finding(review: LeafReview | None) -> WiringFinding:
     observed = (
         f"task {review.task_status or 'absent'}, verdict {review.verdict or 'none'}"
     )
+    if review.verdict is None and review.task_status in _NEVER_OFFERED_FOR_REVIEW:
+        # The row moved, so the host held it, but the product routes a run
+        # that stopped short to FAILED and never asks the pipeline about it:
+        # the path is wired as far as this leaf went, and no leaf went further.
+        return WiringFinding(
+            treatment=NotBlankStr("leaf review"),
+            expected=expected,
+            observed=f"{observed}: no leaf finished inside its turn cap, so the "
+            "review pipeline was never asked",
+            passed=None,
+        )
     return WiringFinding(
         treatment=NotBlankStr("leaf review"),
         expected=expected,
         observed=observed,
         passed=review.task_status is not None and review.verdict is not None,
     )
+
+
+# Statuses the post-execution path assigns WITHOUT offering the run to review:
+# a run that hit its turn cap, budget or stagnation is FAILED, and a park at
+# entry (stakes nobody on the roster can take) is BLOCKED before any turn.
+_NEVER_OFFERED_FOR_REVIEW: Final[frozenset[str]] = frozenset(
+    {TaskStatus.FAILED.value, TaskStatus.BLOCKED.value}
+)
 
 
 def tool_surface_finding(names: tuple[str, ...] | None) -> WiringFinding:
