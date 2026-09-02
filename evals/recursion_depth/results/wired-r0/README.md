@@ -13,7 +13,7 @@ The verdict up front, in the same place the dossier put its own:
 > **One cell, and the sweep stopped at it.** The product's loop reached 7 of
 > 42 requirements with a live program, on 50.5M tokens over 16 sessions and
 > 4 h 37 min. What decided that was not the loop's architecture: it was a
-> 40-turn cap with no extension and a tool surface that refused, raced or hid
+> 40-turn cap with no extension and a tool surface that refused, raced, or hid
 > what the agents needed. All of that is fixed on this branch. Underneath it,
 > the assembly did not act on findings it was handed by name (RC3 stands),
 > and the model spent 95 to 100 percent of its output on hidden reasoning.
@@ -142,13 +142,22 @@ sweep was stopped.
 cap, 80 turns to the cap, then parked by the product on the 5.5M-token hard
 ceiling (the operator-resumable path, which is the right outcome for a run
 that has spent its budget). The roster reviewer rejected each in about a
-minute with code-quoted findings, and the two critical ones were the same
-every round: `sqlcsv/join.py` dispatches to an `inner_join` it never defines,
-and `exec.py` calls `join_rows` with two arguments where four are required.
+minute with code-quoted findings. Rounds 1 and 2 named the same two critical
+lines: `sqlcsv/join.py` dispatches to an `inner_join` it never defines, and
+`exec.py` calls `join_rows` with two arguments where four are required.
 Attempt 2 was briefed with both by name. It made 87 shell calls, read
-`join.py` four times, edited through `sed` and here-documents, and never wrote it.
-The final tree still carries both lines, its own suite fails 50 of 255, and
-the oracle passes 7 of 42.
+`join.py` four times, edited through `sed` and here-documents, and wrote
+nothing in 80 turns. Attempt 3 wrote `join.py` at turn 50 of 68, after over a
+million characters of hidden reasoning across seven single-call turns, and
+both lines are fixed in the kept tree; it then ran three ad hoc smoke scripts,
+never the suite, and parked mid-call before writing its report. What one run
+of the suite would have said survived it and all three read-only reviews:
+`exec.py` names `Star` and `Aggregate` without importing them, so every query
+raises `NameError` on the first line of `run_pipeline`, a defect the assembly
+inherited from one leaf and made worse by dropping the one import that leaf
+had. Round 3 rejected on the missing test run and a NULL-ordering
+inconsistency between two modules. The final tree's own suite fails 50 of
+255, and the oracle passes 7 of 42.
 
 ### Is anything left for incremental integration once the contract closed divergence?
 
@@ -296,6 +305,17 @@ Fixed on this branch, each with its test:
 - The harness zeroed the product's turn extensions, so a cap was a hard end
   rather than a park; removed, and a run that parks at its ceiling is
   recorded as parked rather than resumed.
+- Every tool result carrying an angle-bracket tag was parsed as HTML and
+  returned as its text, or as nothing when it opened with an XML declaration:
+  two sessions read `.synthorg-grade.xml`, got an empty result, and spent 8
+  and 12 turns on it. Outside this run the same door returned TypeScript
+  without its generics, JSX without its markup, a here-document without its
+  redirect and a diff without its lines, to an agent about to edit what it had
+  read. A result is now rewritten only when it is an HTML document that hid
+  something, and a clean document is returned byte for byte.
+- The verdict tool's schema now says which field the rework brief reads: every
+  round's first submission carried its findings in the summary and was
+  refused, one turn per round.
 - The session-flow and digest reports read a non-streamed planning response
   as no calls at all; the wiring smoke compared two spellings of one
   embedder reference, demanded a policy engine where the product configures
@@ -303,9 +323,20 @@ Fixed on this branch, each with its test:
 
 Named, not fixed here:
 
-- The assembly does not act on the findings it is briefed with (the register,
-  above). Every round's reviewer named the same two lines; three attempts
-  and 160 turns never wrote them.
+- The assembly spends its budget orienting and does not verify what it
+  writes (the register, above). Attempt 2 was briefed with two named lines
+  and edited nothing in 80 turns; attempt 3 fixed both at turn 50 of 68 and
+  never ran the suite, so the `NameError` in front of them reached the kept
+  tree. Three read-only reviews read that `exec.py` in full and none traced
+  `order_rows` back to the caller that raises.
+- The sandbox's `diff` is BusyBox, which rejects GNU `-x`; the assembly lost
+  six turns learning that before falling back to a hash comparison in
+  Python. Adding `diffutils` to `docker/sandbox/apko.yaml` needs the lock the
+  weekly workflow mints, which is why it is named here rather than changed.
+- The destructive-command rule matches the text `rm -rf`, so a
+  `find __pycache__ -exec rm -rf {} +` scoped away from `.children/` was
+  refused twice. The rule reads the verb and not the target, which is what
+  makes it a rule; two turns.
 - The contract session (60 turns) wrote 15 modules and 46 pending tests
   covering all 42 requirements and never wrote `CONTRACT.md`, the one path
   the stage checks; the harness reads that as `contract_absent` and still
@@ -325,11 +356,9 @@ Named, not fixed here:
   twenty minutes of silence) happened four times in 718 calls, on three
   leaves (one of them twice in a row) and never on the merge, whose own
   fifteen-minute silences stayed under the cap; the stall watcher reports
-  each correctly and the run continues.
-- The reviewer's first verdict submission was refused in every round for
-  carrying its findings in the summary rather than the findings list; the
-  tool's description says so and the model does it anyway. One turn per
-  round.
+  each correctly and the run continues. Merge attempt 3 emitted over a
+  million characters of reasoning across seven single-call turns at effort
+  `high` before its first write.
 - The health prober refuses the cloud connection every minute ("cannot
   resolve a health-probe API key"): the harness registers that provider
   without a catalog connection, so there is no credential to resolve. A

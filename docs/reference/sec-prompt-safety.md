@@ -83,6 +83,8 @@ Never call `lxml.html.fromstring` directly on attacker-controlled input. Use `HT
 
 `sanitize()` catches `XXEDetectedError` explicitly so the pre-scan's `TOOL_HTML_PARSE_XXE_DETECTED` event is the single log entry per rejection (no duplicate `TOOL_HTML_PARSE_ERROR`). Generic parse failures log `error=safe_error_description(exc)` without `exc_info=True` so attacker-controlled payload bytes are not serialised via traceback frame locals.
 
+`sanitize()` answers with the TEXT of anything carrying a tag, which is the reading a fetched page wants. The tool-result door in `ToolInvoker` calls `guard_tool_output()` instead: only an HTML document (`<!doctype html`, `<html`, `<head` or `<body`) is judged, one with nothing hidden in it is returned byte for byte, and one that hid something is returned as re-serialised HTML with the hidden and dangerous elements gone. Source code with angle brackets in it and an XML report reach the model as the tool returned them, because an agent edits what it reads and a rewritten read cannot be matched back to its file; keyed on any tag, the door returned TypeScript without its generics and a JUnit report as nothing at all. A leading XML declaration is dropped before parsing, since `lxml` refuses one on an already-decoded string and the refusal blanked every XHTML page.
+
 ## Pending-test report parsing
 
 The second XML surface, and the same threat class as the HTML one. The

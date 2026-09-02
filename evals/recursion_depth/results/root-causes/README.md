@@ -268,10 +268,12 @@ verdict below rests on one cell and says so.
   (7 of 27 shared modules against 11 of 14 without a contract). What remained
   was one unit's join signature and one unit's error taxonomy.
 - **RC3: stands, with the mechanism now on the wire.** The assembly was briefed
-  with the reviewer's findings by name, read the named file four times, edited
-  through `sed` and here-documents, and never wrote the two failing lines across 160
-  further turns and 26M tokens. Repair does not converge because the assembly
-  does not act on what it is told.
+  with the reviewer's findings by name; one attempt read the named file four
+  times, edited through `sed` and here-documents, and wrote nothing in 80
+  turns, and the next fixed both lines at turn 50 of 68 without ever running
+  the suite, leaving a `NameError` on every query's first line that three
+  read-only reviews also missed. Repair does not converge because the assembly
+  neither acts promptly on what it is told nor verifies what it writes.
 - **RC4: refuted as a cause at this pair.** The largest request was 125K
   tokens against an 838K compaction threshold; compaction correctly never
   fired, and tool-output abbreviation fired ten times. Nothing ran out of

@@ -1228,11 +1228,13 @@ What it says about the six root causes, in the order the dossier named them:
   unit's error taxonomy, both of which the assembly was told about and did not
   reconcile.
 - **RC3 (the merge cannot do its job).** Stands, and now with the mechanism on
-  the wire: the assembly was briefed with the reviewer's findings by name, read
-  the named file four times, edited through `sed` and here-documents rather
-  than the edit tool, and never wrote the two lines that failed it, over 160
-  further turns and 26M tokens. Repair rounds do not converge because the
-  assembly does not act on what it is told, not for want of being told.
+  the wire: the assembly was briefed with the reviewer's findings by name. One
+  attempt read the named file four times, edited through `sed` and
+  here-documents rather than the edit tool, and wrote nothing in 80 turns; the
+  next fixed both lines at turn 50 of 68 and never ran the suite, so a
+  `NameError` on every query's first line reached the kept tree past three
+  read-only reviews. Repair rounds do not converge because the assembly
+  neither acts promptly on what it is told nor verifies what it writes.
 - **RC4 (nothing manages context).** Refuted as a cause at this pair: the
   largest request was 125K tokens against an 838K compaction threshold, so
   compaction correctly never fired; tool-output abbreviation fired ten times.
