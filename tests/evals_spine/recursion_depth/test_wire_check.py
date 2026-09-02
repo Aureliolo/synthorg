@@ -17,7 +17,7 @@ from evals.errors import RecursionDepthSmokeRequiredError
 from evals.harness.stall_watch import ProgressTrackingLedger
 from evals.recursion_depth.manifest import Arm, StagnationTreatment, load_manifest
 from evals.recursion_depth.models import WiringFinding, WiringReport
-from evals.recursion_depth.session import SessionOutcome
+from evals.recursion_depth.session import LeafReview, SessionOutcome
 from evals.recursion_depth.wire_check import (
     WIRING_REPORT_NAME,
     WiringProbe,
@@ -25,6 +25,7 @@ from evals.recursion_depth.wire_check import (
     caching_finding,
     compaction_finding,
     governance_findings,
+    leaf_review_finding,
     load_wiring_report,
     matrix_digest,
     memory_finding,
@@ -576,3 +577,47 @@ class TestTheRecordingIsGated:
         assert len(unverified) == 1
         assert unverified[0]["treatments"] == ["prompt caching"]
         assert unverified[0]["log_level"] == "warning"
+
+
+class TestLeafReviewFinding:
+    """A pipeline PRESENT on the engine is not a leaf having been reviewed.
+
+    Eight recordings carried a fully wired review pipeline that no leaf ever
+    reached, because the host never held the leaf's task and the transition
+    into review was refused; nothing in the wiring summary could tell.
+    """
+
+    def test_a_reviewed_leaf_passes(self) -> None:
+        finding = leaf_review_finding(
+            LeafReview(task_status="completed", verdict="approve")
+        )
+
+        assert finding.passed is True
+        assert "approve" in finding.observed
+
+    def test_a_leaf_the_host_never_held_fails(self) -> None:
+        finding = leaf_review_finding(LeafReview(task_status=None, verdict=None))
+
+        assert finding.passed is False
+        assert "absent" in finding.observed
+
+    def test_a_park_is_a_review_that_reached_the_leaf(self) -> None:
+        # An escalation is the product's answer, not the harness's absence:
+        # the row moved and a verdict was archived, so the path is wired.
+        finding = leaf_review_finding(
+            LeafReview(task_status="blocked", verdict="escalate")
+        )
+
+        assert finding.passed is True
+
+    def test_no_finished_leaf_is_unverified(self) -> None:
+        finding = leaf_review_finding(None)
+
+        assert finding.passed is None
+
+    def test_the_probe_keeps_the_first_leaf(self) -> None:
+        probe = WiringProbe(load_manifest(_MANIFEST))
+        probe.observe_leaf(LeafReview(task_status="completed", verdict="approve"))
+        probe.observe_leaf(LeafReview(task_status=None, verdict=None))
+
+        assert leaf_review_finding(probe._leaf).passed is True

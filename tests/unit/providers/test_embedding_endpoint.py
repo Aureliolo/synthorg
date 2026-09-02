@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthorg.config.provider_schema import ProviderConfig
+from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.providers.embedding_endpoint import (
     EmbeddingEndpoint,
@@ -40,6 +40,82 @@ def _catalog(**credentials: str) -> _Configured:
     return mock_of[ConnectionCatalog](
         get_credentials=AsyncMock(return_value=dict(credentials)),
     )
+
+
+class TestEndpointRouting:
+    """The endpoint carries how litellm is to ROUTE the call, not only where.
+
+    Completion dispatch reaches litellm through the provider's declared
+    ``litellm_provider`` and resolves an alias to the configured id; an
+    embedding call built from the provider NAME alone reaches neither, so a
+    provider named for what it is rather than for litellm's routing key, or
+    a model bound by alias, could not be embedded through at all.
+    """
+
+    async def test_the_litellm_provider_is_the_route(self) -> None:
+        endpoint = await resolve_embedding_endpoint(
+            "local-embeddings",
+            config_resolver=_resolver(
+                **{
+                    "local-embeddings": ProviderConfig(
+                        driver="scripted",
+                        litellm_provider="openai",
+                        auth_type=AuthType.NONE,
+                        base_url="http://localhost:11434/v1",
+                    )
+                }
+            ),
+            catalog=None,
+        )
+
+        assert endpoint.route == "openai"
+
+    async def test_a_provider_declaring_no_route_carries_none(self) -> None:
+        # ``None`` rather than the provider name, so the one place that
+        # builds the model reference decides the fallback.
+        endpoint = await resolve_embedding_endpoint(
+            "test-provider",
+            config_resolver=_resolver(
+                **{
+                    "test-provider": ProviderConfig(
+                        driver="scripted", auth_type=AuthType.NONE
+                    )
+                }
+            ),
+            catalog=None,
+        )
+
+        assert endpoint.route is None
+
+    async def test_declared_aliases_resolve_to_the_configured_id(self) -> None:
+        endpoint = await resolve_embedding_endpoint(
+            "test-provider",
+            config_resolver=_resolver(
+                **{
+                    "test-provider": ProviderConfig(
+                        driver="scripted",
+                        auth_type=AuthType.NONE,
+                        models=(
+                            ProviderModelConfig(
+                                id="test-embed-001", alias="example-embedding-001"
+                            ),
+                        ),
+                    )
+                }
+            ),
+            catalog=None,
+        )
+
+        assert endpoint.model_ids == {
+            "test-embed-001": "test-embed-001",
+            "example-embedding-001": "test-embed-001",
+        }
+
+    def test_a_bare_endpoint_declares_no_routing(self) -> None:
+        endpoint = EmbeddingEndpoint(api_base="http://localhost:11434")
+
+        assert endpoint.route is None
+        assert endpoint.model_ids is None
 
 
 class TestEndpointResolution:

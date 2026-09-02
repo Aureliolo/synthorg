@@ -252,8 +252,17 @@ leaf_deep_claims: 4
 # the sweep arms its settings, so what a recording remembered with is on its
 # face rather than inherited from whatever the host happened to hold. The
 # placeholder is aliased in provider config exactly like the pairs above.
+#
+# Its own CONNECTION rather than the executor's. An embedder answers every
+# recall and every write of every session, which on the pairs' metered
+# connection would spend their session window on calls that measure nothing
+# about the loop; and a company config aliasing the placeholder onto a
+# separately served model (a local one, typically) needs a provider entry
+# whose base URL is that model's, which the executor's is not. The preflight
+# probes this connection with one real embedding call before anything is
+# spent, exactly as it probes the two pairs.
 embedder:
-  provider: example-provider
+  provider: example-embedding-provider
   model_id: example-embedding-001
 # The stagnation detector every session runs under, in the product's own
 # vocabulary (`engine.stagnation_strategy`). Stated rather than inherited: a

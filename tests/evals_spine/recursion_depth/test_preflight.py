@@ -12,10 +12,18 @@ import pytest
 from evals.errors import HarnessDockerUnavailableError, HarnessProviderMissingError
 from evals.recursion_depth import preflight as preflight_module
 from evals.recursion_depth.manifest import load_manifest
-from evals.recursion_depth.preflight import _check_docker, _probe_pair, run_preflight
+from evals.recursion_depth.preflight import (
+    _check_docker,
+    _probe_embedder,
+    _probe_pair,
+    run_preflight,
+)
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.config.schema import RootConfig
 from synthorg.core.types import NotBlankStr
+from synthorg.memory.errors import MemoryEmbeddingError
+from synthorg.providers.embedding_endpoint import EmbeddingEndpoint
+from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import ProviderError
 
 pytestmark = pytest.mark.unit
@@ -65,7 +73,7 @@ class TestProviderCoverage:
 
 
 def _configured() -> RootConfig:
-    """Build a config whose providers block carries the manifest's pair.
+    """Build a config whose providers block carries every manifest binding.
 
     Returns:
         The config.
@@ -76,9 +84,88 @@ def _configured() -> RootConfig:
             "example-provider": ProviderConfig(
                 connection_name=NotBlankStr("example-provider"),
                 models=(ProviderModelConfig(id=NotBlankStr("example-capable-001")),),
-            )
+            ),
+            "example-embedding-provider": ProviderConfig(
+                litellm_provider=NotBlankStr("openai"),
+                auth_type=AuthType.NONE,
+                base_url=NotBlankStr("http://localhost:11434/v1"),
+                models=(
+                    ProviderModelConfig(
+                        id=NotBlankStr("test-embed-001"),
+                        alias=NotBlankStr("example-embedding-001"),
+                    ),
+                ),
+            ),
         },
     )
+
+
+class TestEmbedderCoverage:
+    """Memory that cannot resolve its provider stays OFF, after the plan is paid."""
+
+    async def test_an_embedder_provider_nothing_carries_is_refused_by_name(
+        self,
+    ) -> None:
+        # The two pairs are present, so what is missing is the embedder alone.
+        config = RootConfig(
+            company_name=NotBlankStr("Pairs only"),
+            providers={"example-provider": _configured().providers["example-provider"]},
+        )
+
+        with pytest.raises(
+            HarnessProviderMissingError, match="example-embedding-provider"
+        ):
+            await run_preflight(
+                manifest=load_manifest(_MANIFEST), company_config=config
+            )
+
+
+class TestTheEmbedderProbe:
+    """The embedder is probed with the call memory itself makes.
+
+    Found by planning the first wired recording: the preflight probed the two
+    pairs and nothing else, so an embedder that could not answer surfaced only
+    as memory OFF in the smoke's wiring report, after a plan had been bought.
+    """
+
+    async def test_an_embedder_that_cannot_answer_is_refused_against_its_role(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _refuse(**kwargs: object) -> int:
+            del kwargs
+            raise MemoryEmbeddingError(_UPSTREAM_REFUSAL)
+
+        monkeypatch.setattr(preflight_module, "probe_embedder_dims", _refuse)
+        manifest = load_manifest(_MANIFEST)
+
+        with pytest.raises(HarnessProviderMissingError, match="embedder"):
+            await _probe_embedder(
+                embedder=manifest.embedder, company_config=_configured()
+            )
+
+    async def test_the_probe_is_addressed_as_memory_addresses_it(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Route, alias and endpoint, or the probe proves a call nothing makes."""
+        seen: list[dict[str, object]] = []
+
+        async def _answer(**kwargs: object) -> int:
+            seen.append(kwargs)
+            return 8
+
+        monkeypatch.setattr(preflight_module, "probe_embedder_dims", _answer)
+        manifest = load_manifest(_MANIFEST)
+
+        await _probe_embedder(embedder=manifest.embedder, company_config=_configured())
+
+        endpoint = seen[0]["endpoint"]
+        assert isinstance(endpoint, EmbeddingEndpoint)
+        assert endpoint.api_base == "http://localhost:11434/v1"
+        assert endpoint.route == "openai"
+        assert endpoint.model_ids is not None
+        assert endpoint.model_ids["example-embedding-001"] == "test-embed-001"
+        assert seen[0]["provider"] == "example-embedding-provider"
+        assert seen[0]["model"] == "example-embedding-001"
 
 
 type _Complete = Callable[[object, str], Awaitable[object]]

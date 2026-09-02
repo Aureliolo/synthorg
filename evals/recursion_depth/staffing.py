@@ -215,12 +215,20 @@ async def build_roster(
     reviewer: ModelPair,
     capability: CapabilityPolicy,
     leaf_effort: ReasoningEffort | None = None,
+    registry: AgentRegistryService | None = None,
 ) -> SweepRoster:
     """Register the sweep's agents and wire the staffing service over them.
 
     Args:
         executor: The pair every builder is bound to.
         reviewer: The pair every reviewer is bound to.
+        registry: The roster to register the agents INTO. A recording hands
+            over the booted host's own, because the product's review path
+            staffs a leaf's reviewer from that one and nothing else: a
+            roster held apart from it leaves every leaf parked unstaffed
+            while the merge gate, which is handed this roster directly,
+            reads as fully staffed. ``None`` builds a fresh one, which is
+            the offline suite's path.
         capability: The one capability policy, shared by selection and
             dispatch so a reviewer is measured against the bar the work
             itself was measured against.
@@ -231,7 +239,8 @@ async def build_roster(
     Returns:
         The registered roster.
     """
-    registry = AgentRegistryService()
+    if registry is None:
+        registry = AgentRegistryService()
     builders = tuple(
         _identity(
             slug=f"builder-{index}",

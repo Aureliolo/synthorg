@@ -30,6 +30,7 @@ from evals.recursion_depth.grading import VERDICT_COLLECTED_NOTHING
 from evals.recursion_depth.manifest import ModelPair
 from evals.recursion_depth.models import reject_negative_deltas, sum_costs
 from evals.recursion_depth.session import (
+    LeafReview,
     SessionLimits,
     SessionOutcome,
     SweepDeps,
@@ -154,6 +155,15 @@ class LeafOutcome:
         workspace_files_changed: The symmetric difference between the tree
             before and after, so "spent turns, changed nothing" is readable
             from the record without a transcript.
+        verdict: What the product's own review path decided, read back off
+            the host: the peer reviewer's verdict in its own vocabulary, or
+            ``None`` when no review reached this leaf. Recorded beside
+            ``delivered`` and never folded into it: delivery is the tree's
+            answer, and this is the product's.
+        parked: Whether that review ended in a park nobody in a sweep can
+            answer (an escalation, or an unstaffed role).
+        task_status: The task's status after the post-execution path, in
+            the product's vocabulary, or ``None`` when no row was filed.
     """
 
     workspace: CellWorkspace
@@ -172,6 +182,9 @@ class LeafOutcome:
     workspace_files_changed: int | None = None
     compaction_tokens: int = 0
     compaction_cost: float | None = 0.0
+    verdict: str | None = None
+    parked: bool = False
+    task_status: str | None = None
 
 
 def leaf_task(
@@ -309,6 +322,7 @@ async def run_leaf(
     # produced: the workspace is recreated from the committed seed, and what
     # the seed already held is not work this unit did.
     baseline = await asyncio.to_thread(produced_tree, workspace)
+    task = await _filed(deps, task, owner)
     outcome = await run_session(
         deps,
         identity=owner,
@@ -352,6 +366,7 @@ async def run_leaf(
         deps, task, workspace, outcome, baseline, turns=spent.turns, owned=owned
     )
     final = await asyncio.to_thread(probe_artifacts, task, workspace)
+    review = await _reviewed(deps, task)
     return LeafOutcome(
         workspace=workspace,
         delivered=delivery.delivered,
@@ -369,7 +384,54 @@ async def run_leaf(
         workspace_files_changed=delivery.workspace_files_changed,
         compaction_tokens=spent.compaction_tokens,
         compaction_cost=spent.compaction_cost,
+        verdict=review.verdict,
+        parked=review.task_status == TaskStatus.BLOCKED.value,
+        task_status=review.task_status,
     )
+
+
+#: What a leaf reads back when nothing was filed for it: no row, no verdict.
+_UNREVIEWED: Final[LeafReview] = LeafReview(task_status=None, verdict=None)
+
+
+async def _filed(deps: SweepDeps, task: Task, owner: AgentIdentity) -> Task:
+    """File *task* with the host as *owner*'s, and return the row as filed.
+
+    ASSIGNED rather than CREATED, because that is the row the engine's own
+    entry hop expects: it moves ASSIGNED to IN_PROGRESS on its first turn and
+    IN_PROGRESS to IN_REVIEW on its last, and a row filed at any other status
+    has the first of those refused and the run reported against a lifecycle
+    that never started. Re-validated rather than ``model_copy``-ed, because
+    a copy runs no validator and the assignee is a constrained field.
+
+    Returns:
+        The task the session is to run, which is what was filed.
+    """
+    if deps.file_task is None:
+        return task
+    assigned = Task.model_validate(
+        task.model_dump()
+        | {
+            "status": TaskStatus.ASSIGNED,
+            "assigned_to": NotBlankStr(str(owner.id)),
+        }
+    )
+    await deps.file_task(assigned)
+    return assigned
+
+
+async def _reviewed(deps: SweepDeps, task: Task) -> LeafReview:
+    """Read what the product decided about *task*, once its session is over.
+
+    Returns:
+        The review, or the unreviewed reading when nothing was filed.
+    """
+    if deps.read_review is None:
+        return _UNREVIEWED
+    review = await deps.read_review(str(task.id))
+    if deps.on_leaf_reviewed is not None:
+        deps.on_leaf_reviewed(review)
+    return review
 
 
 @dataclass(frozen=True, slots=True)

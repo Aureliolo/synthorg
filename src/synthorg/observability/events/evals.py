@@ -147,6 +147,7 @@ EVALS_RECURSION_NO_CELLS: Final[str] = "evals.recursion_depth.no_cells_measured"
 EVALS_RECURSION_SYSTEMIC_FAILURE: Final[str] = "evals.recursion_depth.systemic_failure"
 EVALS_RECURSION_GRADED: Final[str] = "evals.recursion_depth.graded"
 EVALS_RECURSION_PREFLIGHT_PASSED: Final[str] = "evals.recursion_depth.preflight_passed"
+EVALS_RECURSION_EMBEDDER_PROBED: Final[str] = "evals.recursion_depth.embedder_probed"
 EVALS_RECURSION_PLAN_RETRIED: Final[str] = "evals.recursion_depth.plan_retried"
 
 EVALS_RECURSION_PLAN_FAILED: Final[str] = "evals.recursion_depth.plan_failed"

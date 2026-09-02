@@ -30,10 +30,16 @@ from evals.errors import (
     HarnessImageUnresolvedError,
     HarnessProviderMissingError,
 )
-from evals.recursion_depth.manifest import ModelPair, RecursionDepthManifest
+from evals.recursion_depth.manifest import (
+    EmbedderPair,
+    ModelPair,
+    RecursionDepthManifest,
+)
 from synthorg.config.schema import RootConfig
 from synthorg.core.critical_errors import reraise_critical
 from synthorg.core.resilience import GeneralRetryHandler
+from synthorg.memory.embedding.probe import probe_embedder_dims
+from synthorg.memory.errors import MemoryEmbeddingError
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
     EVALS_HARNESS_DOCKER_UNAVAILABLE,
@@ -41,9 +47,12 @@ from synthorg.observability.events.evals import (
     EVALS_HARNESS_IMAGE_UNRESOLVED,
     EVALS_HARNESS_PROBE_CLEANUP_FAILED,
     EVALS_HARNESS_PROVIDER_MISSING,
+    EVALS_RECURSION_EMBEDDER_PROBED,
     EVALS_RECURSION_PREFLIGHT_PASSED,
 )
 from synthorg.observability.redaction import safe_error_description
+from synthorg.providers.drivers.litellm_auth import AuthContext, resolve_auth_material
+from synthorg.providers.embedding_endpoint import endpoint_for_config
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.errors import ProviderError
 from synthorg.providers.models import ChatMessage, CompletionConfig
@@ -103,34 +112,41 @@ async def run_preflight(
     pairs = (("executor", manifest.executor), ("reviewer", manifest.reviewer))
     for role, pair in pairs:
         await _probe_pair(role=role, pair=pair, company_config=company_config)
+    await _probe_embedder(embedder=manifest.embedder, company_config=company_config)
     logger.info(
         EVALS_RECURSION_PREFLIGHT_PASSED,
         executor=manifest.executor.label,
         reviewer=manifest.reviewer.label,
+        embedder=manifest.embedder.label,
     )
 
 
 def _check_pair_providers(
     *, manifest: RecursionDepthManifest, company_config: RootConfig
 ) -> None:
-    """Confirm both pairs name a provider the company config carries.
+    """Confirm every binding names a provider the company config carries.
 
     Separate from the probe because it needs no network and catches the easiest
     mistake there is: omitting ``--company-config`` entirely, whose default
     carries no ``providers`` block at all.
+
+    The embedder is held to the same check as the two pairs. Memory resolves
+    its provider off the persisted configs at boot and, finding none, stays
+    OFF and says so in the log, which a recording only reads back as a failed
+    wiring finding once a plan has been bought.
 
     Args:
         manifest: The recording matrix.
         company_config: The config the run will boot against.
 
     Raises:
-        HarnessProviderMissingError: A pair names an absent provider.
+        HarnessProviderMissingError: A binding names an absent provider.
     """
     missing = sorted(
         {
-            pair.provider
-            for pair in (manifest.executor, manifest.reviewer)
-            if pair.provider not in company_config.providers
+            binding.provider
+            for binding in (manifest.executor, manifest.reviewer, manifest.embedder)
+            if binding.provider not in company_config.providers
         }
     )
     if not missing:
@@ -143,9 +159,63 @@ def _check_pair_providers(
     msg = (
         f"the manifest names providers absent from the company config: "
         f"{', '.join(missing)}. Pass --company-config pointing at a config "
-        f"whose providers block carries both the executor and the reviewer."
+        f"whose providers block carries the executor, the reviewer and the "
+        f"embedder."
     )
     raise HarnessProviderMissingError(msg)
+
+
+async def _probe_embedder(
+    *, embedder: EmbedderPair, company_config: RootConfig
+) -> None:
+    """Prove the embedder answers, through the call memory itself makes.
+
+    The width probe is the product's own first call to an embedder, and it
+    is addressed exactly as memory addresses every later one: at the
+    provider's configured endpoint, on litellm's route for it, under the id
+    the alias resolves to. Reaching litellm any other way here would prove a
+    call the deployment never makes.
+
+    Args:
+        embedder: The binding to probe.
+        company_config: The config carrying its provider.
+
+    Raises:
+        HarnessProviderMissingError: The embedder could not answer.
+    """
+    config = company_config.providers[embedder.provider]
+    material = resolve_auth_material(
+        AuthContext(
+            config=config,
+            resolved=None,
+            catalog_present=False,
+            provider_name=embedder.provider,
+            litellm_model=embedder.model_id,
+        )
+    )
+    endpoint = endpoint_for_config(embedder.provider, config, material=material)
+    try:
+        width = await probe_embedder_dims(
+            provider=embedder.provider,
+            model=embedder.model_id,
+            endpoint=endpoint,
+            timeout_seconds=_PROBE_TIMEOUT_SECONDS,
+        )
+    except MemoryEmbeddingError as exc:
+        logger.error(
+            EVALS_HARNESS_PROVIDER_MISSING,
+            role="embedder",
+            pair=embedder.label,
+            error_type=type(exc).__name__,
+            error=safe_error_description(exc),
+        )
+        msg = (
+            f"the embedder {embedder.label} could not answer one embedding "
+            f"request, so memory would stay off for every cell recorded "
+            f"against it: {safe_error_description(exc)}"
+        )
+        raise HarnessProviderMissingError(msg) from exc
+    logger.info(EVALS_RECURSION_EMBEDDER_PROBED, embedder=embedder.label, width=width)
 
 
 async def _probe_pair(

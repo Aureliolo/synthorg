@@ -1640,6 +1640,8 @@ def _leaf_record(
         workspace_files_changed=leaf.workspace_files_changed,
         compaction_tokens=leaf.compaction_tokens,
         compaction_cost=leaf.compaction_cost,
+        verdict=NotBlankStr(leaf.verdict) if leaf.verdict is not None else None,
+        parked=leaf.parked,
     )
 
 

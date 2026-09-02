@@ -20,8 +20,8 @@ from synthorg.budget.tracker_protocol import CostTrackerProtocol
 from synthorg.memory.embedding.dispatch import (
     embedding_kwargs,
     embedding_retry_handler,
-    format_model_ref,
     record_embedding_cost,
+    routed_model_ref,
     with_deadline,
 )
 from synthorg.memory.embedding.hashing import (
@@ -105,7 +105,7 @@ async def probe_embedder_dims(
     if is_builtin_embedder(provider, model):
         return BUILTIN_EMBEDDER_DIMS
 
-    model_ref = format_model_ref(provider, model)
+    model_ref = routed_model_ref(provider, model, endpoint)
     from litellm import aembedding  # noqa: PLC0415 -- heavy import, call-time
 
     kwargs = embedding_kwargs(

@@ -245,6 +245,47 @@ type SessionObserver = Callable[[SessionOutcome], None]
 
 
 @dataclass(frozen=True)
+class LeafReview:
+    """What the product's own review path decided about one leaf.
+
+    Read back off the booted host after the leaf's session, never off the
+    session itself: the review runs inside the engine's post-execution path
+    and leaves its verdict in the task row and the oracle archive, which is
+    where a deployment reads it too.
+
+    Attributes:
+        task_status: The task's status once the engine's post-execution path
+            has run, in the product's own vocabulary. ``COMPLETED`` is a
+            verdict that let it through, ``IN_PROGRESS`` a rejection routed
+            back for rework this harness does not perform, ``BLOCKED`` a park
+            nobody here can answer. ``None`` when the host holds no such row,
+            which is what a leaf the harness never filed looks like.
+        verdict: The peer reviewer's aggregate verdict, or ``None`` when no
+            review row was archived for the task.
+    """
+
+    task_status: str | None
+    verdict: str | None
+
+
+#: Files a unit task with the booted host BEFORE its session runs, so the
+#: engine's post-execution path finds the row it moves. Without it the
+#: transition is refused as "task not found", no review approval is created
+#: and no review pipeline runs, and the leaf reads as one session with no
+#: review ever having been offered to it.
+type TaskFiler = Callable[[Task], Awaitable[None]]
+
+#: Reads what the product's review path decided about a task, after its
+#: session. Keyed on the task id because the engine mints its own execution
+#: id per run and the archive is keyed on that one.
+type ReviewReader = Callable[[str], Awaitable[LeafReview]]
+
+#: Told about a leaf's review the moment it is read back. The seam the smoke
+#: reads whether the product's own review reached a leaf through.
+type LeafReviewObserver = Callable[[LeafReview], None]
+
+
+@dataclass(frozen=True)
 class SweepDeps:
     """Runtime collaborators every unit of a sweep is driven with.
 
@@ -308,6 +349,16 @@ class SweepDeps:
             through a provider not in this set reports its cost as ``None``
             rather than the connection's own always-zero figure, which is a
             different claim: "unmeasured" is not "free".
+        file_task: Files a leaf's task with the booted host before its
+            session, so the product's post-execution path can move the row
+            and review it. ``None`` runs the leaf against no row at all,
+            which is the offline suite's path and what every recording
+            before this seam existed measured.
+        read_review: Reads the product's verdict on a leaf back off the host
+            after its session. ``None`` alongside ``file_task`` being
+            ``None``.
+        on_leaf_reviewed: Told about every leaf's review as it is read
+            back; the smoke's probe, or ``None``.
     """
 
     app_state: AppState
@@ -331,6 +382,9 @@ class SweepDeps:
     on_stall: StallReporter | None = None
     declared_pairs: tuple[ModelPair, ...] = ()
     priced_providers: frozenset[str] = frozenset()
+    file_task: TaskFiler | None = None
+    read_review: ReviewReader | None = None
+    on_leaf_reviewed: LeafReviewObserver | None = None
 
 
 @dataclass(frozen=True)

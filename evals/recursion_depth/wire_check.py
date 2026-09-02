@@ -33,7 +33,7 @@ from evals.errors import RecursionDepthSmokeRequiredError
 from evals.harness.stall_watch import ProgressTrackingLedger
 from evals.recursion_depth.manifest import Arm, ModelPair, RecursionDepthManifest
 from evals.recursion_depth.models import WiringFinding, WiringReport
-from evals.recursion_depth.session import SessionOutcome
+from evals.recursion_depth.session import LeafReview, SessionOutcome
 from synthorg.api.state import AppState
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker_protocol import collect_all_records
@@ -161,6 +161,7 @@ class WiringProbe:
         self._engine: AgentEngine | None = None
         self._ledger: ProgressTrackingLedger | None = None
         self._session: SessionOutcome | None = None
+        self._leaf: LeafReview | None = None
 
     def observe(self, engine: AgentEngine, ledger: ProgressTrackingLedger) -> None:
         """Remember the first engine built and the ledger it spends into."""
@@ -172,6 +173,11 @@ class WiringProbe:
         """Remember the first session that finished, for what its run had."""
         if self._session is None:
             self._session = outcome
+
+    def observe_leaf(self, review: LeafReview) -> None:
+        """Remember the first leaf's review, for whether one reached it."""
+        if self._leaf is None:
+            self._leaf = review
 
     async def report(
         self,
@@ -208,6 +214,7 @@ class WiringProbe:
             memory_finding(app_state, self._manifest),
             budget_finding(wiring, self._ledger),
             *governance_findings(wiring),
+            leaf_review_finding(self._leaf),
             # Off the loop: it walks and reads every transcript the cell
             # wrote, on the same loop the gateway is still serving.
             await asyncio.to_thread(reasoning_finding, transcript_root, self._manifest),
@@ -225,6 +232,41 @@ class WiringProbe:
             unverified=list(report.unverified),
         )
         return report
+
+
+def leaf_review_finding(review: LeafReview | None) -> WiringFinding:
+    """Whether the product's own review path reached a leaf.
+
+    The review pipeline being PRESENT on the engine is one finding; a leaf
+    actually passing through it is another, and the second is the one that
+    failed silently for eight recordings: a task the host never held has its
+    post-execution transition refused, no approval is created and no pipeline
+    runs, while every wiring summary reads as fully wired.
+
+    Args:
+        review: What the first leaf read back, or ``None`` when no leaf
+            finished, which cannot be told apart from none being filed.
+
+    Returns:
+        The finding.
+    """
+    expected = "a task row the post-execution path moved, and a verdict on it"
+    if review is None:
+        return WiringFinding(
+            treatment=NotBlankStr("leaf review"),
+            expected=expected,
+            observed="no finished leaf recorded a review",
+            passed=None,
+        )
+    observed = (
+        f"task {review.task_status or 'absent'}, verdict {review.verdict or 'none'}"
+    )
+    return WiringFinding(
+        treatment=NotBlankStr("leaf review"),
+        expected=expected,
+        observed=observed,
+        passed=review.task_status is not None and review.verdict is not None,
+    )
 
 
 def tool_surface_finding(names: tuple[str, ...] | None) -> WiringFinding:

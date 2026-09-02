@@ -31,6 +31,7 @@ from synthorg.memory.embedding.dispatch import (
     embedding_retry_handler,
     format_model_ref,
     record_embedding_cost,
+    routed_model_ref,
     with_deadline,
 )
 from synthorg.memory.errors import MemoryEmbeddingError
@@ -109,7 +110,9 @@ class ProviderTextEmbedder:
         from litellm import aembedding  # noqa: PLC0415 -- heavy import, call-time
 
         kwargs = embedding_kwargs(
-            model_ref=self.model_ref,
+            model_ref=routed_model_ref(
+                self._config.provider, self._config.model, self._endpoint
+            ),
             inputs=list(texts),
             endpoint=self._endpoint,
         )

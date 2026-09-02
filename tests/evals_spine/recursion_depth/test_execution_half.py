@@ -97,6 +97,7 @@ from evals.recursion_depth.runner import (
     run_sweep,
 )
 from evals.recursion_depth.session import (
+    LeafReview,
     SessionLimits,
     SessionOutcome,
     SweepDeps,
@@ -2434,3 +2435,142 @@ class TestTheMatrix:
         # assertion: the planner books its sessions on every call including a
         # failing one, so a spend of zero is a planner that never ran.
         assert context.budget.spent == 0
+
+
+class TestLeafReview:
+    """A leaf is filed with the host before it runs, and judged by the product.
+
+    The engine's post-execution path moves the task it was handed through
+    IN_PROGRESS to IN_REVIEW and runs the review pipeline on it, and it can
+    only move a row the host holds: a task built in memory and never filed
+    has that transition refused as not found, no approval is created, and
+    no review runs, while every wiring summary reads as fully wired.
+    """
+
+    @staticmethod
+    def _task() -> Task:
+        return Task(
+            id=as_uuid("leaf-review"),
+            title=NotBlankStr("Reviewed leaf"),
+            description=NotBlankStr("Build the unit"),
+            type=TaskType.DEVELOPMENT,
+            priority=Priority.MEDIUM,
+            project=NotBlankStr("p1"),
+            created_by=NotBlankStr("sweep"),
+            status=TaskStatus.CREATED,
+            artifacts_expected=(
+                ExpectedArtifact(
+                    path=NotBlankStr("src/unit.py"), type=ArtifactType.CODE
+                ),
+            ),
+        )
+
+    async def _leaf(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        review: LeafReview | None,
+    ) -> tuple[LeafOutcome, list[Task], list[Task]]:
+        """Run one leaf, recording what was filed and what the session got.
+
+        Returns:
+            The outcome, the tasks filed, and the tasks the session ran.
+        """
+        filed: list[Task] = []
+        ran: list[Task] = []
+        observed: list[LeafReview] = []
+        workspace = _workspace(tmp_path, "leaf")
+
+        async def _file(task: Task) -> None:
+            filed.append(task)
+
+        async def _read(task_id: str) -> LeafReview:
+            assert review is not None
+            assert task_id == str(as_uuid("leaf-review"))
+            return review
+
+        async def _scripted(
+            _deps_arg: SweepDeps, *, task: Task, **_rest: object
+        ) -> SessionOutcome:
+            ran.append(task)
+            (workspace.project_dir / "src").mkdir(parents=True, exist_ok=True)
+            (workspace.project_dir / "src" / "unit.py").write_text(
+                "real work", encoding="utf-8"
+            )
+            return SessionOutcome(
+                cost=0.5, tokens=1200, turns=3, termination="completed"
+            )
+
+        monkeypatch.setattr(execute_module, "run_session", _scripted)
+        deps = replace(
+            _deps(),
+            file_task=_file if review is not None else None,
+            read_review=_read if review is not None else None,
+            on_leaf_reviewed=observed.append,
+        )
+        outcome = await run_leaf(
+            deps,
+            task=self._task(),
+            owner=_identity("Builder"),
+            workspace=workspace,
+            execution_id="d1-gated-r0-leaf",
+            limits=SessionLimits(max_turns=8, cost_ceiling=5.0, token_ceiling=100_000),
+        )
+        if review is not None:
+            assert observed == [review]
+        return outcome, filed, ran
+
+    async def test_the_task_is_filed_assigned_to_its_owner_before_the_session(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # ASSIGNED, because that is the row the engine's entry hop expects;
+        # filed at CREATED, the first transition is refused and the run
+        # reports into a lifecycle that never started.
+        _outcome, filed, ran = await self._leaf(
+            tmp_path,
+            monkeypatch,
+            review=LeafReview(task_status="completed", verdict="approve"),
+        )
+
+        assert len(filed) == 1
+        assert filed[0].status is TaskStatus.ASSIGNED
+        assert filed[0].assigned_to == str(_identity("Builder").id)
+        assert ran == filed
+
+    async def test_the_products_verdict_is_read_back_onto_the_leaf(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        outcome, _filed, _ran = await self._leaf(
+            tmp_path,
+            monkeypatch,
+            review=LeafReview(task_status="completed", verdict="approve"),
+        )
+
+        assert outcome.verdict == "approve"
+        assert outcome.task_status == "completed"
+        assert outcome.parked is False
+
+    async def test_a_park_is_recorded_as_one(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        outcome, _filed, _ran = await self._leaf(
+            tmp_path,
+            monkeypatch,
+            review=LeafReview(task_status="blocked", verdict="escalate"),
+        )
+
+        assert outcome.parked is True
+        assert outcome.verdict == "escalate"
+
+    async def test_a_leaf_nobody_filed_reads_as_unreviewed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The offline suite's path, and what every earlier recording ran.
+        outcome, filed, ran = await self._leaf(tmp_path, monkeypatch, review=None)
+
+        assert filed == []
+        assert ran[0].status is TaskStatus.CREATED
+        assert outcome.verdict is None
+        assert outcome.task_status is None
+        assert outcome.parked is False
