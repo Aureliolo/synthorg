@@ -304,22 +304,32 @@ class TestBuilders:
         _plant(
             tmp_path,
             "evals/harness/wiring.py",
-            f'"""Harness."""\n\n\n{signature}\n    return provider\n',
+            f'"""Harness."""\n\n\n{signature}\n'
+            "    return EngineDependencies(core=provider)\n",
         )
 
         assert _run(tmp_path) == 1
 
     @pytest.mark.parametrize(
-        "signature",
+        ("signature", "body"),
         [
-            "def make(provider, *, clock=None) -> AgentEngine:",
-            'def make(provider, *, clock=None) -> "EngineDependencies":',
-            "def make(provider, *, clock=None) -> dependencies.EngineDependencies:",
+            (
+                "def make(provider, *, clock=None) -> AgentEngine:",
+                "return AgentEngine(EngineDependencies(core=provider))",
+            ),
+            (
+                'def make(provider, *, clock=None) -> "EngineDependencies":',
+                "return EngineDependencies(core=provider)",
+            ),
+            (
+                "def make(provider, *, clock=None) -> dependencies.EngineDependencies:",
+                "return dependencies.EngineDependencies(core=provider)",
+            ),
         ],
         ids=["returns_engine", "string_annotation", "attribute_annotation"],
     )
     def test_a_builder_is_recognised_in_every_return_spelling(
-        self, tmp_path: Path, signature: str
+        self, tmp_path: Path, signature: str, body: str
     ) -> None:
         """A builder returning the engine assembles the whole declaration inside.
 
@@ -330,10 +340,37 @@ class TestBuilders:
         _plant(
             tmp_path,
             "evals/harness/wiring.py",
-            f'"""Harness."""\n\n\n{signature}\n    return provider\n',
+            f'"""Harness."""\n\n\n{signature}\n    {body}\n',
         )
 
         assert _run(tmp_path) == 1
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            "return engine_with(provider, clock=clock)",
+            "return mock_of[AgentEngine](clock=clock)",
+        ],
+        ids=["composes_on_the_sanctioned_builder", "returns_a_double"],
+    )
+    def test_a_helper_that_assembles_nothing_is_not_a_builder(
+        self, tmp_path: Path, body: str
+    ) -> None:
+        """A default on a helper that constructs no declaration spells no absence.
+
+        A test file toggling one feature composes on the sanctioned builder,
+        which still spells every field it did not name; a double constructs
+        nothing at all.
+        """
+        _baseline(tmp_path)
+        _plant(
+            tmp_path,
+            "tests/unit/engine/test_feature.py",
+            f'"""Tests."""\n\n\ndef make(provider, *, clock=None) -> AgentEngine:\n'
+            f"    {body}\n",
+        )
+
+        assert _run(tmp_path) == 0
 
     def test_an_engine_alias_does_not_escape_the_arity_check(
         self, tmp_path: Path

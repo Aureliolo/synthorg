@@ -36,10 +36,15 @@ throughout. It is one whether it returns a bundle or the engine itself (a
 ``make_engine(provider, *, clock=None) -> AgentEngine`` assembles the whole
 declaration internally and is the same omission one call further out), and
 whatever spelling its return annotation takes: a bare name, a string forward
-reference, or ``dependencies.EngineDependencies``. Exactly one is sanctioned,
-``tests/_shared/engine_deps.py``, because a unit test about budget refusal is
-making no claim about the review pipeline and should not restate sixty absences
-to say so. The absences are spelled once, there, where a reviewer can read them.
+reference, or ``dependencies.EngineDependencies``. What makes it one is that
+it ASSEMBLES the declaration: its body constructs a bundle, the root, a
+satellite or the engine. A helper that composes on the sanctioned builder, or
+hands back a double, spells no absence of its own, since every field it did
+not name is still spelled where the sanctioned builder spells it. Exactly one
+builder is sanctioned, ``tests/_shared/engine_deps.py``, because a unit test
+about budget refusal is making no claim about the review pipeline and should
+not restate sixty absences to say so. The absences are spelled once, there,
+where a reviewer can read them.
 
 **The instrument borrows the test helper.** ``evals/`` measures the product, so
 a harness that fills in what it forgot is precisely the defect under
@@ -520,6 +525,22 @@ def _supplies_defaults(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str | No
     return None
 
 
+def _assembles(
+    node: ast.FunctionDef | ast.AsyncFunctionDef, names: frozenset[str]
+) -> bool:
+    """Whether *node*'s body constructs one of *names* itself.
+
+    A helper that composes on the sanctioned builder, or returns a double,
+    constructs none of them and so spells no absence of its own.
+
+    Returns:
+        ``True`` when a call to one of *names* sits inside the function.
+    """
+    return any(
+        isinstance(sub, ast.Call) and _call_name(sub) in names for sub in ast.walk(node)
+    )
+
+
 def _scan_file(
     rel: str, tree: ast.Module, *, gated: frozenset[str], instrument: bool
 ) -> Iterator[_Hit]:
@@ -541,6 +562,8 @@ def _scan_file(
                 continue
             returned = _annotated_name(node.returns)
             if returned not in builder_types:
+                continue
+            if not _assembles(node, builder_types):
                 continue
             reason = _supplies_defaults(node)
             if reason is not None:
