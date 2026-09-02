@@ -214,11 +214,13 @@ def _git_tracked_python_files(
             cwd=project_root,
         )
     except (subprocess.CalledProcessError, OSError) as exc:
+        # The type alone: a git failure's text can quote the command line
+        # and the environment it ran under, and this is a diagnostic about
+        # scope rather than about git.
         print(
             f"check_engine_dependencies_total: git ls-files failed in "
-            f"{project_root} ({type(exc).__name__}: "
-            f"{safe_error_description(exc)}); falling back to rglob (scope "
-            f"widens to untracked / gitignored files).",
+            f"{project_root} ({type(exc).__name__}); falling back to rglob "
+            f"(scope widens to untracked / gitignored files).",
             file=sys.stderr,
         )
         return [
