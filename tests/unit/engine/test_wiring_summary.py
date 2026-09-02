@@ -29,6 +29,7 @@ class TestTheWiringSummary:
         assert wiring.has_budget_enforcer is False
         assert wiring.has_review_pipeline is False
         assert wiring.has_memory_backend is False
+        assert wiring.has_external_api_runtime is False
 
     def test_a_detector_is_named_rather_than_counted(self) -> None:
         deps = engine_deps(ScriptedProvider())

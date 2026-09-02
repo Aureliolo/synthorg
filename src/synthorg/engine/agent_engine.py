@@ -206,6 +206,7 @@ class AgentEngine(
             has_sub_agent_runner=self._sub_agent_runner is not None,
             has_approval_gate=reaches_loop and self._approval_gate is not None,
             has_policy_engine=self._policy_engine is not None,
+            has_external_api_runtime=self._external_api_runtime is not None,
             cost_tracker=self._cost_tracker,
         )
 

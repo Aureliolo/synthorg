@@ -40,6 +40,9 @@ class EngineWiringSummary:
         has_sub_agent_runner: Whether delegation is wired.
         has_approval_gate: Whether a governed action can park for a human.
         has_policy_engine: Whether tool calls are evaluated against policy.
+        has_external_api_runtime: Whether an agent can reach declared
+            external APIs, which is the tooling seam a harness most often
+            declares absent on purpose.
         cost_tracker: The tracker spend lands in, so a caller can check it
             IS the ledger it expects rather than a lookalike. ``None`` when
             nothing records spend.
@@ -58,6 +61,7 @@ class EngineWiringSummary:
     has_sub_agent_runner: bool
     has_approval_gate: bool
     has_policy_engine: bool
+    has_external_api_runtime: bool
     cost_tracker: object | None
 
     def log_fields(self) -> dict[str, str | bool | None]:
@@ -80,6 +84,7 @@ class EngineWiringSummary:
             "has_sub_agent_runner": self.has_sub_agent_runner,
             "has_approval_gate": self.has_approval_gate,
             "has_policy_engine": self.has_policy_engine,
+            "has_external_api_runtime": self.has_external_api_runtime,
         }
 
 

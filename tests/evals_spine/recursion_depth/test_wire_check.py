@@ -78,6 +78,7 @@ def _wiring(**overrides: object) -> EngineWiringSummary:
         "has_sub_agent_runner": False,
         "has_approval_gate": True,
         "has_policy_engine": True,
+        "has_external_api_runtime": False,
         "cost_tracker": None,
     }
     base.update(overrides)

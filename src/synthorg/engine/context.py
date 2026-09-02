@@ -141,14 +141,10 @@ class AgentContext(BaseModel):
         default=frozenset(),
         description=(
             "Conversation indices compaction may never archive. The task"
-            " brief is the one the loop pins: it is a USER message, and"
-            " compaction preserves only leading SYSTEM messages and"
-            " snippets ASSISTANT ones, so without a pin the instruction the"
-            " whole run is answering ages out with nothing left of it."
-            " Held here rather than on ``ChatMessage`` because that is the"
-            " provider wire type and a harness concern has no business"
-            " crossing into a provider payload. Re-mapped on every"
-            " compaction, since the compacted list is a different list."
+            " brief is the one the loop pins: a USER message, which compaction"
+            " neither preserves nor snippets, so unpinned it ages out with"
+            " nothing left. Held here rather than on the provider wire type"
+            " ``ChatMessage``; re-mapped on every compaction."
         ),
     )
 
@@ -163,11 +159,9 @@ class AgentContext(BaseModel):
     tool_surface: tuple[str, ...] | None = Field(
         default=None,
         description=(
-            "Every tool name this run's invoker could dispatch, sorted,"
-            " stamped where the invoker was built; None before one was."
-            " Held per run rather than on the engine, because one engine"
-            " serves many concurrent runs and a value it held would name"
-            " whichever run built its invoker last."
+            "Every tool name this run's invoker could dispatch, sorted; None"
+            " before one was built. Per run, never per engine: an engine serves"
+            " many concurrent runs and would name whichever built its last."
         ),
     )
 
@@ -306,9 +300,6 @@ class AgentContext(BaseModel):
     def with_tool_surface(self, names: tuple[str, ...]) -> AgentContext:
         """Record the tool names this run's invoker can dispatch.
 
-        Args:
-            names: The surface, as the invoker's registry lists it.
-
         Returns:
             New ``AgentContext`` carrying the surface, sorted.
         """
@@ -322,14 +313,14 @@ class AgentContext(BaseModel):
 
         Returns:
             New ``AgentContext`` with the message appended and its index
-            recorded, so a later compaction re-seats it rather than
+            pinned, so a later compaction re-seats it rather than
             summarising it away.
         """
+        pinned = self.pinned_message_indices | {len(self.conversation)}
         return self.model_copy(
             update={
                 "conversation": (*self.conversation, msg),
-                "pinned_message_indices": self.pinned_message_indices
-                | {len(self.conversation)},
+                "pinned_message_indices": pinned,
             }
         )
 
@@ -477,10 +468,8 @@ class AgentContext(BaseModel):
             metadata: Compression metadata to attach.
             compressed_conversation: The compressed message tuple.
             fill_tokens: Updated fill estimate after compression.
-            pinned: Where the pins are in the COMPRESSED list. Required
-                rather than defaulted: a compaction that rewrites the
-                conversation and leaves the old indices standing points
-                them at whatever moved into those positions.
+            pinned: Where the pins are in the COMPRESSED list. Required, not
+                defaulted: stale indices name whatever moved into them.
 
         Returns:
             New ``AgentContext`` with compressed conversation.
