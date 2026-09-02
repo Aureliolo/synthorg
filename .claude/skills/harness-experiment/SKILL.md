@@ -76,8 +76,9 @@ Each rule has an incident behind it. The incident is the reason.
   re-pays every cell it had already bought, and a killed sweep resumed from a
   changed commit is refused by the journal header, correctly: the journal
   identity pins the commit, the manifest, the spec and both pairs by name.
-- **The repetition floor is five.** Below five draws every pairwise confidence
-  interval in the published harness comparison crossed zero. The manifest
+- **The repetition floor is five.** It is the benchmark protocol's five trials
+  per task, and an independent bootstrap over that leaderboard found 24 of 25
+  adjacent rank pairs indistinguishable even at five. The manifest
   refuses to load a lower count, and `--repetitions` refuses to set one. Stage
   the deep end with `--depths`, `--max-sessions` and `--resume`; do not lower
   the floor.

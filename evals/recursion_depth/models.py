@@ -179,8 +179,9 @@ METRIC_CAVEAT: Final[str] = (
 #: Which figure is the headline, stated because three axes now travel together
 #: and the one that ranks the arms is not the one the sweep was first built
 #: around. Published harness comparisons have measured a forty-fold cost
-#: separation while every pairwise pass-rate interval crossed zero, so a curve
-#: read on satisfaction alone can rank two loops it cannot tell apart.
+#: separation while every pairwise pass-rate interval but the largest included
+#: zero, so a curve read on satisfaction alone can rank two loops it cannot
+#: tell apart.
 HEADLINE_CAVEAT: Final[str] = (
     "The headline figure is tokens per solved requirement, with a 95% "
     "bootstrap interval over the runs in each bucket. A loop can be cheaper "

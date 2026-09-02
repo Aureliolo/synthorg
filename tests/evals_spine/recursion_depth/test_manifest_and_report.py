@@ -354,10 +354,9 @@ class TestTheMatrixIsCoherent:
         manifest = load_manifest(_COMMITTED_MANIFEST)
 
         assert manifest.depths == (1, 2, 3, 4)
-        # Five at every cap, held by the loader: below five draws every
-        # pairwise confidence interval in the published harness comparison
-        # crossed zero, so a smaller sample cannot say whether a low point is
-        # one bad tree or a real drop, which is the one question a repeated
+        # Five at every cap, held by the loader: the benchmark protocol's five
+        # trials per task, below which a sample cannot say whether a low point
+        # is one bad tree or a real drop, which is the one question a repeated
         # cap is paid to answer.
         assert all(
             manifest.repetitions[depth] == MINIMUM_REPETITIONS

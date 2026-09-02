@@ -807,8 +807,8 @@ class TestRaisingRepetitionsPerRun:
     """The committed counts are the design; a run may sample MORE, never less.
 
     The floor is five at every recorded cap, held by the loader and by every
-    per-run narrowing: below it every pairwise confidence interval in the
-    published harness comparison crossed zero. An operator wanting a tighter
+    per-run narrowing: it is the benchmark protocol's five trials per task.
+    An operator wanting a tighter
     interval at one cap raises it per run rather than editing the design into
     something the next reader inherits as if it were intended.
     """

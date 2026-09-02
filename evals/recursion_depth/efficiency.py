@@ -6,9 +6,9 @@ solved and where the work came from. Neither says what it cost, and neither
 carries an interval, so a reader holding two pooled fractions cannot tell a
 real gap from the spread five repetitions would show anyway. Published harness
 comparisons have measured a forty-fold cost separation between loops while
-every pairwise pass-rate interval crossed zero: the loops were separable on
-cost and not on correctness, and a report ranking on correctness alone would
-have ranked two things it could not tell apart.
+every pairwise pass-rate interval but the largest included zero: the loops
+were separable on cost and barely on correctness, and a report ranking on
+correctness alone would have ranked two things it could not tell apart.
 
 The ratio is POOLED the way every other bucket figure is (all tokens over all
 solved requirements), so a repetition that did more work weighs more. The

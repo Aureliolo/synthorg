@@ -585,10 +585,10 @@ satisfies, the fraction of the delivered leaves' own claims the merge kept,
 and the headline, tokens per solved requirement with a 95% bootstrap
 interval over each bucket's runs. The headline is what ranks the arms: a
 published comparison of three harnesses (arXiv 2607.22585) measured a
-forty-fold cost separation while every pairwise pass-rate interval crossed
-zero, so a loop can be cheaper by an order of magnitude at a pass rate no
-interval separates, and a report ranking on satisfaction alone ranks two
-things it cannot tell apart. The interval is a seeded percentile bootstrap
+forty-fold cost separation while every pairwise pass-rate interval but the
+largest included zero, so a loop can be cheaper by an order of magnitude at a
+pass rate no interval separates, and a report ranking on satisfaction alone
+ranks two things it cannot tell apart. The interval is a seeded percentile bootstrap
 (`evals/recursion_depth/efficiency.py`), seeded from the runs themselves so a
 re-score reproduces it; a bucket under three runs reports the point with no
 interval rather than a fabricated one, and two arms whose intervals overlap
@@ -1128,13 +1128,17 @@ thinly sampled to tell.
 Repetitions are five at every cap, and the loader refuses fewer. The deep cells
 are where the sessions are: a cap-1 cell is 14 sessions against a cap-3 cell's
 135, and a cap-4 cell is projected near 300, so the earlier design tapered to
-two at the deep end to fit the ceiling. That taper is what the measurement it
-was written before overrides: with every pairwise pass-rate interval crossing
-zero at fewer repetitions (arXiv 2607.22585), a taper leaves exactly the cells
-the curve is about too thinly sampled to read. What the taper was hiding is
-still worth stating: two
-draws bound a range but do not give a median distinct from it, so caps 3 and 4
-report a spread that says how far apart two trees fell and not much more.
+two at the deep end to fit the ceiling. Five is the sweep's own floor, adopted
+from the protocol the harness comparison above was measured against, which
+runs five trials per task; an independent bootstrap over that benchmark's
+leaderboard found 24 of 25 adjacent rank pairs indistinguishable even at that
+count (`evals/recursion_depth/results/harness-audit/README.md`, gap 5). The
+comparison itself ran one trial per task and says nothing about repetition
+counts; what it says is that pass rate alone separates almost nothing, which
+is why a taper leaves exactly the cells the curve is about too thinly sampled
+to read. What the taper was hiding is still worth stating: two draws bound a
+range but do not give a median distinct from it, so caps 3 and 4 report a
+spread that says how far apart two trees fell and not much more.
 
 ### Preflight
 

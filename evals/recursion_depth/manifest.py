@@ -47,12 +47,12 @@ MIN_DEPTH: Final[int] = 1
 #: The deepest cap the sweep records.
 MAX_DEPTH: Final[int] = 6
 
-#: The fewest repetitions a RECORDED cap may carry. Measured across three
-#: harnesses on one benchmark, every pairwise pass-rate confidence interval
-#: crossed zero while cost separated forty-fold, and the benchmark's own
-#: protocol runs five trials per task for that reason. Two draws bracket a
-#: cell; they cannot say whether a low point is one bad tree or a real drop,
-#: which is the question a repeated cap is paid for. Enforced where a
+#: The fewest repetitions a RECORDED cap may carry, adopted from the benchmark
+#: protocol the published harness comparison was measured against, which runs
+#: five trials per task; an independent bootstrap over that leaderboard found
+#: 24 of 25 adjacent rank pairs indistinguishable even at five. Two draws
+#: bracket a cell; they cannot say whether a low point is one bad tree or a
+#: real drop, which is the question a repeated cap is paid for. Enforced where a
 #: recording is loaded and where a run narrows it, never on the model, so a
 #: test can still build a two-cell matrix in code.
 MINIMUM_REPETITIONS: Final[int] = 5
@@ -877,9 +877,9 @@ def require_repetition_floor(manifest: RecursionDepthManifest) -> None:
         listed = ", ".join(f"cap {depth}: {count}" for depth, count in under.items())
         msg = (
             f"a recorded cap needs at least {MINIMUM_REPETITIONS} repetitions "
-            f"({listed}); every pairwise confidence interval in the published "
-            f"harness comparison crossed zero below that, so a smaller sample "
-            f"measures nothing a curve can carry. Record fewer caps with "
+            f"({listed}); the floor is the benchmark protocol's five trials per "
+            f"task, below which a smaller sample cannot tell one bad tree from "
+            f"a real drop. Record fewer caps with "
             f"--depths, bound an evening with --max-sessions and continue with "
             f"--resume, rather than sampling a cap it cannot report on."
         )
