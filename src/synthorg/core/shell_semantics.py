@@ -41,6 +41,16 @@ from collections.abc import Sequence
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Final
 
+#: Told to the agent up front, on the tool that runs the line, and again by
+#: the oracle when no run was recorded: an agent that learns the shape only
+#: from the refusal has already spent the turn, and a live one spent three
+#: rework rounds that way.
+RECORDED_RUN_RULE: Final[str] = (
+    "A test run is evidence only when the line's exit status is the runner's "
+    "own: `pytest -q`, or a `&&` chain or pipeline ending in it, never "
+    "`pytest -q; echo $?`."
+)
+
 #: Shells whose ``-c`` argument is itself a command line. Its trustworthiness is
 #: a separate question from the outer line's, because ``pipefail`` is a shell
 #: option and a shell this line starts does not inherit ours.

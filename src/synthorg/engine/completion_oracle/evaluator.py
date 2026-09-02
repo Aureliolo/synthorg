@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.shell_semantics import RECORDED_RUN_RULE
 from synthorg.core.task import Task
 from synthorg.engine.completion_oracle.build_test_models import (
     GroundingRequirement,
@@ -63,10 +64,8 @@ _TEST_RECORD_QUERY_LIMIT: Final[int] = 1000
 #: run the tests every round.
 NO_TEST_RUN_REASON: Final[str] = (
     "No test run was recorded for this task, so there is no evidence the work "
-    "builds or its tests pass (failing closed). A run is recorded only when the "
-    "line's exit status is the runner's own: `pytest -q` alone, or a `&&` "
-    "chain or pipeline ending in it, is recorded; `pytest -q; echo $?` is not, "
-    "because the `;` hands the line's status to `echo`. Run the suite that way."
+    f"builds or its tests pass (failing closed). {RECORDED_RUN_RULE} Run the "
+    "suite that way."
 )
 """Upper bound on test records inspected per task.
 
