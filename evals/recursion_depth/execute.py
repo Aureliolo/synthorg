@@ -442,6 +442,7 @@ class _Spend:
             tokens=outcome.tokens,
             input_tokens=outcome.input_tokens,
             output_tokens=outcome.output_tokens,
+            compaction_tokens=outcome.compaction_tokens,
             compaction_cost=outcome.compaction_cost,
         )
         return _Spend(

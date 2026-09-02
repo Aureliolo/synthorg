@@ -312,6 +312,7 @@ class _MergeSpend:
             tokens=tokens,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            compaction_tokens=compaction_tokens,
             compaction_cost=compaction_cost,
         )
         return _MergeSpend(

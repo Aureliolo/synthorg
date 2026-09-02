@@ -210,6 +210,28 @@ class TestCompactionCostIsOnTheSameTermsAsCost:
                 _session(compaction_cost=-0.1)
             )
 
+    def test_negative_compaction_tokens_are_refused_at_the_booking(self) -> None:
+        """A later session cannot understate the total the earlier one booked."""
+        later = SessionOutcome(
+            cost=0.5,
+            tokens=100,
+            turns=2,
+            termination="completed",
+            compaction_tokens=-10,
+            compaction_cost=0.0,
+        )
+
+        with pytest.raises(ValueError, match="compaction_tokens"):
+            _Spend.of(_session(compaction_cost=0.0)).plus(later)
+        with pytest.raises(ValueError, match="compaction_tokens"):
+            _MergeSpend().plus(
+                cost=0.1,
+                tokens=10,
+                input_tokens=5,
+                output_tokens=5,
+                compaction_tokens=-10,
+            )
+
     def test_a_unit_record_carries_an_unknown_compaction_cost(self) -> None:
         record = UnitRecord(
             unit_id=NotBlankStr("leaf-a"),
