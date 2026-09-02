@@ -23,6 +23,33 @@ from synthorg.security.autonomy.enums import ToolCategory
 logger = get_logger(__name__)
 
 
+def _parameter_names(
+    schema: Mapping[str, JsonValue] | None,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """The parameter names a JSON schema declares, required ones first.
+
+    Returns:
+        ``(required, optional)`` in the schema's own property order; both
+        empty when the schema declares no object properties.
+    """
+    if schema is None:
+        return (), ()
+    properties = schema.get("properties")
+    if not isinstance(properties, dict):
+        return (), ()
+    declared_required = schema.get("required")
+    required_names = (
+        frozenset(str(name) for name in declared_required)
+        if isinstance(declared_required, list)
+        else frozenset[str]()
+    )
+    names = tuple(properties)
+    return (
+        tuple(name for name in names if name in required_names),
+        tuple(name for name in names if name not in required_names),
+    )
+
+
 class ToolExecutionResult(BaseModel):
     """Result of executing a tool's business logic.
 
@@ -186,13 +213,17 @@ class BaseTool(ABC):
 
         Returns:
             L1 metadata with name, short description, category,
-            and ``"medium"`` cost tier.
+            ``"medium"`` cost tier, and the parameter names the schema
+            declares.
         """
+        required, optional = _parameter_names(self.parameters_schema)
         return ToolL1Metadata(
             name=self._name,
             short_description=self._description[:200],
             category=self._category.value,
             typical_cost_tier="medium",
+            required_parameters=required,
+            optional_parameters=optional,
         )
 
     def to_l2_body(self) -> ToolL2Body:

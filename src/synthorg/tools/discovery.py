@@ -161,6 +161,8 @@ class ListToolsTool(BaseTool):
                 "short_description": s.short_description,
                 "category": s.category,
                 "typical_cost_tier": s.typical_cost_tier,
+                "required_parameters": list(s.required_parameters),
+                "optional_parameters": list(s.optional_parameters),
             }
             for s in summaries
         ]

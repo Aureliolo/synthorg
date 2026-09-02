@@ -10,6 +10,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Final
 
 from synthorg.budget.currency import format_cost, get_currency_symbol
+from synthorg.core.tool_disclosure import ToolL1Metadata
 from synthorg.engine._prompt_helpers import SECTION_COMPANY as _SECTION_COMPANY
 from synthorg.engine._prompt_helpers import (
     SECTION_ORG_POLICIES as _SECTION_ORG_POLICIES,
@@ -31,6 +32,21 @@ from synthorg.engine.token_estimation import PromptTokenEstimator
 
 if TYPE_CHECKING:
     from synthorg.engine.prompt_providers import PromptAmbientProviders
+
+
+def _parameter_summary(summary: ToolL1Metadata) -> str:
+    """Render a tool's parameter names for the catalogue line.
+
+    Returns:
+        Required names bare and optional ones in brackets, comma-joined;
+        empty when the tool declares none.
+    """
+    names = [
+        *summary.required_parameters,
+        *(f"[{name}]" for name in summary.optional_parameters),
+    ]
+    return ", ".join(names)
+
 
 #: The two discovery tools the progressive-disclosure instruction names.
 #: ``load_tool_resource`` is deliberately absent: the instruction never
@@ -110,6 +126,7 @@ def build_template_context(
                 "short_description": s.short_description,
                 "category": s.category,
                 "cost_tier": s.typical_cost_tier,
+                "parameters": _parameter_summary(s),
             }
             for s in inputs.l1_summaries
         )

@@ -35,6 +35,12 @@ class ToolL1Metadata(BaseModel):
         short_description: One-sentence purpose (max 200 chars).
         category: Tool taxonomy bucket (e.g. ``"file_system"``).
         typical_cost_tier: Relative invocation cost.
+        required_parameters: Names a call must supply. A tool runs when
+            called by name whether or not its body was loaded, so the
+            summary carries enough to call it: an agent that guessed the
+            parameter names spent three failed calls and a load round-trip
+            before its first write landed.
+        optional_parameters: Names a call may supply.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -47,6 +53,14 @@ class ToolL1Metadata(BaseModel):
     category: NotBlankStr = Field(description="Tool taxonomy bucket")
     typical_cost_tier: CostTier = Field(
         description="Relative invocation cost",
+    )
+    required_parameters: tuple[str, ...] = Field(
+        default=(),
+        description="Parameter names a call must supply",
+    )
+    optional_parameters: tuple[str, ...] = Field(
+        default=(),
+        description="Parameter names a call may supply",
     )
 
 

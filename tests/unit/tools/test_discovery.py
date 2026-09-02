@@ -164,6 +164,8 @@ class TestListToolsTool:
         assert rich["short_description"] == "A rich tool"
         assert rich["category"] == "file_system"
         assert rich["typical_cost_tier"] == "expensive"
+        assert rich["required_parameters"] == []
+        assert rich["optional_parameters"] == []
 
 
 # ── LoadToolTool ─────────────────────────────────────────────────

@@ -275,6 +275,34 @@ class TestBuildSystemPrompt:
         """The names the derivation looks for are the ones that exist."""
         assert _DISCOVERY_INSTRUCTION_TOOLS <= DISCOVERY_NAMES
 
+    def test_catalogue_line_names_the_parameters(
+        self,
+        sample_agent: AgentIdentity,
+    ) -> None:
+        """A tool is callable from its summary alone, so the summary says how."""
+        result = build_system_prompt(
+            agent=sample_agent,
+            l1_summaries=(
+                ToolL1Metadata(
+                    name="write_file",
+                    short_description="Write a file",
+                    category="file_system",
+                    typical_cost_tier="medium",
+                    required_parameters=("path", "content"),
+                    optional_parameters=("create_directories",),
+                ),
+                ToolL1Metadata(
+                    name="list_tools",
+                    short_description="List available tools",
+                    category="discovery",
+                    typical_cost_tier="cheap",
+                ),
+            ),
+        )
+
+        assert "Parameters: path, content, [create_directories]." in result.content
+        assert "List available tools\n" in result.content
+
     def test_catalogue_heading_is_the_one_the_template_renders(self) -> None:
         """The stripper and the template name the same section.
 
