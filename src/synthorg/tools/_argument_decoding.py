@@ -1,17 +1,19 @@
-"""Decode a structured argument a model sent as JSON text.
+"""Decode an argument a model sent as the JSON text of its value.
 
 A model that cannot emit a nested array as a tool argument sends the text of
 its JSON instead. A live planning session spent six of eleven turns
 resubmitting one plan whose ``subtasks`` arrived as ``'[{...}]'``, refused
 each time with "is not of type 'array'" against a schema its content had
-satisfied on the first try. The refusal was right about the type and useless
-about the fix, because the fix is one ``json.loads`` the model cannot perform.
+satisfied on the first try; a reviewer in the same run sent ``'null'`` for a
+nullable command field and was refused twice for naming a test command called
+``null``. Each refusal was right about the type and useless about the fix,
+because the fix is one ``json.loads`` the model cannot perform.
 
-Decoding is bounded to what the schema DECLARES structured: a parameter typed
-``array`` or ``object`` whose value is a string parsing to exactly that shape.
-A ``string`` parameter that happens to hold JSON is left alone, since a file's
-content may well be JSON, and a string that does not parse is left for the
-validator to refuse in its own words.
+Decoding is bounded to what the schema DECLARES: a parameter whose declared
+types do not include ``string`` and whose value is a string parsing to one of
+the types they do include. A ``string`` parameter that happens to hold JSON is
+left alone, since a file's content may well be JSON, and a string that does
+not parse is left for the validator to refuse in its own words.
 """
 
 import json
@@ -20,10 +22,16 @@ from typing import Final
 
 from pydantic import JsonValue
 
-_STRUCTURED_TYPES: Final[Mapping[str, type[list[object]] | type[dict[str, object]]]] = {
-    "array": list,
-    "object": dict,
+#: The Python shape each JSON-Schema type name admits once parsed.
+_PARSED_TYPES: Final[Mapping[str, tuple[type, ...]]] = {
+    "array": (list,),
+    "object": (dict,),
+    "null": (type(None),),
+    "boolean": (bool,),
+    "integer": (int,),
+    "number": (int, float),
 }
+_TEXT: Final[str] = "string"
 
 
 def declared_types(property_schema: object) -> frozenset[str]:
@@ -48,11 +56,28 @@ def declared_types(property_schema: object) -> frozenset[str]:
     return frozenset(names)
 
 
+def _admits(parsed: object, type_names: frozenset[str]) -> bool:
+    """Whether *parsed* is one of the shapes *type_names* declare.
+
+    Returns:
+        ``True`` when a declared type admits the parsed value. ``bool`` is
+        checked before ``int`` because Python makes one a subclass of the
+        other and JSON does not.
+    """
+    if isinstance(parsed, bool):
+        return "boolean" in type_names
+    return any(
+        isinstance(parsed, _PARSED_TYPES[name])
+        for name in type_names
+        if name in _PARSED_TYPES
+    )
+
+
 def decode_json_encoded_arguments(
     schema: Mapping[str, JsonValue] | None,
     arguments: Mapping[str, JsonValue],
 ) -> tuple[dict[str, object], tuple[str, ...]]:
-    """Replace JSON text with the structure the schema declares for it.
+    """Replace JSON text with the value the schema declares for it.
 
     Returns:
         The arguments with every decodable value decoded, and the names of
@@ -66,18 +91,14 @@ def decode_json_encoded_arguments(
     for name, value in arguments.items():
         if not isinstance(value, str):
             continue
-        wanted = tuple(
-            _STRUCTURED_TYPES[type_name]
-            for type_name in declared_types(properties.get(name))
-            if type_name in _STRUCTURED_TYPES
-        )
-        if not wanted:
+        type_names = declared_types(properties.get(name))
+        if _TEXT in type_names or not type_names & _PARSED_TYPES.keys():
             continue
         try:
             parsed = json.loads(value)
         except ValueError:
             continue
-        if isinstance(parsed, wanted):
+        if _admits(parsed, type_names):
             decoded[name] = parsed
             names.append(name)
     return decoded, tuple(names)

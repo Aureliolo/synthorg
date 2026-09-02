@@ -32,6 +32,8 @@ _SCHEMA: dict[str, JsonValue] = {
         "options": {"anyOf": [{"type": "object"}, {"type": "null"}]},
         "content": {"type": "string"},
         "count": {"type": "integer"},
+        "command": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "cited": {"type": "boolean"},
     },
     "required": ["items"],
 }
@@ -95,12 +97,41 @@ class TestDecodeJsonEncodedArguments:
         assert decoded["options"] == "[1]"
         assert names == ()
 
-    def test_a_number_parameter_is_never_decoded(self) -> None:
+    def test_a_number_sent_as_text_becomes_the_number(self) -> None:
         decoded, names = decode_json_encoded_arguments(
             _SCHEMA, {"items": [], "count": "3"}
         )
 
-        assert decoded["count"] == "3"
+        assert decoded["count"] == 3
+        assert names == ("count",)
+
+    def test_a_boolean_sent_as_text_becomes_the_boolean(self) -> None:
+        decoded, names = decode_json_encoded_arguments(
+            _SCHEMA, {"items": [], "cited": "false"}
+        )
+
+        assert decoded["cited"] is False
+        assert names == ("cited",)
+
+    def test_a_true_for_an_integer_stays_text(self) -> None:
+        # JSON keeps booleans and integers apart even where Python does not.
+        decoded, names = decode_json_encoded_arguments(
+            _SCHEMA, {"items": [], "count": "true"}
+        )
+
+        assert decoded["count"] == "true"
+        assert names == ()
+
+    def test_null_text_for_a_nullable_string_stays_text(self) -> None:
+        # A reviewer sent ``'null'`` for its optional command and was refused
+        # for naming a command called null. The field admits text, so text is
+        # what it is; the refusal is the model's own to fix, and the
+        # validator's wording says so.
+        decoded, names = decode_json_encoded_arguments(
+            _SCHEMA, {"items": [], "command": "null"}
+        )
+
+        assert decoded["command"] == "null"
         assert names == ()
 
     def test_no_schema_decodes_nothing(self) -> None:
