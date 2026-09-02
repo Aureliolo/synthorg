@@ -82,7 +82,7 @@ class TestPinnedBriefSurvivesCompaction:
         ctx = _seeded(sample_agent, turns=2)
         config = CompactionConfig(
             fill_threshold_percent=80.0,
-            min_messages_to_compact=1,
+            min_messages_to_compact=2,
             preserve_recent_turns=1,
         )
 
