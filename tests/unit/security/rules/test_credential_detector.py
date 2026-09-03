@@ -281,6 +281,10 @@ class TestCodeThatNamesATokenIsNotACredential:
             ),
             "credential: 7f9a8b7c6d5e4f3a2b1c",
             "token = hvs.CAESIJ8Xq2LkE9vB0mYtQ3Rf-Hn7cWp1sZa4Dg6",
+            (
+                "token = eyJhbGciOiJFZERTQSJ9.eyJzdWIiOiJhbGljZSJ9."
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ),
         ],
         ids=[
             "quoted_password",
@@ -293,6 +297,7 @@ class TestCodeThatNamesATokenIsNotACredential:
             "bare_jwt",
             "hex_credential",
             "prefixed_dotted_secret",
+            "digit_free_jwt",
         ],
     )
     def test_secret_shaped_assignments_are_refused(self, code: str) -> None:
