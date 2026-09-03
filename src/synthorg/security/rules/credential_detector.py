@@ -102,24 +102,22 @@ CREDENTIAL_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
     ),
     (
         "Generic secret assignment",
-        # A bare dotted value with a digit that is not an object path. Two
-        # shapes qualify. A JWT: three segments whose first is the base64 of
-        # a JSON object, and ``{"`` encodes as ``eyJ``, which no attribute
-        # chain begins with. Or any long segment that is not an identifier:
-        # one carrying a character no attribute name can, or one mixing case
-        # with a digit followed by a lowercase letter, which base64 does and
-        # an identifier does not (``V123Handler`` and ``Base64Url`` end their
-        # digits on an uppercase letter or on the segment's end; mixed case
-        # alone is what camelCase is, and a count of digits proves nothing).
-        # Case-sensitive past the key on purpose: the discriminator reads
-        # the segment's mix of cases, which an ignore-case match would erase.
+        # A bare dotted value with a digit that is not an object path, on
+        # STRUCTURE rather than spelling: a JWT, three segments whose first
+        # is the base64 of a JSON object (``{"`` encodes as ``eyJ``, which no
+        # attribute chain begins with), or a long segment carrying a
+        # character no identifier can (``-``, ``/``, ``+``, ``=``). Nothing
+        # here reads case or digit placement: every such heuristic was met
+        # by an identifier that spells it (``refreshTokenV2Handler``,
+        # ``longAttributeV123Handler``, ``accessTokenV1alpha``), and a
+        # refusal here is a CRITICAL deny on ordinary code. A dotted secret
+        # made only of identifier characters is the accepted gap; the
+        # undotted pattern above still takes it once it stands alone.
         re.compile(
             r"(?i:\b\w*?(?:secret|token|password|passwd|credential))\s*[=:]\s*"
             r"(?=[A-Za-z0-9_\-/+=.]*\d)"
             r"(?=eyJ[A-Za-z0-9_\-]*\.[A-Za-z0-9_\-]+\."
-            r"|(?:[A-Za-z0-9_\-/+=]+\.)*"
-            r"(?=[A-Za-z0-9_\-/+=]{16})"
-            r"(?:(?=\w*[-/+=])|(?=\w*[A-Z])(?=\w*[a-z])(?=\w*\d[a-z])))"
+            r"|(?:[A-Za-z0-9_\-/+=]+\.)*(?=[A-Za-z0-9_\-/+=]{16})\w*[-/+=])"
             r"[A-Za-z0-9_\-/+=.]{24,}(?![\w(\[])",
         ),
     ),

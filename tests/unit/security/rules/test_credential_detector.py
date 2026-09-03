@@ -253,6 +253,8 @@ class TestCodeThatNamesATokenIsNotACredential:
             "token = handlers.oauth2TokenV2Handler",
             "token = settings.longAttributeV123Handler",
             "token = codec.utf8ToBase64Encoder.output",
+            "token = settings.accessTokenV1alpha",
+            "token = registry.sha256sumOfManifestV1beta2",
             "password = 12345678",
             "password_length = 12",
             'expected_token = "identifier"',
@@ -278,7 +280,7 @@ class TestCodeThatNamesATokenIsNotACredential:
                 "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
             ),
             "credential: 7f9a8b7c6d5e4f3a2b1c",
-            "token = hvs.CAESIJ8Xq2LkE9vB0mYtQ3RfHn7cWp1sZa4Dg6",
+            "token = hvs.CAESIJ8Xq2LkE9vB0mYtQ3Rf-Hn7cWp1sZa4Dg6",
         ],
         ids=[
             "quoted_password",
