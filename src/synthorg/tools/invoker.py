@@ -37,6 +37,7 @@ from synthorg.observability.events.tool import (
     TOOL_INVOKE_ALL_FATAL,
     TOOL_INVOKE_ALL_ORDERED,
     TOOL_INVOKE_ALL_START,
+    TOOL_INVOKE_ALL_WITHHELD,
     TOOL_INVOKE_CONFIG_INVALID,
     TOOL_INVOKE_EXECUTION_ERROR,
     TOOL_INVOKE_NON_RECOVERABLE,
@@ -71,6 +72,11 @@ from .scan_result_handler import handle_sensitive_scan
 
 logger = get_logger(__name__)
 
+_NOT_RUN_PENDING_APPROVAL: Final[str] = (
+    "Not run: an earlier call in this turn asked for human approval, and "
+    "what follows it waits on that answer. Issue it again once the approval "
+    "is decided."
+)
 _HTML_GUARD_WITHHELD: Final[str] = (
     "Tool output withheld: it looked like an HTML document and could not be "
     "judged safely (an external entity declaration, or markup the parser "
@@ -696,7 +702,25 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         # usually destroys the required fields with it, so the schema refuses
         # the payload first and whatever the tool would have said about the
         # corruption is never reached.
-        transport_fault = await tool_or_error.transport_fault(tool_call.arguments)
+        try:
+            transport_fault = await tool_or_error.transport_fault(tool_call.arguments)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            # Left to escape, a raising override would cancel the whole
+            # read-only stage it shares a task group with.
+            logger.warning(
+                TOOL_INVOKE_EXECUTION_ERROR,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                note="transport_fault raised",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                content=f"Transport check failed: {safe_error_description(exc)}",
+                is_error=True,
+            )
         if transport_fault is not None:
             return ToolResult(
                 tool_call_id=tool_call.id,
@@ -1105,6 +1129,31 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         return self._registry.get(call.name).action_type in READ_ONLY_ACTION_TYPES
 
     @staticmethod
+    def _withhold_after_park(
+        stages: list[list[tuple[int, ToolCall]]],
+        results: dict[int, ToolResult],
+    ) -> None:
+        """Answer every call issued after a park without running it.
+
+        The model issued them in an order it meant, and the park sits inside
+        that order: a write after a request for approval was meant to follow
+        the answer, not to pre-empt it.
+        """
+        withheld = [(idx, call) for stage in stages for idx, call in stage]
+        for idx, call in withheld:
+            results[idx] = ToolResult(
+                tool_call_id=call.id,
+                content=_NOT_RUN_PENDING_APPROVAL,
+                is_error=True,
+            )
+        if withheld:
+            logger.info(
+                TOOL_INVOKE_ALL_WITHHELD,
+                withheld=len(withheld),
+                tool_names=tuple(call.name for _, call in withheld),
+            )
+
+    @staticmethod
     def _raise_fatal_errors(fatal_errors: list[Exception]) -> None:
         """Re-raise collected fatal errors after all tasks complete.
 
@@ -1189,7 +1238,8 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 count=len(calls),
                 stages=len(stages),
             )
-        for stage in stages:
+        for position, stage in enumerate(stages):
+            escalations_before = len(self._pending_escalations)
             async with asyncio.TaskGroup() as tg:
                 for idx, call in stage:
                     _ = tg.create_task(
@@ -1201,6 +1251,14 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                             semaphore,
                         ),
                     )
+            # A process-level error leaves the state every later mutation
+            # would build on unknown, and a park means what follows waits on
+            # a person: neither is a state to keep issuing writes into.
+            if fatal_errors:
+                break
+            if len(self._pending_escalations) > escalations_before:
+                self._withhold_after_park(stages[position + 1 :], results)
+                break
 
         logger.info(
             TOOL_INVOKE_ALL_COMPLETE,

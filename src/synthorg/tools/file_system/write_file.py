@@ -46,7 +46,13 @@ def _read_existing(resolved: Path) -> str:
         return ""
 
 
-def _write_sync(resolved: Path, content: str, *, create_dirs: bool) -> tuple[int, bool]:
+def _write_sync(
+    resolved: Path,
+    content: str,
+    *,
+    create_dirs: bool,
+    within: Path,
+) -> tuple[int, bool]:
     """Write content to file synchronously.
 
     Uses an atomic write pattern (temp file + replace) so that a crash
@@ -64,6 +70,7 @@ def _write_sync(resolved: Path, content: str, *, create_dirs: bool) -> tuple[int
         resolved: Resolved file path within the workspace.
         content: Text content to write.
         create_dirs: Whether to create parent directories.
+        within: The workspace the path was validated against.
 
     Returns:
         Tuple of (bytes_written, created) where *created* is True if
@@ -77,7 +84,7 @@ def _write_sync(resolved: Path, content: str, *, create_dirs: bool) -> tuple[int
     """
     created = not resolved.exists()
     if create_dirs:
-        ensure_shared_dir(resolved.parent)
+        ensure_shared_dir(resolved.parent, within=within)
 
     mode = delivered_file_mode(None if created else resolved.stat().st_mode)
     # POSIX-only; on Windows the absent branch below is the live one.
@@ -242,6 +249,7 @@ class WriteFileTool(BaseFileSystemTool):
                 resolved,
                 content,
                 create_dirs=create_dirs,
+                within=self.workspace_root,
             )
         except IsADirectoryError:
             logger.warning(

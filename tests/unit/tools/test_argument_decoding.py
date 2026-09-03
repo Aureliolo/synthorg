@@ -7,11 +7,13 @@ about the type and useless about the fix. Decoding is bounded to what the
 schema declares structured, so a string parameter holding JSON stays text.
 """
 
-from typing import override
+from typing import ClassVar, override
 
 import pytest
-from pydantic import JsonValue
+from pydantic import BaseModel, ConfigDict, JsonValue
+from structlog.testing import capture_logs
 
+from synthorg.observability.events.tool import TOOL_INVOKE_ARGUMENT_DECODED
 from synthorg.providers.models import ToolCall
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools._argument_decoding import (
@@ -141,6 +143,37 @@ class TestDecodeJsonEncodedArguments:
         assert names == ()
 
 
+class _CountArgs(BaseModel):
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
+
+    items: list[int]
+
+
+class _TypedCountingTool(BaseTool):
+    """Returns how many items it was handed, through a typed args model."""
+
+    args_model: ClassVar[type[BaseModel] | None] = _CountArgs
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="count_typed",
+            description="Counts items",
+            category=ToolCategory.OTHER,
+            parameters_schema={
+                "type": "object",
+                "properties": {"items": {"type": "array"}},
+                "required": ["items"],
+                "additionalProperties": False,
+            },
+        )
+
+    @override
+    async def execute(self, *, arguments: JsonDict) -> ToolExecutionResult:
+        items = arguments["items"]
+        assert isinstance(items, list)
+        return ToolExecutionResult(content=str(len(items)))
+
+
 class _CountingTool(BaseTool):
     """Returns how many items it was handed, through the JSON-Schema path."""
 
@@ -169,10 +202,22 @@ class TestTheInvokerDecodesBeforeValidating:
         invoker = ToolInvoker(ToolRegistry([_CountingTool()]))
         call = ToolCall(id="c1", name="count_items", arguments={"items": "[1, 2, 3]"})
 
-        result = await invoker.invoke(call)
+        with capture_logs() as logs:
+            result = await invoker.invoke(call)
 
         assert result.is_error is False
         assert result.content == "3"
+        decoded = [log for log in logs if log["event"] == TOOL_INVOKE_ARGUMENT_DECODED]
+        assert decoded[0]["parameters"] == ("items",)
+
+    async def test_the_decoded_value_reaches_a_typed_args_model(self) -> None:
+        invoker = ToolInvoker(ToolRegistry([_TypedCountingTool()]))
+        call = ToolCall(id="c3", name="count_typed", arguments={"items": "[1, 2]"})
+
+        result = await invoker.invoke(call)
+
+        assert result.is_error is False
+        assert result.content == "2"
 
     async def test_text_that_is_not_an_array_is_still_refused(self) -> None:
         invoker = ToolInvoker(ToolRegistry([_CountingTool()]))

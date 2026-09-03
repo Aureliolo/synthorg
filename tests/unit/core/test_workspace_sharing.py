@@ -2,6 +2,7 @@
 
 import os
 import stat
+from pathlib import Path
 
 import pytest
 
@@ -11,8 +12,56 @@ from synthorg.core.workspace_sharing import (
     WORKSPACE_FILE_MODE,
     apply_shared_umask,
     delivered_file_mode,
+    ensure_shared_dir,
     workspace_share_gid,
 )
+
+
+def _symlink_dir(link: Path, target: Path) -> None:
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError, NotImplementedError:
+        pytest.skip("symlink creation not permitted on this platform")
+
+
+@pytest.mark.unit
+class TestEnsureSharedDirRefusesASymlink:
+    """A component swapped for a link after validation carries nothing out."""
+
+    def test_a_symlinked_component_below_the_root_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        root = tmp_path / "ws"
+        outside = tmp_path / "outside"
+        root.mkdir()
+        outside.mkdir()
+        _symlink_dir(root / "docs", outside)
+
+        with pytest.raises(PermissionError, match="symlink"):
+            ensure_shared_dir(root / "docs" / "new", within=root)
+
+        assert not (outside / "new").exists()
+
+    def test_a_symlink_at_or_above_the_root_is_the_operator_s_business(
+        self, tmp_path: Path
+    ) -> None:
+        real = tmp_path / "real"
+        real.mkdir()
+        root = tmp_path / "ws"
+        _symlink_dir(root, real)
+
+        ensure_shared_dir(root / "a" / "b", within=root)
+
+        assert (real / "a" / "b").is_dir()
+
+    def test_without_a_root_nothing_is_checked(self, tmp_path: Path) -> None:
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        _symlink_dir(tmp_path / "link", outside)
+
+        ensure_shared_dir(tmp_path / "link" / "made")
+
+        assert (outside / "made").is_dir()
 
 
 @pytest.mark.unit

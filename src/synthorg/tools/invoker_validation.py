@@ -93,9 +93,26 @@ class ToolInvokerValidationMixin:
           * ``None`` when there is no ``args_model``, nothing was
             decoded and the tool's JSON-Schema check passed; callers
             fall back to the raw deepcopied arguments.
+
+        Raises:
+            MemoryError: Re-raised after logging; never swallowed.
+            RecursionError: Re-raised after logging, as a nested JSON text
+                argument can exhaust the decoder.
         """
         schema = tool.parameters_schema
-        arguments, decoded = decode_json_encoded_arguments(schema, tool_call.arguments)
+        try:
+            arguments, decoded = decode_json_encoded_arguments(
+                schema, tool_call.arguments
+            )
+        except (MemoryError, RecursionError) as exc:
+            log_exception_redacted(
+                logger,
+                TOOL_INVOKE_NON_RECOVERABLE,
+                exc,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+            )
+            raise
         if decoded:
             logger.info(
                 TOOL_INVOKE_ARGUMENT_DECODED,

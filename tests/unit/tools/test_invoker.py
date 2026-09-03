@@ -4,7 +4,12 @@ import asyncio
 from typing import TYPE_CHECKING, cast, override
 
 import pytest
+from structlog.testing import capture_logs
 
+from synthorg.observability.events.tool import (
+    TOOL_INVOKE_ALL_ORDERED,
+    TOOL_INVOKE_ALL_WITHHELD,
+)
 from synthorg.providers.models import ToolCall, ToolResult
 from synthorg.security.autonomy.enums import ToolCategory
 from synthorg.tools.base import BaseTool, ToolExecutionResult
@@ -785,10 +790,105 @@ class TestInvokeAllOrdersMutations:
             ToolCall(id="b", name="mutate", arguments={"label": "b", "delay": 0.0}),
         ]
 
-        await invoker.invoke_all(calls)
+        with capture_logs() as logs:
+            results = await invoker.invoke_all(calls)
 
         assert concurrency_tracking_tool.peak >= 2
         assert mutator.finished == ["a", "b"]
+        # Results come back in the order the calls were issued, reads included.
+        assert [r.tool_call_id for r in results] == ["a", "r0", "r1", "r2", "b"]
+        ordered = [log for log in logs if log["event"] == TOOL_INVOKE_ALL_ORDERED]
+        assert ordered[0]["stages"] == 3
+
+    async def test_an_unregistered_name_in_a_mixed_batch(self) -> None:
+        mutator = _OrderedMutator()
+        invoker = ToolInvoker(ToolRegistry([mutator]))
+        calls = [
+            ToolCall(id="a", name="mutate", arguments={"label": "a", "delay": 0.0}),
+            ToolCall(id="m", name="no_such_tool", arguments={}),
+            ToolCall(id="b", name="mutate", arguments={"label": "b", "delay": 0.0}),
+        ]
+
+        results = await invoker.invoke_all(calls)
+
+        assert results[1].is_error is True
+        assert results[1].is_unresolved is True
+        assert mutator.finished == ["a", "b"]
+
+
+class _ParkingTool(BaseTool):
+    """Asks for a human's approval, the way ``request_human_approval`` does."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="ask_approval",
+            description="Parks the run",
+            category=ToolCategory.FILE_SYSTEM,
+            parameters_schema={"type": "object", "properties": {}},
+        )
+
+    @override
+    async def execute(self, *, arguments: JsonDict) -> ToolExecutionResult:
+        return ToolExecutionResult(
+            content="parked",
+            metadata={"requires_parking": True, "approval_id": "appr-1"},
+        )
+
+
+class _FatalTool(BaseTool):
+    """A read whose process-level failure nothing downstream should build on."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="fatal",
+            description="Raises RecursionError",
+            category=ToolCategory.CODE_EXECUTION,
+            action_type="code:read",
+            parameters_schema={"type": "object", "properties": {}},
+        )
+
+    @override
+    async def execute(self, *, arguments: JsonDict) -> ToolExecutionResult:
+        msg = "maximum recursion depth"
+        raise RecursionError(msg)
+
+
+@pytest.mark.unit
+class TestInvokeAllStopsWhenItShould:
+    """A batch stops issuing writes into a state nobody can vouch for."""
+
+    async def test_a_fatal_error_stops_the_stages_after_it(self) -> None:
+        mutator = _OrderedMutator()
+        invoker = ToolInvoker(ToolRegistry([_FatalTool(), mutator]))
+        calls = [
+            ToolCall(id="r", name="fatal", arguments={}),
+            ToolCall(id="b", name="mutate", arguments={"label": "b", "delay": 0.0}),
+        ]
+
+        with pytest.raises(RecursionError):
+            await invoker.invoke_all(calls)
+
+        assert mutator.finished == []
+
+    async def test_a_park_withholds_the_calls_issued_after_it(self) -> None:
+        mutator = _OrderedMutator()
+        invoker = ToolInvoker(ToolRegistry([_ParkingTool(), mutator]))
+        calls = [
+            ToolCall(id="a", name="mutate", arguments={"label": "a", "delay": 0.0}),
+            ToolCall(id="p", name="ask_approval", arguments={}),
+            ToolCall(id="b", name="mutate", arguments={"label": "b", "delay": 0.0}),
+        ]
+
+        with capture_logs() as logs:
+            results = await invoker.invoke_all(calls)
+
+        assert mutator.finished == ["a"]
+        assert results[1].content == "parked"
+        assert results[2].is_error is True
+        assert "approval" in results[2].content
+        assert [e.approval_id for e in invoker.pending_escalations] == ["appr-1"]
+        withheld = [log for log in logs if log["event"] == TOOL_INVOKE_ALL_WITHHELD]
+        assert withheld[0]["withheld"] == 1
 
 
 @pytest.mark.unit

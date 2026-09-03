@@ -23,6 +23,7 @@ TOOL_REGISTRY_CONTAINS_TYPE_ERROR: Final[str] = "tool.registry.contains_type_err
 TOOL_INVOKE_ALL_START: Final[str] = "tool.invoke_all.start"
 TOOL_INVOKE_ALL_COMPLETE: Final[str] = "tool.invoke_all.complete"
 TOOL_INVOKE_ALL_ORDERED: Final[str] = "tool.invoke_all.ordered"
+TOOL_INVOKE_ALL_WITHHELD: Final[str] = "tool.invoke_all.withheld"
 """A batch held at least one mutating call, so it ran in stages: each
 mutating call alone, in the order the model issued it, and only runs of
 read-only calls side by side."""

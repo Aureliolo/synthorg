@@ -53,6 +53,37 @@ class TestWriteFileExecution:
             encoding="utf-8"
         ) == "x"
 
+    async def test_a_parent_that_is_a_file_is_refused(
+        self, workspace: Path, write_tool: WriteFileTool
+    ) -> None:
+        (workspace / "hello.txt").write_text("x", encoding="utf-8")
+
+        result = await write_tool.execute(
+            arguments={"path": "hello.txt/child.txt", "content": "y"}
+        )
+
+        assert result.is_error
+        assert (workspace / "hello.txt").read_text(encoding="utf-8") == "x"
+
+    async def test_a_parent_that_became_a_symlink_is_refused(
+        self, workspace: Path, write_tool: WriteFileTool
+    ) -> None:
+        # The validator resolves the path once; a component swapped for a
+        # link afterwards must not carry the write out of the workspace.
+        outside = workspace.parent / "outside"
+        outside.mkdir()
+        try:
+            (workspace / "docs").symlink_to(outside, target_is_directory=True)
+        except OSError, NotImplementedError:
+            pytest.skip("symlink creation not permitted on this platform")
+
+        result = await write_tool.execute(
+            arguments={"path": "docs/new/file.txt", "content": "y"}
+        )
+
+        assert result.is_error
+        assert not (outside / "new").exists()
+
     async def test_missing_parent_refused_when_asked_not_to_create(
         self, write_tool: WriteFileTool
     ) -> None:

@@ -97,7 +97,7 @@ def workspace_share_gid() -> int | None:
     return int(getgid())
 
 
-def ensure_shared_dir(path: Path) -> None:
+def ensure_shared_dir(path: Path, *, within: Path | None = None) -> None:
     """Create *path* and its missing ancestors under the sharing contract.
 
     Each component is created separately because ``mkdir(parents=True)``
@@ -115,17 +115,52 @@ def ensure_shared_dir(path: Path) -> None:
 
     Args:
         path: The directory to ensure exists.
+        within: The tree the path was validated against, when there is one.
+            A caller resolves and checks its path once, and a component
+            below this root that is a symlink by the time it is walked was
+            swapped in after that check, so it is refused rather than
+            descended into: the sandbox shares the tree and can plant one.
+
+    Raises:
+        PermissionError: If a component strictly below *within* is a symlink.
     """
     missing = [p for p in (path, *path.parents) if not p.exists()]
+    if within is not None:
+        _refuse_symlinks_below(path, within)
     for component in reversed(missing):
         try:
             component.mkdir()
         except FileExistsError:
+            if within is not None and component.is_symlink():
+                _refuse(component)
             # Placed between the scan and here, so somebody else owns its
             # mode. The scan stays as a pre-filter because the ancestors it
             # skips include the filesystem root, which is not ours to attempt.
             continue
         component.chmod(WORKSPACE_DIR_MODE)
+
+
+def _refuse_symlinks_below(path: Path, within: Path) -> None:
+    """Refuse a path any of whose components below *within* is a symlink.
+
+    Raises:
+        PermissionError: If such a component exists.
+    """
+    for component in (path, *path.parents):
+        if component == within or within not in component.parents:
+            break
+        if component.is_symlink():
+            _refuse(component)
+
+
+def _refuse(component: Path) -> None:
+    """Raise the refusal for a symlinked *component*.
+
+    Raises:
+        PermissionError: Always.
+    """
+    msg = f"refusing to descend into a symlink inside the workspace: {component}"
+    raise PermissionError(msg)
 
 
 def delivered_file_mode(current_mode: int | None) -> int:
