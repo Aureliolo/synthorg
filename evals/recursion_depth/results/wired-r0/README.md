@@ -261,7 +261,8 @@ paid for, by operator decision on 2026-09-02, because the same evidence that
 motivates fixing the plumbing argues that the inner loop is not where this
 product's value lies: a mature harness with a frontier model would beat this
 loop on this task by a wide margin, and a product that runs those harnesses
-under an org chart, budgets and approvals now exists (#2916). What this cell
+under an org chart, budgets and approvals now exists, which is #2916's
+question. What this cell
 does settle: RC1 and RC4 are not the product's; RC3 is, and it is the
 assembly not acting on findings rather than nothing telling it; the INTEGRATE
 stage keeps its design because nothing here separates its cost from the
