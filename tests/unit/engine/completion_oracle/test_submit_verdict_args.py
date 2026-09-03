@@ -38,9 +38,9 @@ class TestTheSchemaSaysWhichFieldTheBriefReads:
         schema = SubmitCompletionOracleVerdictArgs.model_json_schema()
         findings = schema["properties"]["findings"]["description"]
         summary = schema["properties"]["summary"]["description"]
-        assert "rework brief reads this list" in findings
-        assert "never the summary" in findings
-        assert "Not read by the rework brief" in summary
+        assert "rework brief renders every entry" in findings
+        assert "reject with none is refused" in findings
+        assert "rework brief opens with" in summary
 
 
 class TestAnAbsentCommandHasManySpellings:

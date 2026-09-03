@@ -313,9 +313,12 @@ Fixed on this branch, each with its test:
   redirect and a diff without its lines, to an agent about to edit what it had
   read. A result is now rewritten only when it is an HTML document that hid
   something, and a clean document is returned byte for byte.
-- The verdict tool's schema now says which field the rework brief reads: every
-  round's first submission carried its findings in the summary and was
-  refused, one turn per round.
+- The rework brief was built from the reviewer's summary alone, in all three
+  review gates: the findings the verdict tool demands, and refuses a reject
+  without, never reached the assembly, which was told "not mergeable" and
+  had to find the two lines itself. Every gate now renders every finding into
+  the hop, and the verdict schema says so; every round's first submission had
+  carried its findings in the summary and been refused, one turn per round.
 - The session-flow and digest reports read a non-streamed planning response
   as no calls at all; the wiring smoke compared two spellings of one
   embedder reference, demanded a policy engine where the product configures

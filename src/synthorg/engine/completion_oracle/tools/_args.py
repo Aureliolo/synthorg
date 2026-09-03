@@ -52,14 +52,15 @@ class SubmitCompletionOracleVerdictArgs(BaseModel):
         default=(),
         description=(
             "What the assignee has to fix, one entry per defect. The rework "
-            "brief reads this list and never the summary, so a reject whose "
-            "findings sit in the summary alone is refused."
+            "brief renders every entry, and a reject with none is refused: a "
+            "defect described only in the summary is one line of prose the "
+            "assignee has to find for itself."
         ),
     )
     summary: NotBlankStr = Field(
         description=(
-            "One paragraph for the operator. Not read by the rework brief: a "
-            "defect named only here reaches nobody who can fix it."
+            "One paragraph the rework brief opens with and the operator "
+            "reads; the findings carry the defects themselves."
         ),
     )
     build_evidence_cited: bool = False

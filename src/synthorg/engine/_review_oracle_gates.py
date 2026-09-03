@@ -15,6 +15,7 @@ from synthorg.core.task_enums import (
     BlockedReason,
     TaskStatus,
 )
+from synthorg.engine._review_rework_text import rework_brief
 from synthorg.engine.completion_oracle.evaluator import BuildTestOracle
 from synthorg.engine.completion_oracle.protocol import CompletionOracleGate
 from synthorg.engine.completion_oracle.review_input import CompletionOracleReviewInput
@@ -321,8 +322,10 @@ def _route_non_approving_verdict(
     )
     return GateOutcome(
         target=TaskStatus.IN_PROGRESS,
-        transition_reason=(
-            f"Completion review ({result.verdict.value}): {result.report.summary}"
+        transition_reason=rework_brief(
+            f"Completion review ({result.verdict.value})",
+            result.report.summary,
+            result.report.findings,
         ),
         event=APPROVAL_GATE_REVIEW_REWORK,
         approved=False,

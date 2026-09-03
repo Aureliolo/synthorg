@@ -20,6 +20,7 @@ from synthorg.core.task_enums import (
     compare_stakes,
 )
 from synthorg.engine._review_oracle_gates import GateOutcome
+from synthorg.engine._review_rework_text import rework_brief
 from synthorg.observability import get_logger
 from synthorg.observability.events.approval_gate import APPROVAL_GATE_REVIEW_REWORK
 from synthorg.observability.events.red_team import (
@@ -266,7 +267,11 @@ async def apply_red_team_gate(
         findings=len(result.report.findings),
         verdict=result.verdict.value,
     )
-    rework_reason = f"Red-team review blocked completion: {result.report.summary}"
+    rework_reason = rework_brief(
+        "Red-team review blocked completion",
+        result.report.summary,
+        result.report.findings,
+    )
     return GateOutcome(
         target=TaskStatus.IN_PROGRESS,
         transition_reason=rework_reason,
