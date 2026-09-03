@@ -56,12 +56,76 @@ CREDENTIAL_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
         "GitHub personal access token",
         re.compile(r"(?<![A-Za-z0-9])ghp_[A-Za-z0-9]{36,}"),
     ),
+    # A generic secret assignment is read by the VALUE. A rule keyed on the
+    # variable's name alone matches ordinary code shaped like
+    # ``token = self._peek()``, which is every tokeniser ever written, and
+    # a live run had four of eight agents refused on writing a parser that
+    # way, two of them for their whole budget. The key is an identifier
+    # ENDING in the secret word: ``token_hash:`` names a hash and
+    # ``MAX_TOKEN_LENGTH =`` a length, and a rule admitting a suffix read a
+    # docstring in this repository as a credential. A call, an index or an
+    # attribute chain is code; a secret is a quoted literal, or a bare run
+    # of secret-shaped characters that carries a digit or is long enough
+    # that no identifier would, ending where no code continues from. A
+    # numeric literal is a number.
     (
         "Generic secret assignment",
+        # A quoted password: a password is a word as often as not, so
+        # length alone decides.
         re.compile(
-            r"(?:SECRET|TOKEN|PASSWORD|CREDENTIAL)\s*[=:]\s*"
-            r"""['\"]?[^\s'\"]{8,}['\"]?""",
+            r"""\b\w*?(?:password|passwd)\s*[=:]\s*['\"][^\s'\"]{8,}['\"]""",
             re.IGNORECASE,
+        ),
+    ),
+    (
+        "Generic secret assignment",
+        # A quoted token, secret or credential: a digit-bearing run, or one
+        # too long to be a word an assertion compares against.
+        re.compile(
+            r"\b\w*?(?:secret|token|credential)\s*[=:]\s*"
+            r"""['\"](?:(?=[^\s'\"]*\d)[^\s'\"]{8,}|[^\s'\"]{16,})['\"]""",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Generic secret assignment",
+        # A bare value, the YAML, dotenv and shell shape, whatever the key's
+        # case: a digit-bearing run of eight, or any run of sixteen, that
+        # is not a number and that no call, index or attribute continues.
+        re.compile(
+            r"\b\w*?(?:secret|token|password|passwd|credential)\s*[=:]\s*"
+            r"(?!\d+(?:\.\d+)?(?![\w.]))"
+            r"(?:(?=[A-Za-z0-9_\-/+=]*\d)[A-Za-z0-9_\-/+=]{8,}"
+            r"|[A-Za-z0-9_\-/+=]{16,})(?![\w.(\[])",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Generic secret assignment",
+        # A bare dotted value that is not an object path, on STRUCTURE
+        # rather than spelling: a JWT, or a digit-bearing value with a long
+        # segment carrying a character no identifier can (``-``, ``/``,
+        # ``+``, ``=``). A JWT is read from its header rather than from the
+        # ``eyJ`` it opens with: ``eyJ`` is only ``{"``, and an attribute
+        # named ``eyJConfig`` spells it. The JOSE header MUST carry ``alg``
+        # (RFC 7515 section 4.1.1), and base64url spells ``"alg":`` exactly
+        # three ways depending on the member's byte offset in the header
+        # (``ImFsZyI6``, ``JhbGciO``, ``iYWxnIj``), so requiring one of
+        # them inside the first segment is the decoded check without a
+        # decoder; a header needs no digit. Nothing here reads case or
+        # digit placement: every such heuristic was met by an identifier
+        # that spells it (``refreshTokenV2Handler``,
+        # ``longAttributeV123Handler``, ``accessTokenV1alpha``), and a
+        # refusal here is a CRITICAL deny on ordinary code. A dotted secret
+        # made only of identifier characters is the accepted gap; the
+        # undotted pattern above still takes it once it stands alone.
+        re.compile(
+            r"(?i:\b\w*?(?:secret|token|password|passwd|credential))\s*[=:]\s*"
+            r"(?=(?=eyJ)[A-Za-z0-9_\-]*?(?:ImFsZyI6|JhbGciO|iYWxnIj)"
+            r"[A-Za-z0-9_\-]*\.[A-Za-z0-9_\-]+\."
+            r"|(?=[A-Za-z0-9_\-/+=.]*\d)"
+            r"(?:[A-Za-z0-9_\-/+=]+\.)*(?=[A-Za-z0-9_\-/+=]{16})\w*[-/+=])"
+            r"[A-Za-z0-9_\-/+=.]{24,}(?![\w(\[])",
         ),
     ),
 )

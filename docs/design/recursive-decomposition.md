@@ -635,11 +635,17 @@ cap and reads each treatment off EVIDENCE rather than configuration
 (`evals/recursion_depth/wire_check.py`): the engine's own wiring summary
 (`AgentEngine.wiring`, the same facts its creation event logs, plus the tool
 surface the invoker was built with), the live settings the manifest was armed
-into, the cell ledger (cached-prefix tokens), and the recorded request bodies
-(the reasoning depth that actually reached the provider). Each becomes a
-finding with what was expected and what was seen; a treatment whose evidence
-cannot be read is `unverified`, which is neither a pass nor a failure and is
-said in those words. The findings travel in the report under `wiring`, so a
+into, the cell ledger (cached-prefix tokens), the recorded request bodies
+(the reasoning depth that actually reached the provider), the review gate the
+host built (the completion-oracle peer review is attached only once a
+coordination pair is published, and a runtime built without one reviews
+nothing), and the product's own verdict on a finished leaf, read back off the
+host rather than off the harness. Each becomes a finding with what was
+expected and what was seen; a treatment whose evidence cannot be read is
+`unverified`, which is neither a pass nor a failure and is said in those
+words. A leaf that ends at its turn cap is never offered for review, so a
+cell in which no leaf finished leaves the leaf-review finding unverified
+rather than failed. The findings travel in the report under `wiring`, so a
 published artefact states its own wiring rather than asserting it, and a
 recording made before the smoke existed says "not measured" there.
 
@@ -1188,11 +1194,86 @@ non-zero exit from a command the agent meant to fail, which is correct
 behaviour and useless as a signal: the count moves with how thoroughly an agent
 explored, not with how badly a run went.
 
+## What the wired engine measured
+
+One cell, cap 1, the gated arm, recorded 2026-09-02 through the product's own
+engine assembly with nothing missing (`evals/recursion_depth/results/wired-r0/`,
+with the register answered question by question in its `README.md` and the
+stop point in `docs/reference/harness-round-log.md`). Every recording above and
+below this section ran 8 of the 51 collaborators a deployment passes; this is
+the first that ran the loop the product ships, and the sweep was stopped at it
+by operator decision, so it is one cell and it is read as one cell.
+
+| what | measured |
+|---|---|
+| specification satisfied | 7 of 42, program LIVE |
+| leaf-work survival | 1 of 8 claimed |
+| tokens | 50.5M over 16 sessions, 4 h 37 min; by the journal the merge 52%, the leaves 42%, the reviews 6% (the transcript report reads 49%, 36% and 10% over the usage frames the tap kept) |
+| plan | 8 units in 11 turns; five of seven submissions refused because the array arrived as JSON text |
+| contract | 15 modules, 46 pending tests, no `CONTRACT.md`, cut at its 60-turn cap |
+| leaves | 8 of 8 at the 40-turn cap with the product's extensions zeroed by the harness; 2 graded delivered |
+| merge | three attempts (80 turns, 80 turns, parked on its 5.5M-token ceiling), rejected three times by a roster reviewer: the first two on the same critical lines, the third on a missing test run and NULL ordering |
+| shared modules diverged from the contract | 7 of 27 |
+
+What it says about the six root causes, in the order the dossier named them:
+
+- **RC1 (open-loop per unit).** Refuted as a property of the product: the
+  post-execution path files every finished unit for review, and the roster
+  reviewer judged the assembly three times in about a minute each with
+  code-quoted findings. What stands is narrower: a unit that runs out of turns
+  is never offered for review, and every leaf here did.
+- **RC2 (isolation where agreement is required).** Stands, smaller: the
+  contract closed most of the divergence (7 of 27 shared modules, against 11 of
+  14 without one), and what remained was one unit's join signature and one
+  unit's error taxonomy, both of which the assembly was told about and did not
+  reconcile.
+- **RC3 (the merge cannot do its job).** Stands, and now with the mechanism on
+  the wire: the assembly was briefed with the reviewer's findings by name. One
+  attempt read the named file four times, edited through `sed` and
+  here-documents rather than the edit tool, and wrote nothing in 80 turns; the
+  next fixed both lines at turn 50 of 68 and never ran the suite, so a
+  `NameError` on every query's first line reached the kept tree past three
+  read-only reviews. Repair rounds do not converge because the assembly
+  neither acts promptly on what it is told nor verifies what it writes.
+- **RC4 (nothing manages context).** Refuted as a cause at this pair: the
+  largest request was 125K tokens against an 838K compaction threshold, so
+  compaction correctly never fired; tool-output abbreviation fired ten times.
+  Context is not what ran out.
+- **RC5 (configuration validated, capability not).** Resolved by
+  construction: the engine is the product's and the smoke reads each
+  treatment off the wire. The smoke itself read three findings wrong on this
+  cell and was corrected.
+- **RC6 (unvalidated instruments).** Partly stands: the session-flow report
+  read the planning session as idle because it records a non-streamed
+  completion, and the wiring smoke misjudged three treatments; both are fixed
+  and tested on this branch.
+
+What decided the outcomes was not the loop's architecture. It was a 40-turn
+cap with no extension, and a tool surface that refused a tokeniser as a
+secret, raced concurrent edits of one file, refused missing parent
+directories, hid parameter names behind a load round-trip, refused an array
+sent as JSON text and told the agent how a test run is recorded only after
+refusing it. All of that is fixed on the branch that carries this recording,
+with tests. Underneath it the model dominates cost: 95 to 100 percent of
+emitted text is hidden reasoning, and single turns ran to the 131K output
+cap and sat silent for twenty minutes.
+
+The design decision this round records is none of the five the issue offered.
+The sweep was stopped before the repetitions that would have powered any of
+them, because the same evidence that argues for fixing the plumbing argues
+that the inner loop is not where this product's value is, which is #2916's
+question now. The
+INTEGRATE stage keeps its design; leaf repair rounds and tool-result
+abbreviation are not motivated by this cell; the sweep design question is
+moot until a next recording exists.
+
 ## What the sweep measured
 
 The figures below are the PILOT: six cells, caps 1 to 3, one repetition each,
-both arms. It is superseded by the depth-4 replication the committed matrix now
-describes, and this section is rewritten from that recording when it lands.
+both arms, on an engine wired at 8 of 51 collaborators. They are superseded by
+the wired-engine cell above as a description of the product's loop, and kept
+because the process figures (attempts, amendments, parks) were measured over 35
+merges rather than one.
 
 `evals/recursion_depth/results/pilot/` holds it: `chart.svg`,
 `depth_curve.json` and `depth_curve.md`, beside the `cells.jsonl` and

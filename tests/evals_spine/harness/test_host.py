@@ -21,6 +21,7 @@ import pytest
 from evals.errors import (
     HarnessGatewayUnavailableError,
     HarnessHostAlreadyStartedError,
+    HarnessHostConfigInvalidError,
 )
 from evals.harness.host import (
     RecordingGatewayHost,
@@ -29,15 +30,17 @@ from evals.harness.host import (
 )
 from synthorg.core.auth.roles import HumanRole
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.loop_budget_defaults import DEFAULT_MAX_TURN_EXTENSIONS
 from synthorg.llm.gateway_binding import mint_run_token
 from synthorg.llm.gateway_token import GatewaySigner
 from synthorg.persistence.state import persistence_of
-from synthorg.settings.model_ref import ModelRef
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.state import config_resolver_of
 from tests.evals_spine._recording import (
     RECORDING_MODEL,
     RECORDING_PROVIDER,
     recording_company_config,
+    recording_pair,
 )
 
 pytestmark = [
@@ -80,6 +83,7 @@ def _config(tmp_path: Path, *, scratch: Path | None = None) -> RecordingHostConf
     return RecordingHostConfig(
         company_config=recording_company_config(),
         scratch_dir=scratch if scratch is not None else tmp_path / "host",
+        coordination_pair=recording_pair(),
         bind_host="127.0.0.1",
     )
 
@@ -127,6 +131,20 @@ def _bearer(host: RecordingGatewayHost) -> str:
         ref=ModelRef(provider=RECORDING_PROVIDER, model_id=RECORDING_MODEL),
         ttl_seconds=_TTL_SECONDS,
     )
+
+
+class TestConfig:
+    def test_an_unbound_coordination_pair_is_refused(self, tmp_path: Path) -> None:
+        # Published unbound, the pair leaves the product's runtime at "no
+        # coordinator" and the peer-review gate cleared, so the host would
+        # boot and measure a roster nobody reviews.
+        with pytest.raises(HarnessHostConfigInvalidError, match="coordination_pair"):
+            RecordingHostConfig(
+                company_config=recording_company_config(),
+                scratch_dir=tmp_path / "host",
+                coordination_pair=ModelRef(),
+                bind_host="127.0.0.1",
+            )
 
 
 class TestSigner:
@@ -200,6 +218,31 @@ class TestEndpointSettings:
         assert await resolver.get_bool("providers", "gateway_enabled") is True
         assert f":{host.port}/" in host.container_gateway_url
 
+    async def test_the_coordination_pair_is_published(
+        self, host: RecordingGatewayHost
+    ) -> None:
+        # The peer-review gate is built only in a runtime built past the
+        # coordinator, which needs this pair; unset, every filed unit is judged
+        # by the build/test gate alone while the pipeline reads as wired.
+        resolver = config_resolver_of(host.app_state)
+
+        published = await resolver.get_str("coordination", "decomposition_model")
+
+        assert published == serialize_model_ref(recording_pair())
+
+    async def test_turn_extensions_are_the_products_own(
+        self, host: RecordingGatewayHost
+    ) -> None:
+        # Zeroed, a run still calling tools ended at its base budget as a hard
+        # failure with nothing asked; the shipped loop earns further budgets
+        # and parks. A recording that is measuring the product runs its
+        # allowance, and the token ceiling is what keeps cells comparable.
+        resolver = config_resolver_of(host.app_state)
+
+        allowance = await resolver.get_int("engine", "max_turn_extensions")
+
+        assert allowance == DEFAULT_MAX_TURN_EXTENSIONS
+
     async def test_container_urls_address_the_docker_host_alias(
         self, host: RecordingGatewayHost
     ) -> None:
@@ -215,6 +258,7 @@ class TestLifecycle:
         config = RecordingHostConfig(
             company_config=recording_company_config(),
             scratch_dir=scratch,
+            coordination_pair=recording_pair(),
             bind_host="127.0.0.1",
         )
 
@@ -244,6 +288,7 @@ class TestLifecycle:
         config = RecordingHostConfig(
             company_config=recording_company_config(),
             scratch_dir=scratch,
+            coordination_pair=recording_pair(),
             bind_host="127.0.0.1",
         )
 
@@ -332,6 +377,7 @@ class TestLifecycle:
         config = RecordingHostConfig(
             company_config=recording_company_config(),
             scratch_dir=tmp_path / "host",
+            coordination_pair=recording_pair(),
             bind_host="127.0.0.1",
         )
 
@@ -396,6 +442,7 @@ class TestGatewayEnabled:
         config = RecordingHostConfig(
             company_config=recording_company_config(),
             scratch_dir=tmp_path / "host",
+            coordination_pair=recording_pair(),
             bind_host="127.0.0.1",
         )
 

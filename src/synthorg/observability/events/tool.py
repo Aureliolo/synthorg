@@ -15,10 +15,21 @@ TOOL_INVOKE_EXECUTION_ERROR: Final[str] = "tool.invoke.execution_error"
 TOOL_INVOKE_DEEPCOPY_ERROR: Final[str] = "tool.invoke.deepcopy_error"
 TOOL_INVOKE_NON_RECOVERABLE: Final[str] = "tool.invoke.non_recoverable"
 TOOL_INVOKE_VALIDATION_UNEXPECTED: Final[str] = "tool.invoke.validation_unexpected"
+TOOL_INVOKE_ARGUMENT_DECODED: Final[str] = "tool.invoke.argument_decoded"
+"""A structured argument arrived as JSON text and was decoded to the array
+or object its schema declares, rather than refused for its type."""
 TOOL_BASE_INVALID_NAME: Final[str] = "tool.base.invalid_name"
 TOOL_REGISTRY_CONTAINS_TYPE_ERROR: Final[str] = "tool.registry.contains_type_error"
 TOOL_INVOKE_ALL_START: Final[str] = "tool.invoke_all.start"
 TOOL_INVOKE_ALL_COMPLETE: Final[str] = "tool.invoke_all.complete"
+TOOL_INVOKE_ALL_ORDERED: Final[str] = "tool.invoke_all.ordered"
+"""A batch held at least one mutating call, so it ran in stages: each
+mutating call alone, in the order the model issued it, and only runs of
+read-only calls side by side."""
+TOOL_INVOKE_ALL_WITHHELD: Final[str] = "tool.invoke_all.withheld"
+"""A call in a batch parked for human approval, so every call staged after
+it was not run and was answered with an error naming the pending approval
+instead: what follows a parked write waits on that answer."""
 TOOL_INVOKE_ALL_FATAL: Final[str] = "tool.invoke_all.fatal"
 """A batch collected non-recoverable errors and is about to re-raise them.
 Logged at ERROR naming each error TYPE, because past this point the batch
@@ -94,6 +105,7 @@ TOOL_DISCLOSURE_TOKEN_SAVINGS: Final[str] = "tool.disclosure.token_savings"  # n
 
 # ── HTML parse guard events ────────────────────────────────────────
 TOOL_HTML_PARSE_GAP_DETECTED: Final[str] = "tool.html_parse.gap_detected"
+TOOL_HTML_PARSE_STRIPPED: Final[str] = "tool.html_parse.stripped"
 TOOL_HTML_PARSE_ERROR: Final[str] = "tool.html_parse.error"
 TOOL_HTML_PARSE_XXE_DETECTED: Final[str] = "tool.html_parse.xxe_detected"
 

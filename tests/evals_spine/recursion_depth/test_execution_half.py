@@ -29,9 +29,16 @@ from evals.errors import (
 from evals.harness.journal import open_journal
 from evals.harness.workspace import CellWorkspace
 from evals.recursion_depth import execute as execute_module
+from evals.recursion_depth import gate as gate_module
 from evals.recursion_depth import merge as merge_module
 from evals.recursion_depth import runner as runner_module
 from evals.recursion_depth.claims import RequirementId
+from evals.recursion_depth.contract import (
+    CONTRACT_PATH,
+    CONTRACT_UNIT_KEY,
+    ContractOutcome,
+    contract_task,
+)
 from evals.recursion_depth.execute import (
     UNBOUND,
     UNIT_REPORT_PATH,
@@ -77,6 +84,7 @@ from evals.recursion_depth.merge import (
     run_merge,
 )
 from evals.recursion_depth.models import (
+    CONTRACT,
     LEAF,
     METRIC_CAVEAT,
     ORACLE_CAVEAT,
@@ -97,18 +105,25 @@ from evals.recursion_depth.runner import (
     run_sweep,
 )
 from evals.recursion_depth.session import (
+    LeafReview,
     SessionLimits,
     SessionOutcome,
     SweepDeps,
 )
 from evals.recursion_depth.staffing import SweepRoster, build_roster
 from evals.recursion_depth.tree import SpecBrief
-from evals.recursion_depth.unit import UnitDelivery, leaf_unit_key
+from evals.recursion_depth.unit import (
+    UnitDelivery,
+    built_unit_workspace,
+    delivery_of,
+    leaf_unit_key,
+)
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskStructure, TaskType
 from synthorg.core.types import CapabilityLevel, NotBlankStr
+from synthorg.engine.completion_oracle.review_models import CompletionOracleVerdict
 from synthorg.engine.decomposition.models import (
     DecompositionPlan,
     DecompositionResult,
@@ -123,6 +138,13 @@ from tests._shared import as_uuid, make_app_state, mock_of, sid
 from tests.evals_spine.recursion_depth._doubles import ungraded_capability
 
 pytestmark = pytest.mark.unit
+
+_REVIEW_APPROVED = LeafReview(
+    task_status=TaskStatus.COMPLETED, verdict=CompletionOracleVerdict.APPROVE
+)
+_REVIEW_ESCALATED = LeafReview(
+    task_status=TaskStatus.BLOCKED, verdict=CompletionOracleVerdict.ESCALATE
+)
 
 _EXECUTOR = ModelPair(
     provider=NotBlankStr("example-provider"),
@@ -380,6 +402,38 @@ class TestTheMergeBrief:
             review_limits=_limits(),
             attempts=2,
         )
+
+    def test_the_attempt_task_is_a_transient_the_host_never_holds(
+        self, tmp_path: Path
+    ) -> None:
+        # ASSIGNED would send the engine through the central task engine's
+        # entry hop, which refuses a row the host does not hold; IN_PROGRESS
+        # passes straight through and opens no review, so the merge keeps
+        # exactly one judge.
+        task = merge_module._attempt_task(self._plan(tmp_path, delivered=_CLEAN), ())
+
+        assert task.status is TaskStatus.IN_PROGRESS
+
+    def test_the_blind_pass_runs_the_same_transient_shape(self, tmp_path: Path) -> None:
+        plan = self._plan(tmp_path, delivered=_CLEAN)
+        request = MergeReviewRequest(
+            task=plan.task,
+            owner=plan.owner,
+            workspace=plan.workspace,
+            deliverable="a tree",
+            criteria=plan.criteria,
+            execution_id="x-review1",
+            limits=_limits(),
+        )
+
+        assert gate_module._self_review_task(request).status is TaskStatus.IN_PROGRESS
+
+    def test_the_contract_task_is_a_transient_too(self) -> None:
+        task = contract_task(
+            _task("Root"), spec=_spec(), owner=_identity("Builder 1"), units=("a",)
+        )
+
+        assert task.status is TaskStatus.IN_PROGRESS
 
     def test_it_permits_and_asks_for_recorded_amendments(self, tmp_path: Path) -> None:
         brief = merge_brief(self._plan(tmp_path, delivered=_CLEAN), ())
@@ -1323,13 +1377,15 @@ class TestAContractSeededLeafIsGradedOnWhatItOwns:
 
         assert seen == []
         assert outcome.produced is True
-        assert "claims no requirement" in outcome.detail
+        assert "claims no requirement" in outcome.note
         # And DELIVERED, which is the half the explanation was costing it.
         # The sentence says the gate decided nothing and the tree is the
         # evidence; carried as a reason, it was read as the gate deciding
         # against the leaf, and only delivered leaves' claims reach the
-        # survival denominator.
+        # survival denominator. It stays out of `detail` all the way to the
+        # record, which refuses a delivered unit carrying a reason.
         assert outcome.delivered is True
+        assert outcome.detail == ""
 
     async def test_a_selection_matching_no_test_is_the_contracts_failure(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1343,12 +1399,13 @@ class TestAContractSeededLeafIsGradedOnWhatItOwns:
         outcome, _seen = await self._run(tmp_path, monkeypatch, owned=("R99",))
 
         assert outcome.produced is True
-        assert "R99" in outcome.detail
-        assert "decided nothing" in outcome.detail
+        assert "R99" in outcome.note
+        assert "decided nothing" in outcome.note
         # Delivered for the reason the sentence gives: the contract owed the
         # test, so its absence says nothing about this leaf, and its tree is
         # what is left to judge it on.
         assert outcome.delivered is True
+        assert outcome.detail == ""
 
     def test_the_selection_reaches_pytest_as_a_name_filter(self) -> None:
         # The join is the requirement id appearing in the test's NAME, which is
@@ -2434,3 +2491,646 @@ class TestTheMatrix:
         # assertion: the planner books its sessions on every call including a
         # failing one, so a spend of zero is a planner that never ran.
         assert context.budget.spent == 0
+
+
+class TestTheRecordCarriesTheProductsVerdict:
+    """What the host decided reaches the row in its own words."""
+
+    def test_verdict_and_park_are_mapped(self, tmp_path: Path) -> None:
+        tree = _tree()
+        leaf = LeafOutcome(
+            workspace=_workspace(tmp_path, "leaf"),
+            delivered=True,
+            produced=True,
+            attempts=1,
+            turns=3,
+            cost=0.0,
+            verdict=CompletionOracleVerdict.ESCALATE,
+            task_status=TaskStatus.BLOCKED,
+        )
+
+        record = runner_module._leaf_record(
+            tree.created_tasks[0], tree.plan.subtasks[0], tree, leaf, _spec()
+        )
+
+        assert record.verdict == "escalate"
+        assert record.parked is True
+
+    def test_an_unreviewed_leaf_records_no_verdict(self, tmp_path: Path) -> None:
+        tree = _tree()
+        leaf = LeafOutcome(
+            workspace=_workspace(tmp_path, "leaf"),
+            delivered=True,
+            produced=True,
+            attempts=1,
+            turns=3,
+            cost=0.0,
+        )
+
+        record = runner_module._leaf_record(
+            tree.created_tasks[0], tree.plan.subtasks[0], tree, leaf, _spec()
+        )
+
+        assert record.verdict is None
+        assert record.parked is False
+
+
+class TestAReasonAndANoteAreTwoSentences:
+    """A delivery says why it is doubted, or what is not a doubt; never both."""
+
+    def test_a_delivery_refuses_both(self) -> None:
+        with pytest.raises(ValueError, match="reason and a note"):
+            UnitDelivery(produced=True, reason="broken", note="fine")
+
+    def test_a_record_refuses_both(self) -> None:
+        with pytest.raises(ValueError, match="both a reason"):
+            UnitRecord(
+                unit_id=NotBlankStr("leaf-1"),
+                title=NotBlankStr("Build it"),
+                kind=LEAF,
+                depth=1,
+                delivered=False,
+                produced=True,
+                attempts=1,
+                turns=3,
+                cost=0.0,
+                detail="broken",
+                note="fine",
+            )
+
+
+class TestADeliveredLeafKeepsItsNote:
+    """The gate-decided-nothing sentence reaches the record without failing it.
+
+    A live cell built eight leaves under a contract, every one carrying that
+    sentence, and lost all eight rows at the moment they were paid for: the
+    note travelled in ``detail``, and the record refuses a delivered unit
+    that also says why it did not deliver.
+    """
+
+    _NOTE = (
+        "no test in the seeded tree is named for any requirement this unit "
+        "claims (R01), so its own-test gate decided nothing and only its tree "
+        "is evidence"
+    )
+
+    def test_the_record_carries_the_note_beside_an_empty_detail(
+        self, tmp_path: Path
+    ) -> None:
+        tree = _tree()
+        leaf = LeafOutcome(
+            workspace=_workspace(tmp_path, "leaf"),
+            delivered=True,
+            produced=True,
+            attempts=1,
+            turns=3,
+            cost=0.0,
+            note=self._NOTE,
+        )
+
+        record = runner_module._leaf_record(
+            tree.created_tasks[0], tree.plan.subtasks[0], tree, leaf, _spec()
+        )
+
+        assert record.delivered is True
+        assert record.detail == ""
+        assert record.note == self._NOTE
+
+    def test_the_note_survives_the_journal_round_trip(self) -> None:
+        record = UnitRecord(
+            unit_id=NotBlankStr("leaf-1"),
+            title=NotBlankStr("Build it"),
+            kind=LEAF,
+            depth=1,
+            delivered=True,
+            produced=True,
+            note=self._NOTE,
+        )
+
+        read = UnitRecord.model_validate(record.model_dump(mode="json"))
+
+        assert read.delivered is True
+        assert read.note == self._NOTE
+
+    def test_a_replayed_note_is_still_not_a_reason(self) -> None:
+        # The resume rebuilds deliveries from the record; a note that came
+        # back as a reason would mark the replayed leaf undelivered.
+        delivery = delivery_of(
+            produced=True, detail="", note=self._NOTE, files_changed=3
+        )
+
+        assert delivery.delivered is True
+        assert delivery.note == self._NOTE
+
+
+def _seeded_spec(tmp_path: Path) -> None:
+    """Give the sweep's specification the seed the contract stage recreates from."""
+    seed = tmp_path / "spec" / "seed"
+    seed.mkdir(parents=True, exist_ok=True)
+    (seed / "README.md").write_text("the objective\n", encoding="utf-8")
+
+
+def _contract_that_writes() -> tuple[object, list[str]]:
+    """Stand in for the contract session: one file, one sound outcome.
+
+    Returns:
+        The replacement for ``run_contract``, and the execution ids it was
+        asked to run, which is what says whether a resume paid for it again.
+    """
+    calls: list[str] = []
+
+    async def _run(
+        deps: SweepDeps,
+        *,
+        task: Task,
+        owner: AgentIdentity,
+        workspace: CellWorkspace,
+        execution_id: str,
+        limits: SessionLimits,
+    ) -> ContractOutcome:
+        del deps, task, owner, limits
+        calls.append(execution_id)
+        (workspace.project_dir / CONTRACT_PATH).write_text(
+            "the seam\n", encoding="utf-8"
+        )
+        return ContractOutcome(
+            workspace=workspace,
+            sound=True,
+            turns=1,
+            cost=0.0,
+            termination="completed",
+            files_written=1,
+        )
+
+    return _run, calls
+
+
+async def _refused_contract(
+    deps: SweepDeps,
+    *,
+    task: Task,
+    owner: AgentIdentity,
+    workspace: CellWorkspace,
+    execution_id: str,
+    limits: SessionLimits,
+) -> ContractOutcome:
+    """Stand in for a contract session the host refused before its first turn.
+
+    Its workspace was seeded before the refusal and is left as it was found,
+    which is the shape a live attempt left behind.
+
+    Raises:
+        OSError: Always.
+    """
+    del deps, task, owner, workspace, execution_id, limits
+    msg = "refused at the entry hop"
+    raise OSError(msg)
+
+
+class TestTheContractStageOnResume:
+    """The journal decides whether a contract tree is taken up, never the disk.
+
+    A live attempt's contract session was refused after its directory had been
+    seeded; the next attempt found the directory, took it as built, and seeded
+    eight leaves from an empty tree, each then graded on tests that had never
+    been written. The session that "built" it was in no journal.
+    """
+
+    async def test_a_tree_left_by_a_refused_session_is_not_a_contract(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, assembled_trees: None
+    ) -> None:
+        del assembled_trees
+        _seeded_spec(tmp_path)
+        monkeypatch.setattr(runner_module, "run_contract", _refused_contract)
+        planner = _CountingPlanner(answer=_Plan(result=_tree(), cost=1.5, sessions=1))
+        manifest = _manifest(arms=(Arm.GATED,), contract_stage=True)
+        with pytest.raises(RecursionDepthNoCellsMeasuredError):
+            await _swept(
+                await _context(tmp_path, planner=planner, manifest=manifest), tmp_path
+            )
+        # The seeded directory is standing exactly where the contract's key
+        # points, with no row behind it.
+        assert (
+            built_unit_workspace(
+                cell_key=cell_key(1, Arm.GATED, 0),
+                unit_key=CONTRACT_UNIT_KEY,
+                work_root=tmp_path / "work",
+            )
+            is not None
+        )
+
+        run, calls = _contract_that_writes()
+        monkeypatch.setattr(runner_module, "run_contract", run)
+        report = await run_sweep(
+            await _context(tmp_path, planner=planner, manifest=manifest),
+            provenance=_provenance(),
+            out_dir=tmp_path / "out-again",
+            resume=False,
+        )
+
+        # Written again rather than taken up on sight, and recorded this time.
+        assert calls == [f"{cell_key(1, Arm.GATED, 0)}-contract"]
+        measured = report.measured_cells[0]
+        assert [unit.kind for unit in measured.units] == [PLAN, CONTRACT]
+
+    async def test_a_journalled_contract_is_taken_up_by_the_resume(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Paid for once across both attempts, on the same terms as a leaf:
+        # re-running it would hand the units a different agreement from the
+        # one the leaf already on disk was built against.
+        _seeded_spec(tmp_path)
+        run, calls = _contract_that_writes()
+        monkeypatch.setattr(runner_module, "run_contract", run)
+        build, _seen = _builds_one_leaf_then_dies(
+            tmp_path, OSError("the merge workspace vanished")
+        )
+        monkeypatch.setattr(runner_module, "_build_tree_units", build)
+        monkeypatch.setattr(runner_module, "run_oracle", _scripted_oracle)
+        planner = _CountingPlanner(answer=_Plan(result=_tree(), cost=1.5, sessions=1))
+        manifest = _manifest(arms=(Arm.GATED,), contract_stage=True)
+        with pytest.raises(RecursionDepthNoCellsMeasuredError):
+            await _swept(
+                await _context(tmp_path, planner=planner, manifest=manifest), tmp_path
+            )
+
+        report = await _swept(
+            await _context(tmp_path, planner=planner, manifest=manifest),
+            tmp_path,
+            resume=True,
+        )
+
+        assert planner.calls == 1
+        assert calls == [f"{cell_key(1, Arm.GATED, 0)}-contract"]
+        measured = report.measured_cells[0]
+        assert [unit.kind for unit in measured.units] == [PLAN, CONTRACT, LEAF]
+
+    async def test_a_journalled_contract_whose_tree_is_gone_restarts_the_cell(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Both halves or neither, as for every other unit: the leaf on disk
+        # was built against a tree that no longer exists, so continuing would
+        # seed the next unit from nothing and assemble against the first.
+        _seeded_spec(tmp_path)
+        run, calls = _contract_that_writes()
+        monkeypatch.setattr(runner_module, "run_contract", run)
+        build, seen = _builds_one_leaf_then_dies(
+            tmp_path, OSError("the merge workspace vanished")
+        )
+        monkeypatch.setattr(runner_module, "_build_tree_units", build)
+        monkeypatch.setattr(runner_module, "run_oracle", _scripted_oracle)
+        planner = _CountingPlanner(answer=_Plan(result=_tree(), cost=1.5, sessions=1))
+        manifest = _manifest(arms=(Arm.GATED,), contract_stage=True)
+        with pytest.raises(RecursionDepthNoCellsMeasuredError):
+            await _swept(
+                await _context(tmp_path, planner=planner, manifest=manifest), tmp_path
+            )
+        shutil.rmtree(tmp_path / "work" / cell_key(1, Arm.GATED, 0) / CONTRACT_UNIT_KEY)
+
+        with pytest.raises(RecursionDepthNoCellsMeasuredError):
+            await _swept(
+                await _context(tmp_path, planner=planner, manifest=manifest),
+                tmp_path,
+                resume=True,
+            )
+
+        assert planner.calls == 2
+        assert len(calls) == 2
+        assert seen[1] == {}
+
+
+class TestLeafReview:
+    """A leaf is filed with the host before it runs, and judged by the product.
+
+    The engine's post-execution path moves the task it was handed through
+    IN_PROGRESS to IN_REVIEW and runs the review pipeline on it, and it can
+    only move a row the host holds: a task built in memory and never filed
+    has that transition refused as not found, no approval is created, and
+    no review runs, while every wiring summary reads as fully wired.
+    """
+
+    @staticmethod
+    def _task() -> Task:
+        return Task(
+            id=as_uuid("leaf-review"),
+            title=NotBlankStr("Reviewed leaf"),
+            description=NotBlankStr("Build the unit"),
+            type=TaskType.DEVELOPMENT,
+            priority=Priority.MEDIUM,
+            project=NotBlankStr("p1"),
+            created_by=NotBlankStr("sweep"),
+            status=TaskStatus.CREATED,
+            artifacts_expected=(
+                ExpectedArtifact(
+                    path=NotBlankStr("src/unit.py"), type=ArtifactType.CODE
+                ),
+            ),
+        )
+
+    async def _leaf(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        review: LeafReview | None,
+    ) -> tuple[LeafOutcome, list[Task], list[Task]]:
+        """Run one leaf, recording what was filed and what the session got.
+
+        Returns:
+            The outcome, the tasks filed, and the tasks the session ran.
+        """
+        filed: list[Task] = []
+        ran: list[Task] = []
+        observed: list[LeafReview] = []
+        workspace = _workspace(tmp_path, "leaf")
+
+        async def _file(task: Task) -> None:
+            filed.append(task)
+
+        async def _read(task_id: str) -> LeafReview:
+            assert review is not None
+            assert task_id == str(as_uuid("leaf-review"))
+            return review
+
+        async def _scripted(
+            _deps_arg: SweepDeps, *, task: Task, **_rest: object
+        ) -> SessionOutcome:
+            ran.append(task)
+            (workspace.project_dir / "src").mkdir(parents=True, exist_ok=True)
+            (workspace.project_dir / "src" / "unit.py").write_text(
+                "real work", encoding="utf-8"
+            )
+            return SessionOutcome(
+                cost=0.5, tokens=1200, turns=3, termination="completed"
+            )
+
+        monkeypatch.setattr(execute_module, "run_session", _scripted)
+        deps = replace(
+            _deps(),
+            file_task=_file if review is not None else None,
+            read_review=_read if review is not None else None,
+            on_leaf_reviewed=observed.append,
+        )
+        outcome = await run_leaf(
+            deps,
+            task=self._task(),
+            owner=_identity("Builder"),
+            workspace=workspace,
+            execution_id="d1-gated-r0-leaf",
+            limits=SessionLimits(max_turns=8, cost_ceiling=5.0, token_ceiling=100_000),
+        )
+        if review is not None:
+            assert observed == [review]
+        return outcome, filed, ran
+
+    async def test_a_run_the_host_settled_is_not_resumed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # ERROR is also how a run whose rework rounds ran out reports itself,
+        # and the product has moved the row to FAILED by then: a resume would
+        # be refused at the entry hop and filed as a turnless second attempt.
+        ran: list[Task] = []
+        workspace = _workspace(tmp_path, "leaf")
+
+        async def _file(_task: Task) -> None:
+            pass
+
+        async def _read(_task_id: str) -> LeafReview:
+            return LeafReview(task_status=TaskStatus.FAILED, verdict=None)
+
+        async def _scripted(
+            _deps_arg: SweepDeps, *, task: Task, **_rest: object
+        ) -> SessionOutcome:
+            ran.append(task)
+            return SessionOutcome(cost=0.5, tokens=1200, turns=10, termination="error")
+
+        monkeypatch.setattr(execute_module, "run_session", _scripted)
+        deps = replace(_deps(), file_task=_file, read_review=_read)
+
+        outcome = await run_leaf(
+            deps,
+            task=self._task(),
+            owner=_identity("Builder"),
+            workspace=workspace,
+            execution_id="d1-gated-r0-leaf",
+            limits=SessionLimits(max_turns=8, cost_ceiling=5.0, token_ceiling=100_000),
+        )
+
+        assert len(ran) == 1
+        assert outcome.attempts == 1
+        assert outcome.task_status == "failed"
+
+    @pytest.mark.parametrize(
+        "status", [TaskStatus.BLOCKED, TaskStatus.COMPLETED, TaskStatus.IN_REVIEW]
+    )
+    async def test_every_settled_status_stops_a_resume(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: TaskStatus
+    ) -> None:
+        ran: list[Task] = []
+        reads: list[str] = []
+        workspace = _workspace(tmp_path, "leaf")
+
+        async def _file(_task: Task) -> None:
+            pass
+
+        async def _read(task_id: str) -> LeafReview:
+            reads.append(task_id)
+            return LeafReview(task_status=status, verdict=None)
+
+        async def _scripted(
+            _deps_arg: SweepDeps, *, task: Task, **_rest: object
+        ) -> SessionOutcome:
+            ran.append(task)
+            return SessionOutcome(cost=0.5, tokens=1200, turns=10, termination="error")
+
+        monkeypatch.setattr(execute_module, "run_session", _scripted)
+        deps = replace(_deps(), file_task=_file, read_review=_read)
+
+        outcome = await run_leaf(
+            deps,
+            task=self._task(),
+            owner=_identity("Builder"),
+            workspace=workspace,
+            execution_id="d1-gated-r0-leaf",
+            limits=SessionLimits(max_turns=8, cost_ceiling=5.0, token_ceiling=100_000),
+        )
+
+        assert len(ran) == 1
+        # The review read to decide the resume is the one recorded: one read.
+        assert len(reads) == 1
+        assert outcome.task_status is status
+        assert outcome.parked is (status is TaskStatus.BLOCKED)
+
+    async def test_a_row_filed_but_not_yet_archived_is_resumed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The host holds no row at all yet: nothing decided the run.
+        ran: list[Task] = []
+        workspace = _workspace(tmp_path, "leaf")
+
+        async def _file(_task: Task) -> None:
+            pass
+
+        async def _read(_task_id: str) -> LeafReview:
+            return LeafReview(task_status=None, verdict=None)
+
+        async def _scripted(
+            _deps_arg: SweepDeps, *, task: Task, **_rest: object
+        ) -> SessionOutcome:
+            ran.append(task)
+            termination = "error" if len(ran) == 1 else "completed"
+            return SessionOutcome(
+                cost=0.5, tokens=1200, turns=3, termination=termination
+            )
+
+        monkeypatch.setattr(execute_module, "run_session", _scripted)
+        deps = replace(_deps(), file_task=_file, read_review=_read)
+
+        outcome = await run_leaf(
+            deps,
+            task=self._task(),
+            owner=_identity("Builder"),
+            workspace=workspace,
+            execution_id="d1-gated-r0-leaf",
+            limits=SessionLimits(max_turns=8, cost_ceiling=5.0, token_ceiling=100_000),
+        )
+
+        assert len(ran) == 2
+        assert outcome.attempts == 2
+        assert outcome.task_status is None
+
+    async def test_an_infrastructure_death_is_still_resumed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The row is still IN_PROGRESS: nothing decided the run, so the
+        # conversation is worth continuing.
+        ran: list[Task] = []
+        workspace = _workspace(tmp_path, "leaf")
+
+        async def _file(_task: Task) -> None:
+            pass
+
+        async def _read(_task_id: str) -> LeafReview:
+            return LeafReview(task_status=TaskStatus.IN_PROGRESS, verdict=None)
+
+        async def _scripted(
+            _deps_arg: SweepDeps, *, task: Task, **_rest: object
+        ) -> SessionOutcome:
+            ran.append(task)
+            termination = "error" if len(ran) == 1 else "completed"
+            return SessionOutcome(
+                cost=0.5, tokens=1200, turns=3, termination=termination
+            )
+
+        monkeypatch.setattr(execute_module, "run_session", _scripted)
+        deps = replace(_deps(), file_task=_file, read_review=_read)
+
+        outcome = await run_leaf(
+            deps,
+            task=self._task(),
+            owner=_identity("Builder"),
+            workspace=workspace,
+            execution_id="d1-gated-r0-leaf",
+            limits=SessionLimits(max_turns=8, cost_ceiling=5.0, token_ceiling=100_000),
+        )
+
+        assert len(ran) == 2
+        assert outcome.attempts == 2
+
+    async def test_a_run_parked_out_of_turns_is_a_park_not_a_resume(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A run that spent its budget and every extension parks AWAITING_INPUT
+        # with its tree intact, asking an operator for more. A sweep has
+        # nobody to answer, so the leaf is recorded parked: not delivered, not
+        # resumed, and never a second attempt against a row the host holds.
+        ran: list[Task] = []
+        workspace = _workspace(tmp_path, "leaf")
+
+        async def _file(_task: Task) -> None:
+            pass
+
+        async def _read(_task_id: str) -> LeafReview:
+            return LeafReview(task_status=TaskStatus.AWAITING_INPUT, verdict=None)
+
+        async def _scripted(
+            _deps_arg: SweepDeps, *, task: Task, **_rest: object
+        ) -> SessionOutcome:
+            ran.append(task)
+            (workspace.project_dir / "src").mkdir(parents=True, exist_ok=True)
+            (workspace.project_dir / "src" / "unit.py").write_text(
+                "half the work", encoding="utf-8"
+            )
+            return SessionOutcome(cost=0.5, tokens=1200, turns=160, termination="error")
+
+        monkeypatch.setattr(execute_module, "run_session", _scripted)
+        deps = replace(_deps(), file_task=_file, read_review=_read)
+
+        outcome = await run_leaf(
+            deps,
+            task=self._task(),
+            owner=_identity("Builder"),
+            workspace=workspace,
+            execution_id="d1-gated-r0-leaf",
+            limits=SessionLimits(max_turns=40, cost_ceiling=5.0, token_ceiling=100_000),
+        )
+
+        assert len(ran) == 1
+        assert outcome.parked is True
+        assert outcome.task_status == "awaiting_input"
+        # The tree it left is still evidence: a park keeps the workspace.
+        assert outcome.produced is True
+
+    async def test_the_task_is_filed_assigned_to_its_owner_before_the_session(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # ASSIGNED, because that is the row the engine's entry hop expects;
+        # filed at CREATED, the first transition is refused and the run
+        # reports into a lifecycle that never started.
+        _outcome, filed, ran = await self._leaf(
+            tmp_path,
+            monkeypatch,
+            review=_REVIEW_APPROVED,
+        )
+
+        assert len(filed) == 1
+        assert filed[0].status is TaskStatus.ASSIGNED
+        assert filed[0].assigned_to == str(_identity("Builder").id)
+        assert ran == filed
+
+    async def test_the_products_verdict_is_read_back_onto_the_leaf(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        outcome, _filed, _ran = await self._leaf(
+            tmp_path,
+            monkeypatch,
+            review=_REVIEW_APPROVED,
+        )
+
+        assert outcome.verdict == "approve"
+        assert outcome.task_status == "completed"
+        assert outcome.parked is False
+
+    async def test_a_park_is_recorded_as_one(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        outcome, _filed, _ran = await self._leaf(
+            tmp_path,
+            monkeypatch,
+            review=_REVIEW_ESCALATED,
+        )
+
+        assert outcome.parked is True
+        assert outcome.verdict == "escalate"
+
+    async def test_a_leaf_nobody_filed_reads_as_unreviewed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The offline suite's path, and what every earlier recording ran.
+        outcome, filed, ran = await self._leaf(tmp_path, monkeypatch, review=None)
+
+        assert filed == []
+        assert ran[0].status is TaskStatus.CREATED
+        assert outcome.verdict is None
+        assert outcome.task_status is None
+        assert outcome.parked is False

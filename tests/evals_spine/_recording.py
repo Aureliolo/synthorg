@@ -10,6 +10,7 @@ from evals.harness.host import RecordingGatewayHost, RecordingHostConfig
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.config.schema import RootConfig
 from synthorg.core.types import NotBlankStr
+from synthorg.settings.model_ref import ModelRef
 
 #: The capability every binding test binds to, present in the company config below.
 RECORDING_PROVIDER = "test-provider"
@@ -21,6 +22,15 @@ RECORDING_MODEL = "example-expert-001"
 #: Unresolvable on purpose: nothing in this suite launches a container.
 RECORDING_SANDBOX_IMAGE = "example.invalid/sandbox:under-test"
 RECORDING_SIDECAR_IMAGE = "example.invalid/sidecar:under-test"
+
+
+def recording_pair() -> ModelRef:
+    """The pair a fixture host publishes as its coordination binding.
+
+    Returns:
+        The one pair the recording company config can resolve.
+    """
+    return ModelRef(provider=RECORDING_PROVIDER, model_id=RECORDING_MODEL)
 
 
 def recording_company_config() -> RootConfig:
@@ -53,4 +63,5 @@ __all__ = [
     "RecordingGatewayHost",
     "RecordingHostConfig",
     "recording_company_config",
+    "recording_pair",
 ]

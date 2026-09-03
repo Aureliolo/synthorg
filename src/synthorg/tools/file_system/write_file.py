@@ -1,8 +1,10 @@
 """Write file tool -- creates or overwrites files in the workspace."""
 
 import asyncio
+import contextlib
 import os
 import pathlib
+import secrets
 import tempfile
 from pathlib import Path
 from typing import ClassVar, Final, override
@@ -10,7 +12,13 @@ from typing import ClassVar, Final, override
 from pydantic import BaseModel
 
 from synthorg.core.boundary import parse_typed
-from synthorg.core.workspace_sharing import delivered_file_mode, ensure_shared_dir
+from synthorg.core.workspace_sharing import (
+    NO_FOLLOW_FLAG,
+    delivered_file_mode,
+    ensure_shared_dir,
+    open_shared_dir,
+    supports_descriptor_walk,
+)
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.tool import (
     TOOL_FS_ERROR,
@@ -26,6 +34,10 @@ from synthorg.tools.file_system._output_policy_guard import guard_written_conten
 logger = get_logger(__name__)
 
 MAX_WRITE_SIZE_BYTES: Final[int] = 10_485_760  # 10 MB
+#: The temp file is created owner-only, as ``mkstemp`` creates one, and
+#: re-moded on its descriptor before the replace.
+TEMP_FILE_MODE: Final[int] = 0o600
+_TMP_NAME_ENTROPY_BYTES: Final[int] = 8
 
 
 def _read_existing(resolved: Path) -> str:
@@ -46,7 +58,13 @@ def _read_existing(resolved: Path) -> str:
         return ""
 
 
-def _write_sync(resolved: Path, content: str, *, create_dirs: bool) -> tuple[int, bool]:
+def _write_sync(
+    resolved: Path,
+    content: str,
+    *,
+    create_dirs: bool,
+    within: Path,
+) -> tuple[int, bool]:
     """Write content to file synchronously.
 
     Uses an atomic write pattern (temp file + replace) so that a crash
@@ -64,6 +82,7 @@ def _write_sync(resolved: Path, content: str, *, create_dirs: bool) -> tuple[int
         resolved: Resolved file path within the workspace.
         content: Text content to write.
         create_dirs: Whether to create parent directories.
+        within: The workspace the path was validated against.
 
     Returns:
         Tuple of (bytes_written, created) where *created* is True if
@@ -75,12 +94,19 @@ def _write_sync(resolved: Path, content: str, *, create_dirs: bool) -> tuple[int
         OSError: For other OS-level I/O failures.
         BaseException: Raised when the relevant invariant fails.
     """
+    if supports_descriptor_walk() and within in resolved.parents:
+        return _write_by_descriptor(
+            resolved, content, create_dirs=create_dirs, within=within
+        )
+
     created = not resolved.exists()
     if create_dirs:
-        ensure_shared_dir(resolved.parent)
+        ensure_shared_dir(resolved.parent, within=within)
 
     mode = delivered_file_mode(None if created else resolved.stat().st_mode)
-    # POSIX-only; on Windows the absent branch below is the live one.
+    # Windows only: it has no ``fchmod`` and no ``dir_fd``, and a path chmod
+    # there merely toggles the read-only bit, so the swap this branch cannot
+    # close is not meaningful on it.
     fchmod = getattr(os, "fchmod", None)  # lint-allow: ghost-attribute-read -- stdlib
     fd, tmp_path = tempfile.mkstemp(
         dir=str(resolved.parent),
@@ -103,11 +129,73 @@ def _write_sync(resolved: Path, content: str, *, create_dirs: bool) -> tuple[int
     return resolved.stat().st_size, created
 
 
+def _write_by_descriptor(
+    resolved: Path,
+    content: str,
+    *,
+    create_dirs: bool,
+    within: Path,
+) -> tuple[int, bool]:
+    """Write *content* through a descriptor on the parent directory.
+
+    Every operation between the parent check and the final replace names the
+    parent by descriptor rather than by path, so a sandbox sharing the tree
+    cannot swap a checked directory for a link in that interval and have the
+    temp file or the replace land outside *within*: the descriptor pins the
+    directory that was checked.
+
+    Returns:
+        Tuple of (bytes_written, created), as :func:`_write_sync`.
+
+    Raises:
+        PermissionError: If a component below *within* is a symlink.
+        FileNotFoundError: If the parent is missing and *create_dirs* is
+            false.
+        OSError: For other OS-level I/O failures.
+    """
+    dir_fd = open_shared_dir(resolved.parent, within=within, create=create_dirs)
+    try:
+        name = resolved.name
+        try:
+            existing: int | None = os.stat(name, dir_fd=dir_fd).st_mode
+        except FileNotFoundError:
+            existing = None
+        mode = delivered_file_mode(existing)
+        tmp = f".{name}.{secrets.token_hex(_TMP_NAME_ENTROPY_BYTES)}.tmp"
+        fd = os.open(
+            tmp,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | NO_FOLLOW_FLAG,
+            TEMP_FILE_MODE,
+            dir_fd=dir_fd,
+        )
+        # Present wherever this path runs; the platform gate is what keeps a
+        # platform without it on the path-based branch.
+        fchmod = getattr(  # lint-allow: ghost-attribute-read -- stdlib
+            os, "fchmod", None
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(content)
+                fh.flush()
+                os.fsync(fh.fileno())
+                if fchmod is not None:
+                    fchmod(fh.fileno(), mode)
+            os.replace(tmp, name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+        except BaseException:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(tmp, dir_fd=dir_fd)
+            raise
+        return os.stat(name, dir_fd=dir_fd).st_size, existing is None
+    finally:
+        os.close(dir_fd)
+
+
 class WriteFileTool(BaseFileSystemTool):
     """Creates or overwrites a file within the workspace.
 
-    Optionally creates parent directories when ``create_directories``
-    is True.
+    Missing parent directories are created unless ``create_directories``
+    is False: a write into a directory that does not exist yet is the
+    ordinary first write of a module, not a mistake to refuse.
 
     Examples:
         Write a new file::
@@ -127,8 +215,9 @@ class WriteFileTool(BaseFileSystemTool):
             name="write_file",
             action_type=ActionType.CODE_WRITE,
             description=(
-                "Write content to a file, creating or overwriting it. "
-                "Set create_directories to true to create parent dirs."
+                "Write content to a file, creating or overwriting it; missing "
+                "parent directories are created unless create_directories is "
+                "false."
             ),
             parameters_schema=WriteFileArgs.model_json_schema(),
         )
@@ -240,6 +329,7 @@ class WriteFileTool(BaseFileSystemTool):
                 resolved,
                 content,
                 create_dirs=create_dirs,
+                within=self.workspace_root,
             )
         except IsADirectoryError:
             logger.warning(

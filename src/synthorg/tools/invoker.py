@@ -13,7 +13,7 @@ import copy
 from collections.abc import Iterable
 from contextlib import AbstractAsyncContextManager, nullcontext
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Final, Literal
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.models import EscalationInfo
@@ -35,7 +35,9 @@ from synthorg.observability.events.security import (
 from synthorg.observability.events.tool import (
     TOOL_INVOKE_ALL_COMPLETE,
     TOOL_INVOKE_ALL_FATAL,
+    TOOL_INVOKE_ALL_ORDERED,
     TOOL_INVOKE_ALL_START,
+    TOOL_INVOKE_ALL_WITHHELD,
     TOOL_INVOKE_CONFIG_INVALID,
     TOOL_INVOKE_EXECUTION_ERROR,
     TOOL_INVOKE_NON_RECOVERABLE,
@@ -51,6 +53,7 @@ from synthorg.observability.events.tool import (
 from synthorg.observability.tracing import tool_span
 from synthorg.providers.cost_recording import cost_recording_scope
 from synthorg.providers.models import ToolCall, ToolResult
+from synthorg.security.action_types import READ_ONLY_ACTION_TYPES
 from synthorg.security.models import SecurityContext, SecurityVerdictType
 from synthorg.security.policy_engine.protocol import PolicyEngine
 from synthorg.security.protocol import SecurityInterceptionStrategy
@@ -69,6 +72,17 @@ from .scan_result_handler import handle_sensitive_scan
 
 logger = get_logger(__name__)
 
+_NOT_RUN_PENDING_APPROVAL: Final[str] = (
+    "Not run: an earlier call in this turn asked for human approval, and "
+    "what follows it waits on that answer. Issue it again once the approval "
+    "is decided."
+)
+_HTML_GUARD_WITHHELD: Final[str] = (
+    "Tool output withheld: it looked like an HTML document and could not be "
+    "judged safely (an external entity declaration, or markup the parser "
+    "refused). Retry the read, or ask the operator if it persists."
+)
+
 
 class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
     """Validate parameters, enforce security policies, and execute tools.
@@ -83,7 +97,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             invoker = ToolInvoker(registry)
             result = await invoker.invoke(tool_call)
 
-        Invoke multiple tool calls concurrently::
+        Invoke a turn's tool calls (reads side by side, the rest in order)::
 
             results = await invoker.invoke_all(tool_calls)
 
@@ -688,7 +702,25 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         # usually destroys the required fields with it, so the schema refuses
         # the payload first and whatever the tool would have said about the
         # corruption is never reached.
-        transport_fault = await tool_or_error.transport_fault(tool_call.arguments)
+        try:
+            transport_fault = await tool_or_error.transport_fault(tool_call.arguments)
+        except Exception as exc:  # noqa: BLE001 -- criticals re-raised
+            reraise_critical(exc)
+            # Left to escape, a raising override would cancel the whole
+            # read-only stage it shares a task group with.
+            logger.warning(
+                TOOL_INVOKE_EXECUTION_ERROR,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                note="transport_fault raised",
+                error_type=type(exc).__name__,
+                error=safe_error_description(exc),
+            )
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                content=f"Transport check failed: {safe_error_description(exc)}",
+                is_error=True,
+            )
         if transport_fault is not None:
             return ToolResult(
                 tool_call_id=tool_call.id,
@@ -997,11 +1029,13 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         self,
         result: ToolExecutionResult,
     ) -> ToolExecutionResult:
-        """Apply HTML parse guard to sanitize tool output.
+        """Strip what an HTML document hides from a human reader.
 
-        Strips scripts, styles, hidden elements, and detects
-        render-gap injection attacks.  Returns the original result
-        unchanged if the output is not HTML or on parse errors.
+        Only an HTML DOCUMENT is touched, and only when something in it was
+        hidden: source code with angle brackets in it, an XML report and a
+        page with nothing to strip all reach the model as the tool returned
+        them, because an agent edits what it reads and a rewritten read
+        cannot be matched back to the file.
 
         Returns:
             Result of type ``ToolExecutionResult``.
@@ -1016,18 +1050,25 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
 
             self._html_guard = HTMLParseGuard()
 
-        sanitized = self._html_guard.sanitize(result.content)
-        if sanitized.cleaned == result.content:
+        guarded = self._html_guard.guard_tool_output(result.content)
+        if not guarded.rejected and guarded.content == result.content:
             return result
+        sanitized = guarded.verdict
+        # A refused payload is an error the agent can act on, never a
+        # successful empty read: the metadata does not survive this boundary,
+        # so the flag and the message are the only signal that reaches it.
+        content = _HTML_GUARD_WITHHELD if guarded.rejected else guarded.content
         return result.model_copy(
             update={
-                "content": sanitized.cleaned,
+                "content": content,
+                "is_error": result.is_error or guarded.rejected,
                 "metadata": {
                     **result.metadata,
                     "html_guard": {
                         "gap_detected": sanitized.gap_detected,
                         "gap_ratio": sanitized.gap_ratio,
                         "stripped_element_count": sanitized.stripped_element_count,
+                        "rejected": guarded.rejected,
                     },
                 },
             },
@@ -1055,6 +1096,89 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         except (MemoryError, RecursionError) as exc:
             fatal_errors.append(exc)
 
+    def _stages(self, calls: list[ToolCall]) -> list[list[tuple[int, ToolCall]]]:
+        """Split a batch into the groups that may run side by side.
+
+        Returns:
+            Groups in program order: each mutating call alone, each
+            maximal run of read-only calls together.
+        """
+        stages: list[list[tuple[int, ToolCall]]] = []
+        reads: list[tuple[int, ToolCall]] = []
+        for index, call in enumerate(calls):
+            if self._is_read_only(call):
+                reads.append((index, call))
+                continue
+            if reads:
+                stages.append(reads)
+                reads = []
+            stages.append([(index, call)])
+        if reads:
+            stages.append(reads)
+        return stages
+
+    def _is_read_only(self, call: ToolCall) -> bool:
+        """Whether *call* can change nothing a later call could observe.
+
+        Returns:
+            ``True`` for a declared read-only action type, and for a name
+            no tool answers to, since that call runs nothing.
+        """
+        if call.name not in self._registry:
+            return True
+        return self._registry.get(call.name).action_type in READ_ONLY_ACTION_TYPES
+
+    @staticmethod
+    def _withhold_after_park(
+        stages: list[list[tuple[int, ToolCall]]],
+        results: dict[int, ToolResult],
+    ) -> None:
+        """Answer every call issued after a park without running it.
+
+        The model issued them in an order it meant, and the park sits inside
+        that order: a write after a request for approval was meant to follow
+        the answer, not to pre-empt it.
+        """
+        withheld = [(idx, call) for stage in stages for idx, call in stage]
+        for idx, call in withheld:
+            results[idx] = ToolResult(
+                tool_call_id=call.id,
+                content=_NOT_RUN_PENDING_APPROVAL,
+                is_error=True,
+            )
+        if withheld:
+            logger.info(
+                TOOL_INVOKE_ALL_WITHHELD,
+                withheld=len(withheld),
+                tool_names=tuple(call.name for _, call in withheld),
+            )
+
+    async def _run_stages(
+        self,
+        stages: list[list[tuple[int, ToolCall]]],
+        results: dict[int, ToolResult],
+        fatal_errors: list[Exception],
+        semaphore: asyncio.Semaphore | None,
+    ) -> None:
+        """Run each stage in program order, halting on a fatal error or a park.
+
+        A process-level error leaves the state every later mutation would
+        build on unknown, and a park means what follows waits on a person:
+        neither is a state to keep issuing writes into.
+        """
+        for position, stage in enumerate(stages):
+            escalations_before = len(self._pending_escalations)
+            async with asyncio.TaskGroup() as tg:
+                for idx, call in stage:
+                    _ = tg.create_task(
+                        self._run_guarded(idx, call, results, fatal_errors, semaphore),
+                    )
+            if fatal_errors:
+                return
+            if len(self._pending_escalations) > escalations_before:
+                self._withhold_after_park(stages[position + 1 :], results)
+                return
+
     @staticmethod
     def _raise_fatal_errors(fatal_errors: list[Exception]) -> None:
         """Re-raise collected fatal errors after all tasks complete.
@@ -1081,7 +1205,12 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
         max_concurrency: int | None = None,
         execution_id: str | None = None,
     ) -> tuple[ToolResult, ...]:
-        """Execute multiple tool calls concurrently.
+        """Execute a batch of tool calls: reads side by side, the rest in order.
+
+        A run of consecutive read-only calls (``READ_ONLY_ACTION_TYPES``)
+        fans out; every other call runs alone, after everything issued
+        before it has finished, because the order the model issued them
+        in is the order it meant.
 
         Args:
             tool_calls: Tool calls to execute.
@@ -1128,17 +1257,14 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
             asyncio.Semaphore(max_concurrency) if max_concurrency is not None else None
         )
 
-        async with asyncio.TaskGroup() as tg:
-            for idx, call in enumerate(calls):
-                _ = tg.create_task(
-                    self._run_guarded(
-                        idx,
-                        call,
-                        results,
-                        fatal_errors,
-                        semaphore,
-                    ),
-                )
+        stages = self._stages(calls)
+        if len(stages) > 1:
+            logger.debug(
+                TOOL_INVOKE_ALL_ORDERED,
+                count=len(calls),
+                stages=len(stages),
+            )
+        await self._run_stages(stages, results, fatal_errors, semaphore)
 
         logger.info(
             TOOL_INVOKE_ALL_COMPLETE,

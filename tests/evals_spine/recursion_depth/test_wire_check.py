@@ -17,7 +17,7 @@ from evals.errors import RecursionDepthSmokeRequiredError
 from evals.harness.stall_watch import ProgressTrackingLedger
 from evals.recursion_depth.manifest import Arm, StagnationTreatment, load_manifest
 from evals.recursion_depth.models import WiringFinding, WiringReport
-from evals.recursion_depth.session import SessionOutcome
+from evals.recursion_depth.session import LeafReview, SessionOutcome
 from evals.recursion_depth.wire_check import (
     WIRING_REPORT_NAME,
     WiringProbe,
@@ -25,11 +25,14 @@ from evals.recursion_depth.wire_check import (
     caching_finding,
     compaction_finding,
     governance_findings,
+    leaf_review_finding,
     load_wiring_report,
     matrix_digest,
     memory_finding,
+    peer_review_finding,
     reasoning_finding,
     require_passing_smoke,
+    routed_model_ids,
     smoke_dir,
     smoke_manifest,
     spec_identity,
@@ -38,20 +41,33 @@ from evals.recursion_depth.wire_check import (
     write_wiring_report,
 )
 from synthorg.api.state import AppState
+from synthorg.approval.state import ApprovalStateSlice
 from synthorg.budget.cost_record import CostRecord
+from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
+from synthorg.config.schema import RootConfig
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.completion_oracle.review_models import CompletionOracleVerdict
+from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.wiring_summary import EngineWiringSummary
+from synthorg.memory.embedding.dispatch import format_model_ref
 from synthorg.memory.state import MemoryStateSlice
 from synthorg.observability.events.evals import EVALS_RECURSION_SMOKE_UNVERIFIED
 from synthorg.settings.enums import SettingNamespace, SettingSource
-from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.models import SettingValue
 from synthorg.settings.service import SettingsService
 from synthorg.settings.state import SettingsStateSlice
 from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
+
+_REVIEW_APPROVED = LeafReview(
+    task_status=TaskStatus.COMPLETED, verdict=CompletionOracleVerdict.APPROVE
+)
+_REVIEW_ESCALATED = LeafReview(
+    task_status=TaskStatus.BLOCKED, verdict=CompletionOracleVerdict.ESCALATE
+)
 
 _MANIFEST = (
     Path(__file__).resolve().parents[3] / "evals" / "recursion_depth" / "manifest.yaml"
@@ -176,7 +192,9 @@ class TestEngineFindings:
         assert "another tracker" in other.observed
 
     def test_the_three_governance_seams_are_each_their_own_finding(self) -> None:
-        findings = governance_findings(_wiring(has_policy_engine=False))
+        findings = governance_findings(
+            _wiring(has_policy_engine=False), configured_policy_engine="cedar"
+        )
 
         verdicts = {finding.treatment: finding.passed for finding in findings}
         assert verdicts == {
@@ -184,6 +202,25 @@ class TestEngineFindings:
             "approval gate": True,
             "policy engine": False,
         }
+
+    def test_the_policy_engine_is_expected_only_where_the_host_configured_one(
+        self,
+    ) -> None:
+        # The product builds none by default; a smoke demanding one read
+        # every default deployment as under-wired.
+        absent_as_configured = governance_findings(
+            _wiring(has_policy_engine=False), configured_policy_engine="none"
+        )
+        present_unconfigured = governance_findings(
+            _wiring(has_policy_engine=True), configured_policy_engine="none"
+        )
+
+        policy = {f.treatment: f for f in absent_as_configured}["policy engine"]
+        assert policy.passed is True
+        assert "none" in policy.expected
+        assert {f.treatment: f.passed for f in present_unconfigured}[
+            "policy engine"
+        ] is False
 
 
 def _app_state(
@@ -265,12 +302,12 @@ class TestLiveSettingsFindings:
         assert finding.passed is False
 
     def test_memory_passes_on_a_backend_bound_to_the_declared_embedder(self) -> None:
+        # The reference is compared as the embedder port spells it; a live
+        # smoke compared the settings serialisation against it and read a
+        # correctly bound backend as bound to something else.
         manifest = load_manifest(_MANIFEST)
-        declared = serialize_model_ref(
-            ModelRef(
-                provider=manifest.embedder.provider,
-                model_id=manifest.embedder.model_id,
-            )
+        declared = format_model_ref(
+            manifest.embedder.provider, manifest.embedder.model_id
         )
         app_state = _app_state(
             threshold="80.0", backend=object(), embedder_ref=declared
@@ -282,9 +319,7 @@ class TestLiveSettingsFindings:
 
     def test_memory_fails_on_another_embedder(self) -> None:
         manifest = load_manifest(_MANIFEST)
-        other = serialize_model_ref(
-            ModelRef(provider="example-provider", model_id="example-other-001")
-        )
+        other = format_model_ref("example-provider", "example-other-001")
         app_state = _app_state(threshold="80.0", backend=object(), embedder_ref=other)
 
         finding = memory_finding(app_state, manifest)
@@ -442,6 +477,56 @@ class TestReasoningOffTheWire:
 
         assert finding.passed is None
 
+    def test_a_request_for_the_routed_id_counts(self, tmp_path: Path) -> None:
+        # The manifest names the alias; the wire carries what it routes to.
+        # Matched on the alias alone, every request of a live recording read
+        # as absent and the finding stayed unverified.
+        manifest = load_manifest(_MANIFEST)
+        body = {"model": "upstream-model-9", "reasoning_effort": "high"}
+        root = self._transcripts(
+            tmp_path, [{"request": json.dumps(body), "response": "{}"}]
+        )
+
+        unrouted = reasoning_finding(root, manifest)
+        routed = reasoning_finding(
+            root, manifest, routed_ids=frozenset({"upstream-model-9"})
+        )
+
+        assert unrouted.passed is None
+        assert routed.passed is True
+
+    def test_routed_ids_come_from_the_provider_config(self) -> None:
+        manifest = load_manifest(_MANIFEST)
+        executor = manifest.executor
+        config = RootConfig(
+            company_name=NotBlankStr("Routed"),
+            providers={
+                executor.provider: ProviderConfig(
+                    connection_name=NotBlankStr(executor.provider),
+                    models=(
+                        ProviderModelConfig(
+                            id=NotBlankStr("upstream-model-9"),
+                            alias=NotBlankStr(executor.model_id),
+                        ),
+                        ProviderModelConfig(id=NotBlankStr("unrelated-model")),
+                    ),
+                )
+            },
+        )
+
+        assert routed_model_ids(config, executor) == {
+            executor.model_id,
+            "upstream-model-9",
+        }
+
+    def test_an_unknown_provider_routes_to_the_declared_id_alone(self) -> None:
+        manifest = load_manifest(_MANIFEST)
+        config = RootConfig(company_name=NotBlankStr("Empty"))
+
+        assert routed_model_ids(config, manifest.executor) == {
+            manifest.executor.model_id
+        }
+
 
 class TestCachingOffTheLedger:
     """Never a failure: the provider may simply not publish the figure."""
@@ -576,3 +661,113 @@ class TestTheRecordingIsGated:
         assert len(unverified) == 1
         assert unverified[0]["treatments"] == ["prompt caching"]
         assert unverified[0]["log_level"] == "warning"
+
+
+class TestPeerReviewFinding:
+    """A wired pipeline is not an attached reviewer, and this reads the gate."""
+
+    @staticmethod
+    def _state(gate: ReviewGateService | None) -> AppState:
+        return make_app_state(slices={ApprovalStateSlice: {"review_gate": gate}})
+
+    def test_an_attached_gate_passes(self) -> None:
+        gate = mock_of[ReviewGateService](completion_oracle_gate_attached=True)
+
+        assert peer_review_finding(self._state(gate)).passed is True
+
+    def test_a_review_gate_with_no_oracle_fails(self) -> None:
+        # The shape a host with no coordination pair boots into: the build/test
+        # gate alone judges every unit, and the engine's summary cannot tell.
+        gate = mock_of[ReviewGateService](completion_oracle_gate_attached=False)
+
+        finding = peer_review_finding(self._state(gate))
+
+        assert finding.passed is False
+        assert "no completion-oracle gate" in finding.observed
+
+    def test_no_review_gate_at_all_fails(self) -> None:
+        assert peer_review_finding(self._state(None)).passed is False
+
+
+class TestLeafReviewFinding:
+    """A pipeline PRESENT on the engine is not a leaf having been reviewed.
+
+    Eight recordings carried a fully wired review pipeline that no leaf ever
+    reached, because the host never held the leaf's task and the transition
+    into review was refused; nothing in the wiring summary could tell.
+    """
+
+    def test_a_reviewed_leaf_passes(self) -> None:
+        finding = leaf_review_finding(_REVIEW_APPROVED)
+
+        assert finding.passed is True
+        assert "approve" in finding.observed
+
+    def test_a_leaf_the_host_never_held_fails(self) -> None:
+        finding = leaf_review_finding(LeafReview(task_status=None, verdict=None))
+
+        assert finding.passed is False
+        assert "absent" in finding.observed
+
+    def test_a_park_is_a_review_that_reached_the_leaf(self) -> None:
+        # An escalation is the product's answer, not the harness's absence:
+        # the row moved and a verdict was archived, so the path is wired.
+        finding = leaf_review_finding(_REVIEW_ESCALATED)
+
+        assert finding.passed is True
+
+    def test_no_finished_leaf_is_unverified(self) -> None:
+        finding = leaf_review_finding(None)
+
+        assert finding.passed is None
+
+    def test_the_probe_keeps_the_first_leaf(self) -> None:
+        probe = WiringProbe(load_manifest(_MANIFEST))
+        probe.observe_leaf(_REVIEW_APPROVED)
+        probe.observe_leaf(LeafReview(task_status=None, verdict=None))
+
+        assert leaf_review_finding(probe.leaf).passed is True
+
+    def test_a_leaf_that_stopped_short_is_unverified_not_absent(self) -> None:
+        # The product routes a turn-capped run to FAILED and never offers it
+        # to the pipeline, so the row moved (the host held it) and no verdict
+        # could exist: neither a wiring gap nor proof the pipeline runs.
+        finding = leaf_review_finding(
+            LeafReview(task_status=TaskStatus.FAILED, verdict=None)
+        )
+
+        assert finding.passed is None
+        assert "turn cap" in finding.observed
+
+    def test_a_parked_leaf_with_no_verdict_is_unverified(self) -> None:
+        finding = leaf_review_finding(
+            LeafReview(task_status=TaskStatus.BLOCKED, verdict=None)
+        )
+
+        assert finding.passed is None
+
+    def test_a_leaf_parked_out_of_turns_is_unverified(self) -> None:
+        # Every extension spent, the run parks for an operator to grant more
+        # rather than failing; the pipeline was never asked, so nothing here
+        # says whether it is wired.
+        finding = leaf_review_finding(
+            LeafReview(task_status=TaskStatus.AWAITING_INPUT, verdict=None)
+        )
+
+        assert finding.passed is None
+
+    def test_a_completed_leaf_with_no_verdict_still_fails(self) -> None:
+        # Completed means the pipeline WAS asked, so no verdict is its absence.
+        finding = leaf_review_finding(
+            LeafReview(task_status=TaskStatus.IN_REVIEW, verdict=None)
+        )
+
+        assert finding.passed is False
+
+    def test_the_probe_prefers_a_leaf_that_reached_a_verdict(self) -> None:
+        probe = WiringProbe(load_manifest(_MANIFEST))
+        probe.observe_leaf(LeafReview(task_status=TaskStatus.FAILED, verdict=None))
+        probe.observe_leaf(_REVIEW_APPROVED)
+        probe.observe_leaf(_REVIEW_ESCALATED)
+
+        assert probe.leaf == _REVIEW_APPROVED

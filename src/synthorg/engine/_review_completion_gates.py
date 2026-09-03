@@ -36,6 +36,7 @@ from synthorg.engine._review_red_team_gates import (
     RedTeamStageConfig,
     apply_red_team_stage,
 )
+from synthorg.engine._review_rework_text import rework_brief
 from synthorg.engine.completion_oracle.evaluator import BuildTestOracle
 from synthorg.engine.completion_oracle.protocol import CompletionOracleGate
 from synthorg.engine.review.models import PipelineResult, ReviewVerdict
@@ -259,7 +260,11 @@ async def apply_vision_gate(
         findings=len(result.report.findings),
         verdict=result.verdict.value,
     )
-    rework_reason = f"Vision review blocked completion: {result.report.summary}"
+    rework_reason = rework_brief(
+        "Vision review blocked completion",
+        result.report.summary,
+        result.report.findings,
+    )
     return GateOutcome(
         target=TaskStatus.IN_PROGRESS,
         transition_reason=rework_reason,

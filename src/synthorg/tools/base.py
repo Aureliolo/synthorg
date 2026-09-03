@@ -5,10 +5,11 @@ Defines the ``BaseTool`` ABC that all concrete tools extend, and the
 """
 
 import copy
+import re
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import ClassVar
+from typing import ClassVar, Final
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
@@ -21,6 +22,41 @@ from synthorg.security.action_type_mapping import DEFAULT_CATEGORY_ACTION_MAP
 from synthorg.security.autonomy.enums import ToolCategory
 
 logger = get_logger(__name__)
+
+
+# A parameter name lands in the system prompt through the L1 summary, and an
+# MCP server's schema is third-party text: a JSON property name may be any
+# string at all. Only an identifier-shaped name is summarised; the schema
+# itself is untouched, so a call still validates against what it declares.
+_PARAMETER_NAME: Final[re.Pattern[str]] = re.compile(r"[A-Za-z_][A-Za-z0-9_-]{0,63}")
+
+
+def _parameter_names(
+    schema: Mapping[str, JsonValue] | None,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """The parameter names a JSON schema declares, required ones first.
+
+    Returns:
+        ``(required, optional)`` in the schema's own property order; both
+        empty when the schema declares no object properties. A name that is
+        not identifier-shaped is left out of both.
+    """
+    if schema is None:
+        return (), ()
+    properties = schema.get("properties")
+    if not isinstance(properties, dict):
+        return (), ()
+    declared_required = schema.get("required")
+    required_names = (
+        frozenset(str(name) for name in declared_required)
+        if isinstance(declared_required, list)
+        else frozenset[str]()
+    )
+    names = tuple(name for name in properties if _PARAMETER_NAME.fullmatch(name))
+    return (
+        tuple(name for name in names if name in required_names),
+        tuple(name for name in names if name not in required_names),
+    )
 
 
 class ToolExecutionResult(BaseModel):
@@ -186,13 +222,17 @@ class BaseTool(ABC):
 
         Returns:
             L1 metadata with name, short description, category,
-            and ``"medium"`` cost tier.
+            ``"medium"`` cost tier, and the parameter names the schema
+            declares.
         """
+        required, optional = _parameter_names(self.parameters_schema)
         return ToolL1Metadata(
             name=self._name,
             short_description=self._description[:200],
             category=self._category.value,
             typical_cost_tier="medium",
+            required_parameters=required,
+            optional_parameters=optional,
         )
 
     def to_l2_body(self) -> ToolL2Body:

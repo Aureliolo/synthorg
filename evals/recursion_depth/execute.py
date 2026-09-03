@@ -30,6 +30,7 @@ from evals.recursion_depth.grading import VERDICT_COLLECTED_NOTHING
 from evals.recursion_depth.manifest import ModelPair
 from evals.recursion_depth.models import reject_negative_deltas, sum_costs
 from evals.recursion_depth.session import (
+    LeafReview,
     SessionLimits,
     SessionOutcome,
     SweepDeps,
@@ -49,11 +50,17 @@ from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.task import Task
 from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.completion_oracle.review_models import CompletionOracleVerdict
 from synthorg.engine.decomposition.models import SubtaskDefinition
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.prompt_safety import TAG_TASK_DATA, wrap_untrusted
 from synthorg.observability import get_logger
-from synthorg.observability.events.evals import EVALS_RECURSION_UNIT_RESUMED
+from synthorg.observability.events.evals import (
+    EVALS_RECURSION_LEAF_FILED,
+    EVALS_RECURSION_LEAF_REVIEW_READ,
+    EVALS_RECURSION_LEAF_SETTLED,
+    EVALS_RECURSION_UNIT_RESUMED,
+)
 
 logger = get_logger(__name__)
 
@@ -150,10 +157,22 @@ class LeafOutcome:
             over-declaring planner is worth seeing and must not be able to
             zero a unit that did the work.
         detail: Why it is not delivered, for a human reading the run.
+        note: What that reader should know that is NOT a reason to doubt the
+            delivery; see ``UnitDelivery.note``. Carried apart from
+            ``detail`` all the way to the record, because the record refuses
+            a delivered unit with a reason and cannot tell the two apart once
+            they share a field.
         terminations: How each of its sessions ended, in order.
         workspace_files_changed: The symmetric difference between the tree
             before and after, so "spent turns, changed nothing" is readable
             from the record without a transcript.
+        verdict: What the product's own review path decided, read back off
+            the host: the peer reviewer's verdict, or ``None`` when no
+            review reached this leaf. Recorded beside ``delivered`` and never
+            folded into it: delivery is the tree's answer, and this is the
+            product's.
+        task_status: The task's status after the post-execution path, or
+            ``None`` when no row was filed.
     """
 
     workspace: CellWorkspace
@@ -168,10 +187,22 @@ class LeafOutcome:
     executor: ModelPair | None = None
     missing_declared_paths: tuple[str, ...] = ()
     detail: str = ""
+    note: str = ""
     terminations: tuple[str, ...] = ()
     workspace_files_changed: int | None = None
     compaction_tokens: int = 0
     compaction_cost: float | None = 0.0
+    verdict: CompletionOracleVerdict | None = None
+    task_status: TaskStatus | None = None
+
+    @property
+    def parked(self) -> bool:
+        """Whether the review parked the row on a question nobody here answers.
+
+        Returns:
+            ``True`` for an escalation, an unstaffed role or a spent budget.
+        """
+        return self.task_status in _PARKED
 
 
 def leaf_task(
@@ -309,6 +340,85 @@ async def run_leaf(
     # produced: the workspace is recreated from the committed seed, and what
     # the seed already held is not work this unit did.
     baseline = await asyncio.to_thread(produced_tree, workspace)
+    task = await _filed(deps, task, owner)
+    run = await _run_with_resume(
+        deps,
+        task=task,
+        owner=owner,
+        workspace=workspace,
+        execution_id=execution_id,
+        limits=limits,
+    )
+    delivery = await _delivery(
+        deps, task, workspace, run.outcome, baseline, turns=run.spent.turns, owned=owned
+    )
+    final = await asyncio.to_thread(probe_artifacts, task, workspace)
+    review = run.review if run.review is not None else await _read_review(deps, task)
+    if deps.on_leaf_reviewed is not None:
+        deps.on_leaf_reviewed(review)
+    return LeafOutcome(
+        workspace=workspace,
+        delivered=delivery.delivered,
+        produced=delivery.produced,
+        attempts=run.attempts,
+        turns=run.spent.turns,
+        cost=run.spent.cost,
+        tokens=run.spent.tokens,
+        input_tokens=run.spent.input_tokens,
+        output_tokens=run.spent.output_tokens,
+        executor=ModelPair.of(owner, deps.declared_pairs),
+        missing_declared_paths=final.missing,
+        detail=delivery.reason,
+        note=delivery.note,
+        terminations=run.spent.terminations,
+        workspace_files_changed=delivery.workspace_files_changed,
+        compaction_tokens=run.spent.compaction_tokens,
+        compaction_cost=run.spent.compaction_cost,
+        verdict=review.verdict,
+        task_status=review.task_status,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _Run:
+    """What a leaf's session, resumed or not, came to.
+
+    Attributes:
+        outcome: The last session's outcome.
+        attempts: Sessions consumed, one or two.
+        spent: What both added up to.
+        review: The host's reading when it settled the run before a resume
+            could be tried, so the caller need not read it a second time;
+            ``None`` when nothing was read yet.
+    """
+
+    outcome: SessionOutcome
+    attempts: int
+    spent: _Spend
+    review: LeafReview | None
+
+
+async def _run_with_resume(
+    deps: SweepDeps,
+    *,
+    task: Task,
+    owner: AgentIdentity,
+    workspace: CellWorkspace,
+    execution_id: str,
+    limits: SessionLimits,
+) -> _Run:
+    """Run the session, and resume it once if the infrastructure died under it.
+
+    RESUMED, not re-run. The engine replays the conversation this execution
+    id checkpointed and continues from the last turn, so an infrastructure
+    failure costs the turns still in flight rather than every turn the unit
+    had already paid for. Re-running from scratch would cost the same money
+    twice and discard the tree built so far.
+
+    Returns:
+        The run, with both sessions' spend added up: the attempt that died
+        is still spend, its calls were billed and its turns were taken.
+    """
     outcome = await run_session(
         deps,
         identity=owner,
@@ -317,59 +427,115 @@ async def run_leaf(
         execution_id=execution_id,
         limits=limits,
     )
-    attempts = 1
-    # The attempt that died is still spend: its calls were billed and its turns
-    # were taken. Each figure below is what ONE session added, because the
-    # ledger read is a delta past the count standing when that session opened
-    # and the loop's turn list is its own, so reporting the resume's alone
-    # would file a 30-turn failure followed by a 4-turn resume as a 4-turn unit.
     spent = _Spend.of(outcome)
-    if _died_in_flight(outcome):
-        # RESUMED, not re-run. The engine replays the conversation this
-        # execution_id checkpointed and continues from the last turn, so an
-        # infrastructure failure costs the turns still in flight rather than
-        # every turn the unit had already paid for. Re-running from scratch
-        # would cost the same money twice and discard the tree built so far.
-        logger.warning(
-            EVALS_RECURSION_UNIT_RESUMED,
-            execution_id=execution_id,
+    if not _died_in_flight(outcome):
+        return _Run(outcome, 1, spent, None)
+    review = await _read_review(deps, task)
+    if review.task_status in _HOST_SETTLED:
+        logger.debug(
+            EVALS_RECURSION_LEAF_SETTLED,
             task_id=str(task.id),
+            task_status=review.task_status,
             termination=outcome.termination,
-            turns=outcome.turns,
         )
-        outcome = await run_session(
-            deps,
-            identity=owner,
-            task=task,
-            workspace=workspace,
-            execution_id=execution_id,
-            limits=limits,
-            resume=True,
-        )
-        attempts = 2
-        spent = spent.plus(outcome)
-    delivery = await _delivery(
-        deps, task, workspace, outcome, baseline, turns=spent.turns, owned=owned
+        return _Run(outcome, 1, spent, review)
+    logger.warning(
+        EVALS_RECURSION_UNIT_RESUMED,
+        execution_id=execution_id,
+        task_id=str(task.id),
+        termination=outcome.termination,
+        turns=outcome.turns,
     )
-    final = await asyncio.to_thread(probe_artifacts, task, workspace)
-    return LeafOutcome(
+    outcome = await run_session(
+        deps,
+        identity=owner,
+        task=task,
         workspace=workspace,
-        delivered=delivery.delivered,
-        produced=delivery.produced,
-        attempts=attempts,
-        turns=spent.turns,
-        cost=spent.cost,
-        tokens=spent.tokens,
-        input_tokens=spent.input_tokens,
-        output_tokens=spent.output_tokens,
-        executor=ModelPair.of(owner, deps.declared_pairs),
-        missing_declared_paths=final.missing,
-        detail=delivery.reason or delivery.note,
-        terminations=spent.terminations,
-        workspace_files_changed=delivery.workspace_files_changed,
-        compaction_tokens=spent.compaction_tokens,
-        compaction_cost=spent.compaction_cost,
+        execution_id=execution_id,
+        limits=limits,
+        resume=True,
     )
+    return _Run(outcome, 2, spent.plus(outcome), None)
+
+
+#: What a leaf reads back when nothing was filed for it: no row, no verdict.
+_UNREVIEWED: Final[LeafReview] = LeafReview(task_status=None, verdict=None)
+
+
+async def _filed(deps: SweepDeps, task: Task, owner: AgentIdentity) -> Task:
+    """File *task* with the host as *owner*'s, and return the row as filed.
+
+    ASSIGNED rather than CREATED, because that is the row the engine's own
+    entry hop expects: it moves ASSIGNED to IN_PROGRESS on its first turn and
+    IN_PROGRESS to IN_REVIEW on its last, and a row filed at any other status
+    has the first of those refused and the run reported against a lifecycle
+    that never started. Re-validated rather than ``model_copy``-ed, because
+    a copy runs no validator and the assignee is a constrained field.
+
+    Returns:
+        The task the session is to run, which is what was filed.
+    """
+    if deps.file_task is None:
+        return task
+    assigned = Task.model_validate(
+        task.model_dump()
+        | {
+            "status": TaskStatus.ASSIGNED,
+            "assigned_to": NotBlankStr(str(owner.id)),
+        }
+    )
+    await deps.file_task(assigned)
+    logger.debug(
+        EVALS_RECURSION_LEAF_FILED,
+        task_id=str(assigned.id),
+        assigned_to=str(owner.id),
+    )
+    return assigned
+
+
+async def _read_review(deps: SweepDeps, task: Task) -> LeafReview:
+    """Read what the product decided about *task*, once its session is over.
+
+    Returns:
+        The review, or the unreviewed reading when nothing was filed.
+    """
+    if deps.read_review is None:
+        return _UNREVIEWED
+    review = await deps.read_review(str(task.id))
+    logger.debug(
+        EVALS_RECURSION_LEAF_REVIEW_READ,
+        task_id=str(task.id),
+        task_status=review.task_status,
+        verdict=review.verdict,
+    )
+    return review
+
+
+#: Statuses in which the product's review path has parked the row on a
+#: question nobody in a sweep can answer: an escalated review, an unstaffed
+#: gate role, or a spent turn budget waiting for an operator to grant more.
+#: A park keeps the workspace, so the tree is still graded; what it is not is
+#: a delivery the product signed off.
+_PARKED: Final[frozenset[TaskStatus]] = frozenset(
+    {TaskStatus.BLOCKED, TaskStatus.AWAITING_INPUT}
+)
+
+#: Statuses the product's post-execution path leaves a row in once it has
+#: DECIDED the run: a resume against any of these is refused at the entry hop.
+#: An ``ERROR`` termination is not only an infrastructure death: on the wired
+#: engine it is also how a run whose review sent it back and whose rework
+#: rounds ran out reports itself, and the product has by then moved the row
+#: to FAILED. Resuming that conversation would re-enter the engine against a
+#: status its entry hop refuses, and the refusal would be filed as a second
+#: attempt that ran no turn.
+_HOST_SETTLED: Final[frozenset[TaskStatus]] = frozenset(
+    {
+        TaskStatus.FAILED,
+        TaskStatus.IN_REVIEW,
+        TaskStatus.COMPLETED,
+        *_PARKED,
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)

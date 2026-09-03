@@ -93,6 +93,49 @@ class TestAToolCallIsReadFromItsFragments:
         assert (reasoning, content) == (4, 2)
 
 
+class TestANonStreamedResponseIsReadWhole:
+    """The planning session records a completion object, not a stream.
+
+    Read as text it holds no frames, so every planning turn counted as idle
+    and its submissions as no calls at all: a session that fought its tool
+    for six turns reported the same figures as one that never called it.
+    """
+
+    def test_the_message_is_one_delta_with_its_calls(self) -> None:
+        response = {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "Plan is ready.",
+                        "reasoning_content": "think",
+                        "tool_calls": [
+                            {
+                                "id": "c1",
+                                "function": {
+                                    "name": "submit_decomposition_plan",
+                                    "arguments": '{"subtasks": []}',
+                                },
+                            }
+                        ],
+                    }
+                }
+            ]
+        }
+
+        reasoning, content, calls, dropped = _stream_totals(response)
+
+        assert (reasoning, content, dropped) == (5, 14, 0)
+        assert calls == (
+            Call(name="submit_decomposition_plan", arguments='{"subtasks": []}'),
+        )
+
+    def test_a_completion_with_no_choices_is_silent_not_broken(self) -> None:
+        reasoning, content, calls, dropped = _stream_totals({"choices": []})
+
+        assert (reasoning, content, calls, dropped) == (0, 0, (), 0)
+
+
 class TestALostFrameIsCountedRatherThanSkipped:
     """The module promises this in its own docstring, and the outer line
     counter does not deliver it: every figure the report prints is computed

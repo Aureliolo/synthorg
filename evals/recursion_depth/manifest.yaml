@@ -252,8 +252,17 @@ leaf_deep_claims: 4
 # the sweep arms its settings, so what a recording remembered with is on its
 # face rather than inherited from whatever the host happened to hold. The
 # placeholder is aliased in provider config exactly like the pairs above.
+#
+# Its own CONNECTION rather than the executor's. An embedder answers every
+# recall and every write of every session, which on the pairs' metered
+# connection would spend their session window on calls that measure nothing
+# about the loop; and a company config aliasing the placeholder onto a
+# separately served model (a local one, typically) needs a provider entry
+# whose base URL is that model's, which the executor's is not. The preflight
+# probes this connection with one real embedding call before anything is
+# spent, exactly as it probes the two pairs.
 embedder:
-  provider: example-provider
+  provider: example-embedding-provider
   model_id: example-embedding-001
 # The stagnation detector every session runs under, in the product's own
 # vocabulary (`engine.stagnation_strategy`). Stated rather than inherited: a
@@ -275,11 +284,16 @@ compaction:
 # rather than a looseness introduced here: a run that used a tool in the budget
 # it just spent earns another budget of the same size, up to
 # `engine.max_turn_extensions` times, so the effective cap is this number times
-# one plus that allowance. Measuring the product means inheriting that, so the
-# bound that actually stops a unit running away is the token ceiling below, and
-# it is set with that job in mind. A live run put 52 turns and 1.58M tokens
-# into one leaf that delivered nothing.
-unit_max_turns: 40
+# one plus that allowance, and a run that spends the lot PARKS with its tree
+# intact rather than failing. Measuring the product means inheriting that, so
+# the bound that actually stops a unit running away is the token ceiling
+# below, and it is set with that job in mind. A zeroed allowance makes cells
+# comparable on turns by measuring a loop the product does not ship: under
+# one, five of eight live leaves ended at exactly 40 turns as hard failures,
+# 0.45M to 1.15M tokens each, nowhere near their ceilings, so the harness was
+# the bound and not the product. Eighty gives a leaf that is working room
+# before it earns its first extension at all.
+unit_max_turns: 80
 # The planning session's own budget, separate because a planner writes a plan
 # and a unit builds software: the two need different amounts of room, and the
 # shipped decomposition config refuses anything above 50, so a shared value
@@ -349,8 +363,10 @@ unit_token_cap: 4000000
 # behaviour, so it needs less room than a leaf; it declares every module the
 # plan named and one failing test per requirement, so it needs more breadth
 # than any one of them. Turns matter more than tokens here because the work is
-# many small files rather than one hard problem.
-contract_max_turns: 60
+# many small files rather than one hard problem: a live contract session wrote
+# 25 files in 60 turns and was cut off before the contract document itself,
+# so the units it seeded read as built against nothing.
+contract_max_turns: 120
 contract_token_ceiling: 2500000
 # A merge must read every child before it can write one line; a leaf reads
 # nothing. Sizing both off `unit_token_ceiling` is what starved the recording

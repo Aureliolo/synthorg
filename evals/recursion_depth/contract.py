@@ -172,6 +172,13 @@ def contract_task(
     Returns:
         The task, briefed and assigned.
     """
+    # IN_PROGRESS rather than ASSIGNED, and never filed with the host: the
+    # engine takes an ASSIGNED task through the central task engine's entry
+    # hop and refuses to run one the host does not hold, while a task already
+    # IN_PROGRESS passes straight through, which is the shape the product's
+    # own reviewer sessions take. This stage is judged by the harness (does
+    # the suite collect), so it is a transient like those and the product's
+    # review is not asked to judge it a second time.
     return task.model_copy(
         update={
             "description": NotBlankStr(contract_brief(spec, units)),
@@ -179,7 +186,7 @@ def contract_task(
                 ExpectedArtifact(type=ArtifactType.DOCUMENTATION, path=CONTRACT_PATH),
             ),
             "assigned_to": str(owner.id),
-            "status": TaskStatus.ASSIGNED,
+            "status": TaskStatus.IN_PROGRESS,
         }
     )
 

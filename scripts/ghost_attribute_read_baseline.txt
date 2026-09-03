@@ -51,6 +51,5 @@ src/synthorg/providers/drivers/litellm_response.py::map_response::choices::1
 src/synthorg/providers/preset_softlist.py::_iter_litellm_chat_namespaces::model_cost::1
 src/synthorg/tools/_process_cleanup.py::close_subprocess_transport::_transport::1
 src/synthorg/tools/file_system/_edit_plan.py::_write_sync::fchmod::1
-src/synthorg/tools/html_parse_guard.py::HTMLParseGuard._strip_hidden_elements::getparent::1
 src/synthorg/workers/dead_letter.py::DeadLetterConsumer._handle_retryable::num_delivered::1
 src/synthorg/workers/worker.py::Worker._is_final_delivery::num_delivered::1

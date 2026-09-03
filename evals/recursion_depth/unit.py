@@ -221,6 +221,16 @@ class UnitDelivery:
     workspace_files_changed: int | None = None
     note: str = ""
 
+    def __post_init__(self) -> None:
+        """Refuse a delivery that both doubts itself and says not to.
+
+        Raises:
+            ValueError: If ``reason`` and ``note`` are both set.
+        """
+        if self.reason and self.note:
+            msg = "a delivery cannot carry both a reason and a note"
+            raise ValueError(msg)
+
     @property
     def delivered(self) -> bool:
         """Did this unit both produce something and pass its own checks?
@@ -235,21 +245,20 @@ class UnitDelivery:
 
 
 def delivery_of(
-    *, produced: bool, delivered: bool, detail: str, files_changed: int | None
+    *, produced: bool, detail: str, note: str, files_changed: int | None
 ) -> UnitDelivery:
-    """Rebuild a delivery from a record that flattened its two texts into one.
+    """Rebuild a delivery from the two texts a record keeps apart.
 
-    A record carries ONE ``detail`` and the verdict beside it, so which field
-    that text came from has to be read back off the verdict rather than
-    guessed: putting a note in ``reason`` would recompute ``delivered`` as
-    false and quietly disagree with the run being replayed. One owner because
-    three call sites rebuild these, and a rule written three times is the
-    shape the note exists to stop.
+    One owner because three call sites rebuild these, and a rule written
+    three times is the shape the note exists to stop: a note that lands in
+    ``reason`` recomputes ``delivered`` as false and quietly disagrees with
+    the run being replayed.
 
     Args:
         produced: Whether the recorded unit's tree changed.
-        delivered: The verdict the run itself reached.
-        detail: Whatever text the record kept beside that verdict.
+        detail: Why the record says the unit did not deliver, empty when it
+            did.
+        note: What the record says a reader should know that is not a reason.
         files_changed: The recorded file count, ``None`` before it existed.
 
     Returns:
@@ -257,8 +266,8 @@ def delivery_of(
     """
     return UnitDelivery(
         produced=produced,
-        reason="" if delivered else detail,
-        note=detail if delivered else "",
+        reason=detail,
+        note=note,
         workspace_files_changed=files_changed,
     )
 

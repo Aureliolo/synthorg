@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from synthorg.core.boundary import parse_typed
 from synthorg.core.clock import Clock, SystemClock
+from synthorg.core.shell_semantics import RECORDED_RUN_RULE
 from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.terminal import (
@@ -171,10 +172,9 @@ class ShellCommandTool(BaseTerminalTool):
         """
         super().__init__(
             name="shell_command",
-            description=(
-                "Execute a shell command in a sandboxed environment. "
-                "Output is captured and returned."
-            ),
+            # Short enough that the rule survives the L1 summary's cap: the
+            # summary is all an agent sees before it types the line.
+            description=f"Run a shell command in the sandbox. {RECORDED_RUN_RULE}",
             parameters_schema=ShellCommandArgs.model_json_schema(),
             sandbox=sandbox,
             config=config,

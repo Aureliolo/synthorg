@@ -43,6 +43,7 @@ _HTML_COMMENT_RE: Final[re.Pattern[str]] = re.compile(
     r"<!--.*?-->",
     re.DOTALL,
 )
+_XML_DECLARATION: Final[re.Pattern[str]] = re.compile(r"^[\s﻿]*<\?xml\b[^>]*\?>")
 
 
 class XXEDetectedError(
@@ -140,11 +141,67 @@ def parse_html_safely(raw: str) -> HtmlElement:
 
     from lxml import html as lxml_html  # noqa: PLC0415
 
+    # lxml refuses a ``str`` that opens with an XML declaration naming an
+    # encoding (the bytes it would decode are already decoded), and the
+    # refusal is a ``ValueError`` the callers treat as a parse failure, so
+    # an XHTML page arrived blank. The declaration says nothing the parser
+    # needs from a decoded string.
+    body = _XML_DECLARATION.sub("", raw, count=1)
+
     # Use the lxml.html fromstring so the returned element supports
     # ``text_content()`` / ``drop_tree()`` which the sanitiser relies
     # on. Pass this thread's safe parser explicitly so our no-network +
     # huge_tree guards apply.
-    return lxml_html.fromstring(raw, parser=_SAFE_PARSERS.parser)
+    return lxml_html.fromstring(body, parser=_SAFE_PARSERS.parser)
+
+
+def parse_html_fragment_safely(raw: str) -> HtmlElement:
+    """Parse *raw* as a fragment under one explicit container.
+
+    ``fromstring`` decides for itself whether a payload is a document or a
+    fragment, and for a fragment of prose plus several elements it invents a
+    ``div`` (or a ``span``) to return one root, which a serialiser then hands
+    on as if the tool had written it. Parsing under a container this module
+    names lets :func:`serialise_fragment` leave it out again, so a fragment
+    comes back in the shape it arrived in.
+
+    Args:
+        raw: Raw (potentially attacker-controlled) HTML fragment.
+
+    Returns:
+        The container element holding the fragment's top-level nodes.
+
+    Raises:
+        XXEDetectedError: If the payload carries an external DOCTYPE
+            or any entity declaration.
+    """
+    reject_xxe_constructs(raw)
+
+    from lxml import html as lxml_html  # noqa: PLC0415
+
+    body = _XML_DECLARATION.sub("", raw, count=1)
+    # ``create_parent=True`` is lxml's spelling for "under a div", and a div
+    # keeps block-level children where the parser put them.
+    return lxml_html.fragment_fromstring(
+        body, create_parent=True, parser=_SAFE_PARSERS.parser
+    )
+
+
+def serialise_fragment(container: HtmlElement) -> str:
+    """Serialise the nodes under *container* without the container itself.
+
+    Returns:
+        The fragment's leading text and each top-level element with its tail,
+        as HTML.
+    """
+    from lxml.html import tostring  # noqa: PLC0415
+
+    parts = [container.text or ""]
+    parts.extend(
+        tostring(child, encoding="unicode", method="html", with_tail=True)
+        for child in container
+    )
+    return "".join(parts)
 
 
 def _build_safe_parser() -> HTMLParser:
@@ -205,6 +262,8 @@ _SAFE_PARSERS = _ThreadParser()
 
 __all__ = [
     "XXEDetectedError",
+    "parse_html_fragment_safely",
     "parse_html_safely",
     "reject_xxe_constructs",
+    "serialise_fragment",
 ]

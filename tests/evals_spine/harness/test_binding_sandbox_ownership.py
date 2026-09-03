@@ -15,11 +15,13 @@ import pytest
 
 from evals.harness.binding import HarnessBinder
 from evals.harness.host import RecordingGatewayHost
+from synthorg.persistence.state import persistence_of
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.lifecycle.config import (
     LifecycleStrategy,
     SandboxLifecycleConfig,
 )
+from synthorg.tools.terminal.shell_command import ShellCommandTool
 from tests._shared import mock_of
 
 
@@ -184,3 +186,29 @@ class TestConstructionRegistersTheOwner:
         binder.build_sandbox(tmp_path, owner="grade:unit-1")
 
         assert binder.sandbox_owners() == ("grade:unit-1",)
+
+
+@pytest.mark.unit
+class TestTheShellToolIsGateEvidence:
+    """The agent's shell writes the rows the build/test oracle reads.
+
+    Built without the record store, a session's every ``pytest`` left nothing
+    behind and the product's review failed every leaf closed on "no test run";
+    the product's own factory hands the tool the store and the workspace root,
+    so the harness must too or it measures a loop the product does not run.
+    """
+
+    def test_the_shell_tool_carries_the_record_store_and_the_root(
+        self, binder: HarnessBinder, tmp_path: Path
+    ) -> None:
+        _arm_host(binder)
+        workspace = _StubWorkspace(tmp_path)
+
+        registry = binder.build_tool_registry(workspace, owner="exec-1")  # type: ignore[arg-type]
+
+        shell = registry.get("shell_command")
+        assert isinstance(shell, ShellCommandTool)
+        expected = persistence_of(binder.host.app_state).code_execution_records
+        assert shell._code_execution_records is expected
+        assert shell._workspace_root == tmp_path
+        assert shell._clock is binder.host.app_state.clock

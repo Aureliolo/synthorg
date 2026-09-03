@@ -13,9 +13,15 @@ import pytest
 
 from synthorg.memory.embedding.config import EmbedderConfig
 from synthorg.memory.embedding.text_embedder import ProviderTextEmbedder
+from synthorg.providers.drivers.litellm_auth import (
+    NO_CREDENTIAL_API_KEY,
+    OPENAI_SDK_ROUTES,
+)
 from synthorg.providers.embedding_endpoint import EmbeddingEndpoint
 
 pytestmark = pytest.mark.unit
+
+SDK_ROUTE = next(iter(sorted(OPENAI_SDK_ROUTES)))
 
 
 def _patch_aembedding(
@@ -91,6 +97,33 @@ class TestServingEndpointBinding:
         await _embedder(None).embed_many(("remember this",))
 
         assert "api_base" not in seen[0]
+        assert "api_key" not in seen[0]
+
+    async def test_a_no_credential_openai_route_fills_the_key_slot(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The SDK behind litellm's openai route refuses to construct without
+        # a key, so a self-hosted OpenAI-compatible server with no credential
+        # is only reachable with the placeholder in the slot.
+        seen = _patch_aembedding(monkeypatch, dims=4)
+        endpoint = EmbeddingEndpoint(
+            api_base="http://localhost:11434/v1", route=SDK_ROUTE
+        )
+
+        await _embedder(endpoint).embed_many(("remember this",))
+
+        assert seen[0]["api_key"] == NO_CREDENTIAL_API_KEY
+
+    async def test_a_no_credential_native_route_sends_no_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen = _patch_aembedding(monkeypatch, dims=4)
+        endpoint = EmbeddingEndpoint(
+            api_base="http://localhost:11434", route="example-route"
+        )
+
+        await _embedder(endpoint).embed_many(("remember this",))
+
         assert "api_key" not in seen[0]
 
     async def test_every_text_in_a_batch_goes_to_the_same_endpoint(

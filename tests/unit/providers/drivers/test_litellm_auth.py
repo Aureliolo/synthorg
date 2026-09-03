@@ -9,6 +9,10 @@ from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.providers import errors
+from synthorg.providers.drivers.litellm_auth import (
+    NO_CREDENTIAL_API_KEY,
+    OPENAI_SDK_ROUTES,
+)
 from synthorg.providers.drivers.litellm_driver import (
     _CREDENTIAL_CACHE_TTL,
     LiteLLMDriver,
@@ -17,6 +21,10 @@ from synthorg.providers.drivers.litellm_kwargs import _AcompletionKwargs
 from synthorg.providers.enums import AuthType, MessageRole
 from synthorg.providers.models import ChatMessage
 from tests._shared.fake_clock import FakeClock
+
+# The route litellm serves through its OpenAI SDK client, taken from the
+# declaration the driver branches on rather than spelled here.
+SDK_ROUTE = next(iter(sorted(OPENAI_SDK_ROUTES)))
 
 
 def _make_config(
@@ -50,6 +58,7 @@ def _build_kwargs(
     config: ProviderConfig,
     *,
     resolved: dict[str, str] | None = None,
+    provider_name: str = "test-provider",
 ) -> _AcompletionKwargs:
     """Extract _build_kwargs result from a driver.
 
@@ -57,7 +66,7 @@ def _build_kwargs(
     ``_ensure_credentials_resolved`` would have fetched from the
     ConnectionCatalog for the provider's ``connection_name``.
     """
-    driver = LiteLLMDriver("test-provider", config)
+    driver = LiteLLMDriver(provider_name, config)
     if resolved is not None:
         driver._resolved_credentials = resolved
     messages = [ChatMessage(role=MessageRole.USER, content="ping")]
@@ -132,6 +141,62 @@ class TestLiteLLMDriverAuth:
         kwargs = _build_kwargs(config)
         assert "api_key" not in kwargs
         assert "extra_headers" not in kwargs
+
+    def test_none_auth_on_the_openai_route_sends_the_placeholder_key(self) -> None:
+        # The SDK behind this route refuses to construct without a key, so a
+        # credential-less local server is unreachable unless something fills
+        # the slot; the server never reads it.
+        config = _make_config(
+            auth_type=AuthType.NONE,
+            litellm_provider=SDK_ROUTE,
+            base_url="http://localhost:1234/v1",
+        )
+        kwargs = _build_kwargs(config)
+        assert kwargs.get("api_key") == NO_CREDENTIAL_API_KEY
+
+    def test_a_provider_named_for_the_sdk_route_fills_the_key_slot(self) -> None:
+        # No ``litellm_provider`` declared, so the name IS the route litellm
+        # dispatches on, and the key slot is filled exactly as if it were.
+        config = _make_config(
+            auth_type=AuthType.NONE,
+            base_url="http://localhost:1234/v1",
+        )
+        kwargs = _build_kwargs(config, provider_name=SDK_ROUTE)
+        assert kwargs.get("api_key") == NO_CREDENTIAL_API_KEY
+
+    def test_none_auth_on_a_native_route_sends_no_key(self) -> None:
+        config = _make_config(
+            auth_type=AuthType.NONE,
+            litellm_provider="example-route",
+            base_url="http://localhost:11434",
+        )
+        kwargs = _build_kwargs(config)
+        assert "api_key" not in kwargs
+
+    def test_custom_header_on_the_openai_route_still_fills_the_key_slot(
+        self,
+    ) -> None:
+        config = _make_config(
+            auth_type=AuthType.CUSTOM_HEADER,
+            litellm_provider=SDK_ROUTE,
+            base_url="http://localhost:1234/v1",
+            custom_header_name="X-Api-Token",
+            custom_header_value="my-token",
+        )
+        kwargs = _build_kwargs(config)
+        assert kwargs.get("extra_headers") == {"X-Api-Token": "my-token"}
+        assert kwargs.get("api_key") == NO_CREDENTIAL_API_KEY
+
+    def test_a_resolved_credential_is_never_replaced_by_the_placeholder(
+        self,
+    ) -> None:
+        config = _make_config(
+            auth_type=AuthType.API_KEY,
+            litellm_provider=SDK_ROUTE,
+            connection_name="provider-key",
+        )
+        kwargs = _build_kwargs(config, resolved={"api_key": "real-key"})
+        assert kwargs.get("api_key") == "real-key"
 
     def test_build_kwargs_oauth_passes_api_key(self) -> None:
         config = _make_config(

@@ -54,6 +54,7 @@ class _EchoTestTool(BaseTool):
             name="echo_test",
             description="Echoes arguments back",
             category=ToolCategory.CODE_EXECUTION,
+            action_type="code:read",
             parameters_schema={
                 "type": "object",
                 "properties": {"message": {"type": "string"}},
@@ -79,6 +80,7 @@ class _FailingTool(BaseTool):
             name="failing",
             description="Always fails",
             category=ToolCategory.CODE_EXECUTION,
+            action_type="code:read",
             parameters_schema={
                 "type": "object",
                 "properties": {"input": {"type": "string"}},
@@ -175,6 +177,7 @@ class _RecursionTool(BaseTool):
             name="recursion",
             description="Raises RecursionError",
             category=ToolCategory.CODE_EXECUTION,
+            action_type="code:read",
             parameters_schema={
                 "type": "object",
                 "properties": {"input": {"type": "string"}},
@@ -376,6 +379,8 @@ class _DelayTool(BaseTool):
             name="delay",
             description="Sleeps then returns value",
             category=ToolCategory.CODE_EXECUTION,
+            # Read-only, because fanning out is something only reads get.
+            action_type="code:read",
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -405,6 +410,8 @@ class _ConcurrencyTrackingTool(BaseTool):
             name="tracking",
             description="Tracks concurrency",
             category=ToolCategory.CODE_EXECUTION,
+            # Read-only, because fanning out is something only reads get.
+            action_type="code:read",
             parameters_schema={
                 "type": "object",
                 "properties": {

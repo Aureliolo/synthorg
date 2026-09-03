@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Final
 
 from synthorg.core.critical_errors import reraise_critical
+from synthorg.core.shell_semantics import RECORDED_RUN_RULE
 from synthorg.core.task import Task
 from synthorg.engine.completion_oracle.build_test_models import (
     GroundingRequirement,
@@ -59,6 +60,19 @@ Newest-first, so the latest run (index 0) drives the verdict regardless of
 the cap; the bound only affects the ``tests_seen`` / ``tests_failed``
 telemetry counts, mirroring the receipt validator's signal-query ceiling.
 """
+
+#: Handed back to the agent as the review's own words, so it has to say what
+#: would satisfy the gate rather than only that nothing did. A recorded run is
+#: recognised from the invoked program and vouched for by the line's exit
+#: status, so a runner followed by ``; echo $?`` is a run the gate cannot see:
+#: a live agent ran its suite that way through three rework rounds, told each
+#: time only that it had "produced no test run", and failed the task having
+#: run the tests every round.
+NO_TEST_RUN_REASON: Final[str] = (
+    "No test run was recorded for this task, so there is no evidence the work "
+    f"builds or its tests pass (failing closed). {RECORDED_RUN_RULE} Run the "
+    "suite that way."
+)
 
 
 class BuildTestOracle:
@@ -411,10 +425,7 @@ class BuildTestOracle:
                 return OracleEvaluation(
                     verdict=OracleVerdict.UNVERIFIED,
                     requirement=requirement,
-                    reason=(
-                        "Code task produced no test run; there is no evidence "
-                        "the work builds or its tests pass (failing closed)."
-                    ),
+                    reason=NO_TEST_RUN_REASON,
                 )
             return OracleEvaluation(
                 verdict=OracleVerdict.NOT_APPLICABLE,

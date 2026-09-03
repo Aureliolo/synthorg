@@ -184,7 +184,8 @@ listed here does not exist in this session.
 
 {% for tool in l1_tools %}\
 - **{{ tool.name }}** ({{ tool.category }}, \
-{{ tool.cost_tier }}): {{ tool.short_description }}
+{{ tool.cost_tier }}): {{ tool.short_description }}\
+{% if tool.parameters %} Parameters: {{ tool.parameters }}.{% endif %}
 {% endfor %}
 {% endif %}
 

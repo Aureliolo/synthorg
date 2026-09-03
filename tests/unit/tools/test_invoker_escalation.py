@@ -252,9 +252,9 @@ class TestClearBetweenCalls:
 
 
 class TestMultipleEscalationsInvokeAll:
-    """Multiple escalations tracked in invoke_all."""
+    """One park per turn: what follows a parked write waits on its answer."""
 
-    async def test_multiple_escalations(self) -> None:
+    async def test_the_first_park_withholds_the_rest(self) -> None:
         interceptor = AsyncMock()
         interceptor.evaluate_pre_tool = AsyncMock(
             return_value=_verdict(
@@ -267,7 +267,7 @@ class TestMultipleEscalationsInvokeAll:
         tool_b = _StubTool("tool_b")
         invoker = _make_invoker(tool_a, tool_b, security_interceptor=interceptor)
 
-        await invoker.invoke_all(
+        results = await invoker.invoke_all(
             [
                 _make_tool_call("tool_a", "tc-a"),
                 _make_tool_call("tool_b", "tc-b"),
@@ -275,7 +275,9 @@ class TestMultipleEscalationsInvokeAll:
         )
 
         escalations = invoker.pending_escalations
-        assert len(escalations) == 2
+        assert [e.tool_call_id for e in escalations] == ["tc-a"]
+        assert results[1].is_error is True
+        assert "approval" in results[1].content
 
 
 class TestParkingToolMetadata:

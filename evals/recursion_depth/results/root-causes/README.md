@@ -251,3 +251,47 @@ than silently:
   passes and the 43 of them the harness did not. After the harness switched
   to the product's assembly the gap is zero by construction, because a
   partial engine is no longer constructible.
+
+## Re-measured through the product's engine (2026-09-02)
+
+One cap-1 cell on the product's own assembly, nothing missing, with a wiring
+smoke beside its journal (`../wired-r0/README.md` carries the register answer
+by answer). The sweep was stopped at that cell by operator decision, so each
+verdict below rests on one cell and says so.
+
+- **RC1: refuted as the product's behaviour.** The post-execution path offers
+  every finished unit for review, and the roster reviewer judged the assembly
+  three times with code-quoted findings. What stands is that a unit which runs
+  out of turns is never offered, and every leaf here did: the cap, not the
+  loop, is what left the leaves unreviewed.
+- **RC2: stands, smaller.** The contract stage closed most of the divergence
+  (7 of 27 shared modules against 11 of 14 without a contract). What remained
+  was one unit's join signature and one unit's error taxonomy.
+- **RC3: stands, with the mechanism now on the wire.** The assembly was briefed
+  with the reviewer's findings by name; one attempt read the named file four
+  times, edited through `sed` and here-documents, and wrote nothing in 80
+  turns, and the next fixed both lines at turn 50 of 68 without ever running
+  the suite, leaving a `NameError` on every query's first line that three
+  read-only reviews also missed. Repair does not converge because the assembly
+  neither acts promptly on what it is told nor verifies what it writes.
+- **RC4: refuted as a cause at this pair.** The largest request was 125K
+  tokens against an 838K compaction threshold; compaction correctly never
+  fired, and tool-output abbreviation fired ten times. Nothing ran out of
+  context.
+- **RC5: resolved by construction**, and the smoke that replaced it read three
+  of its own findings wrong on this cell (a spelling mismatch, a policy engine
+  demanded where none is configured, an alias matched where the wire carries
+  the routed id); all three corrected and tested.
+- **RC6: partly stands.** The session-flow report read a non-streamed planning
+  response as no calls at all; corrected. Every other instrument was re-run on
+  the cell and agreed with the journal.
+
+What the dossier could not see, and this cell did: the outcomes were decided
+by a 40-turn cap with no extension and by a tool surface that refused, raced
+or hid things an agent needed (a tokeniser refused as a secret, concurrent
+edits of one file, missing parent directories, hidden parameter names, an
+array sent as JSON text, a recordable test-command shape told only on
+refusal). All fixed with tests on the branch carrying the recording. The
+replacement this dossier proposed (incremental trunk integration) is neither
+motivated nor refuted by one cell, and the sweep that would have decided it
+was stopped; the direction question moved to #2916.

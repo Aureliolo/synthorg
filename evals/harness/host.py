@@ -69,6 +69,7 @@ from synthorg.core.auth.roles import HumanRole
 from synthorg.llm.gateway_token import GatewaySigner
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
+    EVALS_HARNESS_COORDINATION_PAIR_PUBLISHED,
     EVALS_HARNESS_HOST_ADMIN_PRESENT,
     EVALS_HARNESS_HOST_ADMIN_SEEDED,
     EVALS_HARNESS_HOST_IMAGES_INSTALLED,
@@ -89,6 +90,7 @@ from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.project_protocol import ProjectRepository
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
+from synthorg.settings.model_ref import ModelRef, serialize_model_ref
 from synthorg.settings.state import config_resolver_of, settings_service_of
 from synthorg.settings.write_governance import SettingsWriteGovernance
 from synthorg.tools.sandbox._image_resolution import (
@@ -105,10 +107,6 @@ _GATEWAY_PATH: Final[str] = "/api/v1/gateway/v1"
 #: joins the sidecar's network namespace has the sidecar's own loopback, so
 #: the wiring gives the sidecar this alias and nothing else resolves.
 DEFAULT_CONTAINER_HOST: Final[str] = "host.docker.internal"
-
-#: Turn extensions granted during a recording. Zero, so a brief's declared
-#: ceiling is the budget every cell was actually scored against.
-_NO_TURN_EXTENSIONS: Final[int] = 0
 
 #: ``providers.gateway_enabled`` ships off, so the first stored ``true`` is the
 #: write that opens the egress and takes the confirm+reason+actor guardrail.
@@ -253,6 +251,13 @@ class RecordingHostConfig:
             is what the gateway resolves a run bearer's bound provider against,
             so the manifest's capabilities must name providers present here.
         scratch_dir: Directory for the throwaway database, removed on exit.
+        coordination_pair: The ``(provider, model)`` the host publishes as its
+            ``coordination.decomposition_model``. The harness plans its own
+            trees, so nothing here dispatches on it, but the product's runtime
+            services stop at "no coordinator" without one, and the
+            completion-oracle peer-review gate that judges every filed unit
+            is built only past that point: a recording against a host that
+            names no pair measures leaves nobody on the roster ever reviewed.
         label: Names this recording, and through it the throwaway database and
             the seeded CEO account. Two harnesses recording at once would
             otherwise write the same filename under a shared scratch root and
@@ -274,6 +279,7 @@ class RecordingHostConfig:
 
     company_config: RootConfig
     scratch_dir: Path
+    coordination_pair: ModelRef
     label: str = DEFAULT_RECORDING_LABEL
     bind_host: str | None = None
     bind_port: int = 0
@@ -286,10 +292,18 @@ class RecordingHostConfig:
 
         Raises:
             HarnessHostConfigInvalidError: ``bind_port`` is outside the TCP port
-                range, or ``label`` is not a safe identifier.
+                range, ``label`` is not a safe identifier, or
+                ``coordination_pair`` names no provider or no model.
         """
         if not 0 <= self.bind_port <= _MAX_PORT:
             msg = f"bind_port must be between 0 and {_MAX_PORT}, got {self.bind_port}"
+            raise HarnessHostConfigInvalidError(msg)
+        # An unbound pair is published as an empty coordination model, and
+        # the product's runtime then stops at "no coordinator" and clears the
+        # peer-review gate, so the host would boot and measure a roster
+        # nobody reviews. Refused here, where somebody is present to be told.
+        if not self.coordination_pair.is_bound:
+            msg = "coordination_pair must name both a provider and a model"
             raise HarnessHostConfigInvalidError(msg)
         # `label` becomes a path component of the throwaway database and part
         # of the seeded username. Absolute or carrying `..` it writes the
@@ -897,12 +911,14 @@ class RecordingGatewayHost:
         merely unrouted. It is set here rather than left to an operator so a
         recording cannot silently measure nothing.
 
-        The turn-extension allowance is zeroed so a brief's declared ceiling is
-        the real one. A run that earns further turn budgets while it is still
-        calling tools runs past the ceiling its cell was scored against:
-        measured, 7 of 27 sessions did, one of them by 3.8x. Extensions are a
-        production behaviour; a matrix that lets some cells take them and not
-        others is comparing runs on different budgets.
+        The turn-extension allowance is left unwritten. Zeroing it would make
+        cells comparable on turns by measuring a loop the product does not
+        ship: on the shipped loop a run still calling tools earns further
+        budgets and then PARKS with its workspace intact, and with the
+        allowance zeroed five of eight live leaves ended at exactly their base
+        budget as hard failures, tree discarded and nothing asked. What keeps
+        cells comparable is the token ceiling every session carries, which is
+        the bound the manifest names as the real one.
         """
         settings = settings_service_of(self.app_state)
         await settings.set(
@@ -911,7 +927,18 @@ class RecordingGatewayHost:
             "true",
             governance=_RECORDING_GATEWAY_GOVERNANCE,
         )
-        await settings.set("engine", "max_turn_extensions", str(_NO_TURN_EXTENSIONS))
+        # The runtime services rebuild on this write, and the peer-review gate
+        # that judges every filed unit exists only in a runtime built past the
+        # coordinator: see ``RecordingHostConfig.coordination_pair``.
+        await settings.set(
+            "coordination",
+            "decomposition_model",
+            serialize_model_ref(self._config.coordination_pair),
+        )
+        logger.info(
+            EVALS_HARNESS_COORDINATION_PAIR_PUBLISHED,
+            pair=serialize_model_ref(self._config.coordination_pair),
+        )
 
 
 __all__ = [

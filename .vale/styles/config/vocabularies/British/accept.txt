@@ -243,6 +243,8 @@
 (?i)tokenises
 (?i)tokenising
 (?i)tokenisation
+(?i)tokeniser
+(?i)tokenisers
 (?i)anonymise
 (?i)anonymised
 (?i)anonymises

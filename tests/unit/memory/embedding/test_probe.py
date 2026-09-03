@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from synthorg.memory.embedding.dispatch import routed_model_ref
 from synthorg.memory.embedding.hashing import (
     BUILTIN_EMBEDDER_DIMS,
     BUILTIN_EMBEDDER_MODEL,
@@ -19,9 +20,12 @@ from synthorg.memory.embedding.hashing import (
 )
 from synthorg.memory.embedding.probe import is_builtin_embedder, probe_embedder_dims
 from synthorg.memory.errors import MemoryEmbeddingError
+from synthorg.providers.drivers.litellm_auth import OPENAI_SDK_ROUTES
 from synthorg.providers.embedding_endpoint import EmbeddingEndpoint
 
 pytestmark = pytest.mark.unit
+
+SDK_ROUTE = next(iter(sorted(OPENAI_SDK_ROUTES)))
 
 
 def _response(embedding: object) -> object:
@@ -87,6 +91,50 @@ class TestBuiltin:
         )
         assert width == BUILTIN_EMBEDDER_DIMS
         assert asked == []
+
+
+class TestRoutedModelReference:
+    """What litellm is asked for is the ROUTED id, never the operator's name.
+
+    A provider is named for what it is, and a model may be bound by alias;
+    litellm knows neither. Completion dispatch translates both, and an
+    embedding call that did not was unreachable through any provider whose
+    name is not a litellm key, which is every self-hosted one.
+    """
+
+    async def test_the_route_and_the_alias_reach_litellm(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen = _patch_aembedding_kwargs(monkeypatch, _response([0.1] * 8))
+
+        await probe_embedder_dims(
+            provider="local-embeddings",
+            model="example-embedding-001",
+            endpoint=EmbeddingEndpoint(
+                api_base="http://localhost:11434/v1",
+                route=SDK_ROUTE,
+                model_ids={"example-embedding-001": "test-embed-001"},
+            ),
+        )
+
+        assert seen[0]["model"] == "openai/test-embed-001"
+
+    async def test_without_an_endpoint_the_name_is_the_route(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen = _patch_aembedding_kwargs(monkeypatch, _response([0.1] * 8))
+
+        await probe_embedder_dims(provider="test-provider", model="test-embed-001")
+
+        assert seen[0]["model"] == "test-provider/test-embed-001"
+
+    def test_an_id_that_is_not_an_alias_passes_through(self) -> None:
+        endpoint = EmbeddingEndpoint(route=SDK_ROUTE, model_ids={"a": "b"})
+
+        assert routed_model_ref("p", "test-embed-001", endpoint) == (
+            "openai/test-embed-001"
+        )
+        assert routed_model_ref("p", "test-embed-001", None) == "p/test-embed-001"
 
 
 class TestEndpointBinding:

@@ -32,6 +32,7 @@ from synthorg.observability.events.memory import (
     MEMORY_EMBEDDING_RETRIED,
 )
 from synthorg.providers.cost_recording import resolve_currency
+from synthorg.providers.drivers.litellm_auth import AuthMaterial, wire_api_key
 from synthorg.providers.embedding_endpoint import EmbeddingEndpoint
 from synthorg.providers.transport_policy import (
     require_confidential_transport,
@@ -105,12 +106,40 @@ def _retryable_embedding_errors() -> tuple[type[Exception], ...]:
 
 
 def format_model_ref(provider: str, model: str) -> str:
-    """Join a binding into the identifier LiteLLM routes on.
+    """Join a binding into the operator's own name for it.
 
     Returns:
         ``"{provider}/{model}"``.
     """
     return f"{provider}{PROVIDER_MODEL_SEPARATOR}{model}"
+
+
+def routed_model_ref(
+    provider: str, model: str, endpoint: EmbeddingEndpoint | None
+) -> str:
+    """Join a binding into the identifier litellm ROUTES on.
+
+    The operator's name for a binding and litellm's are not the same string:
+    the provider is named for what it is and may bind a model by alias, while
+    litellm knows only its own routing keys and the id the endpoint serves.
+    Completion dispatch translates both on every call; this is the one place
+    an embedding call does, so neither call site can regress to sending the
+    operator's name and reaching nothing.
+
+    Args:
+        provider: The provider's configured name.
+        model: The model as the operator bound it, alias or id.
+        endpoint: What the provider's config declared, or ``None`` when no
+            config was resolved, in which case the name is the route.
+
+    Returns:
+        ``"{route}/{id}"``.
+    """
+    if endpoint is None:
+        return format_model_ref(provider, model)
+    route = endpoint.route if endpoint.route is not None else provider
+    resolved = endpoint.model_ids.get(model, model) if endpoint.model_ids else model
+    return format_model_ref(route, resolved)
 
 
 class _EmbeddingRequiredKwargs(TypedDict):
@@ -168,8 +197,12 @@ def embedding_kwargs(
         require_credentialed_endpoint(endpoint.api_base, field="Embedding endpoint")
     if endpoint.api_base is not None:
         kwargs["api_base"] = endpoint.api_base
-    if endpoint.api_key is not None:
-        kwargs["api_key"] = endpoint.api_key
+    api_key = wire_api_key(
+        AuthMaterial(api_key=endpoint.api_key, extra_headers=endpoint.extra_headers),
+        route=endpoint.route,
+    )
+    if api_key is not None:
+        kwargs["api_key"] = api_key
     if endpoint.extra_headers:
         kwargs["extra_headers"] = dict(endpoint.extra_headers)
     return kwargs
@@ -331,5 +364,6 @@ __all__ = [
     "format_model_ref",
     "is_retryable_embedding_error",
     "record_embedding_cost",
+    "routed_model_ref",
     "with_deadline",
 ]

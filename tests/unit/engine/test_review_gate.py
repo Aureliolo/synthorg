@@ -18,6 +18,7 @@ from synthorg.core.task_enums import (
     TaskStatus,
     TaskType,
 )
+from synthorg.engine.completion_oracle.protocol import CompletionOracleGate
 from synthorg.engine.decisions import DecisionOutcome, DecisionRecord
 from synthorg.engine.errors import SelfReviewError, TaskVersionConflictError
 from synthorg.engine.review_gate import ReviewGateService
@@ -159,6 +160,52 @@ def _make_task(
         stakes=stakes,
         acceptance_criteria=tuple(AcceptanceCriterion(description=c) for c in criteria),
     )
+
+
+@pytest.mark.unit
+class TestPeerReviewAttachment:
+    """Attached is a different question from wired, and it is answered here."""
+
+    @staticmethod
+    def _service() -> ReviewGateService:
+        return ReviewGateService(
+            task_engine=_make_mock_task_engine(task=_make_task()),
+            persistence=_make_mock_persistence(_make_mock_decision_repo()),
+        )
+
+    def test_absent_until_one_is_attached(self) -> None:
+        assert self._service().completion_oracle_gate_attached is False
+
+    def test_attached_once_one_is_set(self) -> None:
+        service = self._service()
+
+        service.set_completion_oracle_gate(
+            mock_of[CompletionOracleGate](), shadow_mode=False, min_stakes=Stakes.LOW
+        )
+
+        assert service.completion_oracle_gate_attached is True
+
+    def test_a_shadow_gate_is_attached_too(self) -> None:
+        # Attached answers whether a gate is wired, never whether it decides.
+        service = self._service()
+
+        service.set_completion_oracle_gate(
+            mock_of[CompletionOracleGate](), shadow_mode=True, min_stakes=Stakes.LOW
+        )
+
+        assert service.completion_oracle_gate_attached is True
+
+    def test_absent_again_once_cleared(self) -> None:
+        service = self._service()
+        service.set_completion_oracle_gate(
+            mock_of[CompletionOracleGate](), shadow_mode=False, min_stakes=Stakes.LOW
+        )
+
+        service.set_completion_oracle_gate(
+            None, shadow_mode=False, min_stakes=Stakes.LOW
+        )
+
+        assert service.completion_oracle_gate_attached is False
 
 
 class TestReviewGateServiceApprove:

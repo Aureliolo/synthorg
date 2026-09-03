@@ -25,6 +25,7 @@ from tests.evals_spine._recording import (
     RecordingGatewayHost,
     RecordingHostConfig,
     recording_company_config,
+    recording_pair,
 )
 
 BriefYamlWriter = Callable[..., Path]  # type: ignore[explicit-any]  # arbitrary-arg brief-writer test factory
@@ -114,6 +115,7 @@ async def host(tmp_path: Path) -> AsyncIterator[RecordingGatewayHost]:
     config = RecordingHostConfig(
         company_config=recording_company_config(),
         scratch_dir=tmp_path / "host",
+        coordination_pair=recording_pair(),
         bind_host="127.0.0.1",
         sandbox_image=RECORDING_SANDBOX_IMAGE,
         sidecar_image=RECORDING_SIDECAR_IMAGE,

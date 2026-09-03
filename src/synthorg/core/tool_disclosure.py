@@ -35,6 +35,12 @@ class ToolL1Metadata(BaseModel):
         short_description: One-sentence purpose (max 200 chars).
         category: Tool taxonomy bucket (e.g. ``"file_system"``).
         typical_cost_tier: Relative invocation cost.
+        required_parameters: Names a call must supply. A tool runs when
+            called by name whether or not its body was loaded, so the
+            summary carries enough to call it: an agent that guessed the
+            parameter names spent three failed calls and a load round-trip
+            before its first write landed.
+        optional_parameters: Names a call may supply.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False, extra="forbid")
@@ -48,6 +54,34 @@ class ToolL1Metadata(BaseModel):
     typical_cost_tier: CostTier = Field(
         description="Relative invocation cost",
     )
+    required_parameters: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Parameter names a call must supply",
+    )
+    optional_parameters: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Parameter names a call may supply",
+    )
+
+    @model_validator(mode="after")
+    def _parameters_are_disjoint(self) -> Self:
+        """Refuse a name listed as both required and optional.
+
+        ``to_l1_metadata`` is an override point, and the summary renders the
+        two lists side by side, so an overlap would tell the agent a
+        parameter is both mandatory and not.
+
+        Returns:
+            The validated instance (Pydantic ``model_validator`` contract).
+
+        Raises:
+            ValueError: If a name appears in both lists.
+        """
+        overlap = set(self.required_parameters) & set(self.optional_parameters)
+        if overlap:
+            msg = f"parameters both required and optional: {sorted(overlap)}"
+            raise ValueError(msg)
+        return self
 
 
 # ── L2: On-demand instruction body ──────────────────────────────

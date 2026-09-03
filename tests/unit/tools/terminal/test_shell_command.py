@@ -11,6 +11,7 @@ from synthorg.core.execution_identity import (
     execution_identity_scope,
     run_identity_scope,
 )
+from synthorg.core.shell_semantics import RECORDED_RUN_RULE
 from synthorg.core.types import NotBlankStr
 from synthorg.persistence.code_execution_protocol import (
     CodeExecutionPurpose,
@@ -45,6 +46,21 @@ def _scoped_run() -> Iterator[None]:
         execution_id="exec-1", task_id="task-1", project_id="proj-1"
     ):
         yield
+
+
+class TestTheRuleIsSaidUpFront:
+    """The shape a recorded run takes reaches the agent before it types one.
+
+    The summary is all an agent sees of a tool it has not loaded, and the
+    summary is capped, so the rule has to fit inside the cap or it is told
+    only by the refusal, one rework round too late.
+    """
+
+    @pytest.mark.unit
+    def test_the_summary_carries_the_recorded_run_rule_whole(self) -> None:
+        tool = ShellCommandTool(sandbox=FakeSandbox())
+
+        assert tool.to_l1_metadata().short_description.endswith(RECORDED_RUN_RULE)
 
 
 class TestTestRunCaptureWiring:

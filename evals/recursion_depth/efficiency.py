@@ -42,6 +42,14 @@ from evals.recursion_depth.models import (
 _LOW_QUANTILE: Final[float] = 0.025
 _HIGH_QUANTILE: Final[float] = 0.975
 
+#: The percentile of the no-effect factor spread a real gap has to clear.
+#: One-sided, because a factor is already an absolute distance.
+_DETECTABLE_QUANTILE: Final[float] = 0.95
+
+#: Appended to the interval's seed for the detectable-factor draws, so the
+#: two readings share a source and neither disturbs the other's resamples.
+_DETECTABLE_SEED_SUFFIX: Final[str] = "|detectable"
+
 #: An overlap needs two things to overlap.
 _ARMS_TO_COMPARE: Final[int] = 2
 
@@ -162,7 +170,58 @@ def _point(depth: int, arm: Arm, runs: Sequence[_Run]) -> TokensPerSolvedPoint:
         ci_low=low,
         ci_high=high,
         unbounded_above=unbounded,
+        detectable_factor=_detectable_factor(runs),
     )
+
+
+def _detectable_factor(runs: Sequence[_Run]) -> float | None:
+    """The smallest between-arm factor runs like these could resolve at 95%.
+
+    Two independent resamples of ONE bucket are two arms with no effect
+    between them; the factor they differ by, at its 95th percentile, is the
+    gap a real effect has to exceed before this design could tell it from
+    noise. Drawn from its own seed rather than the interval's, so adding it
+    left every published interval byte-identical.
+
+    Returns:
+        The factor, at least 1.0; ``None`` below the run floor, or when the
+        95th-percentile factor is infinite because a resample solved
+        nothing.
+    """
+    if len(runs) < MIN_CELLS_FOR_INTERVAL:
+        return None
+    ordered = sorted(runs)
+    rng = random.Random(_seed(ordered) + _DETECTABLE_SEED_SUFFIX)  # noqa: S311
+    factors = sorted(
+        _factor_between(
+            _pooled(rng.choices(ordered, k=len(ordered))),
+            _pooled(rng.choices(ordered, k=len(ordered))),
+        )
+        for _ in range(BOOTSTRAP_RESAMPLES)
+    )
+    factor = factors[_index(_DETECTABLE_QUANTILE)]
+    return None if math.isinf(factor) else factor
+
+
+def _factor_between(first: float, second: float) -> float:
+    """How far apart two pooled ratios are, as a factor of at least one.
+
+    Returns:
+        ``max / min``; infinite when exactly one side solved nothing or
+        exactly one side cost nothing, and 1.0 when both sides did the same,
+        since two unbounded costs are not apart and neither are two free
+        ones. A free side is a resample of runs that recorded no tokens
+        against a solved requirement, which the journal can hold.
+    """
+    if math.isinf(first) and math.isinf(second):
+        return 1.0
+    if math.isinf(first) or math.isinf(second):
+        return math.inf
+    if first == 0.0 and second == 0.0:
+        return 1.0
+    if first == 0.0 or second == 0.0:
+        return math.inf
+    return max(first, second) / min(first, second)
 
 
 def _interval(runs: Sequence[_Run]) -> tuple[float | None, float | None, bool]:

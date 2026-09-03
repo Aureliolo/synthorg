@@ -94,9 +94,10 @@ from evals.recursion_depth.runner import (
     run_sweep,
 )
 from evals.recursion_depth.session import (
-    EngineObserver,
-    SessionObserver,
+    LeafReview,
+    ReviewReader,
     SweepDeps,
+    TaskFiler,
     session_limits_for,
 )
 from evals.recursion_depth.spend_repair import (
@@ -122,16 +123,27 @@ from evals.recursion_depth.wire_check import (
     write_wiring_report,
 )
 from evals.runner.execution import EVAL_TASK_PROJECT, seed_eval_project
+from synthorg.api.state import AppState
 from synthorg.config.loader import load_config
 from synthorg.config.schema import RootConfig
 from synthorg.core.completion_enums import REASONING_UNSET, ReasoningEffort
+from synthorg.core.task import Task
 from synthorg.core.types import NotBlankStr
+from synthorg.engine.state import task_engine_of
+from synthorg.hr.state import agent_registry_of
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
+    EVALS_RECURSION_HOST_REVIEW_READ,
+    EVALS_RECURSION_HOST_TASK_FILED,
     EVALS_RECURSION_PREVIOUS_REPORT_UNREADABLE,
     EVALS_RECURSION_RECORD_START,
 )
+from synthorg.persistence.completion_oracle_report_protocol import (
+    CompletionOracleReportFilterSpec,
+)
+from synthorg.persistence.state import persistence_of
 from synthorg.providers.family import model_named
+from synthorg.settings.model_ref import ModelRef
 from synthorg.settings.state import config_resolver_of, settings_service_of
 from synthorg.workers._capability_policy_wiring import build_capability_policy
 
@@ -795,7 +807,12 @@ async def _record(
     completed = False
     try:
         async with RecordingGatewayHost(
-            _host_config(args, company_config=company_config, work_root=run_work_root)
+            _host_config(
+                args,
+                company_config=company_config,
+                work_root=run_work_root,
+                manifest=manifest,
+            )
         ) as host:
             binder = HarnessBinder(host=host)
             context = await _build_context(
@@ -861,7 +878,11 @@ async def _record(
 
 
 def _host_config(
-    args: argparse.Namespace, *, company_config: RootConfig, work_root: Path
+    args: argparse.Namespace,
+    *,
+    company_config: RootConfig,
+    work_root: Path,
+    manifest: RecursionDepthManifest,
 ) -> RecordingHostConfig:
     """Assemble the scratch backend the sweep dispatches through.
 
@@ -869,6 +890,8 @@ def _host_config(
         args: The parsed command line.
         company_config: The config the run boots against.
         work_root: This run's scratch root.
+        manifest: The matrix, for the pair the host publishes as its
+            coordination binding.
 
     Returns:
         The host configuration.
@@ -876,6 +899,12 @@ def _host_config(
     return RecordingHostConfig(
         company_config=company_config,
         scratch_dir=work_root / "host",
+        # The executor's own pair: the host never plans on it (the sweep
+        # does), so the choice only has to be a pair the config can resolve.
+        coordination_pair=ModelRef(
+            provider=manifest.executor.provider,
+            model_id=manifest.executor.model_id,
+        ),
         label=_LABEL,
         bind_host=args.bind_host,
         bind_port=args.bind_port,
@@ -943,6 +972,11 @@ async def _build_context(
         reviewer=manifest.reviewer,
         capability=capability,
         leaf_effort=manifest.leaf_reasoning_effort,
+        # The host's own roster, because the product's review path staffs a
+        # leaf's reviewer from it: a roster held apart would leave every leaf
+        # parked unstaffed while the merge gate, handed the roster directly,
+        # read as fully staffed.
+        registry=agent_registry_of(app_state),
     )
     deps = _build_deps(
         host,
@@ -972,8 +1006,7 @@ async def _build_context(
         # such field, so every per-unit record read `family: null` and the
         # cross_family claim the gated arm rests on was evidenced nowhere.
         declared_pairs=(manifest.executor, manifest.reviewer),
-        on_engine_built=probe.observe if probe is not None else None,
-        on_session_finished=probe.observe_session if probe is not None else None,
+        probe=probe,
     )
     # What a PLANNING session gets, on the same declarative sizing every other
     # role uses (`SweepContext.limits_for` reaches the same function for the
@@ -1009,8 +1042,7 @@ def _build_deps(
     declared_pairs: tuple[ModelPair, ...],
     priced_providers: frozenset[str] = frozenset(),
     stall_idle_seconds: float = DEFAULT_STALL_IDLE_SECONDS,
-    on_engine_built: EngineObserver | None = None,
-    on_session_finished: SessionObserver | None = None,
+    probe: WiringProbe | None = None,
 ) -> SweepDeps:
     """Bind every per-unit collaborator to the hosted gateway.
 
@@ -1027,11 +1059,9 @@ def _build_deps(
         priced_providers: Provider connections resolved as pricing their
             calls, from the same config the preflight already read.
         stall_idle_seconds: Idle time after which a unit is reported stalled.
-        on_engine_built: Told about each engine as it is built, with its
-            ledger; the smoke's probe, or ``None``.
-        on_session_finished: Told about each session's outcome, which is
-            where a run's tool surface is read; the smoke's probe, or
-            ``None``.
+        probe: The smoke's probe, told about each engine as it is built,
+            each session as it finishes and each leaf as its review is read
+            back; ``None`` on a recording, which observes nothing.
 
     Returns:
         The wired :class:`SweepDeps`.
@@ -1064,9 +1094,68 @@ def _build_deps(
         on_stall=_print_stall,
         declared_pairs=declared_pairs,
         priced_providers=priced_providers,
-        on_engine_built=on_engine_built,
-        on_session_finished=on_session_finished,
+        on_engine_built=probe.observe if probe is not None else None,
+        on_session_finished=probe.observe_session if probe is not None else None,
+        on_leaf_reviewed=probe.observe_leaf if probe is not None else None,
+        # A leaf's task is filed with the host before its session and its
+        # verdict read back after, so the product's own review path judges
+        # the leaf exactly as a deployment's would. The merge is deliberately
+        # NOT filed: its judgement has one owner already, the harness's own
+        # gate, and a second review of one assembly would be two verdicts on
+        # one tree with nothing to say which counts.
+        file_task=_task_filer(host.app_state),
+        read_review=_review_reader(host.app_state),
     )
+
+
+def _task_filer(app_state: AppState) -> TaskFiler:
+    """File a unit's task through the host's task engine.
+
+    Returns:
+        The filer.
+    """
+    engine = task_engine_of(app_state)
+
+    async def _file(task: Task) -> None:
+        await engine.file_tasks((task,))
+        logger.debug(EVALS_RECURSION_HOST_TASK_FILED, task_id=str(task.id))
+
+    return _file
+
+
+def _review_reader(app_state: AppState) -> ReviewReader:
+    """Read the product's verdict on a task back off the host.
+
+    Keyed on the task id: the engine mints its own execution id per run, so
+    the harness's execution id names nothing in the archive, while the task
+    id is what the leaf was filed under. Newest row first, because a task
+    reviewed twice archives twice and the later verdict is the one standing.
+
+    Returns:
+        The reader.
+    """
+    engine = task_engine_of(app_state)
+    archive = persistence_of(app_state).completion_oracle_reports
+
+    async def _read(task_id: str) -> LeafReview:
+        task = await engine.get_task(task_id)
+        rows = await archive.query(
+            CompletionOracleReportFilterSpec(task_id=NotBlankStr(task_id)), limit=1
+        )
+        review = LeafReview(
+            task_status=task.status if task is not None else None,
+            verdict=rows[0].verdict if rows else None,
+        )
+        logger.debug(
+            EVALS_RECURSION_HOST_REVIEW_READ,
+            task_id=task_id,
+            task_status=review.task_status,
+            verdict=review.verdict,
+            archived_reports=len(rows),
+        )
+        return review
+
+    return _read
 
 
 def _print_stall(label: str, idle_seconds: float) -> None:

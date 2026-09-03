@@ -42,6 +42,7 @@ from synthorg.observability.events.evals import (
     EVALS_HARNESS_SANDBOX_RELEASE_FAILED,
     EVALS_HARNESS_SANDBOXES_RELEASED,
 )
+from synthorg.persistence.state import persistence_of
 from synthorg.providers.enums import AuthType
 from synthorg.providers.protocol import CompletionProvider
 from synthorg.providers.registry import ProviderRegistry
@@ -400,7 +401,21 @@ class HarnessBinder:
                 WriteFileTool(workspace_root=base),
                 EditFileTool(workspace_root=base),
                 DeleteFileTool(workspace_root=base),
-                ShellCommandTool(sandbox=sandbox),
+                # The record store and the workspace root are what the
+                # product's own factory hands this tool: a recognised test
+                # run is written as gate evidence, and the build/test oracle
+                # is a pure function of those rows. Built without them, every
+                # suite an agent ran left nothing behind, the oracle failed
+                # closed on "no test run", and each leaf spent its rework
+                # rounds re-running a green suite nobody could see.
+                ShellCommandTool(
+                    sandbox=sandbox,
+                    code_execution_records=persistence_of(
+                        app_state
+                    ).code_execution_records,
+                    clock=app_state.clock,
+                    workspace_root=base,
+                ),
             ]
         )
 
