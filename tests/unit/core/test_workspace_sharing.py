@@ -13,6 +13,8 @@ from synthorg.core.workspace_sharing import (
     apply_shared_umask,
     delivered_file_mode,
     ensure_shared_dir,
+    open_shared_dir,
+    supports_descriptor_walk,
     workspace_share_gid,
 )
 
@@ -53,6 +55,63 @@ class TestEnsureSharedDirRefusesASymlink:
         ensure_shared_dir(root / "a" / "b", within=root)
 
         assert (real / "a" / "b").is_dir()
+
+    def test_an_ancestor_swapped_after_the_scan_is_not_descended_into(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # ``docs`` is real when it is checked and a link by the time the
+        # missing child is created. Walked by descriptor the child lands in
+        # the directory that was checked, wherever the name points now.
+        if not supports_descriptor_walk():
+            pytest.skip("descriptor walk unsupported on this platform")
+        root = tmp_path / "ws"
+        outside = tmp_path / "outside"
+        root.mkdir()
+        outside.mkdir()
+        (root / "docs").mkdir()
+        real_mkdir = os.mkdir
+
+        def swapping_mkdir(*args: object, **kwargs: object) -> None:
+            (root / "docs").rename(root / "docs_real")
+            _symlink_dir(root / "docs", outside)
+            monkeypatch.setattr(os, "mkdir", real_mkdir)
+            real_mkdir(*args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(os, "mkdir", swapping_mkdir)
+
+        ensure_shared_dir(root / "docs" / "new", within=root)
+
+        assert (root / "docs_real" / "new").is_dir()
+        assert not (outside / "new").exists()
+
+    def test_a_link_met_by_the_descriptor_walk_is_refused(self, tmp_path: Path) -> None:
+        if not supports_descriptor_walk():
+            pytest.skip("descriptor walk unsupported on this platform")
+        root = tmp_path / "ws"
+        outside = tmp_path / "outside"
+        root.mkdir()
+        outside.mkdir()
+        _symlink_dir(root / "docs", outside)
+
+        with pytest.raises(PermissionError, match="symlink"):
+            os.close(open_shared_dir(root / "docs" / "new", within=root))
+
+        assert not (outside / "new").exists()
+
+    def test_the_descriptor_walk_creates_under_the_share_mode(
+        self, tmp_path: Path
+    ) -> None:
+        if not supports_descriptor_walk():
+            pytest.skip("descriptor walk unsupported on this platform")
+        root = tmp_path / "ws"
+        root.mkdir()
+
+        fd = open_shared_dir(root / "a" / "b", within=root)
+        os.close(fd)
+
+        made = root / "a" / "b"
+        assert made.is_dir()
+        assert stat.S_IMODE(made.stat().st_mode) == WORKSPACE_DIR_MODE
 
     def test_without_a_root_nothing_is_checked(self, tmp_path: Path) -> None:
         outside = tmp_path / "outside"

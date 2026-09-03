@@ -16,9 +16,13 @@ from lxml.html import HtmlElement
 
 from synthorg.core.normalization import compare_ci
 
-# CSS patterns for hidden elements.
+# CSS spellings of a hidden element, as ``(value, terminated)``: the value
+# is what a style attribute has to say, and ``terminated`` is whether the
+# strip reads it only up to a ``;`` or the end of the attribute, because
+# ``font-size: 0.5em`` and ``opacity: 0.4`` open with the same characters as
+# their hidden spellings and are not hidden.
 #
-# "Hidden" has more spellings than the obvious two. Each pattern below was
+# "Hidden" has more spellings than the obvious two. Each spelling below was
 # confirmed to carry injected text through the extractor and into a model's
 # context: a zero font size renders nothing, and a large negative offset parks
 # the element outside the viewport while leaving it in the document.
@@ -27,20 +31,31 @@ from synthorg.core.normalization import compare_ci
 # that needs the computed cascade and a colour comparison, neither of which a
 # per-element attribute scan has, and a guess would strip legitimately styled
 # prose. It is the one hiding technique left standing here.
-_HIDDEN_STYLE_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
-    re.compile(r"display\s*:\s*none", re.IGNORECASE),
-    re.compile(r"visibility\s*:\s*hidden", re.IGNORECASE),
-    re.compile(
-        r"font-size\s*:\s*0(?:\.0*)?\s*(?:px|em|rem|pt|%)?\s*(?:;|$)",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"(?:left|top|right|bottom)\s*:\s*-\d{4,}\s*(?:px|em|rem|pt)",
-        re.IGNORECASE,
-    ),
-    re.compile(r"text-indent\s*:\s*-\d{4,}\s*(?:px|em|rem|pt)", re.IGNORECASE),
-    re.compile(r"clip\s*:\s*rect\s*\(\s*0[a-z%]*[\s,]+0[a-z%]*[\s,]", re.IGNORECASE),
-    re.compile(r"opacity\s*:\s*0(?:\.0*)?\s*(?:;|$)", re.IGNORECASE),
+_HIDDEN_STYLE_VALUES: Final[tuple[tuple[str, bool], ...]] = (
+    (r"display\s*:\s*none", False),
+    (r"visibility\s*:\s*hidden", False),
+    (r"font-size\s*:\s*0(?:\.0*)?\s*(?:px|em|rem|pt|%)?", True),
+    (r"(?:left|top|right|bottom)\s*:\s*-\d{4,}\s*(?:px|em|rem|pt)", False),
+    (r"text-indent\s*:\s*-\d{4,}\s*(?:px|em|rem|pt)", False),
+    (r"clip\s*:\s*rect\s*\(\s*0[a-z%]*[\s,]+0[a-z%]*[\s,]", False),
+    (r"opacity\s*:\s*0(?:\.0*)?", True),
+)
+_STYLE_TERMINATOR: Final[str] = r"\s*(?:;|$)"
+
+_HIDDEN_STYLE_PATTERNS: Final[tuple[re.Pattern[str], ...]] = tuple(
+    re.compile(value + (_STYLE_TERMINATOR if terminated else ""), re.IGNORECASE)
+    for value, terminated in _HIDDEN_STYLE_VALUES
+)
+
+# What a FRAGMENT has to carry for the guard to judge it at all, derived
+# from the same spellings the strip removes so the trigger can never know
+# less than the strip does: the boolean ``hidden`` attribute, and every
+# hidden style. A value that a component literal can also spell
+# (``opacity: 0}}``) has to end the way a style attribute ends, at a
+# terminator, a closing quote or the line, so JSX stays out.
+HIDDEN_CONSTRUCT_TRIGGER: Final[str] = r"\shidden(?=[\s>/=])|" + "|".join(
+    f"(?:{value})" + (r"""\s*(?:;|['"]|$)""" if terminated else "")
+    for value, terminated in _HIDDEN_STYLE_VALUES
 )
 
 # Tags to strip entirely (content and all).
@@ -101,19 +116,23 @@ def strip_dangerous_elements(doc: HtmlElement) -> int:
     """
     stripped = 0
 
+    # Every walk is materialised before the first drop: ``drop_tree`` on the
+    # element a live iterator is standing on moves the iterator's next step
+    # with it, and an adjacent match is skipped, which leaves the second of
+    # two scripts in a row in the cleaned output.
     for tag in _STRIP_TAGS:
-        for element in doc.iter(tag):
+        for element in list(doc.iter(tag)):
             element.drop_tree()
             stripped += 1
 
     # A comment is text a renderer never shows, so it counts as hidden
     # content: a document whose only concealment is a comment is still
     # one that was rewritten.
-    for comment in doc.iter(etree.Comment):
+    for comment in list(doc.iter(etree.Comment)):
         comment.drop_tree()
         stripped += 1
 
-    for element in doc.iter(_SVG_SCRIPT_TAG):
+    for element in list(doc.iter(_SVG_SCRIPT_TAG)):
         element.drop_tree()
         stripped += 1
 
@@ -181,6 +200,7 @@ def _strip_hidden_elements(doc: HtmlElement) -> int:
 
 
 __all__ = [
+    "HIDDEN_CONSTRUCT_TRIGGER",
     "gap_ratio",
     "strip_dangerous_elements",
 ]

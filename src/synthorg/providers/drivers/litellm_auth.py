@@ -253,7 +253,12 @@ def apply_auth_kwargs(kwargs: _AcompletionKwargs, ctx: AuthContext) -> None:
             would leak the prompt to an endpoint that never accepted it.
     """
     material = resolve_auth_material(ctx)
-    api_key = wire_api_key(material, route=ctx.config.litellm_provider)
+    # The route litellm actually dispatches on: the declared key, or the
+    # provider's own name when none is declared, which is what the model
+    # reference falls back to as well.
+    api_key = wire_api_key(
+        material, route=ctx.config.litellm_provider or ctx.provider_name
+    )
     if api_key is not None:
         kwargs["api_key"] = api_key
     if material.extra_headers is not None:

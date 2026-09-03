@@ -58,6 +58,7 @@ def _build_kwargs(
     config: ProviderConfig,
     *,
     resolved: dict[str, str] | None = None,
+    provider_name: str = "test-provider",
 ) -> _AcompletionKwargs:
     """Extract _build_kwargs result from a driver.
 
@@ -65,7 +66,7 @@ def _build_kwargs(
     ``_ensure_credentials_resolved`` would have fetched from the
     ConnectionCatalog for the provider's ``connection_name``.
     """
-    driver = LiteLLMDriver("test-provider", config)
+    driver = LiteLLMDriver(provider_name, config)
     if resolved is not None:
         driver._resolved_credentials = resolved
     messages = [ChatMessage(role=MessageRole.USER, content="ping")]
@@ -151,6 +152,16 @@ class TestLiteLLMDriverAuth:
             base_url="http://localhost:1234/v1",
         )
         kwargs = _build_kwargs(config)
+        assert kwargs.get("api_key") == NO_CREDENTIAL_API_KEY
+
+    def test_a_provider_named_for_the_sdk_route_fills_the_key_slot(self) -> None:
+        # No ``litellm_provider`` declared, so the name IS the route litellm
+        # dispatches on, and the key slot is filled exactly as if it were.
+        config = _make_config(
+            auth_type=AuthType.NONE,
+            base_url="http://localhost:1234/v1",
+        )
+        kwargs = _build_kwargs(config, provider_name=SDK_ROUTE)
         assert kwargs.get("api_key") == NO_CREDENTIAL_API_KEY
 
     def test_none_auth_on_a_native_route_sends_no_key(self) -> None:

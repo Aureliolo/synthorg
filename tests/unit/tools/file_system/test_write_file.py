@@ -7,7 +7,13 @@ from unittest.mock import patch
 
 import pytest
 
-from synthorg.core.workspace_sharing import WORKSPACE_DIR_MODE, WORKSPACE_FILE_MODE
+from synthorg.core.workspace_sharing import (
+    WORKSPACE_DIR_MODE,
+    WORKSPACE_FILE_MODE,
+    open_shared_dir,
+    supports_descriptor_walk,
+)
+from synthorg.tools.file_system import write_file as write_file_module
 from tests._shared import JsonDict
 
 if TYPE_CHECKING:
@@ -83,6 +89,43 @@ class TestWriteFileExecution:
 
         assert result.is_error
         assert not (outside / "new").exists()
+
+    async def test_a_parent_swapped_after_the_check_does_not_carry_the_write_out(
+        self,
+        workspace: Path,
+        write_tool: WriteFileTool,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # ``docs`` is real through the check and a link to the outside by the
+        # time the temp file is created. The write goes through a descriptor
+        # on the directory that was checked, so it lands there and nowhere
+        # else, whatever the name points at now.
+        if not supports_descriptor_walk():
+            pytest.skip("descriptor walk unsupported on this platform")
+        outside = workspace.parent / "outside"
+        outside.mkdir()
+        (workspace / "docs").mkdir()
+
+        def swapping_open(path: Path, **kwargs: object) -> int:
+            fd = open_shared_dir(path, **kwargs)  # type: ignore[arg-type]
+            (workspace / "docs").rename(workspace / "docs_real")
+            try:
+                (workspace / "docs").symlink_to(outside, target_is_directory=True)
+            except OSError, NotImplementedError:
+                os.close(fd)
+                pytest.skip("symlink creation not permitted on this platform")
+            return fd
+
+        monkeypatch.setattr(write_file_module, "open_shared_dir", swapping_open)
+
+        result = await write_tool.execute(
+            arguments={"path": "docs/file.txt", "content": "y"}
+        )
+
+        assert not result.is_error
+        assert (workspace / "docs_real" / "file.txt").read_text(encoding="utf-8") == "y"
+        assert not (outside / "file.txt").exists()
+        assert not any(outside.iterdir())
 
     async def test_missing_parent_refused_when_asked_not_to_create(
         self, write_tool: WriteFileTool

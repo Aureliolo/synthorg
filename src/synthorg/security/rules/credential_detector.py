@@ -102,14 +102,19 @@ CREDENTIAL_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
     ),
     (
         "Generic secret assignment",
-        # A bare dotted value with a digit and one segment no attribute
-        # name reaches: the shape of a JWT, and of nothing an object path is.
+        # A bare dotted value with a digit and one long segment that is not
+        # an identifier: the shape of a JWT, whose base64 segments mix case
+        # with digits or carry a character no attribute name can, and of
+        # nothing an object path is, however long its last attribute runs.
+        # Case-sensitive past the key on purpose: the discriminator reads
+        # the segment's mix of cases, which an ignore-case match would erase.
         re.compile(
-            r"\b\w*?(?:secret|token|password|passwd|credential)\s*[=:]\s*"
+            r"(?i:\b\w*?(?:secret|token|password|passwd|credential))\s*[=:]\s*"
             r"(?=[A-Za-z0-9_\-/+=.]*\d)"
-            r"(?=(?:[A-Za-z0-9_\-/+=]{0,15}\.)*[A-Za-z0-9_\-/+=]{16})"
+            r"(?=(?:[A-Za-z0-9_\-/+=]{0,15}\.)*"
+            r"(?=[A-Za-z0-9_\-/+=]{16})"
+            r"(?:(?=\w*[-/+=])|(?=\w*[A-Z])(?=\w*[a-z])(?=\w*\d)))"
             r"[A-Za-z0-9_\-/+=.]{24,}(?![\w(\[])",
-            re.IGNORECASE,
         ),
     ),
 )

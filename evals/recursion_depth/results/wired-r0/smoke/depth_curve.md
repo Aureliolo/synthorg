@@ -4,7 +4,7 @@ Does verification at every merge hold off aggregation collapse as
 recursive decomposition deepens?
 
 - Measured against commit `bba198159dede79b877a11a502c1a43e0f0a1ddc`
-- Generated 2026-09-02T18:26:34.981310+00:00
+- Generated 2026-09-03T05:56:21.679804+00:00
 - Manifest `sha256:3a98844285d65f3ca82a8ebeef5db9a86afde5c5924a46d6c4e22ef4b3bbf490`
 - Spec `sqlcsv`, 42 requirements
 - Executor `example-provider/example-capable-001`, reviewer `example-provider/example-expert-001` (cross_family)
@@ -16,26 +16,10 @@ recursive decomposition deepens?
 
 ## Wiring, as measured on the wire
 
-Smoke for manifest `sha256:798d02307b2cdf3a530f99d0cdd8ef2eb9cde8960bba2c81227e50c34d7a0456` at
-2026-09-02T23:03:22.054206+00:00: FAILED. Each row is a
-treatment the manifest declares, and what the engine, the ledger
-or the recorded request bodies actually showed. `unverified` means
-no evidence could be read, which is neither a pass nor a failure.
-
-| Treatment | Expected | Observed | Verdict |
-|---|---|---|---|
-| tool surface | a non-empty surface recorded on the run that built the invoker | 18 tools: delegate_and_await, delete_file, edit_file, ingest_knowledge, list_tools, load_tool, load_tool_resource, read_file, request_clarification, request_human_approval, request_project_decision, search_brain, search_knowledge, search_living_docs, shell_command, write_brain_entry, write_file, write_living_doc | ok |
-| stagnation | tool_repetition | tool_repetition | ok |
-| compaction | callback wired, fill threshold 80.0% | callback wired, live threshold 80.0 | ok |
-| memory | a backend on {"provider": "example-embedding-provider", "model_id": "example-embedding-001"} | SqlVectorBackend on example-embedding-provider/example-embedding-001 | FAILED |
-| budget | an enforcer whose tracker IS the cell ledger | enforcer present, recording into the cell ledger | ok |
-| review pipeline | present | present | ok |
-| approval gate | present | present | ok |
-| policy engine | present | absent | FAILED |
-| peer review | a completion-oracle gate attached to the host's review gate | attached | ok |
-| leaf review | a task row the post-execution path moved, and a verdict on it | task failed, verdict none: no leaf finished inside its turn cap, so the review pipeline was never asked | unverified |
-| reasoning effort | high | no request for example-capable-001 could be read (0 unparseable lines) | unverified |
-| prompt caching | a cached prefix read on at least one call after the first | no call after the first of 1324 reported cached tokens; the provider may not publish them | unverified |
+Not measured. This recording predates the one-cell smoke that
+reads each treatment off the engine and the recorded request
+bodies before a matrix is paid for, so what it ran under is
+what its provenance ASSERTS rather than what was checked.
 
 ## Tokens per solved requirement by depth reached (headline)
 
@@ -48,17 +32,21 @@ intervals overlap at a depth cannot be ranked there, and the caveats
 say so. A bucket under 3 runs reports no
 interval; one that solved nothing has no finite cost per solved
 requirement and reads `n/a`; an interval open above means some
-resample of the bucket's runs solved nothing at all.
+resample of the bucket's runs solved nothing at all. The detectable
+factor is the design's power, read off the same runs: two arms with
+no effect between them differ by at least that factor one time in
+twenty, so a real gap smaller than it is inside the noise and the
+next arm is not worth paying for until the floor rises.
 
-| Depth | Arm | Tokens per solved | 95% interval | Tokens | Solved | Runs |
-|---:|---|---:|---|---:|---:|---:|
-| 1 | gated | 7,219,990 | n/a | 50539928 | 7 | 1 |
+| Depth | Arm | Tokens per solved | 95% interval | Detectable factor | Tokens | Solved | Runs |
+|---:|---|---:|---|---:|---:|---:|---:|
+| 1 | gated | 7,219,990 | n/a | n/a | 50539928 | 7 | 1 |
 
 ## Tokens per solved requirement by depth cap
 
-| Depth | Arm | Tokens per solved | 95% interval | Tokens | Solved | Runs |
-|---:|---|---:|---|---:|---:|---:|
-| 1 | gated | 7,219,990 | n/a | 50539928 | 7 | 1 |
+| Depth | Arm | Tokens per solved | 95% interval | Detectable factor | Tokens | Solved | Runs |
+|---:|---|---:|---|---:|---:|---:|---:|
+| 1 | gated | 7,219,990 | n/a | n/a | 50539928 | 7 | 1 |
 
 ## Specification satisfied by depth reached
 
@@ -146,7 +134,7 @@ show.
 | Arm | Merges | Sessions | Tokens | Judging | Compacting | Spend | Parked escalations | Contract amendments |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | gated | 1 | 6 | 26213785 | 2838419 | 0 | unpriced | 0 | 0 |
-| ungated | 0 | 0 | 0 | 0 | 0 | 0.0000 | 0 | 0 |
+| ungated | 0 | 0 | 0 | 0 | 0 | unpriced | 0 | 0 |
 
 ## Who judged whom
 
@@ -181,4 +169,3 @@ than about the work.
 - The headline figure is tokens per solved requirement, with a 95% bootstrap interval over the runs in each bucket. A loop can be cheaper by an order of magnitude at a pass rate no interval separates, so the arms are ranked on what a solved requirement COST. The SPECIFICATION and SURVIVAL curves say what was solved and where the work came from; neither ranks the arms on what it cost.
 - Unit sizing is the planner's own: the size signal reads the declaration a planner made, so this measures gated recursion UNDER PLANNER-DECLARED SIZING and cannot separate 'recursion fails' from 'the planner sized badly'. Separating them needs an agent that has read the code deciding its own split, which no published system has.
 - The oracle is held out: it never enters a workspace and is named in no brief, so a delivery cannot be built to it.
-- At least one connection this sweep dispatched through does not price its calls (its billing model is not in MEASURABLE_BILLING_MODELS), or could not be resolved at all, so every cost figure in this recording is absent rather than zero: an unpriced call and a free one are not the same claim. Token counts are unaffected and remain the figure the equal-budget check is stated in.

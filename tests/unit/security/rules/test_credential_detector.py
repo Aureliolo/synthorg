@@ -246,6 +246,8 @@ class TestCodeThatNamesATokenIsNotACredential:
             "TOKEN_PATH = self.config.token_file_path",
             "token_hash: HMAC-SHA256 hash of the opaque token.",
             "token = settings.tokens_2024.primary",
+            "token = settings.tokens_2024.abcdefghijklmnop",
+            "TOKEN = config.tokens_2024.SECONDARY_FALLBACK_TOKEN",
             "password = 12345678",
             "password_length = 12",
             'expected_token = "identifier"',

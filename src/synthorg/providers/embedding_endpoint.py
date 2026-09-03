@@ -43,12 +43,14 @@ class EmbeddingEndpoint:
         extra_headers: Custom auth headers, when the auth type uses them.
             A read-only view, matching :class:`AuthMaterial`: the frozen
             dataclass protects the field, not the mapping it points at.
-        route: The provider's declared ``litellm_provider``, which is the
-            key litellm routes on. A provider is named for what it is
-            (``local-embeddings``), and litellm knows only its own keys, so
-            a call built on the name alone reaches nothing self-hosted.
-            ``None`` leaves the name as the route, which is what completion
-            dispatch does too.
+        route: The key litellm routes on: the provider's declared
+            ``litellm_provider``, or its own name when it declares none,
+            which is the fallback completion dispatch takes too. A provider
+            is named for what it is (``local-embeddings``), and litellm
+            knows only its own keys, so a call built on the name alone
+            reaches nothing self-hosted; and a provider NAMED for an SDK
+            route needs that route's key handling without declaring it
+            twice. ``None`` only on an endpoint built with no config at all.
         model_ids: Every alias and id the provider declares, mapped to the
             configured id, so a model bound by alias reaches litellm under
             the name the endpoint actually serves. ``None`` declares no
@@ -97,7 +99,9 @@ def endpoint_for_config(
         api_base=config.base_url,
         api_key=material.api_key,
         extra_headers=material.extra_headers,
-        route=config.litellm_provider,
+        # The route litellm dispatches on: the declared key, or the name
+        # itself when none is declared, as the model reference falls back.
+        route=config.litellm_provider or provider,
         model_ids={
             key: model.id for key, model in build_model_lookup(config.models).items()
         }

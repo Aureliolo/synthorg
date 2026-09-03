@@ -334,6 +334,21 @@ class TestWhatTheDesignCanDetect:
             pytest.approx(1.0)
         )
 
+    def test_runs_that_cost_nothing_are_not_divided_by(self) -> None:
+        # A journal can hold a unit that recorded no tokens against a solved
+        # requirement, and a resample of such runs pools to a zero ratio:
+        # two zeros are not apart, and one zero against anything is.
+        free = _repeated(MIN_CELLS_FOR_INTERVAL, tokens=0, passing=("R01",))
+        mixed = (
+            *_repeated(MIN_CELLS_FOR_INTERVAL - 1, tokens=0, passing=("R01",)),
+            _cell(tokens=1000, passing=("R01",), repetition=MIN_CELLS_FOR_INTERVAL),
+        )
+
+        assert tokens_per_solved_by_achieved_depth(free)[0].detectable_factor == (
+            pytest.approx(1.0)
+        )
+        assert tokens_per_solved_by_achieved_depth(mixed)[0].detectable_factor is None
+
     def test_disagreeing_runs_need_a_wider_gap(self) -> None:
         cells = (
             _cell(tokens=1000, passing=("R01",)),

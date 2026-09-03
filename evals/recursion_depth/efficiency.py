@@ -207,12 +207,19 @@ def _factor_between(first: float, second: float) -> float:
     """How far apart two pooled ratios are, as a factor of at least one.
 
     Returns:
-        ``max / min``; infinite when exactly one side solved nothing, and
-        1.0 when neither did, since two unbounded costs are not apart.
+        ``max / min``; infinite when exactly one side solved nothing or
+        exactly one side cost nothing, and 1.0 when both sides did the same,
+        since two unbounded costs are not apart and neither are two free
+        ones. A free side is a resample of runs that recorded no tokens
+        against a solved requirement, which the journal can hold.
     """
     if math.isinf(first) and math.isinf(second):
         return 1.0
     if math.isinf(first) or math.isinf(second):
+        return math.inf
+    if first == 0.0 and second == 0.0:
+        return 1.0
+    if first == 0.0 or second == 0.0:
         return math.inf
     return max(first, second) / min(first, second)
 

@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1598" width="900" height="1598" role="img" aria-label="Fraction of the specification satisfied after the root merge, fraction of the delivered leaves' own claims the merge kept, and tokens per solved requirement with its bootstrap interval, by depth, gated and ungated">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1526" width="900" height="1526" role="img" aria-label="Fraction of the specification satisfied after the root merge, fraction of the delivered leaves' own claims the merge kept, and tokens per solved requirement with its bootstrap interval, by depth, gated and ungated">
   <style>
     :root {
       --bg: #ffffff;
@@ -30,7 +30,7 @@
     .secondary { stroke-width: 1.25; opacity: 0.4; }
     .whisker { stroke-width: 1.5; opacity: 0.75; }
   </style>
-  <rect class="bg" x="0" y="0" width="900" height="1598"/>
+  <rect class="bg" x="0" y="0" width="900" height="1526"/>
   <text class="title" x="70" y="26.0">Fraction of the specification satisfied after the root merge</text>
   <line class="grid" x1="70" y1="428.0" x2="870" y2="428.0"/>
   <text class="tick" x="60" y="432.0" text-anchor="end">0.00</text>
@@ -87,8 +87,4 @@
   <text class="caption" x="70" y="1452">Separating them needs an agent that has read the code deciding its own split, which no published system has.</text>
   <text class="caption" x="70" y="1470">The oracle is held out: it never enters a workspace and is named in no brief, so a delivery cannot be built to</text>
   <text class="caption" x="70" y="1488">it.</text>
-  <text class="caption" x="70" y="1506">At least one connection this sweep dispatched through does not price its calls (its billing model is not in</text>
-  <text class="caption" x="70" y="1524">MEASURABLE_BILLING_MODELS), or could not be resolved at all, so every cost figure in this recording is absent</text>
-  <text class="caption" x="70" y="1542">rather than zero: an unpriced call and a free one are not the same claim. Token counts are unaffected and</text>
-  <text class="caption" x="70" y="1560">remain the figure the equal-budget check is stated in.</text>
 </svg>

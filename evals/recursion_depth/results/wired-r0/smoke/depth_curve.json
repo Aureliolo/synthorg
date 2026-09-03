@@ -1,7 +1,7 @@
 {
   "schema_version": 3,
   "provenance": {
-    "generated_at": "2026-09-02T18:26:34.981310Z",
+    "generated_at": "2026-09-03T05:56:21.679804Z",
     "git_commit": "bba198159dede79b877a11a502c1a43e0f0a1ddc",
     "git_dirty": false,
     "manifest_sha256": "sha256:3a98844285d65f3ca82a8ebeef5db9a86afde5c5924a46d6c4e22ef4b3bbf490",
@@ -51,85 +51,7 @@
       }
     }
   },
-  "wiring": {
-    "manifest_sha256": "sha256:798d02307b2cdf3a530f99d0cdd8ef2eb9cde8960bba2c81227e50c34d7a0456",
-    "checked_at": "2026-09-02T23:03:22.054206Z",
-    "findings": [
-      {
-        "treatment": "tool surface",
-        "expected": "a non-empty surface recorded on the run that built the invoker",
-        "observed": "18 tools: delegate_and_await, delete_file, edit_file, ingest_knowledge, list_tools, load_tool, load_tool_resource, read_file, request_clarification, request_human_approval, request_project_decision, search_brain, search_knowledge, search_living_docs, shell_command, write_brain_entry, write_file, write_living_doc",
-        "passed": true
-      },
-      {
-        "treatment": "stagnation",
-        "expected": "tool_repetition",
-        "observed": "tool_repetition",
-        "passed": true
-      },
-      {
-        "treatment": "compaction",
-        "expected": "callback wired, fill threshold 80.0%",
-        "observed": "callback wired, live threshold 80.0",
-        "passed": true
-      },
-      {
-        "treatment": "memory",
-        "expected": "a backend on {\"provider\": \"example-embedding-provider\", \"model_id\": \"example-embedding-001\"}",
-        "observed": "SqlVectorBackend on example-embedding-provider/example-embedding-001",
-        "passed": false
-      },
-      {
-        "treatment": "budget",
-        "expected": "an enforcer whose tracker IS the cell ledger",
-        "observed": "enforcer present, recording into the cell ledger",
-        "passed": true
-      },
-      {
-        "treatment": "review pipeline",
-        "expected": "present",
-        "observed": "present",
-        "passed": true
-      },
-      {
-        "treatment": "approval gate",
-        "expected": "present",
-        "observed": "present",
-        "passed": true
-      },
-      {
-        "treatment": "policy engine",
-        "expected": "present",
-        "observed": "absent",
-        "passed": false
-      },
-      {
-        "treatment": "peer review",
-        "expected": "a completion-oracle gate attached to the host's review gate",
-        "observed": "attached",
-        "passed": true
-      },
-      {
-        "treatment": "leaf review",
-        "expected": "a task row the post-execution path moved, and a verdict on it",
-        "observed": "task failed, verdict none: no leaf finished inside its turn cap, so the review pipeline was never asked",
-        "passed": null
-      },
-      {
-        "treatment": "reasoning effort",
-        "expected": "high",
-        "observed": "no request for example-capable-001 could be read (0 unparseable lines)",
-        "passed": null
-      },
-      {
-        "treatment": "prompt caching",
-        "expected": "a cached prefix read on at least one call after the first",
-        "observed": "no call after the first of 1324 reported cached tokens; the provider may not publish them",
-        "passed": null
-      }
-    ],
-    "passed": false
-  },
+  "wiring": null,
   "cells": [
     {
       "depth_cap": 1,
@@ -765,6 +687,7 @@
       "ci_low": null,
       "ci_high": null,
       "unbounded_above": false,
+      "detectable_factor": null,
       "tokens_per_solved": 7219989.714285715
     }
   ],
@@ -778,6 +701,7 @@
       "ci_low": null,
       "ci_high": null,
       "unbounded_above": false,
+      "detectable_factor": null,
       "tokens_per_solved": 7219989.714285715
     }
   ],
@@ -789,8 +713,7 @@
     "Two curves, and they answer different questions. SPECIFICATION is the share of the specification's own requirements the merged tree satisfies: a denominator every cell shares, which cannot empty, and which says nothing about where the work came from, so a tree scoring well because the merging agent rebuilt it reads there exactly like one whose leaves survived. SURVIVAL is the share of the requirements DELIVERED leaves claimed that the merged tree still satisfies: the question this sweep was built around, on a denominator that is leaf work and can be empty, in which case the point is absent rather than zero. The two coming apart IS the finding.",
     "The headline figure is tokens per solved requirement, with a 95% bootstrap interval over the runs in each bucket. A loop can be cheaper by an order of magnitude at a pass rate no interval separates, so the arms are ranked on what a solved requirement COST. The SPECIFICATION and SURVIVAL curves say what was solved and where the work came from; neither ranks the arms on what it cost.",
     "Unit sizing is the planner's own: the size signal reads the declaration a planner made, so this measures gated recursion UNDER PLANNER-DECLARED SIZING and cannot separate 'recursion fails' from 'the planner sized badly'. Separating them needs an agent that has read the code deciding its own split, which no published system has.",
-    "The oracle is held out: it never enters a workspace and is named in no brief, so a delivery cannot be built to it.",
-    "At least one connection this sweep dispatched through does not price its calls (its billing model is not in MEASURABLE_BILLING_MODELS), or could not be resolved at all, so every cost figure in this recording is absent rather than zero: an unpriced call and a free one are not the same claim. Token counts are unaffected and remain the figure the equal-budget check is stated in."
+    "The oracle is held out: it never enters a workspace and is named in no brief, so a delivery cannot be built to it."
   ],
   "total_cost": null,
   "total_tokens": 50539928

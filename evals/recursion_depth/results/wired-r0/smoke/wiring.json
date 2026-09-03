@@ -22,9 +22,9 @@
     },
     {
       "treatment": "memory",
-      "expected": "a backend on {\"provider\": \"example-embedding-provider\", \"model_id\": \"example-embedding-001\"}",
+      "expected": "a backend on example-embedding-provider/example-embedding-001",
       "observed": "SqlVectorBackend on example-embedding-provider/example-embedding-001",
-      "passed": false
+      "passed": true
     },
     {
       "treatment": "budget",
@@ -46,9 +46,9 @@
     },
     {
       "treatment": "policy engine",
-      "expected": "present",
+      "expected": "absent (configured engine 'none')",
       "observed": "absent",
-      "passed": false
+      "passed": true
     },
     {
       "treatment": "peer review",
@@ -75,5 +75,5 @@
       "passed": null
     }
   ],
-  "passed": false
+  "passed": true
 }

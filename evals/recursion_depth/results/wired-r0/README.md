@@ -24,7 +24,12 @@ The verdict up front, in the same place the dossier put its own:
 `smoke/` holds the cell: `cells.jsonl`, `progress.jsonl` (one row per
 session, written as each returned), `wiring.json`, `depth_curve.{json,md}`
 and `chart.svg`. It is re-scorable in place with `--rescore --out-dir
-evals/recursion_depth/results/wired-r0/smoke`.
+evals/recursion_depth/results/wired-r0/smoke`. `wiring.json` carries the
+observations the smoke recorded under the verdicts of the corrected checks:
+the smoke first read two of them wrong (memory compared two spellings of one
+reference, and the policy engine was demanded where the product configures
+none), and both pass on the observations as recorded once the check is the
+one the tree now carries.
 
 ---
 
@@ -80,7 +85,7 @@ than the configuration:
 | pair | two medium-band 1M cross-family connections | `cost_basis: unpriced`, so every cost figure is tokens |
 | leaf concurrency | 4 | wall-clock only |
 | unit turn cap | 40, with the product's extensions zeroed by the harness | the binding limit on all eight leaves, the contract (60) and both completed merge attempts (80) |
-| unit token ceiling | 1.5M base + 250K per claimed requirement, capped at 4M; merge 5.5M | reached once: merge attempt 3 was parked on it |
+| unit token ceiling | 1.5M base + 250K per claimed requirement, capped at 4M; merge 5.5M | reached once: merge attempt 3 was parked on it. The journal's merge `turns` (160) is the sum of what each attempt's result reported, and the parked attempt reported none: its 68 turns are read off its transcript, so the three attempts ran 228 turns against the 160 the row carries |
 
 ## The verification register, answered on the wire
 
@@ -228,7 +233,7 @@ From `scripts/report_merge_economics.py`, `report_session_flow.py --calls
 | merge tool calls | 92% shell, 6% write (222 shell, 9 edit, 6 write, 4 read) | 83% shell, 13% write |
 | merge shell programs, attempt 1 | `cat` 39%, `diff` 30%, `for` 9%, `python3` 6% | 84% shell, half of it looking |
 | leaf tokens | 10.6M over 320 requests, 4:1 input to output | |
-| leaf tool calls | 64% shell, 32% write (222 shell, 61 edit, 51 write) | |
+| leaf tool calls | 64% shell, 32% write (222 shell, 61 edit, 51 write, 13 read) | |
 | review tokens | 2.84M over 88 requests, 55:1, 128 reads, and no shell | |
 | thinking share of emitted text | 97 to 100% in every session kind | 95 to 100% |
 | turns to the response cap | 4 of 718 calls, all on leaves | |

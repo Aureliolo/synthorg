@@ -28,6 +28,7 @@ carry setgid so a file the sandbox creates lands under the shared group
 rather than its own, which is what lets the backend read build output back.
 """
 
+import errno
 import os
 import stat
 from pathlib import Path
@@ -124,6 +125,12 @@ def ensure_shared_dir(path: Path, *, within: Path | None = None) -> None:
     Raises:
         PermissionError: If a component strictly below *within* is a symlink.
     """
+    if within is not None and supports_descriptor_walk() and within in path.parents:
+        # Walked by descriptor, so a component swapped for a link after any
+        # check is refused at the moment it is opened rather than descended
+        # into; the path-based scan below is the platform fallback.
+        os.close(open_shared_dir(path, within=within))
+        return
     missing = [p for p in (path, *path.parents) if not p.exists()]
     if within is not None:
         _refuse_symlinks_below(path, within)
@@ -138,6 +145,133 @@ def ensure_shared_dir(path: Path, *, within: Path | None = None) -> None:
             # skips include the filesystem root, which is not ours to attempt.
             continue
         component.chmod(WORKSPACE_DIR_MODE)
+
+
+#: ``O_NOFOLLOW`` where the platform has it; zero elsewhere, where the walk
+#: that needs it is never taken (see :func:`supports_descriptor_walk`).
+NO_FOLLOW_FLAG: Final[int] = getattr(  # lint-allow: ghost-attribute-read -- stdlib
+    os, "O_NOFOLLOW", 0
+)
+_DIRECTORY_FLAG: Final[int] = getattr(  # lint-allow: ghost-attribute-read -- stdlib
+    os, "O_DIRECTORY", 0
+)
+
+
+def supports_descriptor_walk() -> bool:
+    """Whether this platform can walk and write a tree by descriptor.
+
+    Returns:
+        ``True`` where ``dir_fd`` and ``O_NOFOLLOW`` are both honoured, which
+        is every POSIX platform the sandbox shares a tree on; Windows has
+        neither, and there the path-based fallback is the live one.
+    """
+    return (
+        os.open in os.supports_dir_fd
+        and os.mkdir in os.supports_dir_fd
+        and os.stat in os.supports_dir_fd
+        and os.replace in os.supports_dir_fd
+        and os.unlink in os.supports_dir_fd
+        and hasattr(os, "O_NOFOLLOW")
+        and hasattr(os, "O_DIRECTORY")
+    )
+
+
+def open_shared_dir(path: Path, *, within: Path, create: bool = True) -> int:
+    """Open *path* below *within* by descriptor, creating what is missing.
+
+    A path is re-resolved on every operation that names it, so a check made
+    on one operation says nothing about the next: a sandbox sharing the tree
+    can replace a checked directory with a link in between, and the write
+    that follows lands wherever the link points. A descriptor pins the
+    directory itself. The root is opened by path (a link at or above it is
+    the operator's business), and every component below it is opened
+    relative to its parent's descriptor with ``O_NOFOLLOW``, so a link
+    anywhere below the root is refused at the moment it is reached, however
+    recently it was planted, and a directory created here is created inside
+    the parent that was opened rather than at a path that may since have
+    changed.
+
+    Args:
+        path: The directory to open; must sit strictly below *within*.
+        within: The tree the path was validated against.
+        create: Create missing components under the sharing contract, or
+            refuse a missing one as the filesystem does.
+
+    Returns:
+        An open directory descriptor for *path*; the caller closes it.
+
+    Raises:
+        PermissionError: If a component below *within* is a symlink.
+        FileNotFoundError: If a component is missing and *create* is false.
+        OSError: For any other failure to open or create a component.
+    """
+    parts = path.relative_to(within).parts
+    fd = os.open(within, os.O_RDONLY | _DIRECTORY_FLAG)
+    try:
+        for index, name in enumerate(parts):
+            component = within.joinpath(*parts[: index + 1])
+            child = _descend(fd, name, component, create=create)
+            os.close(fd)
+            fd = child
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
+def _descend(parent_fd: int, name: str, component: Path, *, create: bool) -> int:
+    """Open *name* under *parent_fd* without following a link, making it if asked.
+
+    Returns:
+        The child's descriptor.
+
+    Raises:
+        PermissionError: If *name* is a symlink.
+        FileNotFoundError: If *name* is missing and *create* is false.
+    """
+    flags = os.O_RDONLY | _DIRECTORY_FLAG | NO_FOLLOW_FLAG
+    created = False
+    try:
+        return _open_no_follow(parent_fd, name, flags, component)
+    except FileNotFoundError:
+        if not create:
+            raise
+    try:
+        os.mkdir(name, dir_fd=parent_fd)
+        created = True
+    except FileExistsError:
+        # Placed between the failed open and here, so somebody else owns its
+        # mode; opened below, where a link is refused like any other.
+        pass
+    child = _open_no_follow(parent_fd, name, flags, component)
+    if created:
+        # Present wherever this walk runs; the platform gate above is what
+        # keeps a platform without it off this path.
+        fchmod = getattr(  # lint-allow: ghost-attribute-read -- stdlib
+            os, "fchmod", None
+        )
+        if fchmod is not None:
+            fchmod(child, WORKSPACE_DIR_MODE)
+    return child
+
+
+def _open_no_follow(parent_fd: int, name: str, flags: int, component: Path) -> int:
+    """Open *name* under *parent_fd*, refusing a symlink as the sharing rule does.
+
+    Returns:
+        The descriptor.
+
+    Raises:
+        PermissionError: If *name* is a symlink.
+        OSError: For any other failure to open it, including its absence.
+    """
+    try:
+        return os.open(name, flags, dir_fd=parent_fd)
+    except OSError as exc:
+        # ``O_NOFOLLOW`` on a link is ELOOP on Linux and EMLINK on the BSDs.
+        if exc.errno in {errno.ELOOP, errno.EMLINK}:
+            _refuse(component)
+        raise
 
 
 def _refuse_symlinks_below(path: Path, within: Path) -> None:

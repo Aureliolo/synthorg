@@ -21,6 +21,7 @@ import pytest
 from evals.errors import (
     HarnessGatewayUnavailableError,
     HarnessHostAlreadyStartedError,
+    HarnessHostConfigInvalidError,
 )
 from evals.harness.host import (
     RecordingGatewayHost,
@@ -130,6 +131,20 @@ def _bearer(host: RecordingGatewayHost) -> str:
         ref=ModelRef(provider=RECORDING_PROVIDER, model_id=RECORDING_MODEL),
         ttl_seconds=_TTL_SECONDS,
     )
+
+
+class TestConfig:
+    def test_an_unbound_coordination_pair_is_refused(self, tmp_path: Path) -> None:
+        # Published unbound, the pair leaves the product's runtime at "no
+        # coordinator" and the peer-review gate cleared, so the host would
+        # boot and measure a roster nobody reviews.
+        with pytest.raises(HarnessHostConfigInvalidError, match="coordination_pair"):
+            RecordingHostConfig(
+                company_config=recording_company_config(),
+                scratch_dir=tmp_path / "host",
+                coordination_pair=ModelRef(),
+                bind_host="127.0.0.1",
+            )
 
 
 class TestSigner:

@@ -12,7 +12,11 @@ import pytest
 
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.integrations.connections.catalog import ConnectionCatalog
-from synthorg.providers.drivers.litellm_auth import OPENAI_SDK_ROUTES
+from synthorg.memory.embedding.dispatch import embedding_kwargs
+from synthorg.providers.drivers.litellm_auth import (
+    NO_CREDENTIAL_API_KEY,
+    OPENAI_SDK_ROUTES,
+)
 from synthorg.providers.embedding_endpoint import (
     EmbeddingEndpoint,
     resolve_embedding_endpoint,
@@ -73,9 +77,10 @@ class TestEndpointRouting:
 
         assert endpoint.route == SDK_ROUTE
 
-    async def test_a_provider_declaring_no_route_carries_none(self) -> None:
-        # ``None`` rather than the provider name, so the one place that
-        # builds the model reference decides the fallback.
+    async def test_a_provider_declaring_no_route_is_routed_by_its_name(self) -> None:
+        # The name is what litellm dispatches on when nothing else is
+        # declared, so a provider NAMED for an SDK route reaches that
+        # route's key handling without spelling the route twice.
         endpoint = await resolve_embedding_endpoint(
             "test-provider",
             config_resolver=_resolver(
@@ -88,7 +93,28 @@ class TestEndpointRouting:
             catalog=None,
         )
 
-        assert endpoint.route is None
+        assert endpoint.route == "test-provider"
+
+    async def test_a_provider_named_for_the_sdk_route_fills_the_key_slot(
+        self,
+    ) -> None:
+        endpoint = await resolve_embedding_endpoint(
+            SDK_ROUTE,
+            config_resolver=_resolver(
+                **{
+                    SDK_ROUTE: ProviderConfig(
+                        driver="scripted",
+                        auth_type=AuthType.NONE,
+                        base_url="http://localhost:1234/v1",
+                    )
+                }
+            ),
+            catalog=None,
+        )
+
+        assert endpoint.route == SDK_ROUTE
+        kwargs = embedding_kwargs(model_ref="m", inputs=["x"], endpoint=endpoint)
+        assert kwargs.get("api_key") == NO_CREDENTIAL_API_KEY
 
     async def test_declared_aliases_resolve_to_the_configured_id(self) -> None:
         endpoint = await resolve_embedding_endpoint(

@@ -850,9 +850,12 @@ def _gate_table(report: RecursionDepthReport) -> list[str]:
         ),
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
+    # An arm that merged nothing spent nothing it could price, and a sum over
+    # no components is a zero that reads as a measured figure.
     rows.extend(
         f"| {arm.value} | {merges[arm]} | {attempts[arm]} | {tokens[arm]} "
-        f"| {judging[arm]} | {compacting[arm]} | {_cost_cell(sum_costs(cost[arm]))} "
+        f"| {judging[arm]} | {compacting[arm]} "
+        f"| {_cost_cell(sum_costs(cost[arm]) if cost[arm] else None)} "
         f"| {parked[arm]} | {amendments[arm]} |"
         for arm in Arm
     )

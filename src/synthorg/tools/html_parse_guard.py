@@ -24,9 +24,15 @@ from synthorg.observability.events.tool import (
 )
 from synthorg.tools.html_parse_safety import (
     XXEDetectedError,
+    parse_html_fragment_safely,
     parse_html_safely,
+    serialise_fragment,
 )
-from synthorg.tools.html_parse_strip import gap_ratio, strip_dangerous_elements
+from synthorg.tools.html_parse_strip import (
+    HIDDEN_CONSTRUCT_TRIGGER,
+    gap_ratio,
+    strip_dangerous_elements,
+)
 
 logger = get_logger(__name__)
 
@@ -45,18 +51,18 @@ _HTML_DOCUMENT_PATTERN = re.compile(
 )
 
 # A FRAGMENT is judged only when it carries something the strip would take:
-# a tag it drops, an event handler with a quoted value, a hidden style or an
-# ``aria-hidden``. A forge issue body and a fetched snippet arrive without a
-# document tag and are exactly where an injection hides. The quoted value is
-# what keeps JSX out (``onClick={fn}``), an HTML comment is not a trigger
-# because source code carries them, and a style value ends at a terminator
-# so ``opacity: 0}}`` in a component is not one either.
+# a tag it drops, an event handler with a quoted value, an ``aria-hidden``,
+# or any hiding the strip knows, which is read off the strip's own patterns
+# so the trigger cannot know less than the strip removes. A forge issue body
+# and a fetched snippet arrive without a document tag and are exactly where
+# an injection hides. The quoted value is what keeps JSX out
+# (``onClick={fn}``), and an HTML comment is not a trigger because source
+# code carries them.
 _HIDDEN_CONSTRUCT_PATTERN = re.compile(
     r"<(?:script|style|noscript|iframe|object|embed|applet)\b"
     r"""|\son[a-z]+\s*=\s*['"]"""
     r"""|aria-hidden\s*=\s*['"]?true"""
-    r"""|(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(?:\.0*)?)"""
-    r"""\s*(?:;|['"]|$)""",
+    "|" + HIDDEN_CONSTRUCT_TRIGGER,
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -237,31 +243,48 @@ class HTMLParseGuard:
             The content to hand the model with the verdict behind it, and
             whether the payload was refused rather than judged.
         """
-        judged = looks_like_html_document(raw) or carries_hidden_construct(raw)
+        document = looks_like_html_document(raw)
+        judged = document or carries_hidden_construct(raw)
         if not self._config.enabled or not raw or not judged:
             return GuardedToolOutput(raw, _passthrough_result(raw), rejected=False)
 
-        stripped = self._strip_or_reject(raw)
+        stripped = self._strip_or_reject(raw, fragment=not document)
         if stripped is None:
             return GuardedToolOutput("", _rejected_result(), rejected=True)
         doc, result = stripped
         if result.stripped_element_count == 0 and not result.gap_detected:
             return GuardedToolOutput(raw, result, rejected=False)
-        markup = tostring(doc, encoding="unicode", method="html")
+        # A fragment is handed back in its own shape: the parser gives it a
+        # container to hang from, and that container is not the tool's.
+        markup = (
+            serialise_fragment(doc)
+            if not document
+            else tostring(doc, encoding="unicode", method="html")
+        )
         return GuardedToolOutput(markup, result, rejected=False)
 
     def _strip_or_reject(
         self,
         raw: str,
+        *,
+        fragment: bool = False,
     ) -> tuple[HtmlElement, HTMLSanitizeResult] | None:
         """Parse and strip *raw*, or answer ``None`` for a payload refused.
+
+        Args:
+            raw: The payload.
+            fragment: Parse as a fragment under an explicit container rather
+                than as a document, so what comes back can be serialised
+                without it.
 
         Returns:
             The stripped document with its verdict, or ``None`` when the
             payload was rejected by the XXE pre-scan or could not be parsed.
         """
         try:
-            doc = parse_html_safely(raw)
+            doc = (
+                parse_html_fragment_safely(raw) if fragment else parse_html_safely(raw)
+            )
         except XXEDetectedError:
             # XXE rejection was already logged via
             # ``TOOL_HTML_PARSE_XXE_DETECTED`` inside the pre-scan; do

@@ -292,10 +292,18 @@ class RecordingHostConfig:
 
         Raises:
             HarnessHostConfigInvalidError: ``bind_port`` is outside the TCP port
-                range, or ``label`` is not a safe identifier.
+                range, ``label`` is not a safe identifier, or
+                ``coordination_pair`` names no provider or no model.
         """
         if not 0 <= self.bind_port <= _MAX_PORT:
             msg = f"bind_port must be between 0 and {_MAX_PORT}, got {self.bind_port}"
+            raise HarnessHostConfigInvalidError(msg)
+        # An unbound pair is published as an empty coordination model, and
+        # the product's runtime then stops at "no coordinator" and clears the
+        # peer-review gate, so the host would boot and measure a roster
+        # nobody reviews. Refused here, where somebody is present to be told.
+        if not self.coordination_pair.is_bound:
+            msg = "coordination_pair must name both a provider and a model"
             raise HarnessHostConfigInvalidError(msg)
         # `label` becomes a path component of the throwaway database and part
         # of the seeded username. Absolute or carrying `..` it writes the
