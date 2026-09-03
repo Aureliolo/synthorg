@@ -1212,7 +1212,7 @@ by operator decision, so it is one cell and it is read as one cell.
 | plan | 8 units in 11 turns; five of seven submissions refused because the array arrived as JSON text |
 | contract | 15 modules, 46 pending tests, no `CONTRACT.md`, cut at its 60-turn cap |
 | leaves | 8 of 8 at the 40-turn cap with the product's extensions zeroed by the harness; 2 graded delivered |
-| merge | three attempts (80 turns, 80 turns, parked on its 5.5M-token ceiling), rejected three times by a roster reviewer on the same critical lines |
+| merge | three attempts (80 turns, 80 turns, parked on its 5.5M-token ceiling), rejected three times by a roster reviewer: the first two on the same critical lines, the third on a missing test run and NULL ordering |
 | shared modules diverged from the contract | 7 of 27 |
 
 What it says about the six root causes, in the order the dossier named them:

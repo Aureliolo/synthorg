@@ -11,6 +11,13 @@ recording's place in the sequence is the whole value of keeping it, and the
 directory listing does not say which recording answered which question or
 what it was measured under.
 
+This is one of two round logs and they do not feed each other:
+[the loop round log](loop-round-log.md) records the operator-seat runs of the
+deployed product, and the site-wide count of how often that loop was driven
+live and where it stopped is drawn from there alone. A harness cell here
+reaching its merge changes nothing in that count, because the harness
+dispatches its own waves and never runs the operator seat.
+
 ## The wiring column
 
 Every recording below ran the harness's own hand-built engine, which passed

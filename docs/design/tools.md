@@ -588,6 +588,17 @@ typed access (`args_model.model_validate(arguments)`). Tools without
 `args_model` (legacy / dynamic shapes such as `MCPBridgeTool`) continue using
 the manual `common_args` validators inside the handler body.
 
+**JSON-text arguments.** Before validation, `tools/_argument_decoding.py`
+decodes an argument a model sent as the JSON *text* of its value (a nested
+array arriving as `'[{...}]'`, a nullable field arriving as `'null'`), because
+a model that cannot emit the nested shape resubmits the same text on every
+turn and each refusal is right about the type and useless about the fix.
+Decoding is bounded to what the schema declares: a parameter whose declared
+types do not include `string`, holding a string that parses to a type they do
+include. A `string` parameter that happens to hold JSON is left alone, and a
+string that does not parse is left for the validator to refuse in its own
+words.
+
 **Envelope Contract.** Every handler returns a JSON string. Success envelope
 (data is always present, pagination appears only on list/collection responses):
 

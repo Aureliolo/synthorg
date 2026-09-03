@@ -287,7 +287,11 @@ validates against a frozen Pydantic args model:
   `args_model: ClassVar[type[BaseModel] | None] = <Args>`. The
   `ToolInvoker` calls `args_model.model_validate(arguments)` before
   invoking `execute`; failures surface as a typed
-  `ToolParameterError` envelope.
+  `ToolParameterError` envelope. Ahead of validation,
+  `tools/_argument_decoding.py` decodes an argument sent as the JSON
+  text of a non-string value the schema declares (a nested array as
+  `'[...]'`, a nullable field as `'null'`); a declared `string` is never
+  decoded.
 * **MCP handlers** (`src/synthorg/meta/mcp/`): every
   `read_tool` / `write_tool` / `admin_tool` registration *may* pass
   `args_model=<Args>` through to `MCPToolDef.args_model`; when set,
