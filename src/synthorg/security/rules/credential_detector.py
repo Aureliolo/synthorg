@@ -105,15 +105,20 @@ CREDENTIAL_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
         # A bare dotted value with a digit and one long segment that is not
         # an identifier: the shape of a JWT, whose base64 segments mix case
         # with digits or carry a character no attribute name can, and of
-        # nothing an object path is, however long its last attribute runs.
+        # nothing an object path is, however long any attribute in it runs.
+        # Mixed case alone is what camelCase is, so the digits have to sit
+        # where an identifier never puts them: three in one segment, or one
+        # followed by a lowercase letter (``V2Handler`` and ``Base64Url`` end
+        # their digits on an uppercase letter or on the segment's end).
         # Case-sensitive past the key on purpose: the discriminator reads
         # the segment's mix of cases, which an ignore-case match would erase.
         re.compile(
             r"(?i:\b\w*?(?:secret|token|password|passwd|credential))\s*[=:]\s*"
             r"(?=[A-Za-z0-9_\-/+=.]*\d)"
-            r"(?=(?:[A-Za-z0-9_\-/+=]{0,15}\.)*"
+            r"(?=(?:[A-Za-z0-9_\-/+=]+\.)*"
             r"(?=[A-Za-z0-9_\-/+=]{16})"
-            r"(?:(?=\w*[-/+=])|(?=\w*[A-Z])(?=\w*[a-z])(?=\w*\d)))"
+            r"(?:(?=\w*[-/+=])"
+            r"|(?=\w*[A-Z])(?=\w*[a-z])(?=\w*\d[a-z]|(?:\w*\d){3})))"
             r"[A-Za-z0-9_\-/+=.]{24,}(?![\w(\[])",
         ),
     ),

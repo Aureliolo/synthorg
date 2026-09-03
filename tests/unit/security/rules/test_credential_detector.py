@@ -248,6 +248,9 @@ class TestCodeThatNamesATokenIsNotACredential:
             "token = settings.tokens_2024.primary",
             "token = settings.tokens_2024.abcdefghijklmnop",
             "TOKEN = config.tokens_2024.SECONDARY_FALLBACK_TOKEN",
+            "token = client.auth.refreshTokenV2Handler",
+            "token = codec.base64UrlEncoder.encodedOutput",
+            "token = handlers.oauth2TokenV2Handler",
             "password = 12345678",
             "password_length = 12",
             'expected_token = "identifier"',
@@ -273,6 +276,7 @@ class TestCodeThatNamesATokenIsNotACredential:
                 "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
             ),
             "credential: 7f9a8b7c6d5e4f3a2b1c",
+            "token = hvs.CAESIJ8Xq2LkE9vB0mYtQ3RfHn7cWp1sZa4Dg6",
         ],
         ids=[
             "quoted_password",
@@ -284,6 +288,7 @@ class TestCodeThatNamesATokenIsNotACredential:
             "quoted_digit_bearing",
             "bare_jwt",
             "hex_credential",
+            "prefixed_dotted_secret",
         ],
     )
     def test_secret_shaped_assignments_are_refused(self, code: str) -> None:

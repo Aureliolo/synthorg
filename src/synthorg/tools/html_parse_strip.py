@@ -107,6 +107,11 @@ _EVENT_HANDLER_PREFIXES: Final[frozenset[str]] = frozenset(
 
 _SVG_SCRIPT_TAG: Final[str] = "{http://www.w3.org/2000/svg}script"
 
+# A comment as TEXT: what a renderer never shows from ``<!--`` to the closing
+# ``-->``, or to the end of the input when nothing closes it, which is how a
+# renderer reads an unterminated one.
+_COMMENT_PATTERN: Final[re.Pattern[str]] = re.compile(r"<!--.*?(?:-->|\Z)", re.DOTALL)
+
 
 def strip_dangerous_elements(doc: HtmlElement) -> int:
     """Strip scripts, styles, comments, handlers and hidden elements in place.
@@ -139,6 +144,19 @@ def strip_dangerous_elements(doc: HtmlElement) -> int:
     stripped += _strip_event_handlers(doc)
     stripped += _strip_hidden_elements(doc)
     return stripped
+
+
+def strip_comments(raw: str) -> tuple[str, int]:
+    """Cut every HTML comment out of *raw* as text, touching nothing else.
+
+    The DOM strip drops comments with everything else it removes; this is
+    for a fragment that is not parsed at all, so what surrounds the comment
+    comes back byte for byte.
+
+    Returns:
+        The text without its comments, and how many were cut.
+    """
+    return _COMMENT_PATTERN.subn("", raw)
 
 
 def gap_ratio(original: str, cleaned: str) -> float:
@@ -202,5 +220,6 @@ def _strip_hidden_elements(doc: HtmlElement) -> int:
 __all__ = [
     "HIDDEN_CONSTRUCT_TRIGGER",
     "gap_ratio",
+    "strip_comments",
     "strip_dangerous_elements",
 ]

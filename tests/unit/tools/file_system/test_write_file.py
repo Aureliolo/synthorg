@@ -72,12 +72,14 @@ class TestWriteFileExecution:
         assert (workspace / "hello.txt").read_text(encoding="utf-8") == "x"
 
     async def test_a_parent_that_became_a_symlink_is_refused(
-        self, workspace: Path, write_tool: WriteFileTool
+        self,
+        workspace: Path,
+        write_tool: WriteFileTool,
+        tmp_path_factory: pytest.TempPathFactory,
     ) -> None:
         # The validator resolves the path once; a component swapped for a
         # link afterwards must not carry the write out of the workspace.
-        outside = workspace.parent / "outside"
-        outside.mkdir()
+        outside = tmp_path_factory.mktemp("outside")
         try:
             (workspace / "docs").symlink_to(outside, target_is_directory=True)
         except OSError, NotImplementedError:
@@ -95,6 +97,7 @@ class TestWriteFileExecution:
         workspace: Path,
         write_tool: WriteFileTool,
         monkeypatch: pytest.MonkeyPatch,
+        tmp_path_factory: pytest.TempPathFactory,
     ) -> None:
         # ``docs`` is real through the check and a link to the outside by the
         # time the temp file is created. The write goes through a descriptor
@@ -102,8 +105,7 @@ class TestWriteFileExecution:
         # else, whatever the name points at now.
         if not supports_descriptor_walk():
             pytest.skip("descriptor walk unsupported on this platform")
-        outside = workspace.parent / "outside"
-        outside.mkdir()
+        outside = tmp_path_factory.mktemp("outside")
         (workspace / "docs").mkdir()
 
         def swapping_open(path: Path, **kwargs: object) -> int:

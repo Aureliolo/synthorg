@@ -26,10 +26,11 @@ session, written as each returned), `wiring.json`, `depth_curve.{json,md}`
 and `chart.svg`. It is re-scorable in place with `--rescore --out-dir
 evals/recursion_depth/results/wired-r0/smoke`. `wiring.json` carries the
 observations the smoke recorded under the verdicts of the corrected checks:
-the smoke first read two of them wrong (memory compared two spellings of one
-reference, and the policy engine was demanded where the product configures
-none), and both pass on the observations as recorded once the check is the
-one the tree now carries.
+the smoke first read three of them wrong (memory compared two spellings of
+one reference, the policy engine was demanded where the product configures
+none, and reasoning effort was matched on the alias the wire never carries),
+and all three pass once the check is the one the tree now carries, the third
+re-read off the kept transcripts under the routed id.
 
 ---
 
@@ -76,7 +77,7 @@ than the configuration:
 
 | variable | value | on the wire |
 | --- | --- | --- |
-| executor reasoning effort | `high` | sent on every executor request read (the smoke matched on the alias and read none; corrected to match the routed id) |
+| executor reasoning effort | `high` | `high` on all 619 executor requests the tap recorded, matched on the routed id (the smoke first matched on the alias and read none; `wiring.json` carries the re-read) |
 | executor sampling | temperature 0.7, `top_p` 1.0 | manifest, unchanged |
 | reviewer reasoning effort | `high` | manifest, unchanged |
 | compaction | fill 80%, text summariser | never fired: see the register |
@@ -228,7 +229,7 @@ From `scripts/report_merge_economics.py`, `report_session_flow.py --calls
 | figure | attempt 5 | the dossier's corpus |
 | --- | --- | --- |
 | tokens, cell | 50.5M over 16 sessions | |
-| share of the cell in merges | 49% (26.2M, 228 requests) | roughly 70% |
+| share of the cell in merges | 52% by the journal (26.2M of 50.5M); 49% by the transcript report (14.45M of the 29.7M in the usage frames the tap kept, 228 requests, 230 partial turns dropped) | roughly 70% |
 | merge input to output | 27:1 | |
 | merge tool calls | 92% shell, 6% write (222 shell, 9 edit, 6 write, 4 read) | 83% shell, 13% write |
 | merge shell programs, attempt 1 | `cat` 39%, `diff` 30%, `for` 9%, `python3` 6% | 84% shell, half of it looking |

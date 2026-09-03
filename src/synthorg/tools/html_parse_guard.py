@@ -11,6 +11,7 @@ not a middleware.
 
 import re
 from dataclasses import dataclass
+from typing import Final
 
 from lxml.html import HtmlElement, tostring
 from pydantic import BaseModel, ConfigDict, Field
@@ -31,6 +32,7 @@ from synthorg.tools.html_parse_safety import (
 from synthorg.tools.html_parse_strip import (
     HIDDEN_CONSTRUCT_TRIGGER,
     gap_ratio,
+    strip_comments,
     strip_dangerous_elements,
 )
 
@@ -50,21 +52,30 @@ _HTML_DOCUMENT_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# A FRAGMENT is judged only when it carries something the strip would take:
-# a tag it drops, an event handler with a quoted value, an ``aria-hidden``,
-# or any hiding the strip knows, which is read off the strip's own patterns
-# so the trigger cannot know less than the strip removes. A forge issue body
-# and a fetched snippet arrive without a document tag and are exactly where
-# an injection hides. The quoted value is what keeps JSX out
-# (``onClick={fn}``), and an HTML comment is not a trigger because source
-# code carries them.
+# A FRAGMENT is parsed only when it carries something the strip would take:
+# a tag it drops, an event handler with a value, an ``aria-hidden``, or any
+# hiding the strip knows, which is read off the strip's own patterns so the
+# trigger cannot know less than the strip removes. A forge issue body and a
+# fetched snippet arrive without a document tag and are exactly where an
+# injection hides. A handler's value is quoted, or unquoted and glued to its
+# ``=`` the way HTML writes it; the brace is what keeps JSX out
+# (``onClick={fn}``).
 _HIDDEN_CONSTRUCT_PATTERN = re.compile(
     r"<(?:script|style|noscript|iframe|object|embed|applet)\b"
     r"""|\son[a-z]+\s*=\s*['"]"""
+    r"""|\son[a-z]+=[^\s>{='"]"""
     r"""|aria-hidden\s*=\s*['"]?true"""
     "|" + HIDDEN_CONSTRUCT_TRIGGER,
     re.IGNORECASE | re.MULTILINE,
 )
+
+# An HTML comment is hidden content too, and the one construct a fragment is
+# not PARSED for: source carries comments (an XML manifest, a README, a
+# template), and an XML file re-serialised through an HTML parser loses every
+# self-closing element in it. A fragment whose only concealment is a comment
+# has the comment cut out of the text and everything around it handed back
+# byte for byte.
+_COMMENT_OPENER: Final[str] = "<!--"
 
 
 class HTMLParseGuardConfig(BaseModel):
@@ -243,9 +254,12 @@ class HTMLParseGuard:
             The content to hand the model with the verdict behind it, and
             whether the payload was refused rather than judged.
         """
+        if not self._config.enabled or not raw:
+            return GuardedToolOutput(raw, _passthrough_result(raw), rejected=False)
         document = looks_like_html_document(raw)
-        judged = document or carries_hidden_construct(raw)
-        if not self._config.enabled or not raw or not judged:
+        if not document and not carries_hidden_construct(raw):
+            if _COMMENT_OPENER in raw:
+                return self._cut_comments(raw)
             return GuardedToolOutput(raw, _passthrough_result(raw), rejected=False)
 
         stripped = self._strip_or_reject(raw, fragment=not document)
@@ -348,6 +362,27 @@ class HTMLParseGuard:
         original_text = doc.text_content().strip()
         stripped_count = strip_dangerous_elements(doc)
         cleaned_text = doc.text_content().strip()
+        return self._measure(original_text, cleaned_text, stripped_count)
+
+    def _cut_comments(self, raw: str) -> GuardedToolOutput:
+        """Hand *raw* back with its comments cut out and nothing else touched.
+
+        Returns:
+            The text without its comments, measured on what was cut.
+        """
+        cleaned, cut = strip_comments(raw)
+        return GuardedToolOutput(
+            cleaned, self._measure(raw, cleaned, cut), rejected=False
+        )
+
+    def _measure(
+        self, original_text: str, cleaned_text: str, stripped_count: int
+    ) -> HTMLSanitizeResult:
+        """Report how much of *original_text* the strip hid, and log it.
+
+        Returns:
+            The verdict, carrying *cleaned_text*.
+        """
         hidden_ratio = gap_ratio(original_text, cleaned_text)
         gap_detected = hidden_ratio > self._config.gap_threshold_ratio
 

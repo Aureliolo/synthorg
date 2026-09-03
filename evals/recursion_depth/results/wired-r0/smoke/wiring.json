@@ -65,8 +65,8 @@
     {
       "treatment": "reasoning effort",
       "expected": "high",
-      "observed": "no request for example-capable-001 could be read (0 unparseable lines)",
-      "passed": null
+      "observed": "high x619 (0 unparseable lines)",
+      "passed": true
     },
     {
       "treatment": "prompt caching",

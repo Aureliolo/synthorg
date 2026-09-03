@@ -1208,7 +1208,7 @@ by operator decision, so it is one cell and it is read as one cell.
 |---|---|
 | specification satisfied | 7 of 42, program LIVE |
 | leaf-work survival | 1 of 8 claimed |
-| tokens | 50.5M over 16 sessions, 4 h 37 min; the merge 49%, the leaves 36%, the reviews 10% |
+| tokens | 50.5M over 16 sessions, 4 h 37 min; by the journal the merge 52%, the leaves 42%, the reviews 6% (the transcript report reads 49%, 36% and 10% over the usage frames the tap kept) |
 | plan | 8 units in 11 turns; five of seven submissions refused because the array arrived as JSON text |
 | contract | 15 modules, 46 pending tests, no `CONTRACT.md`, cut at its 60-turn cap |
 | leaves | 8 of 8 at the 40-turn cap with the product's extensions zeroed by the harness; 2 graded delivered |
