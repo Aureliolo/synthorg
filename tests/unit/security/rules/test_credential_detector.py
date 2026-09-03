@@ -255,6 +255,7 @@ class TestCodeThatNamesATokenIsNotACredential:
             "token = codec.utf8ToBase64Encoder.output",
             "token = settings.accessTokenV1alpha",
             "token = registry.sha256sumOfManifestV1beta2",
+            "token = eyJConfig.longAttributeName.someLongAttribute",
             "password = 12345678",
             "password_length = 12",
             'expected_token = "identifier"',
@@ -285,6 +286,14 @@ class TestCodeThatNamesATokenIsNotACredential:
                 "token = eyJhbGciOiJFZERTQSJ9.eyJzdWIiOiJhbGljZSJ9."
                 "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
             ),
+            (
+                "token = eyJraWQiOiJhIiwiYWxnIjoiSFMyNTYifQ.eyJzdWIiOiJhbGljZSJ9."
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ),
+            (
+                "token = eyJraWQiOiJhYiIsImFsZyI6IkhTMjU2In0.eyJzdWIiOiJhbGljZSJ9."
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ),
         ],
         ids=[
             "quoted_password",
@@ -298,6 +307,8 @@ class TestCodeThatNamesATokenIsNotACredential:
             "hex_credential",
             "prefixed_dotted_secret",
             "digit_free_jwt",
+            "jwt_alg_after_kid",
+            "jwt_alg_at_offset_zero",
         ],
     )
     def test_secret_shaped_assignments_are_refused(self, code: str) -> None:
