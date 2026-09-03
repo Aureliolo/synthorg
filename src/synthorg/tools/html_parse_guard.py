@@ -294,7 +294,8 @@ class HTMLParseGuard:
         stripped = self._strip_or_reject(raw)
         if stripped is None:
             return _rejected_result()
-        return stripped[1]
+        _doc, result = stripped
+        return result
 
     def guard_tool_output(self, raw: str) -> GuardedToolOutput:
         """Hand a tool result to the model as the tool returned it, or safer.
@@ -386,14 +387,6 @@ class HTMLParseGuard:
         doc = parse_html_safely(raw)
         result = self._strip_and_measure(doc)
         return tostring(doc, encoding="unicode", method="html"), result
-
-    def _sanitize_html(self, raw: str) -> HTMLSanitizeResult:
-        """Parse and sanitize HTML content using lxml.
-
-        Returns:
-            Result of type ``HTMLSanitizeResult``.
-        """
-        return self._strip_and_measure(parse_html_safely(raw))
 
     def _strip_and_measure(self, doc: HtmlElement) -> HTMLSanitizeResult:
         """Strip *doc* in place and report how much content was hidden.

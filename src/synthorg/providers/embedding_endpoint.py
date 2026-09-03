@@ -157,4 +157,4 @@ async def resolve_embedding_endpoint(
     return endpoint_for_config(provider, config, material=material)
 
 
-__all__ = ["EmbeddingEndpoint", "resolve_embedding_endpoint"]
+__all__ = ["EmbeddingEndpoint", "endpoint_for_config", "resolve_embedding_endpoint"]

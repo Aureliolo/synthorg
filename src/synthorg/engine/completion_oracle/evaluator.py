@@ -54,6 +54,12 @@ from synthorg.persistence.plan_protocol import PlanRepository
 logger = get_logger(__name__)
 
 _TEST_RECORD_QUERY_LIMIT: Final[int] = 1000
+"""Upper bound on test records inspected per task.
+
+Newest-first, so the latest run (index 0) drives the verdict regardless of
+the cap; the bound only affects the ``tests_seen`` / ``tests_failed``
+telemetry counts, mirroring the receipt validator's signal-query ceiling.
+"""
 
 #: Handed back to the agent as the review's own words, so it has to say what
 #: would satisfy the gate rather than only that nothing did. A recorded run is
@@ -67,12 +73,6 @@ NO_TEST_RUN_REASON: Final[str] = (
     f"builds or its tests pass (failing closed). {RECORDED_RUN_RULE} Run the "
     "suite that way."
 )
-"""Upper bound on test records inspected per task.
-
-Newest-first, so the latest run (index 0) drives the verdict regardless of
-the cap; the bound only affects the ``tests_seen`` / ``tests_failed``
-telemetry counts, mirroring the receipt validator's signal-query ceiling.
-"""
 
 
 class BuildTestOracle:

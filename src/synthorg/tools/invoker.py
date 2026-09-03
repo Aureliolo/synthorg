@@ -1153,6 +1153,32 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 tool_names=tuple(call.name for _, call in withheld),
             )
 
+    async def _run_stages(
+        self,
+        stages: list[list[tuple[int, ToolCall]]],
+        results: dict[int, ToolResult],
+        fatal_errors: list[Exception],
+        semaphore: asyncio.Semaphore | None,
+    ) -> None:
+        """Run each stage in program order, halting on a fatal error or a park.
+
+        A process-level error leaves the state every later mutation would
+        build on unknown, and a park means what follows waits on a person:
+        neither is a state to keep issuing writes into.
+        """
+        for position, stage in enumerate(stages):
+            escalations_before = len(self._pending_escalations)
+            async with asyncio.TaskGroup() as tg:
+                for idx, call in stage:
+                    _ = tg.create_task(
+                        self._run_guarded(idx, call, results, fatal_errors, semaphore),
+                    )
+            if fatal_errors:
+                return
+            if len(self._pending_escalations) > escalations_before:
+                self._withhold_after_park(stages[position + 1 :], results)
+                return
+
     @staticmethod
     def _raise_fatal_errors(fatal_errors: list[Exception]) -> None:
         """Re-raise collected fatal errors after all tasks complete.
@@ -1238,27 +1264,7 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
                 count=len(calls),
                 stages=len(stages),
             )
-        for position, stage in enumerate(stages):
-            escalations_before = len(self._pending_escalations)
-            async with asyncio.TaskGroup() as tg:
-                for idx, call in stage:
-                    _ = tg.create_task(
-                        self._run_guarded(
-                            idx,
-                            call,
-                            results,
-                            fatal_errors,
-                            semaphore,
-                        ),
-                    )
-            # A process-level error leaves the state every later mutation
-            # would build on unknown, and a park means what follows waits on
-            # a person: neither is a state to keep issuing writes into.
-            if fatal_errors:
-                break
-            if len(self._pending_escalations) > escalations_before:
-                self._withhold_after_park(stages[position + 1 :], results)
-                break
+        await self._run_stages(stages, results, fatal_errors, semaphore)
 
         logger.info(
             TOOL_INVOKE_ALL_COMPLETE,

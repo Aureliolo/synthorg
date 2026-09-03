@@ -34,6 +34,19 @@ if TYPE_CHECKING:
     from synthorg.engine.prompt_providers import PromptAmbientProviders
 
 
+#: The two discovery tools the progressive-disclosure instruction names.
+#: ``load_tool_resource`` is deliberately absent: the instruction never
+#: mentions it, so a session holding the other two can follow it.
+_DISCOVERY_INSTRUCTION_TOOLS: Final[frozenset[str]] = frozenset(
+    {"list_tools", "load_tool"}
+)
+
+#: Tools whose presence makes the current-sources guidance actionable. Telling
+#: a session to verify against upstream documentation it has no way to read
+#: would be an instruction to fail.
+_WEB_RESEARCH_TOOLS: Final[frozenset[str]] = frozenset({"web_search", "web_fetch"})
+
+
 def _parameter_summary(summary: ToolL1Metadata) -> str:
     """Render a tool's parameter names for the catalogue line.
 
@@ -46,19 +59,6 @@ def _parameter_summary(summary: ToolL1Metadata) -> str:
         *(f"[{name}]" for name in summary.optional_parameters),
     ]
     return ", ".join(names)
-
-
-#: The two discovery tools the progressive-disclosure instruction names.
-#: ``load_tool_resource`` is deliberately absent: the instruction never
-#: mentions it, so a session holding the other two can follow it.
-_DISCOVERY_INSTRUCTION_TOOLS: Final[frozenset[str]] = frozenset(
-    {"list_tools", "load_tool"}
-)
-
-#: Tools whose presence makes the current-sources guidance actionable. Telling
-#: a session to verify against upstream documentation it has no way to read
-#: would be an instruction to fail.
-_WEB_RESEARCH_TOOLS: Final[frozenset[str]] = frozenset({"web_search", "web_fetch"})
 
 
 def build_template_context(
