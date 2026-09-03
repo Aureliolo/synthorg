@@ -301,6 +301,8 @@ class TestBuildSystemPrompt:
         )
 
         assert "Parameters: path, content, [create_directories]." in result.content
+        # The tool declaring no parameters carries no parameter line.
+        assert result.content.count("Parameters:") == 1
         assert "List available tools\n" in result.content
 
     def test_catalogue_heading_is_the_one_the_template_renders(self) -> None:

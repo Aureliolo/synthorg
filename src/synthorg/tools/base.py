@@ -5,10 +5,11 @@ Defines the ``BaseTool`` ABC that all concrete tools extend, and the
 """
 
 import copy
+import re
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import ClassVar
+from typing import ClassVar, Final
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
@@ -23,6 +24,13 @@ from synthorg.security.autonomy.enums import ToolCategory
 logger = get_logger(__name__)
 
 
+# A parameter name lands in the system prompt through the L1 summary, and an
+# MCP server's schema is third-party text: a JSON property name may be any
+# string at all. Only an identifier-shaped name is summarised; the schema
+# itself is untouched, so a call still validates against what it declares.
+_PARAMETER_NAME: Final[re.Pattern[str]] = re.compile(r"[A-Za-z_][A-Za-z0-9_-]{0,63}")
+
+
 def _parameter_names(
     schema: Mapping[str, JsonValue] | None,
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -30,7 +38,8 @@ def _parameter_names(
 
     Returns:
         ``(required, optional)`` in the schema's own property order; both
-        empty when the schema declares no object properties.
+        empty when the schema declares no object properties. A name that is
+        not identifier-shaped is left out of both.
     """
     if schema is None:
         return (), ()
@@ -43,7 +52,7 @@ def _parameter_names(
         if isinstance(declared_required, list)
         else frozenset[str]()
     )
-    names = tuple(properties)
+    names = tuple(name for name in properties if _PARAMETER_NAME.fullmatch(name))
     return (
         tuple(name for name in names if name in required_names),
         tuple(name for name in names if name not in required_names),

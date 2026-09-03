@@ -89,6 +89,27 @@ class TestToolL1Metadata:
         )
         assert meta.typical_cost_tier == tier
 
+    def test_a_parameter_cannot_be_both_required_and_optional(self) -> None:
+        with pytest.raises(ValidationError, match="both required and optional"):
+            ToolL1Metadata(
+                name="t",
+                short_description="d",
+                category="c",
+                typical_cost_tier="cheap",
+                required_parameters=("path",),
+                optional_parameters=("path", "limit"),
+            )
+
+    def test_blank_parameter_name_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ToolL1Metadata(
+                name="t",
+                short_description="d",
+                category="c",
+                typical_cost_tier="cheap",
+                required_parameters=(" ",),
+            )
+
     def test_blank_category_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ToolL1Metadata(

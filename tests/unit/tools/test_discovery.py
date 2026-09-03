@@ -43,6 +43,8 @@ class _ToolWithResources(BaseTool):
             short_description="A rich tool",
             category="file_system",
             typical_cost_tier="expensive",
+            required_parameters=("path",),
+            optional_parameters=("limit",),
         )
 
     @override
@@ -164,8 +166,8 @@ class TestListToolsTool:
         assert rich["short_description"] == "A rich tool"
         assert rich["category"] == "file_system"
         assert rich["typical_cost_tier"] == "expensive"
-        assert rich["required_parameters"] == []
-        assert rich["optional_parameters"] == []
+        assert rich["required_parameters"] == ["path"]
+        assert rich["optional_parameters"] == ["limit"]
 
 
 # ── LoadToolTool ─────────────────────────────────────────────────
