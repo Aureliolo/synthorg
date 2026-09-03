@@ -45,9 +45,11 @@ from synthorg.budget.tracker_protocol import collect_all_records
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.task import Task
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.artifacts.baseline_scope import workspace_run_probe
+from synthorg.engine.completion_oracle.review_models import CompletionOracleVerdict
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
     EVALS_RECURSION_SPEND_ALL_DROPPED,
@@ -255,17 +257,17 @@ class LeafReview:
 
     Attributes:
         task_status: The task's status once the engine's post-execution path
-            has run, in the product's own vocabulary. ``COMPLETED`` is a
-            verdict that let it through, ``IN_PROGRESS`` a rejection routed
-            back for rework this harness does not perform, ``BLOCKED`` a park
-            nobody here can answer. ``None`` when the host holds no such row,
-            which is what a leaf the harness never filed looks like.
+            has run. ``COMPLETED`` is a verdict that let it through,
+            ``IN_PROGRESS`` a rejection routed back for rework this harness
+            does not perform, ``BLOCKED`` a park nobody here can answer.
+            ``None`` when the host holds no such row, which is what a leaf
+            the harness never filed looks like.
         verdict: The peer reviewer's aggregate verdict, or ``None`` when no
             review row was archived for the task.
     """
 
-    task_status: str | None
-    verdict: str | None
+    task_status: TaskStatus | None
+    verdict: CompletionOracleVerdict | None
 
 
 #: Files a unit task with the booted host BEFORE its session runs, so the
@@ -355,8 +357,7 @@ class SweepDeps:
             which is the offline suite's path and what every recording
             before this seam existed measured.
         read_review: Reads the product's verdict on a leaf back off the host
-            after its session. ``None`` alongside ``file_task`` being
-            ``None``.
+            after its session; ``None`` reads every leaf as unreviewed.
         on_leaf_reviewed: Told about every leaf's review as it is read
             back; the smoke's probe, or ``None``.
     """

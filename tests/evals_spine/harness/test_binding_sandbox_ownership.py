@@ -211,3 +211,4 @@ class TestTheShellToolIsGateEvidence:
         expected = persistence_of(binder.host.app_state).code_execution_records
         assert shell._code_execution_records is expected
         assert shell._workspace_root == tmp_path
+        assert shell._clock is binder.host.app_state.clock

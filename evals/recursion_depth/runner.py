@@ -129,7 +129,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.completion_enums import ReasoningEffort
 from synthorg.core.resilience import GeneralRetryHandler
 from synthorg.core.task import Task
-from synthorg.core.types import NotBlankStr
+from synthorg.core.types import NotBlankStr, require_not_blank
 from synthorg.engine.decomposition.models import DecompositionResult, SubtaskDefinition
 from synthorg.engine.errors import DecompositionError, DecompositionTimeoutError
 from synthorg.observability import get_logger, safe_error_description
@@ -790,6 +790,39 @@ class _ContinuedCell:
     contract: CellWorkspace | None
 
 
+def _unit_workspace(
+    context: SweepContext, cell: SweepCell, unit: UnitRecord, *, recorded: int
+) -> CellWorkspace | None:
+    """Find the tree an earlier attempt built for *unit*, or say it is gone.
+
+    The contract is keyed ``CONTRACT_UNIT_KEY`` rather than by unit id, and
+    handed to ``_cell_contract`` rather than to the merge map, because no
+    merge reads it back: it is what every unit is recreated FROM. Falling
+    through to the merge key looked for ``merge-<cell>-contract``, found
+    nothing, and restarted the whole cell, the plan and the contract stage
+    both already bought.
+
+    Returns:
+        The tree, or ``None`` when it is missing and the cell must restart.
+    """
+    key = str(unit.unit_id)
+    if unit.kind == CONTRACT:
+        unit_key = CONTRACT_UNIT_KEY
+    else:
+        unit_key = leaf_unit_key(key) if unit.kind == LEAF else merge_unit_key(key)
+    workspace = built_unit_workspace(
+        cell_key=cell.key, unit_key=unit_key, work_root=context.work_root
+    )
+    if workspace is None:
+        logger.warning(
+            EVALS_RECURSION_CELL_RESTARTED,
+            cell=cell.key,
+            recorded_units=recorded,
+            missing_unit=key,
+        )
+    return workspace
+
+
 def _continue_cell(
     context: SweepContext, cell: SweepCell, resumed: CellProgress, units: CellUnits
 ) -> _ContinuedCell | None:
@@ -823,26 +856,8 @@ def _continue_cell(
             # The one unit with no workspace at all.
             continue
         key = str(unit.unit_id)
-        if unit.kind == CONTRACT:
-            # Keyed CONTRACT_UNIT_KEY rather than by unit id, and handed to
-            # `_cell_contract` rather than to the merge map, because no
-            # merge reads it back: it is what every unit is recreated FROM.
-            # Falling through to the merge key looked for
-            # `merge-<cell>-contract`, found nothing, and restarted the whole
-            # cell, the plan and the contract stage both already bought.
-            unit_key = CONTRACT_UNIT_KEY
-        else:
-            unit_key = leaf_unit_key(key) if unit.kind == LEAF else merge_unit_key(key)
-        workspace = built_unit_workspace(
-            cell_key=cell.key, unit_key=unit_key, work_root=context.work_root
-        )
+        workspace = _unit_workspace(context, cell, unit, recorded=len(resumed.units))
         if workspace is None:
-            logger.warning(
-                EVALS_RECURSION_CELL_RESTARTED,
-                cell=cell.key,
-                recorded_units=len(resumed.units),
-                missing_unit=key,
-            )
             return None
         if unit.kind == CONTRACT:
             contract = workspace
@@ -1659,7 +1674,7 @@ def _leaf_record(
         workspace_files_changed=leaf.workspace_files_changed,
         compaction_tokens=leaf.compaction_tokens,
         compaction_cost=leaf.compaction_cost,
-        verdict=NotBlankStr(leaf.verdict) if leaf.verdict is not None else None,
+        verdict=leaf.verdict.value if leaf.verdict is not None else None,
         parked=leaf.parked,
     )
 
@@ -1691,7 +1706,11 @@ def _merge_record(
         executor=outcome.executor,
         reviewer=outcome.reviewer,
         detail=outcome.detail,
-        verdict=NotBlankStr(outcome.verdict) if outcome.verdict is not None else None,
+        verdict=(
+            require_not_blank(outcome.verdict, "verdict")
+            if outcome.verdict is not None
+            else None
+        ),
         parked=outcome.parked,
         parked_attempts=outcome.parked_attempts,
         amendments=outcome.amendments,

@@ -44,7 +44,9 @@ class TestTheSchemaSaysWhichFieldTheBriefReads:
 
 
 class TestAnAbsentCommandHasManySpellings:
-    @pytest.mark.parametrize("spelling", ["null", "None", "NULL", "", "  "])
+    @pytest.mark.parametrize(
+        "spelling", ["null", "None", "NULL", "", "  ", "  null  ", "none\n"]
+    )
     def test_the_null_spellings_read_as_no_command(self, spelling: str) -> None:
         assert _args(test_command=spelling).test_command is None
 

@@ -190,6 +190,11 @@ class WiringProbe:
         ):
             self._leaf = review
 
+    @property
+    def leaf(self) -> LeafReview | None:
+        """The leaf review the report will be read from, if any yet."""
+        return self._leaf
+
     async def report(
         self,
         app_state: AppState,
@@ -340,12 +345,8 @@ def leaf_review_finding(review: LeafReview | None) -> WiringFinding:
 # nobody on the roster can take) is BLOCKED before any turn, and a run that
 # spent its turn budget and every extension parks AWAITING_INPUT for an
 # operator to grant more, which a sweep has nobody to do.
-_NEVER_OFFERED_FOR_REVIEW: Final[frozenset[str]] = frozenset(
-    {
-        TaskStatus.FAILED.value,
-        TaskStatus.BLOCKED.value,
-        TaskStatus.AWAITING_INPUT.value,
-    }
+_NEVER_OFFERED_FOR_REVIEW: Final[frozenset[TaskStatus]] = frozenset(
+    {TaskStatus.FAILED, TaskStatus.BLOCKED, TaskStatus.AWAITING_INPUT}
 )
 
 

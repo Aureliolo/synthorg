@@ -45,8 +45,10 @@ from synthorg.approval.state import ApprovalStateSlice
 from synthorg.budget.cost_record import CostRecord
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.config.schema import RootConfig
+from synthorg.core.task_enums import TaskStatus
 from synthorg.core.types import NotBlankStr
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.completion_oracle.review_models import CompletionOracleVerdict
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.wiring_summary import EngineWiringSummary
 from synthorg.memory.embedding.dispatch import format_model_ref
@@ -59,6 +61,13 @@ from synthorg.settings.state import SettingsStateSlice
 from tests._shared import make_app_state, mock_of
 
 pytestmark = pytest.mark.unit
+
+_REVIEW_APPROVED = LeafReview(
+    task_status=TaskStatus.COMPLETED, verdict=CompletionOracleVerdict.APPROVE
+)
+_REVIEW_ESCALATED = LeafReview(
+    task_status=TaskStatus.BLOCKED, verdict=CompletionOracleVerdict.ESCALATE
+)
 
 _MANIFEST = (
     Path(__file__).resolve().parents[3] / "evals" / "recursion_depth" / "manifest.yaml"
@@ -689,9 +698,7 @@ class TestLeafReviewFinding:
     """
 
     def test_a_reviewed_leaf_passes(self) -> None:
-        finding = leaf_review_finding(
-            LeafReview(task_status="completed", verdict="approve")
-        )
+        finding = leaf_review_finding(_REVIEW_APPROVED)
 
         assert finding.passed is True
         assert "approve" in finding.observed
@@ -705,9 +712,7 @@ class TestLeafReviewFinding:
     def test_a_park_is_a_review_that_reached_the_leaf(self) -> None:
         # An escalation is the product's answer, not the harness's absence:
         # the row moved and a verdict was archived, so the path is wired.
-        finding = leaf_review_finding(
-            LeafReview(task_status="blocked", verdict="escalate")
-        )
+        finding = leaf_review_finding(_REVIEW_ESCALATED)
 
         assert finding.passed is True
 
@@ -718,22 +723,26 @@ class TestLeafReviewFinding:
 
     def test_the_probe_keeps_the_first_leaf(self) -> None:
         probe = WiringProbe(load_manifest(_MANIFEST))
-        probe.observe_leaf(LeafReview(task_status="completed", verdict="approve"))
+        probe.observe_leaf(_REVIEW_APPROVED)
         probe.observe_leaf(LeafReview(task_status=None, verdict=None))
 
-        assert leaf_review_finding(probe._leaf).passed is True
+        assert leaf_review_finding(probe.leaf).passed is True
 
     def test_a_leaf_that_stopped_short_is_unverified_not_absent(self) -> None:
         # The product routes a turn-capped run to FAILED and never offers it
         # to the pipeline, so the row moved (the host held it) and no verdict
         # could exist: neither a wiring gap nor proof the pipeline runs.
-        finding = leaf_review_finding(LeafReview(task_status="failed", verdict=None))
+        finding = leaf_review_finding(
+            LeafReview(task_status=TaskStatus.FAILED, verdict=None)
+        )
 
         assert finding.passed is None
         assert "turn cap" in finding.observed
 
     def test_a_parked_leaf_with_no_verdict_is_unverified(self) -> None:
-        finding = leaf_review_finding(LeafReview(task_status="blocked", verdict=None))
+        finding = leaf_review_finding(
+            LeafReview(task_status=TaskStatus.BLOCKED, verdict=None)
+        )
 
         assert finding.passed is None
 
@@ -742,21 +751,23 @@ class TestLeafReviewFinding:
         # rather than failing; the pipeline was never asked, so nothing here
         # says whether it is wired.
         finding = leaf_review_finding(
-            LeafReview(task_status="awaiting_input", verdict=None)
+            LeafReview(task_status=TaskStatus.AWAITING_INPUT, verdict=None)
         )
 
         assert finding.passed is None
 
     def test_a_completed_leaf_with_no_verdict_still_fails(self) -> None:
         # Completed means the pipeline WAS asked, so no verdict is its absence.
-        finding = leaf_review_finding(LeafReview(task_status="in_review", verdict=None))
+        finding = leaf_review_finding(
+            LeafReview(task_status=TaskStatus.IN_REVIEW, verdict=None)
+        )
 
         assert finding.passed is False
 
     def test_the_probe_prefers_a_leaf_that_reached_a_verdict(self) -> None:
         probe = WiringProbe(load_manifest(_MANIFEST))
-        probe.observe_leaf(LeafReview(task_status="failed", verdict=None))
-        probe.observe_leaf(LeafReview(task_status="completed", verdict="approve"))
-        probe.observe_leaf(LeafReview(task_status="blocked", verdict="escalate"))
+        probe.observe_leaf(LeafReview(task_status=TaskStatus.FAILED, verdict=None))
+        probe.observe_leaf(_REVIEW_APPROVED)
+        probe.observe_leaf(_REVIEW_ESCALATED)
 
-        assert probe._leaf == LeafReview(task_status="completed", verdict="approve")
+        assert probe.leaf == _REVIEW_APPROVED

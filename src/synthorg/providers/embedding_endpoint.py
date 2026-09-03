@@ -100,7 +100,8 @@ def endpoint_for_config(
         route=config.litellm_provider,
         model_ids={
             key: model.id for key, model in build_model_lookup(config.models).items()
-        },
+        }
+        or None,
     )
 
 

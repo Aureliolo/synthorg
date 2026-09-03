@@ -144,23 +144,26 @@ def _final_reply(response: object) -> tuple[str, tuple[_ToolCall, ...]]:
     return "".join(content), calls
 
 
-def _last_record(path: Path) -> tuple[dict[str, object] | None, int]:
-    """The last parseable transcript line, and how many lines would not parse.
+def _last_record(path: Path) -> dict[str, object] | None:
+    """The last parseable transcript line.
+
+    Read from the end, because the flow reader has already parsed every line
+    once for its counts and a transcript runs to 13 MB per leaf: what this
+    needs is one record, and it is almost always the last line.
 
     Returns:
-        The record and the unreadable count.
+        The record, or ``None`` when no line parses.
     """
-    last: dict[str, object] | None = None
-    unreadable = 0
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    for line in reversed(
+        path.read_text(encoding="utf-8", errors="replace").splitlines()
+    ):
         try:
             record = json.loads(line)
         except json.JSONDecodeError:
-            unreadable += 1
             continue
         if isinstance(record, dict):
-            last = record
-    return last, unreadable
+            return record
+    return None
 
 
 def _turn_lines(
@@ -215,15 +218,35 @@ def digest(path: Path) -> str:
         The Markdown text.
     """
     flow = _flow.read_session(path)
-    last, unreadable = _last_record(path)
-    lines = [
+    last = _last_record(path)
+    lines = _header_lines(path, flow)
+    if last is None:
+        lines.append("No transcript line could be read; nothing to digest.")
+        return "\n".join(lines)
+    request = last.get("request")
+    request = request if isinstance(request, dict) else {}
+    messages = [m for m in request.get("messages") or [] if isinstance(m, dict)]
+    lines.extend(_preamble_lines(request, messages))
+    lines.extend(["## Turns", ""])
+    lines.extend(_turn_lines(messages, flow))
+    lines.extend(_final_reply_lines(last.get("response"), turn=len(flow.turns)))
+    return "\n".join(lines)
+
+
+def _header_lines(path: Path, flow: _flow.SessionFlow) -> list[str]:
+    """The digest's statistics block.
+
+    Returns:
+        The lines, ending with a blank one.
+    """
+    return [
         f"# {path.stem}",
         "",
         f"- kind: {flow.kind}",
         f"- turns: {len(flow.turns)}",
         (
-            f"- unreadable transcript lines: {unreadable}; dropped stream frames: "
-            f"{flow.dropped_frames}"
+            f"- unreadable transcript lines: {flow.unreadable}; dropped stream "
+            f"frames: {flow.dropped_frames}"
         ),
         f"- tool calls: {sum(flow.calls.values())} ({dict(flow.calls)})",
         (
@@ -233,37 +256,43 @@ def digest(path: Path) -> str:
         f"- reasoning effort sent: {sorted({str(effort) for effort in flow.reasoning})}",
         "",
     ]
-    if last is None:
-        lines.append("No transcript line could be read; nothing to digest.")
-        return "\n".join(lines)
-    request = last.get("request")
-    request = request if isinstance(request, dict) else {}
-    messages = [m for m in request.get("messages") or [] if isinstance(m, dict)]
-    lines.append(
-        f"- tools offered on the last turn: {[str((t.get('function') or {}).get('name')) for t in request.get('tools') or [] if isinstance(t, dict)]}"
-    )
-    lines.append("")
-    for message in messages:
-        if message.get("role") == "system":
-            lines.extend(
-                [
-                    "## System prompt (head)",
-                    "",
-                    _fenced(str(message.get("content") or "")[:_SYSTEM_HEAD]),
-                    "",
-                ]
-            )
-            break
-    for message in messages:
-        if message.get("role") == "user":
-            lines.extend(
-                ["## Task, as sent", "", _fenced(str(message.get("content") or "")), ""]
-            )
-            break
-    lines.extend(["## Turns", ""])
-    lines.extend(_turn_lines(messages, flow))
-    content, calls = _final_reply(last.get("response"))
-    lines.extend([f"### Final reply (turn {len(flow.turns)})", ""])
+
+
+def _preamble_lines(
+    request: dict[str, object], messages: Sequence[dict[str, object]]
+) -> list[str]:
+    """The tools offered, the system prompt's head and the task as sent.
+
+    Returns:
+        The lines.
+    """
+    tools = request.get("tools")
+    offered = [
+        str((tool.get("function") or {}).get("name"))
+        for tool in (tools if isinstance(tools, list) else [])
+        if isinstance(tool, dict)
+    ]
+    lines = [f"- tools offered on the last turn: {offered}", ""]
+    system = next((m for m in messages if m.get("role") == "system"), None)
+    if system is not None:
+        head = str(system.get("content") or "")[:_SYSTEM_HEAD]
+        lines.extend(["## System prompt (head)", "", _fenced(head), ""])
+    task = next((m for m in messages if m.get("role") == "user"), None)
+    if task is not None:
+        lines.extend(
+            ["## Task, as sent", "", _fenced(str(task.get("content") or "")), ""]
+        )
+    return lines
+
+
+def _final_reply_lines(response: object, *, turn: int) -> list[str]:
+    """What the model said and called on its last turn.
+
+    Returns:
+        The lines.
+    """
+    content, calls = _final_reply(response)
+    lines = [f"### Final reply (turn {turn})", ""]
     if content:
         lines.extend([_trim(content), ""])
     for call in calls:
@@ -276,7 +305,7 @@ def digest(path: Path) -> str:
                 "",
             ]
         )
-    return "\n".join(lines)
+    return lines
 
 
 def main(argv: list[str] | None = None) -> int:

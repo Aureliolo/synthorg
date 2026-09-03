@@ -12,6 +12,7 @@ import pytest
 
 from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.integrations.connections.catalog import ConnectionCatalog
+from synthorg.providers.drivers.litellm_auth import OPENAI_SDK_ROUTES
 from synthorg.providers.embedding_endpoint import (
     EmbeddingEndpoint,
     resolve_embedding_endpoint,
@@ -22,6 +23,8 @@ from synthorg.settings.resolver import ConfigResolver
 from tests._shared import mock_of
 
 pytestmark = pytest.mark.unit
+
+SDK_ROUTE = next(iter(sorted(OPENAI_SDK_ROUTES)))
 
 
 #: Configured mock, typed loosely for the unittest.mock API.
@@ -59,7 +62,7 @@ class TestEndpointRouting:
                 **{
                     "local-embeddings": ProviderConfig(
                         driver="scripted",
-                        litellm_provider="openai",
+                        litellm_provider=SDK_ROUTE,
                         auth_type=AuthType.NONE,
                         base_url="http://localhost:11434/v1",
                     )
@@ -68,7 +71,7 @@ class TestEndpointRouting:
             catalog=None,
         )
 
-        assert endpoint.route == "openai"
+        assert endpoint.route == SDK_ROUTE
 
     async def test_a_provider_declaring_no_route_carries_none(self) -> None:
         # ``None`` rather than the provider name, so the one place that

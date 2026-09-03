@@ -522,6 +522,12 @@ class UnitRecord(BaseModel):
                 f"{self.detail!r} as why it did not"
             )
             raise ValueError(msg)
+        if self.detail and self.note:
+            msg = (
+                f"unit {self.unit_id} carries both a reason ({self.detail!r}) "
+                f"and a note ({self.note!r}); a note is what is NOT a reason"
+            )
+            raise ValueError(msg)
         return self
 
     @model_validator(mode="after")

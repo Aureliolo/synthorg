@@ -9,7 +9,10 @@ from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 from synthorg.integrations.connections.catalog import ConnectionCatalog
 from synthorg.providers import errors
-from synthorg.providers.drivers.litellm_auth import NO_CREDENTIAL_API_KEY
+from synthorg.providers.drivers.litellm_auth import (
+    NO_CREDENTIAL_API_KEY,
+    OPENAI_SDK_ROUTES,
+)
 from synthorg.providers.drivers.litellm_driver import (
     _CREDENTIAL_CACHE_TTL,
     LiteLLMDriver,
@@ -18,6 +21,10 @@ from synthorg.providers.drivers.litellm_kwargs import _AcompletionKwargs
 from synthorg.providers.enums import AuthType, MessageRole
 from synthorg.providers.models import ChatMessage
 from tests._shared.fake_clock import FakeClock
+
+# The route litellm serves through its OpenAI SDK client, taken from the
+# declaration the driver branches on rather than spelled here.
+SDK_ROUTE = next(iter(sorted(OPENAI_SDK_ROUTES)))
 
 
 def _make_config(
@@ -140,7 +147,7 @@ class TestLiteLLMDriverAuth:
         # the slot; the server never reads it.
         config = _make_config(
             auth_type=AuthType.NONE,
-            litellm_provider="openai",
+            litellm_provider=SDK_ROUTE,
             base_url="http://localhost:1234/v1",
         )
         kwargs = _build_kwargs(config)
@@ -149,7 +156,7 @@ class TestLiteLLMDriverAuth:
     def test_none_auth_on_a_native_route_sends_no_key(self) -> None:
         config = _make_config(
             auth_type=AuthType.NONE,
-            litellm_provider="ollama",
+            litellm_provider="example-route",
             base_url="http://localhost:11434",
         )
         kwargs = _build_kwargs(config)
@@ -160,7 +167,7 @@ class TestLiteLLMDriverAuth:
     ) -> None:
         config = _make_config(
             auth_type=AuthType.CUSTOM_HEADER,
-            litellm_provider="openai",
+            litellm_provider=SDK_ROUTE,
             base_url="http://localhost:1234/v1",
             custom_header_name="X-Api-Token",
             custom_header_value="my-token",
@@ -174,7 +181,7 @@ class TestLiteLLMDriverAuth:
     ) -> None:
         config = _make_config(
             auth_type=AuthType.API_KEY,
-            litellm_provider="openai",
+            litellm_provider=SDK_ROUTE,
             connection_name="provider-key",
         )
         kwargs = _build_kwargs(config, resolved={"api_key": "real-key"})

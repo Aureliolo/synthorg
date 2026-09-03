@@ -125,7 +125,11 @@ WORKTREE_CONFINED_ACTION_TYPES: Final[frozenset[str]] = frozenset(
 #: the first had already replaced. Declared rather than derived from the
 #: verb because ``test:run`` reads like a read and leaves build artefacts
 #: behind, and a custom type registered later must earn its way in rather
-#: than be admitted by its spelling.
+#: than be admitted by its spelling. Narrower than the planner's own
+#: read-only grant (``engine/decomposition/agent_session.py``), which admits
+#: a browser navigation and a research run: those change nothing in the
+#: product, but each holds a session of its own that two calls at once
+#: would share, so "safe to grant" and "safe to run beside" are two sets.
 READ_ONLY_ACTION_TYPES: Final[frozenset[str]] = frozenset(
     {
         ActionType.CODE_READ,

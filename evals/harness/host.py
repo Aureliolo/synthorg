@@ -69,6 +69,7 @@ from synthorg.core.auth.roles import HumanRole
 from synthorg.llm.gateway_token import GatewaySigner
 from synthorg.observability import get_logger
 from synthorg.observability.events.evals import (
+    EVALS_HARNESS_COORDINATION_PAIR_PUBLISHED,
     EVALS_HARNESS_HOST_ADMIN_PRESENT,
     EVALS_HARNESS_HOST_ADMIN_SEEDED,
     EVALS_HARNESS_HOST_IMAGES_INSTALLED,
@@ -902,15 +903,14 @@ class RecordingGatewayHost:
         merely unrouted. It is set here rather than left to an operator so a
         recording cannot silently measure nothing.
 
-        The turn-extension allowance is deliberately NOT written. It was once
-        zeroed so a brief's declared ceiling was the budget every cell was
-        scored against, which made cells comparable by measuring a loop the
-        product does not ship: on the shipped loop a run still calling tools
-        earns further budgets and then PARKS with its workspace intact, and
-        with the allowance zeroed five of eight live leaves ended at exactly
-        their base budget as hard failures, tree discarded and nothing asked.
-        What keeps cells comparable is the token ceiling every session
-        carries, which is the bound the manifest names as the real one.
+        The turn-extension allowance is left unwritten. Zeroing it would make
+        cells comparable on turns by measuring a loop the product does not
+        ship: on the shipped loop a run still calling tools earns further
+        budgets and then PARKS with its workspace intact, and with the
+        allowance zeroed five of eight live leaves ended at exactly their base
+        budget as hard failures, tree discarded and nothing asked. What keeps
+        cells comparable is the token ceiling every session carries, which is
+        the bound the manifest names as the real one.
         """
         settings = settings_service_of(self.app_state)
         await settings.set(
@@ -926,6 +926,10 @@ class RecordingGatewayHost:
             "coordination",
             "decomposition_model",
             serialize_model_ref(self._config.coordination_pair),
+        )
+        logger.info(
+            EVALS_HARNESS_COORDINATION_PAIR_PUBLISHED,
+            pair=serialize_model_ref(self._config.coordination_pair),
         )
 
 

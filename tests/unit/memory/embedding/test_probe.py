@@ -20,9 +20,12 @@ from synthorg.memory.embedding.hashing import (
 )
 from synthorg.memory.embedding.probe import is_builtin_embedder, probe_embedder_dims
 from synthorg.memory.errors import MemoryEmbeddingError
+from synthorg.providers.drivers.litellm_auth import OPENAI_SDK_ROUTES
 from synthorg.providers.embedding_endpoint import EmbeddingEndpoint
 
 pytestmark = pytest.mark.unit
+
+SDK_ROUTE = next(iter(sorted(OPENAI_SDK_ROUTES)))
 
 
 def _response(embedding: object) -> object:
@@ -109,7 +112,7 @@ class TestRoutedModelReference:
             model="example-embedding-001",
             endpoint=EmbeddingEndpoint(
                 api_base="http://localhost:11434/v1",
-                route="openai",
+                route=SDK_ROUTE,
                 model_ids={"example-embedding-001": "test-embed-001"},
             ),
         )
@@ -126,7 +129,7 @@ class TestRoutedModelReference:
         assert seen[0]["model"] == "test-provider/test-embed-001"
 
     def test_an_id_that_is_not_an_alias_passes_through(self) -> None:
-        endpoint = EmbeddingEndpoint(route="openai", model_ids={"a": "b"})
+        endpoint = EmbeddingEndpoint(route=SDK_ROUTE, model_ids={"a": "b"})
 
         assert routed_model_ref("p", "test-embed-001", endpoint) == (
             "openai/test-embed-001"

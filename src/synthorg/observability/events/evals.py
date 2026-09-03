@@ -267,4 +267,12 @@ EVALS_RECURSION_JOURNAL_TRUNCATED: Final[str] = (
     "evals.recursion_depth.journal_truncated"
 )
 EVALS_RECURSION_CELL_CONTINUED: Final[str] = "evals.recursion_depth.cell_continued"
+EVALS_RECURSION_LEAF_FILED: Final[str] = "evals.recursion_depth.leaf_filed"
+EVALS_RECURSION_LEAF_REVIEW_READ: Final[str] = "evals.recursion_depth.leaf_review_read"
+EVALS_RECURSION_LEAF_SETTLED: Final[str] = "evals.recursion_depth.leaf_settled"
+EVALS_RECURSION_HOST_TASK_FILED: Final[str] = "evals.recursion_depth.host_task_filed"
+EVALS_RECURSION_HOST_REVIEW_READ: Final[str] = "evals.recursion_depth.host_review_read"
+EVALS_HARNESS_COORDINATION_PAIR_PUBLISHED: Final[str] = (
+    "evals.harness.coordination_pair_published"
+)
 EVALS_RECURSION_CELL_RESTARTED: Final[str] = "evals.recursion_depth.cell_restarted"

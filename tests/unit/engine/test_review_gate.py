@@ -185,6 +185,16 @@ class TestPeerReviewAttachment:
 
         assert service.completion_oracle_gate_attached is True
 
+    def test_a_shadow_gate_is_attached_too(self) -> None:
+        # Attached answers whether a gate is wired, never whether it decides.
+        service = self._service()
+
+        service.set_completion_oracle_gate(
+            mock_of[CompletionOracleGate](), shadow_mode=True, min_stakes=Stakes.LOW
+        )
+
+        assert service.completion_oracle_gate_attached is True
+
     def test_absent_again_once_cleared(self) -> None:
         service = self._service()
         service.set_completion_oracle_gate(

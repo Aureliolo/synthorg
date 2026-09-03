@@ -8,6 +8,7 @@ from typing import ClassVar
 
 import aiodocker
 import pytest
+from structlog.testing import capture_logs
 
 from evals.errors import HarnessDockerUnavailableError, HarnessProviderMissingError
 from evals.recursion_depth import preflight as preflight_module
@@ -22,11 +23,15 @@ from synthorg.config.provider_schema import ProviderConfig, ProviderModelConfig
 from synthorg.config.schema import RootConfig
 from synthorg.core.types import NotBlankStr
 from synthorg.memory.errors import MemoryEmbeddingError
+from synthorg.observability.events.evals import EVALS_RECURSION_EMBEDDER_PROBED
+from synthorg.providers.drivers.litellm_auth import OPENAI_SDK_ROUTES
 from synthorg.providers.embedding_endpoint import EmbeddingEndpoint
 from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import ProviderError
 
 pytestmark = pytest.mark.unit
+
+SDK_ROUTE = next(iter(sorted(OPENAI_SDK_ROUTES)))
 
 _MANIFEST = (
     Path(__file__).resolve().parents[3] / "evals" / "recursion_depth" / "manifest.yaml"
@@ -86,7 +91,7 @@ def _configured() -> RootConfig:
                 models=(ProviderModelConfig(id=NotBlankStr("example-capable-001")),),
             ),
             "example-embedding-provider": ProviderConfig(
-                litellm_provider=NotBlankStr("openai"),
+                litellm_provider=NotBlankStr(SDK_ROUTE),
                 auth_type=AuthType.NONE,
                 base_url=NotBlankStr("http://localhost:11434/v1"),
                 models=(
@@ -161,11 +166,31 @@ class TestTheEmbedderProbe:
         endpoint = seen[0]["endpoint"]
         assert isinstance(endpoint, EmbeddingEndpoint)
         assert endpoint.api_base == "http://localhost:11434/v1"
-        assert endpoint.route == "openai"
+        assert endpoint.route == SDK_ROUTE
         assert endpoint.model_ids is not None
         assert endpoint.model_ids["example-embedding-001"] == "test-embed-001"
         assert seen[0]["provider"] == "example-embedding-provider"
         assert seen[0]["model"] == "example-embedding-001"
+
+    async def test_a_probe_that_answers_is_logged_with_its_width(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _answer(**_kwargs: object) -> int:
+            return 8
+
+        monkeypatch.setattr(preflight_module, "probe_embedder_dims", _answer)
+        manifest = load_manifest(_MANIFEST)
+
+        with capture_logs() as logs:
+            await _probe_embedder(
+                embedder=manifest.embedder, company_config=_configured()
+            )
+
+        probed = [
+            log for log in logs if log["event"] == EVALS_RECURSION_EMBEDDER_PROBED
+        ]
+        assert len(probed) == 1
+        assert probed[0]["width"] == 8
 
 
 type _Complete = Callable[[object, str], Awaitable[object]]

@@ -741,10 +741,10 @@ class TestInvokeAllConcurrency:
 class TestInvokeAllOrdersMutations:
     """A turn's calls run in the order the model issued them, except reads.
 
-    Two edits of one file issued in one turn used to race, and the second
-    hunk was applied to text the first had already replaced. A mutating
-    call now runs alone, after everything issued before it; only a run of
-    read-only calls fans out.
+    A live run had two edits of one file in one turn race each other, and
+    the second hunk was applied to text the first had already replaced. A
+    mutating call runs alone, after everything issued before it; only a run
+    of read-only calls fans out.
     """
 
     async def test_mutating_calls_run_one_at_a_time_in_program_order(

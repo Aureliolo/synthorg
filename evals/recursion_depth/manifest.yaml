@@ -287,12 +287,12 @@ compaction:
 # one plus that allowance, and a run that spends the lot PARKS with its tree
 # intact rather than failing. Measuring the product means inheriting that, so
 # the bound that actually stops a unit running away is the token ceiling
-# below, and it is set with that job in mind. The recording host once zeroed
-# the allowance to make cells comparable on turns, and under that regime five
-# of eight live leaves ended at exactly 40 turns as hard failures, 0.45M to
-# 1.15M tokens each, nowhere near their ceilings: the harness was the bound,
-# not the product. Eighty now, so a leaf that is working has room before it
-# earns its first extension at all.
+# below, and it is set with that job in mind. A zeroed allowance makes cells
+# comparable on turns by measuring a loop the product does not ship: under
+# one, five of eight live leaves ended at exactly 40 turns as hard failures,
+# 0.45M to 1.15M tokens each, nowhere near their ceilings, so the harness was
+# the bound and not the product. Eighty gives a leaf that is working room
+# before it earns its first extension at all.
 unit_max_turns: 80
 # The planning session's own budget, separate because a planner writes a plan
 # and a unit builds software: the two need different amounts of room, and the

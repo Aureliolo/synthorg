@@ -123,6 +123,7 @@ from synthorg.core.artifact import ArtifactType, ExpectedArtifact
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.core.task_enums import Priority, TaskStatus, TaskStructure, TaskType
 from synthorg.core.types import CapabilityLevel, NotBlankStr
+from synthorg.engine.completion_oracle.review_models import CompletionOracleVerdict
 from synthorg.engine.decomposition.models import (
     DecompositionPlan,
     DecompositionResult,
@@ -137,6 +138,13 @@ from tests._shared import as_uuid, make_app_state, mock_of, sid
 from tests.evals_spine.recursion_depth._doubles import ungraded_capability
 
 pytestmark = pytest.mark.unit
+
+_REVIEW_APPROVED = LeafReview(
+    task_status=TaskStatus.COMPLETED, verdict=CompletionOracleVerdict.APPROVE
+)
+_REVIEW_ESCALATED = LeafReview(
+    task_status=TaskStatus.BLOCKED, verdict=CompletionOracleVerdict.ESCALATE
+)
 
 _EXECUTOR = ModelPair(
     provider=NotBlankStr("example-provider"),
@@ -2485,6 +2493,72 @@ class TestTheMatrix:
         assert context.budget.spent == 0
 
 
+class TestTheRecordCarriesTheProductsVerdict:
+    """What the host decided reaches the row in its own words."""
+
+    def test_verdict_and_park_are_mapped(self, tmp_path: Path) -> None:
+        tree = _tree()
+        leaf = LeafOutcome(
+            workspace=_workspace(tmp_path, "leaf"),
+            delivered=True,
+            produced=True,
+            attempts=1,
+            turns=3,
+            cost=0.0,
+            verdict=CompletionOracleVerdict.ESCALATE,
+            task_status=TaskStatus.BLOCKED,
+        )
+
+        record = runner_module._leaf_record(
+            tree.created_tasks[0], tree.plan.subtasks[0], tree, leaf, _spec()
+        )
+
+        assert record.verdict == "escalate"
+        assert record.parked is True
+
+    def test_an_unreviewed_leaf_records_no_verdict(self, tmp_path: Path) -> None:
+        tree = _tree()
+        leaf = LeafOutcome(
+            workspace=_workspace(tmp_path, "leaf"),
+            delivered=True,
+            produced=True,
+            attempts=1,
+            turns=3,
+            cost=0.0,
+        )
+
+        record = runner_module._leaf_record(
+            tree.created_tasks[0], tree.plan.subtasks[0], tree, leaf, _spec()
+        )
+
+        assert record.verdict is None
+        assert record.parked is False
+
+
+class TestAReasonAndANoteAreTwoSentences:
+    """A delivery says why it is doubted, or what is not a doubt; never both."""
+
+    def test_a_delivery_refuses_both(self) -> None:
+        with pytest.raises(ValueError, match="reason and a note"):
+            UnitDelivery(produced=True, reason="broken", note="fine")
+
+    def test_a_record_refuses_both(self) -> None:
+        with pytest.raises(ValueError, match="both a reason"):
+            UnitRecord(
+                unit_id=NotBlankStr("leaf-1"),
+                title=NotBlankStr("Build it"),
+                kind=LEAF,
+                depth=1,
+                delivered=False,
+                produced=True,
+                attempts=1,
+                turns=3,
+                cost=0.0,
+                detail="broken",
+                note="fine",
+            )
+
+
 class TestADeliveredLeafKeepsItsNote:
     """The gate-decided-nothing sentence reaches the record without failing it.
 
@@ -2822,7 +2896,7 @@ class TestLeafReview:
             pass
 
         async def _read(_task_id: str) -> LeafReview:
-            return LeafReview(task_status="failed", verdict=None)
+            return LeafReview(task_status=TaskStatus.FAILED, verdict=None)
 
         async def _scripted(
             _deps_arg: SweepDeps, *, task: Task, **_rest: object
@@ -2846,6 +2920,85 @@ class TestLeafReview:
         assert outcome.attempts == 1
         assert outcome.task_status == "failed"
 
+    @pytest.mark.parametrize(
+        "status", [TaskStatus.BLOCKED, TaskStatus.COMPLETED, TaskStatus.IN_REVIEW]
+    )
+    async def test_every_settled_status_stops_a_resume(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: TaskStatus
+    ) -> None:
+        ran: list[Task] = []
+        reads: list[str] = []
+        workspace = _workspace(tmp_path, "leaf")
+
+        async def _file(_task: Task) -> None:
+            pass
+
+        async def _read(task_id: str) -> LeafReview:
+            reads.append(task_id)
+            return LeafReview(task_status=status, verdict=None)
+
+        async def _scripted(
+            _deps_arg: SweepDeps, *, task: Task, **_rest: object
+        ) -> SessionOutcome:
+            ran.append(task)
+            return SessionOutcome(cost=0.5, tokens=1200, turns=10, termination="error")
+
+        monkeypatch.setattr(execute_module, "run_session", _scripted)
+        deps = replace(_deps(), file_task=_file, read_review=_read)
+
+        outcome = await run_leaf(
+            deps,
+            task=self._task(),
+            owner=_identity("Builder"),
+            workspace=workspace,
+            execution_id="d1-gated-r0-leaf",
+            limits=SessionLimits(max_turns=8, cost_ceiling=5.0, token_ceiling=100_000),
+        )
+
+        assert len(ran) == 1
+        # The review read to decide the resume is the one recorded: one read.
+        assert len(reads) == 1
+        assert outcome.task_status is status
+        assert outcome.parked is (status is TaskStatus.BLOCKED)
+
+    async def test_a_row_filed_but_not_yet_archived_is_resumed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The host holds no row at all yet: nothing decided the run.
+        ran: list[Task] = []
+        workspace = _workspace(tmp_path, "leaf")
+
+        async def _file(_task: Task) -> None:
+            pass
+
+        async def _read(_task_id: str) -> LeafReview:
+            return LeafReview(task_status=None, verdict=None)
+
+        async def _scripted(
+            _deps_arg: SweepDeps, *, task: Task, **_rest: object
+        ) -> SessionOutcome:
+            ran.append(task)
+            termination = "error" if len(ran) == 1 else "completed"
+            return SessionOutcome(
+                cost=0.5, tokens=1200, turns=3, termination=termination
+            )
+
+        monkeypatch.setattr(execute_module, "run_session", _scripted)
+        deps = replace(_deps(), file_task=_file, read_review=_read)
+
+        outcome = await run_leaf(
+            deps,
+            task=self._task(),
+            owner=_identity("Builder"),
+            workspace=workspace,
+            execution_id="d1-gated-r0-leaf",
+            limits=SessionLimits(max_turns=8, cost_ceiling=5.0, token_ceiling=100_000),
+        )
+
+        assert len(ran) == 2
+        assert outcome.attempts == 2
+        assert outcome.task_status is None
+
     async def test_an_infrastructure_death_is_still_resumed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -2858,7 +3011,7 @@ class TestLeafReview:
             pass
 
         async def _read(_task_id: str) -> LeafReview:
-            return LeafReview(task_status="in_progress", verdict=None)
+            return LeafReview(task_status=TaskStatus.IN_PROGRESS, verdict=None)
 
         async def _scripted(
             _deps_arg: SweepDeps, *, task: Task, **_rest: object
@@ -2898,7 +3051,7 @@ class TestLeafReview:
             pass
 
         async def _read(_task_id: str) -> LeafReview:
-            return LeafReview(task_status="awaiting_input", verdict=None)
+            return LeafReview(task_status=TaskStatus.AWAITING_INPUT, verdict=None)
 
         async def _scripted(
             _deps_arg: SweepDeps, *, task: Task, **_rest: object
@@ -2937,7 +3090,7 @@ class TestLeafReview:
         _outcome, filed, ran = await self._leaf(
             tmp_path,
             monkeypatch,
-            review=LeafReview(task_status="completed", verdict="approve"),
+            review=_REVIEW_APPROVED,
         )
 
         assert len(filed) == 1
@@ -2951,7 +3104,7 @@ class TestLeafReview:
         outcome, _filed, _ran = await self._leaf(
             tmp_path,
             monkeypatch,
-            review=LeafReview(task_status="completed", verdict="approve"),
+            review=_REVIEW_APPROVED,
         )
 
         assert outcome.verdict == "approve"
@@ -2964,7 +3117,7 @@ class TestLeafReview:
         outcome, _filed, _ran = await self._leaf(
             tmp_path,
             monkeypatch,
-            review=LeafReview(task_status="blocked", verdict="escalate"),
+            review=_REVIEW_ESCALATED,
         )
 
         assert outcome.parked is True

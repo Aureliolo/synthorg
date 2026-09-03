@@ -113,6 +113,10 @@ _UNSUBMITTED_NUDGE: Final[str] = (
 # that mutate it: the objective text is attacker-controllable, so an
 # LLM-driven write tool would execute ungated. Any provided tool whose action
 # type is outside this read-only allowlist is dropped before the session runs.
+# Wider than the invoker's ``READ_ONLY_ACTION_TYPES`` (what may run side by
+# side within a turn) on purpose: a browser navigation or a research run
+# mutates no product state, so a planner may hold it, while each holds a
+# session two concurrent calls would share.
 _READ_ONLY_ACTION_TYPES: Final[frozenset[ActionType]] = frozenset(
     {
         ActionType.CODE_READ,

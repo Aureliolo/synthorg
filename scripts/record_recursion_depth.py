@@ -133,6 +133,8 @@ from synthorg.engine.state import task_engine_of
 from synthorg.hr.state import agent_registry_of
 from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.evals import (
+    EVALS_RECURSION_HOST_REVIEW_READ,
+    EVALS_RECURSION_HOST_TASK_FILED,
     EVALS_RECURSION_PREVIOUS_REPORT_UNREADABLE,
     EVALS_RECURSION_RECORD_START,
 )
@@ -1116,6 +1118,7 @@ def _task_filer(app_state: AppState) -> TaskFiler:
 
     async def _file(task: Task) -> None:
         await engine.file_tasks((task,))
+        logger.debug(EVALS_RECURSION_HOST_TASK_FILED, task_id=str(task.id))
 
     return _file
 
@@ -1139,10 +1142,18 @@ def _review_reader(app_state: AppState) -> ReviewReader:
         rows = await archive.query(
             CompletionOracleReportFilterSpec(task_id=NotBlankStr(task_id)), limit=1
         )
-        return LeafReview(
-            task_status=task.status.value if task is not None else None,
-            verdict=rows[0].verdict.value if rows else None,
+        review = LeafReview(
+            task_status=task.status if task is not None else None,
+            verdict=rows[0].verdict if rows else None,
         )
+        logger.debug(
+            EVALS_RECURSION_HOST_REVIEW_READ,
+            task_id=task_id,
+            task_status=review.task_status,
+            verdict=review.verdict,
+            archived_reports=len(rows),
+        )
+        return review
 
     return _read
 

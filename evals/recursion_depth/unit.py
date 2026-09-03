@@ -221,6 +221,16 @@ class UnitDelivery:
     workspace_files_changed: int | None = None
     note: str = ""
 
+    def __post_init__(self) -> None:
+        """Refuse a delivery that both doubts itself and says not to.
+
+        Raises:
+            ValueError: If ``reason`` and ``note`` are both set.
+        """
+        if self.reason and self.note:
+            msg = "a delivery cannot carry both a reason and a note"
+            raise ValueError(msg)
+
     @property
     def delivered(self) -> bool:
         """Did this unit both produce something and pass its own checks?
