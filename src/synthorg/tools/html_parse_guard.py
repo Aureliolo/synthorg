@@ -57,13 +57,14 @@ _HTML_DOCUMENT_PATTERN = re.compile(
 # hiding the strip knows, which is read off the strip's own patterns so the
 # trigger cannot know less than the strip removes. A forge issue body and a
 # fetched snippet arrive without a document tag and are exactly where an
-# injection hides. A handler's value is quoted, or unquoted and glued to its
-# ``=`` the way HTML writes it; the brace is what keeps JSX out
-# (``onClick={fn}``).
+# injection hides. A handler's value is quoted or bare, with or without
+# space around its ``=``, since HTML admits every one of those; the brace
+# is what keeps JSX out (``onClick={fn}``), and a false trigger costs a
+# parse and nothing else, because a fragment the strip finds nothing in is
+# handed back as it came.
 _HIDDEN_CONSTRUCT_PATTERN = re.compile(
     r"<(?:script|style|noscript|iframe|object|embed|applet)\b"
-    r"""|\son[a-z]+\s*=\s*['"]"""
-    r"""|\son[a-z]+=[^\s>{='"]"""
+    r"|\son[a-z]+\s*=\s*[^\s>{=]"
     r"""|aria-hidden\s*=\s*['"]?true"""
     "|" + HIDDEN_CONSTRUCT_TRIGGER,
     re.IGNORECASE | re.MULTILINE,

@@ -251,6 +251,8 @@ class TestCodeThatNamesATokenIsNotACredential:
             "token = client.auth.refreshTokenV2Handler",
             "token = codec.base64UrlEncoder.encodedOutput",
             "token = handlers.oauth2TokenV2Handler",
+            "token = settings.longAttributeV123Handler",
+            "token = codec.utf8ToBase64Encoder.output",
             "password = 12345678",
             "password_length = 12",
             'expected_token = "identifier"',

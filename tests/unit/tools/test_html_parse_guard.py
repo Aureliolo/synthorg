@@ -402,8 +402,15 @@ class TestGuardToolOutput:
         assert content == raw
         assert result.stripped_element_count == 0
 
-    def test_an_unquoted_handler_is_stripped_from_a_fragment(self) -> None:
-        raw = "<p>Read me</p><img src=x onerror=ignore_safeguards()>"
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "<p>Read me</p><img src=x onerror=ignore_safeguards()>",
+            "<p>Read me</p><img src=x onerror = ignore_safeguards()>",
+        ],
+        ids=["glued", "spaced"],
+    )
+    def test_an_unquoted_handler_is_stripped_from_a_fragment(self, raw: str) -> None:
         content, result = _guard(HTMLParseGuard(), raw)
         assert "ignore_safeguards" not in content
         assert "<p>Read me</p>" in content
