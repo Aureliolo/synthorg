@@ -13,7 +13,7 @@ import copy
 from collections.abc import Iterable
 from contextlib import AbstractAsyncContextManager, nullcontext
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Final, Literal
 
 from synthorg.approval.enums import ApprovalRiskLevel
 from synthorg.approval.models import EscalationInfo
@@ -70,6 +70,12 @@ from .registry import ToolRegistry
 from .scan_result_handler import handle_sensitive_scan
 
 logger = get_logger(__name__)
+
+_HTML_GUARD_WITHHELD: Final[str] = (
+    "Tool output withheld: it looked like an HTML document and could not be "
+    "judged safely (an external entity declaration, or markup the parser "
+    "refused). Retry the read, or ask the operator if it persists."
+)
 
 
 class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
@@ -1020,18 +1026,25 @@ class ToolInvoker(ToolInvokerDiscoveryMixin, ToolInvokerValidationMixin):
 
             self._html_guard = HTMLParseGuard()
 
-        content, sanitized = self._html_guard.guard_tool_output(result.content)
-        if content == result.content:
+        guarded = self._html_guard.guard_tool_output(result.content)
+        if not guarded.rejected and guarded.content == result.content:
             return result
+        sanitized = guarded.verdict
+        # A refused payload is an error the agent can act on, never a
+        # successful empty read: the metadata does not survive this boundary,
+        # so the flag and the message are the only signal that reaches it.
+        content = _HTML_GUARD_WITHHELD if guarded.rejected else guarded.content
         return result.model_copy(
             update={
                 "content": content,
+                "is_error": result.is_error or guarded.rejected,
                 "metadata": {
                     **result.metadata,
                     "html_guard": {
                         "gap_detected": sanitized.gap_detected,
                         "gap_ratio": sanitized.gap_ratio,
                         "stripped_element_count": sanitized.stripped_element_count,
+                        "rejected": guarded.rejected,
                     },
                 },
             },

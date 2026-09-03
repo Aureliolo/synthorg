@@ -165,6 +165,20 @@ class TestInvokeHtmlGuard:
         assert "exfiltrate" not in result.content
         assert "<p>Visible</p>" in result.content
 
+    async def test_a_refused_payload_is_an_error_not_an_empty_read(
+        self,
+        sample_invoker: ToolInvoker,
+    ) -> None:
+        page = (
+            '<!DOCTYPE html SYSTEM "http://evil.example/x.dtd">'
+            "<html><body><p>x</p></body></html>"
+        )
+        result = await sample_invoker.invoke(
+            ToolCall(id="c1", name="echo_test", arguments={"message": page})
+        )
+        assert result.is_error is True
+        assert "withheld" in result.content
+
 
 @pytest.mark.unit
 class TestInvokeNotFound:

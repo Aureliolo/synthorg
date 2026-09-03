@@ -10,6 +10,7 @@ not a middleware.
 """
 
 import re
+from dataclasses import dataclass
 
 from lxml.html import HtmlElement, tostring
 from pydantic import BaseModel, ConfigDict, Field
@@ -20,6 +21,7 @@ from synthorg.observability import get_logger, safe_error_description
 from synthorg.observability.events.tool import (
     TOOL_HTML_PARSE_ERROR,
     TOOL_HTML_PARSE_GAP_DETECTED,
+    TOOL_HTML_PARSE_STRIPPED,
 )
 from synthorg.tools.html_parse_safety import (
     XXEDetectedError,
@@ -31,15 +33,31 @@ logger = get_logger(__name__)
 # Patterns that indicate the content is likely HTML.
 _HTML_TAG_PATTERN = re.compile(r"<[a-zA-Z][^>]*>")
 
-# A tool RESULT is rewritten only when it is an HTML document. A tag
-# anywhere is not that: TypeScript generics, JSX, a here-document
-# redirect, a unified diff and a JUnit report all carry one, and reading
-# them as HTML returned generics without their arguments, a diff without
-# its lines and an XML report as nothing at all, to an agent about to edit
-# what it had just read.
+# A tool RESULT is judged when it is an HTML document, or a fragment
+# carrying one of the constructs below. A tag anywhere is neither:
+# TypeScript generics, JSX, a here-document redirect, a unified diff and a
+# JUnit report all carry one, and reading them as HTML returned generics
+# without their arguments, a diff without its lines and an XML report as
+# nothing at all, to an agent about to edit what it had just read.
 _HTML_DOCUMENT_PATTERN = re.compile(
     r"<(?:!doctype\s+html|html|head|body)[\s>]",
     re.IGNORECASE,
+)
+
+# A FRAGMENT is judged only when it carries something the strip would take:
+# a tag it drops, an event handler with a quoted value, a hidden style or an
+# ``aria-hidden``. A forge issue body and a fetched snippet arrive without a
+# document tag and are exactly where an injection hides. The quoted value is
+# what keeps JSX out (``onClick={fn}``), an HTML comment is not a trigger
+# because source code carries them, and a style value ends at a terminator
+# so ``opacity: 0}}`` in a component is not one either.
+_HIDDEN_CONSTRUCT_PATTERN = re.compile(
+    r"<(?:script|style|noscript|iframe|object|embed|applet)\b"
+    r"""|\son[a-z]+\s*=\s*['"]"""
+    r"""|aria-hidden\s*=\s*['"]?true"""
+    r"""|(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0(?:\.0*)?)"""
+    r"""\s*(?:;|['"]|$)""",
+    re.IGNORECASE | re.MULTILINE,
 )
 
 # CSS patterns for hidden elements.
@@ -209,6 +227,34 @@ def looks_like_html_document(raw: str) -> bool:
     return bool(_HTML_DOCUMENT_PATTERN.search(raw))
 
 
+def carries_hidden_construct(raw: str) -> bool:
+    """Whether *raw* is tagged text carrying something the strip would take.
+
+    Returns:
+        ``True`` when *raw* has a tag and one of the constructs the
+        sanitiser removes; a fragment with neither is left alone.
+    """
+    return bool(_HTML_TAG_PATTERN.search(raw) and _HIDDEN_CONSTRUCT_PATTERN.search(raw))
+
+
+@dataclass(frozen=True, slots=True)
+class GuardedToolOutput:
+    """What the tool-result door hands the model, and why.
+
+    Attributes:
+        content: The text to hand the model: the original when nothing was
+            judged or nothing was hidden, the re-serialised markup when
+            something was stripped, empty when the payload was refused.
+        verdict: The strip's measurement behind *content*.
+        rejected: Whether the payload was refused rather than judged, so
+            the caller can say so instead of passing off empty as success.
+    """
+
+    content: str
+    verdict: HTMLSanitizeResult
+    rejected: bool
+
+
 class HTMLParseGuard:
     """Sanitize HTML tool output by stripping hidden injection vectors.
 
@@ -250,33 +296,34 @@ class HTMLParseGuard:
             return _rejected_result()
         return stripped[1]
 
-    def guard_tool_output(self, raw: str) -> tuple[str, HTMLSanitizeResult]:
+    def guard_tool_output(self, raw: str) -> GuardedToolOutput:
         """Hand a tool result to the model as the tool returned it, or safer.
 
         :meth:`sanitize` answers with the TEXT of anything carrying a tag,
         which is the reading a fetched page wants and the wrong one for a
         tool RESULT: an agent edits what it reads, so a TypeScript file
         returned without its generics, or a JUnit report returned as nothing,
-        cannot be matched back to the file it came from. Only an HTML
-        DOCUMENT is judged here, and one with nothing hidden in it is
-        returned byte for byte.
+        cannot be matched back to the file it came from. What is judged here
+        is an HTML DOCUMENT, or a fragment carrying a construct the strip
+        would take; either with nothing hidden in it is returned byte for
+        byte.
 
         Returns:
-            The content to hand the model, and the verdict behind it: the
-            original when it is not a document or nothing was stripped, the
-            re-serialised document when something was, and empty when the
-            payload was refused.
+            The content to hand the model with the verdict behind it, and
+            whether the payload was refused rather than judged.
         """
-        if not self._config.enabled or not raw or not looks_like_html_document(raw):
-            return raw, _passthrough_result(raw)
+        judged = looks_like_html_document(raw) or carries_hidden_construct(raw)
+        if not self._config.enabled or not raw or not judged:
+            return GuardedToolOutput(raw, _passthrough_result(raw), rejected=False)
 
         stripped = self._strip_or_reject(raw)
         if stripped is None:
-            return "", _rejected_result()
+            return GuardedToolOutput("", _rejected_result(), rejected=True)
         doc, result = stripped
         if result.stripped_element_count == 0 and not result.gap_detected:
-            return raw, result
-        return tostring(doc, encoding="unicode", method="html"), result
+            return GuardedToolOutput(raw, result, rejected=False)
+        markup = tostring(doc, encoding="unicode", method="html")
+        return GuardedToolOutput(markup, result, rejected=False)
 
     def _strip_or_reject(
         self,
@@ -364,6 +411,15 @@ class HTMLParseGuard:
         gap_ratio = self._compute_gap_ratio(original_text, cleaned_text)
         gap_detected = gap_ratio > self._config.gap_threshold_ratio
 
+        # The verdict does not survive the invoker boundary, so a strip below
+        # the gap threshold would otherwise leave no trace anywhere.
+        if stripped_count:
+            logger.info(
+                TOOL_HTML_PARSE_STRIPPED,
+                stripped_count=stripped_count,
+                gap_ratio=gap_ratio,
+                gap_detected=gap_detected,
+            )
         if gap_detected:
             logger.warning(
                 TOOL_HTML_PARSE_GAP_DETECTED,
@@ -493,9 +549,11 @@ def sanitize_html_document(
 
 
 __all__ = [
+    "GuardedToolOutput",
     "HTMLParseGuard",
     "HTMLParseGuardConfig",
     "HTMLSanitizeResult",
+    "carries_hidden_construct",
     "looks_like_html_document",
     "sanitize_html_document",
 ]
