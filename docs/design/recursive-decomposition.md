@@ -1261,8 +1261,8 @@ cap and sat silent for twenty minutes.
 The design decision this round records is none of the five the issue offered.
 The sweep was stopped before the repetitions that would have powered any of
 them, because the same evidence that argues for fixing the plumbing argues
-that the inner loop is not where this product's value is, which is now
-#2916's question. The
+that the inner loop is not where this product's value is, which is #2916's
+question now. The
 INTEGRATE stage keeps its design; leaf repair rounds and tool-result
 abbreviation are not motivated by this cell; the sweep design question is
 moot until a next recording exists.
