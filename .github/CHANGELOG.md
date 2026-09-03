@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.9.5](https://github.com/Aureliolo/synthorg/compare/v0.9.4...v0.9.5) (2026-09-03)
+
+
+### Bug Fixes
+
+* make the CLI admin request satisfy the backend contract ([#2910](https://github.com/Aureliolo/synthorg/issues/2910)) ([4262fe7](https://github.com/Aureliolo/synthorg/commit/4262fe7ab494da107dbbcf76c872a99f447ed41c)), closes [#2905](https://github.com/Aureliolo/synthorg/issues/2905)
+* read config list's source from the file, and classify a dismissed prompt apart from a signal ([#2914](https://github.com/Aureliolo/synthorg/issues/2914)) ([36be630](https://github.com/Aureliolo/synthorg/commit/36be6306909085de45bc98072c60fcabd3ab7237))
+* retry release-please and assert a released tag has a release ([#2907](https://github.com/Aureliolo/synthorg/issues/2907)) ([7e63fb3](https://github.com/Aureliolo/synthorg/commit/7e63fb310d6ce1b59eefa15fd55d939bf5e4aa7e))
+* seal two secret leaks, keep the interrupt fix intact, and correct the harness record ([#2908](https://github.com/Aureliolo/synthorg/issues/2908)) ([e7ba4df](https://github.com/Aureliolo/synthorg/commit/e7ba4df5125c79257312e5d2402aa725e1f26862))
+
+
+### Refactoring
+
+* make a partially wired engine unconstructable and record the loop on the shipped one ([#2915](https://github.com/Aureliolo/synthorg/issues/2915)) ([bde2fd8](https://github.com/Aureliolo/synthorg/commit/bde2fd80a087de4e7ca3ddede1a6c69cdedb1a58))
+
 ## [0.9.4](https://github.com/Aureliolo/synthorg/compare/v0.9.3...v0.9.4) (2026-08-31)
 
 
