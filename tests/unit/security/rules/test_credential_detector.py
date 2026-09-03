@@ -241,12 +241,79 @@ class TestCodeThatNamesATokenIsNotACredential:
                 "if token.kind == 'SELECT':\n"
                 "    return self._select()\n"
             ),
+            "MAX_TOKEN_LENGTH = 100000000",
+            "SECRET_ROTATION_DAYS = 90000000",
+            "TOKEN_PATH = self.config.token_file_path",
+            "token_hash: HMAC-SHA256 hash of the opaque token.",
+            "token = settings.tokens_2024.primary",
+            "password = 12345678",
+            "password_length = 12",
+            'expected_token = "identifier"',
         ],
     )
     def test_code_shaped_assignments_pass(self, code: str) -> None:
         detector = CredentialDetector()
 
         assert detector.evaluate(_ctx({"content": code})) is None
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            'password = "hunter2hunter2"',
+            'password = "correcthorse"',
+            "db_password = correcthorsebatterystaple",
+            "TOKEN=abcdefghijklmnopqrstuvwx",
+            "token = 1234abcd",
+            'SECRET_KEY: "abcdefghijklmnopq"',
+            'token = "abc123defghi"',
+            (
+                "token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0."
+                "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+            ),
+            "credential: 7f9a8b7c6d5e4f3a2b1c",
+        ],
+        ids=[
+            "quoted_password",
+            "short_word_password",
+            "bare_lowercase_no_digit",
+            "bare_uppercase_no_digit",
+            "bare_digit_bearing_eight",
+            "quoted_sixteen_no_digit",
+            "quoted_digit_bearing",
+            "bare_jwt",
+            "hex_credential",
+        ],
+    )
+    def test_secret_shaped_assignments_are_refused(self, code: str) -> None:
+        detector = CredentialDetector()
+
+        assert detector.evaluate(_ctx({"content": code})) is not None
+
+    @pytest.mark.parametrize(
+        ("code", "refused"),
+        [
+            ('token = "abcdefg"', False),
+            ('token = "abcdefg1"', True),
+            ('token = "abcdefghijklmno"', False),
+            ('token = "abcdefghijklmnop"', True),
+            ("token = abcdefg1", True),
+            ("token = abcdefghijklmno", False),
+            ("token = abcdefghijklmnop", True),
+        ],
+        ids=[
+            "seven_with_digit",
+            "eight_with_digit",
+            "fifteen_no_digit",
+            "sixteen_no_digit",
+            "bare_eight_with_digit",
+            "bare_fifteen_no_digit",
+            "bare_sixteen_no_digit",
+        ],
+    )
+    def test_the_length_boundaries(self, code: str, refused: bool) -> None:
+        detector = CredentialDetector()
+
+        assert (detector.evaluate(_ctx({"content": code})) is not None) is refused
 
 
 # ── Name property ────────────────────────────────────────────────────

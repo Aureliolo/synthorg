@@ -56,40 +56,59 @@ CREDENTIAL_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
         "GitHub personal access token",
         re.compile(r"(?<![A-Za-z0-9])ghp_[A-Za-z0-9]{36,}"),
     ),
-    # The three shapes a generic secret assignment takes, read by the VALUE
-    # rather than by the variable's name: an earlier form matched any
-    # ``token = <eight characters>`` case-insensitively, which is every
-    # tokeniser ever written (``token = self._peek()``), and a live run had
-    # four of eight agents refused on writing a parser, two of them for
-    # their whole budget. A call, an index or an attribute chain is code; a
-    # secret is a quoted literal, or a bare run of secret-shaped characters
-    # that carries a digit or is long enough that no identifier would.
+    # A generic secret assignment is read by the VALUE. A rule keyed on the
+    # variable's name alone matches ordinary code shaped like
+    # ``token = self._peek()``, which is every tokeniser ever written, and
+    # a live run had four of eight agents refused on writing a parser that
+    # way, two of them for their whole budget. The key is an identifier
+    # ENDING in the secret word: ``token_hash:`` names a hash and
+    # ``MAX_TOKEN_LENGTH =`` a length, and a rule admitting a suffix read a
+    # docstring in this repository as a credential. A call, an index or an
+    # attribute chain is code; a secret is a quoted literal, or a bare run
+    # of secret-shaped characters that carries a digit or is long enough
+    # that no identifier would, ending where no code continues from. A
+    # numeric literal is a number.
     (
         "Generic secret assignment",
-        # A quoted literal, whatever the key's case.
+        # A quoted password: a password is a word as often as not, so
+        # length alone decides.
         re.compile(
-            r"\w*(?:secret|token|password|credential)\w*\s*[=:]\s*"
+            r"""\b\w*?(?:password|passwd)\s*[=:]\s*['\"][^\s'\"]{8,}['\"]""",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Generic secret assignment",
+        # A quoted token, secret or credential: a digit-bearing run, or one
+        # too long to be a word an assertion compares against.
+        re.compile(
+            r"\b\w*?(?:secret|token|credential)\s*[=:]\s*"
             r"""['\"](?:(?=[^\s'\"]*\d)[^\s'\"]{8,}|[^\s'\"]{16,})['\"]""",
             re.IGNORECASE,
         ),
     ),
     (
         "Generic secret assignment",
-        # An environment-style assignment: an upper-case key and a bare value
-        # with no call, index or quote in it.
+        # A bare value, the YAML, dotenv and shell shape, whatever the key's
+        # case: a digit-bearing run of eight, or any run of sixteen, that
+        # is not a number and that no call, index or attribute continues.
         re.compile(
-            r"[A-Z_]*(?:SECRET|TOKEN|PASSWORD|CREDENTIAL)[A-Z_]*\s*[=:]\s*"
-            r"""(?:(?=[^\s'\"()\[\]]*\d)[^\s'\"()\[\]]{8,}|[^\s'\"()\[\]]{16,})""",
+            r"\b\w*?(?:secret|token|password|passwd|credential)\s*[=:]\s*"
+            r"(?!\d+(?:\.\d+)?(?![\w.]))"
+            r"(?:(?=[A-Za-z0-9_\-/+=]*\d)[A-Za-z0-9_\-/+=]{8,}"
+            r"|[A-Za-z0-9_\-/+=]{16,})(?![\w.(\[])",
+            re.IGNORECASE,
         ),
     ),
     (
         "Generic secret assignment",
-        # A lower- or mixed-case key with a bare value, the YAML and
-        # dotenv shape: only a run of secret-shaped characters carrying a
-        # digit, ending at a boundary no code continues from.
+        # A bare dotted value with a digit and one segment no attribute
+        # name reaches: the shape of a JWT, and of nothing an object path is.
         re.compile(
-            r"\w*(?:secret|token|password|credential)\w*\s*[=:]\s*"
-            r"(?=[A-Za-z0-9_\-/+=]*\d)[A-Za-z0-9_\-/+=]{8,}(?![\w.(\[])",
+            r"\b\w*?(?:secret|token|password|passwd|credential)\s*[=:]\s*"
+            r"(?=[A-Za-z0-9_\-/+=.]*\d)"
+            r"(?=(?:[A-Za-z0-9_\-/+=]{0,15}\.)*[A-Za-z0-9_\-/+=]{16})"
+            r"[A-Za-z0-9_\-/+=.]{24,}(?![\w(\[])",
             re.IGNORECASE,
         ),
     ),
