@@ -151,7 +151,7 @@ class TestLiteLLMDriverAuth:
             base_url="http://localhost:1234/v1",
         )
         kwargs = _build_kwargs(config)
-        assert kwargs["api_key"] == NO_CREDENTIAL_API_KEY
+        assert kwargs.get("api_key") == NO_CREDENTIAL_API_KEY
 
     def test_none_auth_on_a_native_route_sends_no_key(self) -> None:
         config = _make_config(
@@ -173,8 +173,8 @@ class TestLiteLLMDriverAuth:
             custom_header_value="my-token",
         )
         kwargs = _build_kwargs(config)
-        assert kwargs["extra_headers"] == {"X-Api-Token": "my-token"}
-        assert kwargs["api_key"] == NO_CREDENTIAL_API_KEY
+        assert kwargs.get("extra_headers") == {"X-Api-Token": "my-token"}
+        assert kwargs.get("api_key") == NO_CREDENTIAL_API_KEY
 
     def test_a_resolved_credential_is_never_replaced_by_the_placeholder(
         self,
@@ -185,7 +185,7 @@ class TestLiteLLMDriverAuth:
             connection_name="provider-key",
         )
         kwargs = _build_kwargs(config, resolved={"api_key": "real-key"})
-        assert kwargs["api_key"] == "real-key"
+        assert kwargs.get("api_key") == "real-key"
 
     def test_build_kwargs_oauth_passes_api_key(self) -> None:
         config = _make_config(
